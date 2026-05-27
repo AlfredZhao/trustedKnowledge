@@ -1,0 +1,54 @@
+from functools import lru_cache
+
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    db_user: str = Field(..., validation_alias="TRUSTED_KNOWLEDGE_DB_USER")
+    db_password: str = Field(..., validation_alias="TRUSTED_KNOWLEDGE_DB_PASSWORD")
+    db_dsn: str = Field(..., validation_alias="TRUSTED_KNOWLEDGE_DB_DSN")
+    db_pool_min: int = Field(1, validation_alias="TRUSTED_KNOWLEDGE_DB_POOL_MIN", ge=1)
+    db_pool_max: int = Field(4, validation_alias="TRUSTED_KNOWLEDGE_DB_POOL_MAX", ge=1)
+    db_pool_increment: int = Field(1, validation_alias="TRUSTED_KNOWLEDGE_DB_POOL_INCREMENT", ge=1)
+    cors_origins: str = Field(
+        "http://localhost:8021,http://127.0.0.1:8021",
+        validation_alias="TRUSTED_KNOWLEDGE_CORS_ORIGINS",
+    )
+    admin_username: str = Field("admin", validation_alias="TRUSTED_KNOWLEDGE_ADMIN_USERNAME")
+    admin_password: str = Field(..., validation_alias="TRUSTED_KNOWLEDGE_ADMIN_PASSWORD")
+    api_key: str = Field(..., validation_alias="TRUSTED_KNOWLEDGE_API_KEY")
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [item.strip() for item in self.cors_origins.split(",") if item.strip()]
+
+    @field_validator("db_pool_max")
+    @classmethod
+    def validate_pool_size(cls, value: int, info) -> int:
+        pool_min = info.data.get("db_pool_min", 1)
+        if value < pool_min:
+            raise ValueError("TRUSTED_KNOWLEDGE_DB_POOL_MAX must be >= DB_POOL_MIN")
+        return value
+
+    @field_validator("admin_username", "admin_password", "api_key")
+    @classmethod
+    def validate_auth_secret(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("Authentication settings cannot be blank")
+        return stripped
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()
+
+
+settings = get_settings()
