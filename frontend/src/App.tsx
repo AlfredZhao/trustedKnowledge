@@ -1,13 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Archive,
+  Bot,
   ChevronLeft,
   ChevronRight,
   BookOpenCheck,
   CheckCircle2,
+  ClipboardCheck,
+  Copy,
   Database,
   FilePlus2,
   Filter,
+  FileText,
   FlaskConical,
   Layers3,
   LogOut,
@@ -21,6 +25,7 @@ import {
   Tags,
   TriangleAlert,
   Trash2,
+  WandSparkles,
   X,
 } from "lucide-react";
 
@@ -37,6 +42,7 @@ const emptyDraft: KnowledgeDraft = {
 };
 
 const PAGE_SIZE = 5;
+const FACTORY_PAGE_SIZE = 6;
 
 const statusStyles: Record<KnowledgeStatus, string> = {
   未发布: "border-slate-500/30 bg-slate-400/10 text-slate-200",
@@ -46,6 +52,7 @@ const statusStyles: Record<KnowledgeStatus, string> = {
 
 function App() {
   const [apiKey, setApiKey] = useState(() => window.sessionStorage.getItem(API_KEY_STORAGE_KEY));
+  const [activeView, setActiveView] = useState<"workbench" | "factory">("workbench");
   const [items, setItems] = useState<KnowledgeItem[]>([]);
   const [draft, setDraft] = useState<KnowledgeDraft>(emptyDraft);
   const [query, setQuery] = useState("");
@@ -63,6 +70,18 @@ function App() {
   const [deleteTarget, setDeleteTarget] = useState<KnowledgeItem | null>(null);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [lastCreatedId, setLastCreatedId] = useState<number | null>(null);
+  const [factoryItems, setFactoryItems] = useState<KnowledgeItem[]>([]);
+  const [factoryTotalItems, setFactoryTotalItems] = useState(0);
+  const [factoryPage, setFactoryPage] = useState(1);
+  const [factoryQuery, setFactoryQuery] = useState("");
+  const [debouncedFactoryQuery, setDebouncedFactoryQuery] = useState("");
+  const [factorySelectedId, setFactorySelectedId] = useState<number | null>(null);
+  const [factoryTask, setFactoryTask] = useState("");
+  const [factoryError, setFactoryError] = useState<string | null>(null);
+  const [isFactoryLoading, setIsFactoryLoading] = useState(false);
+  const [isFactoryGenerating, setIsFactoryGenerating] = useState(false);
+  const [hasCopiedFactoryTask, setHasCopiedFactoryTask] = useState(false);
+  const [factoryCopyError, setFactoryCopyError] = useState<string | null>(null);
 
   useEffect(() => {
     const handleUnauthorized = () => {
@@ -77,7 +96,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!apiKey) return;
+    if (!apiKey || activeView !== "workbench") return;
 
     const timer = window.setTimeout(() => {
       setDebouncedQuery(query.trim());
@@ -117,7 +136,56 @@ function App() {
     return () => {
       mounted = false;
     };
-  }, [apiKey, debouncedQuery, page, refreshToken, statusFilter]);
+  }, [activeView, apiKey, debouncedQuery, page, refreshToken, statusFilter]);
+
+  useEffect(() => {
+    if (!apiKey) return;
+
+    const timer = window.setTimeout(() => {
+      setDebouncedFactoryQuery(factoryQuery.trim());
+      setFactoryPage(1);
+    }, 320);
+
+    return () => window.clearTimeout(timer);
+  }, [apiKey, factoryQuery]);
+
+  useEffect(() => {
+    if (!apiKey || activeView !== "factory") return;
+
+    let mounted = true;
+    setIsFactoryLoading(true);
+    fetchKnowledge({
+      query: debouncedFactoryQuery,
+      limit: FACTORY_PAGE_SIZE,
+      offset: (factoryPage - 1) * FACTORY_PAGE_SIZE,
+      status: "未发布",
+    })
+      .then((data) => {
+        if (!mounted) return;
+        setFactoryItems(data.items);
+        setFactoryTotalItems(data.total);
+        setFactoryError(null);
+
+        const selectedStillVisible = data.items.some((item) => item.id === factorySelectedId);
+        if (!selectedStillVisible) {
+          setFactorySelectedId(data.items[0]?.id ?? null);
+          setFactoryTask("");
+          setHasCopiedFactoryTask(false);
+        }
+      })
+      .catch((error: Error) => {
+        if (!mounted) return;
+        setFactoryError(error.message);
+      })
+      .finally(() => {
+        if (!mounted) return;
+        setIsFactoryLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [activeView, apiKey, debouncedFactoryQuery, factoryPage, factorySelectedId]);
 
   const trustScore = useMemo(() => {
     let score = 38;
@@ -246,6 +314,35 @@ function App() {
     setItems([]);
     setSelectedId(null);
     setDraft(emptyDraft);
+    setFactoryItems([]);
+    setFactorySelectedId(null);
+    setFactoryTask("");
+  }
+
+  async function handleGenerateFactoryTask(item: KnowledgeItem) {
+    setIsFactoryGenerating(true);
+    setFactorySelectedId(item.id);
+    setHasCopiedFactoryTask(false);
+    setFactoryCopyError(null);
+
+    window.setTimeout(() => {
+      setFactoryTask(buildBlogSkillTask(item));
+      setIsFactoryGenerating(false);
+    }, 520);
+  }
+
+  async function handleCopyFactoryTask() {
+    if (!factoryTask) return;
+
+    try {
+      await copyText(factoryTask);
+      setFactoryCopyError(null);
+      setHasCopiedFactoryTask(true);
+      window.setTimeout(() => setHasCopiedFactoryTask(false), 1600);
+    } catch {
+      setHasCopiedFactoryTask(false);
+      setFactoryCopyError("复制失败。请选中文本框内容后手动复制。");
+    }
   }
 
   if (!apiKey) {
@@ -256,56 +353,84 @@ function App() {
     <main className="min-h-screen bg-ink-950 text-slate-100">
       <div className="fixed inset-0 pointer-events-none bg-[radial-gradient(circle_at_top_left,rgba(125,211,199,0.09),transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.035),transparent_22%)]" />
       <div className="relative grid min-h-screen grid-cols-1 lg:grid-cols-[76px_minmax(0,1fr)]">
-        <Sidebar />
+        <Sidebar activeView={activeView} onViewChange={setActiveView} />
 
         <section className="flex min-w-0 flex-col">
           <Topbar
-            query={query}
-            statusFilter={statusFilter}
+            activeView={activeView}
+            query={activeView === "workbench" ? query : factoryQuery}
+            statusFilter={activeView === "workbench" ? statusFilter : undefined}
+            title={activeView === "workbench" ? "可信知识录入工作台" : "可信知识加工厂"}
+            subtitle={activeView === "workbench" ? "Trusted Knowledge" : "Blog Factory"}
             onLogout={handleLogout}
-            onQueryChange={setQuery}
+            onQueryChange={activeView === "workbench" ? setQuery : setFactoryQuery}
+            onViewChange={setActiveView}
             onStatusFilterChange={(nextStatus) => {
               setStatusFilter(nextStatus);
               setPage(1);
             }}
           />
 
-          <div className="grid flex-1 gap-4 px-4 pb-4 pt-2 lg:grid-cols-[minmax(440px,0.95fr)_minmax(420px,1.05fr)] xl:grid-cols-[minmax(500px,0.9fr)_minmax(460px,0.72fr)_300px]">
-            <KnowledgeForm
-              draft={draft}
-              mode={isEditing ? "edit" : "create"}
-              selectedId={selectedId}
-              isSaving={isSaving}
-              isDeleting={isDeleting}
-              isDetailLoading={isDetailLoading}
-              saveError={saveError}
-              trustScore={trustScore}
-              hasSensitiveSignal={hasSensitiveSignal}
-              onDraftChange={setDraft}
-              onDelete={handleRequestDelete}
-              onNewEntry={handleNewEntry}
-              onSubmit={handleSubmit}
-            />
+          {activeView === "workbench" ? (
+            <div className="grid flex-1 gap-4 px-4 pb-4 pt-2 lg:grid-cols-[minmax(440px,0.95fr)_minmax(420px,1.05fr)] xl:grid-cols-[minmax(500px,0.9fr)_minmax(460px,0.72fr)_300px]">
+              <KnowledgeForm
+                draft={draft}
+                mode={isEditing ? "edit" : "create"}
+                selectedId={selectedId}
+                isSaving={isSaving}
+                isDeleting={isDeleting}
+                isDetailLoading={isDetailLoading}
+                saveError={saveError}
+                trustScore={trustScore}
+                hasSensitiveSignal={hasSensitiveSignal}
+                onDraftChange={setDraft}
+                onDelete={handleRequestDelete}
+                onNewEntry={handleNewEntry}
+                onSubmit={handleSubmit}
+              />
 
-            <KnowledgeList
-              items={items}
-              totalItems={totalItems}
-              page={page}
-              pageSize={PAGE_SIZE}
-              isLoading={isLoading}
-              loadError={loadError}
-              selectedId={selectedId}
-              lastCreatedId={lastCreatedId}
-              onPageChange={setPage}
-              onSelect={handleSelectItem}
-            />
+              <KnowledgeList
+                items={items}
+                totalItems={totalItems}
+                page={page}
+                pageSize={PAGE_SIZE}
+                isLoading={isLoading}
+                loadError={loadError}
+                selectedId={selectedId}
+                lastCreatedId={lastCreatedId}
+                onPageChange={setPage}
+                onSelect={handleSelectItem}
+              />
 
-            <TrustPanel
-              draft={draft}
-              trustScore={trustScore}
-              hasSensitiveSignal={hasSensitiveSignal}
+              <TrustPanel
+                draft={draft}
+                trustScore={trustScore}
+                hasSensitiveSignal={hasSensitiveSignal}
+              />
+            </div>
+          ) : (
+            <KnowledgeFactory
+              items={factoryItems}
+              totalItems={factoryTotalItems}
+              page={factoryPage}
+              pageSize={FACTORY_PAGE_SIZE}
+              isLoading={isFactoryLoading}
+              isGenerating={isFactoryGenerating}
+              loadError={factoryError}
+              selectedId={factorySelectedId}
+              task={factoryTask}
+              hasCopied={hasCopiedFactoryTask}
+              copyError={factoryCopyError}
+              onCopyTask={handleCopyFactoryTask}
+              onGenerateTask={handleGenerateFactoryTask}
+              onPageChange={setFactoryPage}
+              onSelect={(item) => {
+                setFactorySelectedId(item.id);
+                setFactoryTask("");
+                setHasCopiedFactoryTask(false);
+              }}
             />
-          </div>
+          )}
         </section>
       </div>
 
@@ -321,12 +446,24 @@ function App() {
   );
 }
 
-function Sidebar() {
-  const items = [
-    { icon: BookOpenCheck, label: "Knowledge", active: true },
+function Sidebar({
+  activeView,
+  onViewChange,
+}: {
+  activeView: "workbench" | "factory";
+  onViewChange: (view: "workbench" | "factory") => void;
+}) {
+  type SidebarItem = {
+    icon: typeof BookOpenCheck;
+    label: string;
+    view?: "workbench" | "factory";
+  };
+
+  const items: SidebarItem[] = [
+    { icon: BookOpenCheck, label: "录入工作台", view: "workbench" as const },
+    { icon: FlaskConical, label: "知识加工厂", view: "factory" as const },
     { icon: ShieldCheck, label: "Review" },
     { icon: Database, label: "Sources" },
-    { icon: FlaskConical, label: "Lab" },
   ];
 
   return (
@@ -335,20 +472,26 @@ function Sidebar() {
         <Layers3 size={19} />
       </div>
       <nav className="flex flex-1 flex-col gap-3">
-        {items.map((item) => (
+        {items.map((item) => {
+          const active = "view" in item && item.view === activeView;
+          return (
           <button
             key={item.label}
             className={`grid h-11 w-11 place-items-center rounded-lg border transition ${
-              item.active
+              active
                 ? "border-mint-300/25 bg-mint-300/10 text-mint-300"
                 : "border-transparent text-slate-500 hover:border-white/10 hover:bg-white/[0.04] hover:text-slate-200"
             }`}
             title={item.label}
             type="button"
+            onClick={() => {
+              if (item.view) onViewChange(item.view);
+            }}
           >
             <item.icon size={19} />
           </button>
-        ))}
+          );
+        })}
       </nav>
       <div className="grid h-9 w-9 place-items-center rounded-full border border-white/10 text-xs font-semibold text-slate-300">
         AI
@@ -358,19 +501,31 @@ function Sidebar() {
 }
 
 function Topbar({
+  activeView,
   query,
   statusFilter,
+  title,
+  subtitle,
   onLogout,
   onQueryChange,
+  onViewChange,
   onStatusFilterChange,
 }: {
+  activeView: "workbench" | "factory";
   query: string;
-  statusFilter: KnowledgeStatus | "all";
+  statusFilter?: KnowledgeStatus | "all";
+  title: string;
+  subtitle: string;
   onLogout: () => void;
   onQueryChange: (value: string) => void;
-  onStatusFilterChange: (status: KnowledgeStatus | "all") => void;
+  onViewChange: (view: "workbench" | "factory") => void;
+  onStatusFilterChange?: (status: KnowledgeStatus | "all") => void;
 }) {
   const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const mobileNavItems = [
+    { icon: BookOpenCheck, label: "录入工作台", view: "workbench" as const },
+    { icon: FlaskConical, label: "知识加工厂", view: "factory" as const },
+  ];
   const statusOptions: Array<{ label: string; value: KnowledgeStatus | "all" }> = [
     { label: "全部状态", value: "all" },
     { label: "未发布", value: "未发布" },
@@ -380,14 +535,35 @@ function Topbar({
   const activeLabel = statusOptions.find((option) => option.value === statusFilter)?.label ?? "全部状态";
 
   return (
-    <header className="relative z-40 flex flex-col gap-4 border-b border-white/8 bg-ink-900/72 px-4 py-4 backdrop-blur-xl md:flex-row md:items-center md:justify-between">
+    <header className="relative z-40 flex flex-col gap-4 border-b border-white/8 bg-ink-900/72 px-4 py-4 backdrop-blur-xl lg:flex-row lg:items-center lg:justify-between">
       <div>
         <div className="mb-1 flex items-center gap-2 text-xs uppercase tracking-[0.22em] text-mint-300/80">
           <ShieldCheck size={14} />
-          Trusted Knowledge
+          {subtitle}
         </div>
-        <h1 className="text-2xl font-semibold tracking-normal text-slate-50">可信知识录入工作台</h1>
+        <h1 className="text-2xl font-semibold tracking-normal text-slate-50">{title}</h1>
       </div>
+      <nav className="grid grid-cols-2 gap-2 lg:hidden" aria-label="功能页面">
+        {mobileNavItems.map((item) => {
+          const active = item.view === activeView;
+          return (
+            <button
+              key={item.view}
+              className={`flex h-11 min-w-0 items-center justify-center gap-2 rounded-lg border px-3 text-sm font-medium transition ${
+                active
+                  ? "border-mint-300/25 bg-mint-300/10 text-mint-300"
+                  : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-white/16 hover:bg-white/[0.06] hover:text-slate-50"
+              }`}
+              type="button"
+              aria-current={active ? "page" : undefined}
+              onClick={() => onViewChange(item.view)}
+            >
+              <item.icon size={17} className="shrink-0" />
+              <span className="truncate">{item.label}</span>
+            </button>
+          );
+        })}
+      </nav>
       <div className="flex min-w-0 items-center gap-2">
         <label className="flex h-11 min-w-0 flex-1 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-slate-400 md:w-80">
           <Search size={17} />
@@ -398,6 +574,7 @@ function Topbar({
             placeholder="搜索问题、来源或标签"
           />
         </label>
+        {statusFilter !== undefined && onStatusFilterChange ? (
         <div className="relative">
           <button
             className={`flex h-11 items-center gap-2 rounded-lg border px-3 text-sm transition ${
@@ -435,6 +612,7 @@ function Topbar({
             </div>
           ) : null}
         </div>
+        ) : null}
         <button
           className="grid h-11 w-11 place-items-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-300 transition hover:border-red-300/30 hover:text-red-200"
           title="退出登录"
@@ -1020,6 +1198,265 @@ function KnowledgeList({
   );
 }
 
+function KnowledgeFactory({
+  items,
+  totalItems,
+  page,
+  pageSize,
+  isLoading,
+  isGenerating,
+  loadError,
+  selectedId,
+  task,
+  hasCopied,
+  copyError,
+  onCopyTask,
+  onGenerateTask,
+  onPageChange,
+  onSelect,
+}: {
+  items: KnowledgeItem[];
+  totalItems: number;
+  page: number;
+  pageSize: number;
+  isLoading: boolean;
+  isGenerating: boolean;
+  loadError: string | null;
+  selectedId: number | null;
+  task: string;
+  hasCopied: boolean;
+  copyError: string | null;
+  onCopyTask: () => void;
+  onGenerateTask: (item: KnowledgeItem) => void;
+  onPageChange: (page: number) => void;
+  onSelect: (item: KnowledgeItem) => void;
+}) {
+  const selectedItem = items.find((item) => item.id === selectedId) ?? null;
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const rangeStart = totalItems === 0 ? 0 : (page - 1) * pageSize + 1;
+  const rangeEnd = Math.min(page * pageSize, totalItems);
+
+  return (
+    <div className="grid flex-1 gap-4 px-4 pb-4 pt-2 xl:grid-cols-[360px_minmax(440px,1fr)_minmax(360px,0.82fr)]">
+      <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/72 p-4 shadow-soft-glow backdrop-blur-xl">
+        <div className="mb-4 flex items-start justify-between gap-4">
+          <div>
+            <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
+              <FlaskConical size={17} />
+              Unpublished Queue
+            </div>
+            <h2 className="text-xl font-semibold text-slate-50">待加工知识</h2>
+          </div>
+          <div className="rounded-lg border border-slate-500/30 bg-slate-400/10 px-3 py-2 text-sm text-slate-200">
+            {totalItems} 条
+          </div>
+        </div>
+
+        {isLoading ? (
+          <LoadingStack />
+        ) : loadError ? (
+          <div className="rounded-lg border border-amberline/25 bg-amberline/10 p-4">
+            <div className="mb-2 flex items-center gap-2 text-sm font-medium text-amberline">
+              <TriangleAlert size={16} />
+              后端连接待就绪
+            </div>
+            <p className="text-sm leading-6 text-amber-100/80">{loadError}</p>
+          </div>
+        ) : items.length === 0 ? (
+          <div className="rounded-lg border border-white/10 bg-white/[0.025] p-6 text-center text-sm leading-6 text-slate-500">
+            暂无未发布知识。可以回到录入工作台新增，或把状态切换为未发布。
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {items.map((item) => (
+              <button
+                key={item.id}
+                className={`block w-full rounded-lg border bg-white/[0.028] p-4 text-left transition ${
+                  selectedId === item.id
+                    ? "border-mint-300/45 bg-mint-300/[0.055]"
+                    : "border-white/10 hover:border-white/18"
+                }`}
+                type="button"
+                onClick={() => onSelect(item)}
+              >
+                <div className="mb-3 flex items-start justify-between gap-3">
+                  <h3 className="line-clamp-2 min-w-0 text-sm font-semibold leading-6 text-slate-50">
+                    {item.question}
+                  </h3>
+                  <span className={`shrink-0 rounded-full border px-2.5 py-1 text-xs ${statusStyles[item.blog_status]}`}>
+                    {item.blog_status}
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                  <span>#{item.id}</span>
+                  <span>{item.source || "unknown source"}</span>
+                  <span>{formatDate(item.created_date)}</span>
+                </div>
+              </button>
+            ))}
+
+            <div className="flex items-center justify-between rounded-lg border border-white/8 bg-white/[0.025] px-3 py-3 text-sm text-slate-400">
+              <span>
+                {rangeStart}-{rangeEnd} / {totalItems}
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  className="grid h-9 w-9 place-items-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300 disabled:text-slate-600"
+                  disabled={page <= 1}
+                  title="上一页"
+                  type="button"
+                  onClick={() => onPageChange(Math.max(1, page - 1))}
+                >
+                  <ChevronLeft size={17} />
+                </button>
+                <span className="min-w-16 text-center text-xs text-slate-500">
+                  {page} / {totalPages}
+                </span>
+                <button
+                  className="grid h-9 w-9 place-items-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300 disabled:text-slate-600"
+                  disabled={page >= totalPages}
+                  title="下一页"
+                  type="button"
+                  onClick={() => onPageChange(Math.min(totalPages, page + 1))}
+                >
+                  <ChevronRight size={17} />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </section>
+
+      <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/68 p-4 backdrop-blur-xl">
+        <div className="mb-4 flex items-start justify-between gap-4">
+          <div>
+            <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
+              <FileText size={17} />
+              Source Context
+            </div>
+            <h2 className="text-xl font-semibold text-slate-50">知识原文</h2>
+          </div>
+          {selectedItem ? (
+            <button
+              className="flex h-10 items-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-3 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
+              disabled={isGenerating}
+              type="button"
+              onClick={() => onGenerateTask(selectedItem)}
+            >
+              {isGenerating ? <Loader2 className="animate-spin" size={17} /> : <WandSparkles size={17} />}
+              {isGenerating ? "生成中" : "生成加工任务"}
+            </button>
+          ) : null}
+        </div>
+
+        {selectedItem ? (
+          <article className="space-y-4">
+            <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
+              <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                <span>#{selectedItem.id}</span>
+                <span>{selectedItem.source || "unknown source"}</span>
+                <span>{formatDate(selectedItem.created_date)}</span>
+              </div>
+              <h3 className="text-lg font-semibold leading-7 text-slate-50">{selectedItem.question}</h3>
+            </div>
+
+            <div className="rounded-lg border border-white/10 bg-white/[0.025] p-4">
+              <div className="mb-2 flex items-center gap-2 text-sm text-slate-300">
+                <Archive size={16} />
+                可信答案
+              </div>
+              <p className="whitespace-pre-wrap break-words text-sm leading-7 text-slate-300 [overflow-wrap:anywhere]">
+                {maskSensitive(selectedItem.answer)}
+              </p>
+            </div>
+
+            {selectedItem.topic_tag ? (
+              <div className="flex flex-wrap gap-2">
+                {selectedItem.topic_tag.split(",").map((tag) => (
+                  <span
+                    key={`${selectedItem.id}-${tag}`}
+                    className="rounded-md border border-white/8 bg-white/[0.035] px-2 py-1 text-xs text-slate-400"
+                  >
+                    {tag.trim()}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </article>
+        ) : (
+          <div className="grid min-h-[420px] place-items-center rounded-lg border border-white/10 bg-white/[0.025] p-6 text-center">
+            <div>
+              <Bot className="mx-auto mb-3 text-slate-600" size={36} />
+              <div className="mb-1 font-medium text-slate-300">选择一条未发布知识</div>
+              <p className="text-sm text-slate-500">加工厂会把它整理成 Blog skill 可直接消费的任务包。</p>
+            </div>
+          </div>
+        )}
+      </section>
+
+      <aside className="min-w-0 rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
+        <div className="mb-4 flex items-start justify-between gap-4">
+          <div>
+            <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
+              <Bot size={17} />
+              Codex Skill
+            </div>
+            <h2 className="text-lg font-semibold text-slate-50">Blog 加工包</h2>
+          </div>
+          <button
+            className={`grid h-10 w-10 place-items-center rounded-lg border transition disabled:cursor-not-allowed disabled:text-slate-600 ${
+              hasCopied
+                ? "border-mint-300/30 bg-mint-300/14 text-mint-300"
+                : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-mint-300/30 hover:text-mint-300"
+            }`}
+            disabled={!task}
+            title={hasCopied ? "已复制" : "复制加工任务"}
+            type="button"
+            onClick={onCopyTask}
+          >
+            {hasCopied ? <ClipboardCheck size={17} /> : <Copy size={17} />}
+          </button>
+        </div>
+
+        <div className="mb-4 rounded-lg border border-mint-300/20 bg-mint-300/8 p-3 text-sm leading-6 text-mint-100/85">
+          这里生成的是 Codex Blog skill 的标准输入。复制后交给 Codex 执行，skill 会按规则生成 Markdown 并写入博客目录。
+        </div>
+
+        {copyError ? (
+          <div className="mb-4 flex items-start gap-2 rounded-lg border border-amberline/25 bg-amberline/10 px-3 py-3 text-sm text-amber-100">
+            <TriangleAlert className="mt-0.5 shrink-0 text-amberline" size={17} />
+            <span>{copyError}</span>
+          </div>
+        ) : null}
+
+        {isGenerating ? (
+          <div className="relative overflow-hidden rounded-lg border border-white/10 bg-white/[0.025] p-4">
+            <div className="absolute inset-y-0 w-1/2 bg-gradient-to-r from-transparent via-white/[0.055] to-transparent animate-scan" />
+            <div className="mb-4 h-4 w-2/3 rounded bg-white/10" />
+            <div className="mb-3 h-3 w-full rounded bg-white/7" />
+            <div className="mb-3 h-3 w-5/6 rounded bg-white/7" />
+            <div className="h-3 w-1/2 rounded bg-white/7" />
+          </div>
+        ) : task ? (
+          <textarea
+            className="control min-h-[520px] resize-none font-mono text-xs leading-6 text-slate-200"
+            readOnly
+            value={task}
+          />
+        ) : (
+          <div className="grid min-h-[520px] place-items-center rounded-lg border border-white/10 bg-white/[0.025] p-6 text-center">
+            <div>
+              <WandSparkles className="mx-auto mb-3 text-slate-600" size={34} />
+              <div className="mb-1 font-medium text-slate-300">等待生成</div>
+              <p className="text-sm leading-6 text-slate-500">选择知识后点击“生成加工任务”。</p>
+            </div>
+          </div>
+        )}
+      </aside>
+    </div>
+  );
+}
+
 function TrustPanel({
   draft,
   trustScore,
@@ -1122,6 +1559,63 @@ function formatDate(value: string | null) {
 
 function maskSensitive(value: string) {
   return value.replace(/(密码|password|token|secret|密钥|账号)(\s*[:：]?\s*)\S+/gi, "$1$2••••••");
+}
+
+async function copyText(value: string) {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(value);
+      return;
+    } catch {
+      // Fall back for browsers that block Clipboard API on this origin.
+    }
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = value;
+  textarea.setAttribute("readonly", "true");
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  textarea.style.top = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+
+  try {
+    const copied = document.execCommand("copy");
+    if (!copied) {
+      throw new Error("copy command rejected");
+    }
+  } finally {
+    document.body.removeChild(textarea);
+  }
+}
+
+function buildBlogSkillTask(item: KnowledgeItem) {
+  const tags = item.topic_tag?.trim() || "未标注";
+  const source = item.source?.trim() || "未填写";
+  const createdDate = item.created_date ? new Date(item.created_date).toISOString() : "未记录";
+
+  return `请使用 blog skill，把下面这条可信知识加工成一篇适合技术初学者阅读的中文技术博客。
+
+硬性要求：
+- 只允许基于 Context 中给出的事实写作，不要补充未提供的版本、案例、数字或结论。
+- 输出纯 Markdown，全文不超过 1500 个中文字符。
+- 使用“笔者”作为第一人称，不要使用“我”“我们”“本人”。
+- 标题使用一级标题；二级标题使用“## 01 | 标题内容”的格式。
+- 结尾必须单独一段写：关注我，和AI一起成长~
+
+Context：
+- 知识 ID：${item.id}
+- 状态：${item.blog_status}
+- 来源：${source}
+- 标签：${tags}
+- 创建时间：${createdDate}
+
+问题 / 主题：
+${item.question}
+
+可信答案 / 原始素材：
+${item.answer}`;
 }
 
 function itemToDraft(item: KnowledgeItem): KnowledgeDraft {
