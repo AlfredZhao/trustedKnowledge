@@ -9,3 +9,10 @@ class LoginRequest(BaseModel):
 class LoginResponse(BaseModel):
     api_key: str
 
+
+class AuthConfigResponse(BaseModel):
+    wechat_enabled: bool
+
+
+class WeChatLoginStartResponse(BaseModel):
+    authorization_url: str

@@ -18,6 +18,12 @@ class Settings(BaseSettings):
     admin_username: str = Field("admin", validation_alias="TRUSTED_KNOWLEDGE_ADMIN_USERNAME")
     admin_password: str = Field(..., validation_alias="TRUSTED_KNOWLEDGE_ADMIN_PASSWORD")
     api_key: str = Field(..., validation_alias="TRUSTED_KNOWLEDGE_API_KEY")
+    frontend_base_url: str = Field("http://localhost:8021", validation_alias="TRUSTED_KNOWLEDGE_FRONTEND_BASE_URL")
+    wechat_app_id: str = Field("", validation_alias="TRUSTED_KNOWLEDGE_WECHAT_APP_ID")
+    wechat_app_secret: str = Field("", validation_alias="TRUSTED_KNOWLEDGE_WECHAT_APP_SECRET")
+    wechat_redirect_uri: str = Field("", validation_alias="TRUSTED_KNOWLEDGE_WECHAT_REDIRECT_URI")
+    wechat_allowed_openids: str = Field("", validation_alias="TRUSTED_KNOWLEDGE_WECHAT_ALLOWED_OPENIDS")
+    wechat_allowed_unionids: str = Field("", validation_alias="TRUSTED_KNOWLEDGE_WECHAT_ALLOWED_UNIONIDS")
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -28,6 +34,18 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         return [item.strip() for item in self.cors_origins.split(",") if item.strip()]
+
+    @property
+    def wechat_enabled(self) -> bool:
+        return bool(self.wechat_app_id and self.wechat_app_secret and self.wechat_redirect_uri)
+
+    @property
+    def wechat_allowed_openid_set(self) -> set[str]:
+        return {item.strip() for item in self.wechat_allowed_openids.split(",") if item.strip()}
+
+    @property
+    def wechat_allowed_unionid_set(self) -> set[str]:
+        return {item.strip() for item in self.wechat_allowed_unionids.split(",") if item.strip()}
 
     @field_validator("db_pool_max")
     @classmethod

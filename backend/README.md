@@ -27,6 +27,23 @@ All `/api/knowledge` routes require:
 X-API-Key: <TRUSTED_KNOWLEDGE_API_KEY>
 ```
 
+## WeChat Login
+
+Username/password login remains enabled. To also enable WeChat Open Platform website login, set:
+
+```bash
+TRUSTED_KNOWLEDGE_FRONTEND_BASE_URL=https://your-frontend.example.com
+TRUSTED_KNOWLEDGE_WECHAT_APP_ID=...
+TRUSTED_KNOWLEDGE_WECHAT_APP_SECRET=...
+TRUSTED_KNOWLEDGE_WECHAT_REDIRECT_URI=https://your-api.example.com/api/auth/wechat/callback
+TRUSTED_KNOWLEDGE_WECHAT_ALLOWED_OPENIDS=openid1,openid2
+TRUSTED_KNOWLEDGE_WECHAT_ALLOWED_UNIONIDS=unionid1,unionid2
+```
+
+The redirect URI must match the callback domain configured for the WeChat website app.
+At least one allowed `openid` or `unionid` is required; otherwise WeChat users are denied after authorization.
+For initial setup, scan once and check the backend log for the denied `openid` or `unionid`, then add it to the allowlist.
+
 ## Run
 
 From the project root, prefer the managed scripts:

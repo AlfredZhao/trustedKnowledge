@@ -19,6 +19,7 @@ import {
   LockKeyhole,
   Pencil,
   Plus,
+  QrCode,
   Search,
   ShieldCheck,
   Sparkles,
@@ -29,7 +30,7 @@ import {
   X,
 } from "lucide-react";
 
-import { API_KEY_STORAGE_KEY, login } from "./api/auth";
+import { API_KEY_STORAGE_KEY, fetchAuthConfig, login, startWeChatLogin } from "./api/auth";
 import { createKnowledge, deleteKnowledge, fetchKnowledge, getKnowledge, updateKnowledge } from "./api/knowledge";
 import type { KnowledgeDraft, KnowledgeItem, KnowledgeStatus } from "./types";
 
@@ -51,7 +52,16 @@ const statusStyles: Record<KnowledgeStatus, string> = {
 };
 
 function App() {
-  const [apiKey, setApiKey] = useState(() => window.sessionStorage.getItem(API_KEY_STORAGE_KEY));
+  const [apiKey, setApiKey] = useState(() => {
+    const wechatApiKey = readWeChatApiKeyFromHash();
+    if (wechatApiKey) {
+      window.sessionStorage.setItem(API_KEY_STORAGE_KEY, wechatApiKey);
+      clearLocationHash();
+      return wechatApiKey;
+    }
+
+    return window.sessionStorage.getItem(API_KEY_STORAGE_KEY);
+  });
   const [activeView, setActiveView] = useState<"workbench" | "factory">("workbench");
   const [items, setItems] = useState<KnowledgeItem[]>([]);
   const [draft, setDraft] = useState<KnowledgeDraft>(emptyDraft);
@@ -629,8 +639,25 @@ function Topbar({
 function LoginScreen({ onLogin }: { onLogin: (apiKey: string) => void }) {
   const [username, setUsername] = useState("admin");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(() => {
+    const message = readWeChatErrorFromHash();
+    if (message) clearLocationHash();
+    return message;
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isWechatEnabled, setIsWechatEnabled] = useState(false);
+  const [isWechatStarting, setIsWechatStarting] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    fetchAuthConfig().then((config) => {
+      if (mounted) setIsWechatEnabled(config.wechat_enabled);
+    });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -646,6 +673,19 @@ function LoginScreen({ onLogin }: { onLogin: (apiKey: string) => void }) {
       setError(loginError instanceof Error ? loginError.message : "登录失败，请稍后重试");
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function handleWeChatLogin() {
+    setIsWechatStarting(true);
+    setError(null);
+
+    try {
+      const authorizationUrl = await startWeChatLogin();
+      window.location.assign(authorizationUrl);
+    } catch (wechatError) {
+      setError(wechatError instanceof Error ? wechatError.message : "微信登录暂不可用");
+      setIsWechatStarting(false);
     }
   }
 
@@ -699,6 +739,22 @@ function LoginScreen({ onLogin }: { onLogin: (apiKey: string) => void }) {
           >
             {isSubmitting ? <Loader2 className="animate-spin" size={18} /> : <LockKeyhole size={18} />}
             {isSubmitting ? "Verifying" : "登录"}
+          </button>
+
+          <div className="flex items-center gap-3">
+            <div className="h-px flex-1 bg-white/10" />
+            <span className="text-xs text-slate-500">或</span>
+            <div className="h-px flex-1 bg-white/10" />
+          </div>
+
+          <button
+            disabled={!isWechatEnabled || isWechatStarting}
+            className="flex h-12 w-full items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] font-medium text-slate-200 transition hover:border-mint-300/30 hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-500"
+            type="button"
+            onClick={handleWeChatLogin}
+          >
+            {isWechatStarting ? <Loader2 className="animate-spin" size={18} /> : <QrCode size={18} />}
+            {isWechatEnabled ? (isWechatStarting ? "正在打开微信登录" : "微信扫码登录") : "微信登录未配置"}
           </button>
         </form>
       </section>
@@ -1559,6 +1615,20 @@ function formatDate(value: string | null) {
 
 function maskSensitive(value: string) {
   return value.replace(/(密码|password|token|secret|密钥|账号)(\s*[:：]?\s*)\S+/gi, "$1$2••••••");
+}
+
+function readWeChatApiKeyFromHash() {
+  const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  return params.get("wechat_api_key");
+}
+
+function readWeChatErrorFromHash() {
+  const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  return params.get("wechat_error");
+}
+
+function clearLocationHash() {
+  window.history.replaceState(null, document.title, `${window.location.pathname}${window.location.search}`);
 }
 
 async function copyText(value: string) {

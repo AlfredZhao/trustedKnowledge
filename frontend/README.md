@@ -42,3 +42,5 @@ VITE_API_BASE_URL=
 ```
 
 Login uses `POST /api/auth/login`. The returned API key is stored in `sessionStorage` and sent as `X-API-Key` for knowledge API calls.
+
+If the backend has WeChat login configured, the login page also shows a WeChat scan login button. A successful callback writes the returned API key to `sessionStorage` and keeps the existing API-key request flow.
