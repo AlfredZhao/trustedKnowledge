@@ -1,0 +1,23 @@
+# OS metadata
+.DS_Store
+
+# Runtime state
+.run/
+logs/
+*.log
+
+# Local environment files
+.env
+*.env
+backend/.env
+
+# Dependencies
+node_modules/
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Build and tool caches
+.vite/
+.pytest_cache/
