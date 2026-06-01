@@ -1,0 +1,46 @@
+import type { LlmUsageSample } from "../types";
+import { clearStoredApiKey, readStoredApiKey } from "./auth";
+
+export interface LlmUsageResponse {
+  items: LlmUsageSample[];
+  total: number;
+}
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.trim() ?? "";
+
+async function request<T>(path: string): Promise<T> {
+  const apiKey = readStoredApiKey();
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    headers: {
+      "Content-Type": "application/json",
+      ...(apiKey ? { "X-API-Key": apiKey } : {}),
+    },
+  });
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      clearStoredApiKey();
+      window.dispatchEvent(new Event("trusted-knowledge:unauthorized"));
+    }
+    const detail = await readErrorDetail(response);
+    throw new Error(detail || `Request failed with HTTP ${response.status}`);
+  }
+
+  return response.json() as Promise<T>;
+}
+
+async function readErrorDetail(response: Response): Promise<string | null> {
+  try {
+    const data = (await response.json()) as { detail?: unknown };
+    if (typeof data.detail === "string") return data.detail;
+    if (Array.isArray(data.detail)) return data.detail.map((item) => item.msg ?? "Validation error").join("; ");
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchLlmUsage(limit = 72): Promise<LlmUsageResponse> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  return request<LlmUsageResponse>(`/api/llm-usage?${params.toString()}`);
+}

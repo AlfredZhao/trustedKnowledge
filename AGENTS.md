@@ -25,6 +25,7 @@
 - Do not change API fields, database structure, or authentication behavior unless explicitly requested.
 - Do not delete user data, logs, or existing business code unless explicitly requested.
 - If a service command fails because of sandbox or port permissions, report the exact command and error before changing process state.
+- Do not start, stop, restart, or infer the real runtime status of frontend/backend services. When service restarts are needed, tell the user the exact command(s) to run and let the user operate them.
 
 ## Notes for Codex
 

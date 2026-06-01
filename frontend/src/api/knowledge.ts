@@ -1,5 +1,5 @@
 import type { KnowledgeDraft, KnowledgeItem, KnowledgeStatus } from "../types";
-import { API_KEY_STORAGE_KEY } from "./auth";
+import { clearStoredApiKey, readStoredApiKey } from "./auth";
 
 export interface KnowledgeListResponse {
   items: KnowledgeItem[];
@@ -11,7 +11,7 @@ export interface KnowledgeListResponse {
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.trim() ?? "";
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const apiKey = window.sessionStorage.getItem(API_KEY_STORAGE_KEY);
+  const apiKey = readStoredApiKey();
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...options,
     headers: {
@@ -23,7 +23,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     if (response.status === 401) {
-      window.sessionStorage.removeItem(API_KEY_STORAGE_KEY);
+      clearStoredApiKey();
       window.dispatchEvent(new Event("trusted-knowledge:unauthorized"));
     }
     const detail = await readErrorDetail(response);

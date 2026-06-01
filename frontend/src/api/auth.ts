@@ -60,3 +60,25 @@ export async function startWeChatLogin(): Promise<string> {
   const data = (await response.json()) as WeChatLoginStartResponse;
   return data.authorization_url;
 }
+
+export function readStoredApiKey(): string | null {
+  const localApiKey = window.localStorage.getItem(API_KEY_STORAGE_KEY);
+  if (localApiKey) return localApiKey;
+
+  const sessionApiKey = window.sessionStorage.getItem(API_KEY_STORAGE_KEY);
+  if (!sessionApiKey) return null;
+
+  window.localStorage.setItem(API_KEY_STORAGE_KEY, sessionApiKey);
+  window.sessionStorage.removeItem(API_KEY_STORAGE_KEY);
+  return sessionApiKey;
+}
+
+export function persistApiKey(apiKey: string) {
+  window.localStorage.setItem(API_KEY_STORAGE_KEY, apiKey);
+  window.sessionStorage.removeItem(API_KEY_STORAGE_KEY);
+}
+
+export function clearStoredApiKey() {
+  window.localStorage.removeItem(API_KEY_STORAGE_KEY);
+  window.sessionStorage.removeItem(API_KEY_STORAGE_KEY);
+}
