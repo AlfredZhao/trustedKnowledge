@@ -1,4 +1,4 @@
-import type { KnowledgeDraft, KnowledgeItem, KnowledgeStatus } from "../types";
+import type { BlogFactoryItem, KnowledgeDraft, KnowledgeItem, KnowledgeStatus } from "../types";
 import { clearStoredApiKey, readStoredApiKey } from "./auth";
 
 export interface KnowledgeListResponse {
@@ -107,5 +107,35 @@ export async function updateKnowledge(id: number, draft: KnowledgeDraft): Promis
 export async function deleteKnowledge(id: number): Promise<void> {
   await request<void>(`/api/knowledge/${id}`, {
     method: "DELETE",
+  });
+}
+
+export async function mergeKnowledge(knowledgeIds: number[], draft: KnowledgeDraft): Promise<KnowledgeItem> {
+  return request<KnowledgeItem>("/api/knowledge/merge", {
+    method: "POST",
+    body: JSON.stringify({
+      knowledge_ids: knowledgeIds,
+      question: draft.question,
+      answer: draft.answer,
+      source: draft.source || null,
+      topic_tag: draft.topic_tag || null,
+      blog_status: draft.blog_status,
+    }),
+  });
+}
+
+export async function createBlogFactoryItem({
+  knowledgeId,
+  taskContent,
+}: {
+  knowledgeId: number;
+  taskContent: string;
+}): Promise<BlogFactoryItem> {
+  return request<BlogFactoryItem>("/api/blog-factory", {
+    method: "POST",
+    body: JSON.stringify({
+      knowledge_id: knowledgeId,
+      task_content: taskContent,
+    }),
   });
 }

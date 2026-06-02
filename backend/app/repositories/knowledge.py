@@ -3,7 +3,7 @@ from typing import Any
 import oracledb
 
 from app.db.oracle import acquire_connection
-from app.schemas.knowledge import KnowledgeCreate, KnowledgeUpdate
+from app.schemas.knowledge import KnowledgeCreate, KnowledgeMergeRequest, KnowledgeUpdate
 
 
 LIST_COLUMNS = """
@@ -149,6 +149,71 @@ async def create_knowledge(payload: KnowledgeCreate) -> dict[str, Any]:
     created = await get_knowledge_by_id(knowledge_id)
     if created is None:
         raise RuntimeError("Knowledge row was inserted but could not be reloaded")
+    return created
+
+
+async def merge_knowledge(payload: KnowledgeMergeRequest) -> dict[str, Any] | None:
+    bind_names = [f"id_{index}" for index, _ in enumerate(payload.knowledge_ids)]
+    id_params = dict(zip(bind_names, payload.knowledge_ids))
+    id_list = ", ".join(f":{name}" for name in bind_names)
+
+    source_sql = f"""
+        select id
+        from ai_qa_lib
+        where blog_status = '未发布'
+          and id in ({id_list})
+        for update
+    """
+    insert_sql = """
+        insert into ai_qa_lib (
+            question,
+            answer,
+            source,
+            topic_tag,
+            blog_status
+        ) values (
+            :question,
+            :answer,
+            :source,
+            :topic_tag,
+            :blog_status
+        )
+        returning id into :new_id
+    """
+    delete_sql = f"delete from ai_qa_lib where id in ({id_list})"
+
+    async with acquire_connection() as connection:
+        cursor = connection.cursor()
+        await cursor.execute(source_sql, id_params)
+        source_rows = await cursor.fetchall()
+        if len(source_rows) != len(payload.knowledge_ids):
+            await connection.rollback()
+            return None
+
+        new_id = cursor.var(oracledb.NUMBER)
+        await cursor.execute(
+            insert_sql,
+            {
+                "question": payload.question,
+                "answer": payload.answer,
+                "source": payload.source,
+                "topic_tag": payload.topic_tag,
+                "blog_status": payload.blog_status,
+                "new_id": new_id,
+            },
+        )
+        knowledge_id = int(new_id.getvalue()[0])
+
+        await cursor.execute(delete_sql, id_params)
+        if cursor.rowcount != len(payload.knowledge_ids):
+            await connection.rollback()
+            return None
+
+        await connection.commit()
+
+    created = await get_knowledge_by_id(knowledge_id)
+    if created is None:
+        raise RuntimeError("Merged knowledge row was inserted but could not be reloaded")
     return created
 
 

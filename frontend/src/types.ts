@@ -18,6 +18,18 @@ export interface KnowledgeDraft {
   blog_status: KnowledgeStatus;
 }
 
+export interface BlogFactoryItem {
+  id: number;
+  knowledge_id: number;
+  task_content: string;
+  question_snapshot: string;
+  answer_snapshot: string;
+  source_snapshot: string | null;
+  topic_tag_snapshot: string | null;
+  blog_status_snapshot: KnowledgeStatus | null;
+  copied_at: string | null;
+}
+
 export type AppView = "workbench" | "factory" | "history" | "historyAsk" | "usage";
 
 export interface LlmUsageSample {

@@ -9,9 +9,16 @@ from app.repositories.knowledge import (
     delete_knowledge,
     get_knowledge_by_id,
     list_knowledge,
+    merge_knowledge,
     update_knowledge,
 )
-from app.schemas.knowledge import KnowledgeCreate, KnowledgeItem, KnowledgeListResponse, KnowledgeUpdate
+from app.schemas.knowledge import (
+    KnowledgeCreate,
+    KnowledgeItem,
+    KnowledgeListResponse,
+    KnowledgeMergeRequest,
+    KnowledgeUpdate,
+)
 
 
 router = APIRouter(prefix="/knowledge", tags=["knowledge"], dependencies=[Depends(require_api_key)])
@@ -51,6 +58,27 @@ async def post_knowledge(payload: KnowledgeCreate) -> KnowledgeItem:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Oracle rejected the knowledge entry: {message}",
         ) from exc
+
+    return KnowledgeItem.model_validate(created)
+
+
+@router.post("/merge", response_model=KnowledgeItem, status_code=status.HTTP_201_CREATED)
+async def post_knowledge_merge(payload: KnowledgeMergeRequest) -> KnowledgeItem:
+    try:
+        created = await merge_knowledge(payload)
+    except oracledb.Error as exc:
+        error = exc.args[0] if exc.args else exc
+        message = getattr(error, "message", str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Oracle rejected the knowledge merge: {message}",
+        ) from exc
+
+    if created is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only existing unpublished knowledge items can be merged",
+        )
 
     return KnowledgeItem.model_validate(created)
 

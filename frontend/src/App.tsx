@@ -43,7 +43,15 @@ import {
   readStoredApiKey,
   startWeChatLogin,
 } from "./api/auth";
-import { createKnowledge, deleteKnowledge, fetchKnowledge, getKnowledge, updateKnowledge } from "./api/knowledge";
+import {
+  createBlogFactoryItem,
+  createKnowledge,
+  deleteKnowledge,
+  fetchKnowledge,
+  getKnowledge,
+  mergeKnowledge,
+  updateKnowledge,
+} from "./api/knowledge";
 import { fetchHistory } from "./api/history";
 import { askHistory } from "./api/historyAsk";
 import { fetchLlmUsage } from "./api/usage";
@@ -128,6 +136,9 @@ function App() {
   const [isFactoryGenerating, setIsFactoryGenerating] = useState(false);
   const [hasCopiedFactoryTask, setHasCopiedFactoryTask] = useState(false);
   const [factoryCopyError, setFactoryCopyError] = useState<string | null>(null);
+  const [isFactoryCopySaving, setIsFactoryCopySaving] = useState(false);
+  const [isFactoryMerging, setIsFactoryMerging] = useState(false);
+  const [factoryRefreshToken, setFactoryRefreshToken] = useState(0);
   const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
   const [historyTotal, setHistoryTotal] = useState(0);
   const [historySummary, setHistorySummary] = useState<HistorySummary>({
@@ -269,6 +280,7 @@ function App() {
 
           setFactoryTask("");
           setHasCopiedFactoryTask(false);
+          setFactoryCopyError(null);
           return data.items[0]?.id ?? null;
         });
       })
@@ -284,7 +296,7 @@ function App() {
     return () => {
       mounted = false;
     };
-  }, [activeView, apiKey, debouncedFactoryQuery, factoryPage]);
+  }, [activeView, apiKey, debouncedFactoryQuery, factoryPage, factoryRefreshToken]);
 
   useEffect(() => {
     if (!apiKey) return;
@@ -545,16 +557,49 @@ function App() {
   }
 
   async function handleCopyFactoryTask() {
-    if (!factoryTask) return;
+    if (!factoryTask || factorySelectedId === null || isFactoryCopySaving) return;
 
+    setIsFactoryCopySaving(true);
     try {
       await copyText(factoryTask);
-      setFactoryCopyError(null);
-      setHasCopiedFactoryTask(true);
-      window.setTimeout(() => setHasCopiedFactoryTask(false), 1600);
     } catch {
       setHasCopiedFactoryTask(false);
       setFactoryCopyError("复制失败。请选中文本框内容后手动复制。");
+      setIsFactoryCopySaving(false);
+      return;
+    }
+
+    try {
+      await createBlogFactoryItem({
+        knowledgeId: factorySelectedId,
+        taskContent: factoryTask,
+      });
+      setFactoryCopyError(null);
+      setHasCopiedFactoryTask(true);
+      window.setTimeout(() => setHasCopiedFactoryTask(false), 1600);
+    } catch (error) {
+      setHasCopiedFactoryTask(false);
+      setFactoryCopyError(
+        error instanceof Error ? `已复制，但保存到数据库失败：${error.message}` : "已复制，但保存到数据库失败。",
+      );
+    } finally {
+      setIsFactoryCopySaving(false);
+    }
+  }
+
+  async function handleMergeFactoryKnowledge(knowledgeIds: number[], mergeDraft: KnowledgeDraft) {
+    setIsFactoryMerging(true);
+    try {
+      const merged = await mergeKnowledge(knowledgeIds, mergeDraft);
+      setFactorySelectedId(merged.id);
+      setFactoryTask("");
+      setHasCopiedFactoryTask(false);
+      setFactoryCopyError(null);
+      setFactoryPage(1);
+      setFactoryRefreshToken((current) => current + 1);
+      return merged;
+    } finally {
+      setIsFactoryMerging(false);
     }
   }
 
@@ -743,14 +788,18 @@ function App() {
               selectedId={factorySelectedId}
               task={factoryTask}
               hasCopied={hasCopiedFactoryTask}
+              isCopySaving={isFactoryCopySaving}
+              isMerging={isFactoryMerging}
               copyError={factoryCopyError}
               onCopyTask={handleCopyFactoryTask}
               onGenerateTask={handleGenerateFactoryTask}
+              onMergeKnowledge={handleMergeFactoryKnowledge}
               onPageChange={setFactoryPage}
               onSelect={(item) => {
                 setFactorySelectedId(item.id);
                 setFactoryTask("");
                 setHasCopiedFactoryTask(false);
+                setFactoryCopyError(null);
               }}
             />
           )}
@@ -1597,9 +1646,12 @@ function KnowledgeFactory({
   selectedId,
   task,
   hasCopied,
+  isCopySaving,
+  isMerging,
   copyError,
   onCopyTask,
   onGenerateTask,
+  onMergeKnowledge,
   onPageChange,
   onSelect,
 }: {
@@ -1613,16 +1665,69 @@ function KnowledgeFactory({
   selectedId: number | null;
   task: string;
   hasCopied: boolean;
+  isCopySaving: boolean;
+  isMerging: boolean;
   copyError: string | null;
   onCopyTask: () => void;
   onGenerateTask: (item: KnowledgeItem) => void;
+  onMergeKnowledge: (knowledgeIds: number[], mergeDraft: KnowledgeDraft) => Promise<KnowledgeItem>;
   onPageChange: (page: number) => void;
   onSelect: (item: KnowledgeItem) => void;
 }) {
   const selectedItem = items.find((item) => item.id === selectedId) ?? null;
+  const [selectedMergeItems, setSelectedMergeItems] = useState<KnowledgeItem[]>([]);
+  const [mergeDraft, setMergeDraft] = useState<KnowledgeDraft | null>(null);
+  const [mergeError, setMergeError] = useState<string | null>(null);
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
   const rangeStart = totalItems === 0 ? 0 : (page - 1) * pageSize + 1;
   const rangeEnd = Math.min(page * pageSize, totalItems);
+  const selectedMergeIds = selectedMergeItems.map((item) => item.id);
+  const allVisibleSelected = items.length > 0 && items.every((item) => selectedMergeIds.includes(item.id));
+
+  useEffect(() => {
+    setSelectedMergeItems((current) => current.map((selected) => items.find((item) => item.id === selected.id) ?? selected));
+  }, [items]);
+
+  function toggleMergeSelection(item: KnowledgeItem) {
+    setSelectedMergeItems((current) =>
+      current.some((selected) => selected.id === item.id)
+        ? current.filter((selected) => selected.id !== item.id)
+        : [...current, item],
+    );
+  }
+
+  function handleToggleVisibleSelection() {
+    setSelectedMergeItems((current) => {
+      if (allVisibleSelected) {
+        return current.filter((selected) => !items.some((item) => item.id === selected.id));
+      }
+
+      const currentIds = new Set(current.map((item) => item.id));
+      return [...current, ...items.filter((item) => !currentIds.has(item.id))];
+    });
+  }
+
+  function handleOpenMergeDialog() {
+    if (selectedMergeItems.length < 2) return;
+    setMergeDraft(buildMergedKnowledgeDraft(selectedMergeItems));
+    setMergeError(null);
+  }
+
+  async function handleConfirmMerge() {
+    if (!mergeDraft || selectedMergeItems.length < 2) return;
+
+    setMergeError(null);
+    try {
+      await onMergeKnowledge(
+        selectedMergeItems.map((item) => item.id),
+        mergeDraft,
+      );
+      setSelectedMergeItems([]);
+      setMergeDraft(null);
+    } catch (error) {
+      setMergeError(error instanceof Error ? error.message : "合并失败，请稍后重试。");
+    }
+  }
 
   return (
     <div className="grid flex-1 gap-4 px-4 pb-4 pt-2 xl:grid-cols-[360px_minmax(440px,1fr)_minmax(360px,0.82fr)]">
@@ -1656,31 +1761,64 @@ function KnowledgeFactory({
           </div>
         ) : (
           <div className="space-y-3">
-            {items.map((item) => (
+            <div className="flex flex-col gap-2 rounded-lg border border-white/8 bg-white/[0.025] px-3 py-3 text-sm text-slate-400">
+              <div className="flex items-center justify-between gap-3">
+                <span>已选择 {selectedMergeItems.length} 条</span>
+                <button
+                  className="text-xs text-slate-300 transition hover:text-mint-300"
+                  type="button"
+                  onClick={handleToggleVisibleSelection}
+                >
+                  {allVisibleSelected ? "清空本页" : "全选本页"}
+                </button>
+              </div>
               <button
+                className="flex h-9 items-center justify-center gap-2 rounded-lg border border-mint-300/25 bg-mint-300/10 px-3 text-sm font-medium text-mint-200 transition hover:bg-mint-300/16 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-600"
+                disabled={selectedMergeItems.length < 2}
+                type="button"
+                onClick={handleOpenMergeDialog}
+              >
+                <Layers3 size={16} />
+                合并所选
+              </button>
+            </div>
+
+            {items.map((item) => (
+              <article
                 key={item.id}
                 className={`block w-full rounded-lg border bg-white/[0.028] p-4 text-left transition ${
                   selectedId === item.id
                     ? "border-mint-300/45 bg-mint-300/[0.055]"
                     : "border-white/10 hover:border-white/18"
                 }`}
-                type="button"
-                onClick={() => onSelect(item)}
               >
-                <div className="mb-3 flex items-start justify-between gap-3">
-                  <h3 className="line-clamp-2 min-w-0 text-sm font-semibold leading-6 text-slate-50">
-                    {item.question}
-                  </h3>
-                  <span className={`shrink-0 rounded-full border px-2.5 py-1 text-xs ${statusStyles[item.blog_status]}`}>
-                    {item.blog_status}
-                  </span>
+                <div className="flex items-start gap-3">
+                  <input
+                    checked={selectedMergeIds.includes(item.id)}
+                    className="mt-1 h-4 w-4 shrink-0 accent-mint-300"
+                    title="选择用于合并"
+                    type="checkbox"
+                    onChange={() => toggleMergeSelection(item)}
+                  />
+                  <button className="min-w-0 flex-1 text-left" type="button" onClick={() => onSelect(item)}>
+                    <div className="mb-3 flex items-start justify-between gap-3">
+                      <h3 className="line-clamp-2 min-w-0 text-sm font-semibold leading-6 text-slate-50">
+                        {item.question}
+                      </h3>
+                      <span
+                        className={`shrink-0 rounded-full border px-2.5 py-1 text-xs ${statusStyles[item.blog_status]}`}
+                      >
+                        {item.blog_status}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                      <span>#{item.id}</span>
+                      <span>{item.source || "unknown source"}</span>
+                      <span>{formatDate(item.created_date)}</span>
+                    </div>
+                  </button>
                 </div>
-                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                  <span>#{item.id}</span>
-                  <span>{item.source || "unknown source"}</span>
-                  <span>{formatDate(item.created_date)}</span>
-                </div>
-              </button>
+              </article>
             ))}
 
             <div className="flex items-center justify-between rounded-lg border border-white/8 bg-white/[0.025] px-3 py-3 text-sm text-slate-400">
@@ -1797,12 +1935,18 @@ function KnowledgeFactory({
                 ? "border-mint-300/30 bg-mint-300/14 text-mint-300"
                 : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-mint-300/30 hover:text-mint-300"
             }`}
-            disabled={!task}
-            title={hasCopied ? "已复制" : "复制加工任务"}
+            disabled={!task || isCopySaving}
+            title={isCopySaving ? "正在保存" : hasCopied ? "已复制并保存" : "复制并保存加工任务"}
             type="button"
             onClick={onCopyTask}
           >
-            {hasCopied ? <ClipboardCheck size={17} /> : <Copy size={17} />}
+            {isCopySaving ? (
+              <Loader2 className="animate-spin" size={17} />
+            ) : hasCopied ? (
+              <ClipboardCheck size={17} />
+            ) : (
+              <Copy size={17} />
+            )}
           </button>
         </div>
 
@@ -1841,6 +1985,183 @@ function KnowledgeFactory({
           </div>
         )}
       </aside>
+      <MergeKnowledgeDialog
+        draft={mergeDraft}
+        error={mergeError}
+        isMerging={isMerging}
+        items={selectedMergeItems}
+        onCancel={() => {
+          if (!isMerging) {
+            setMergeDraft(null);
+            setMergeError(null);
+          }
+        }}
+        onConfirm={handleConfirmMerge}
+        onDraftChange={setMergeDraft}
+      />
+    </div>
+  );
+}
+
+function MergeKnowledgeDialog({
+  items,
+  draft,
+  isMerging,
+  error,
+  onDraftChange,
+  onCancel,
+  onConfirm,
+}: {
+  items: KnowledgeItem[];
+  draft: KnowledgeDraft | null;
+  isMerging: boolean;
+  error: string | null;
+  onDraftChange: (draft: KnowledgeDraft) => void;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  useEffect(() => {
+    if (!draft) return;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape" && !isMerging) {
+        onCancel();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [draft, isMerging, onCancel]);
+
+  if (!draft) return null;
+
+  const canSubmit = draft.question.trim().length > 0 && draft.answer.trim().length > 0 && items.length >= 2;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/62 px-4 py-6 backdrop-blur-sm"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !isMerging) {
+          onCancel();
+        }
+      }}
+    >
+      <section
+        aria-modal="true"
+        className="max-h-[92vh] w-full max-w-5xl overflow-hidden rounded-lg border border-mint-300/20 bg-ink-900 shadow-soft-glow"
+        role="dialog"
+      >
+        <div className="flex items-start justify-between gap-4 border-b border-white/10 p-5">
+          <div>
+            <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
+              <Layers3 size={17} />
+              Merge Knowledge
+            </div>
+            <h2 className="text-lg font-semibold text-slate-50">合并待加工知识</h2>
+          </div>
+          <button
+            className="grid h-9 w-9 place-items-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-400 transition hover:border-white/20 hover:text-slate-100 disabled:cursor-not-allowed disabled:text-slate-600"
+            disabled={isMerging}
+            title="关闭"
+            type="button"
+            onClick={onCancel}
+          >
+            <X size={17} />
+          </button>
+        </div>
+
+        <div className="grid max-h-[calc(92vh-160px)] gap-4 overflow-y-auto p-5 lg:grid-cols-[320px_minmax(0,1fr)]">
+          <aside className="min-w-0">
+            <div className="mb-3 text-sm font-medium text-slate-200">已选择 {items.length} 条</div>
+            <div className="space-y-2">
+              {items.map((item) => (
+                <div key={item.id} className="rounded-lg border border-white/10 bg-white/[0.028] p-3">
+                  <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                    <span>#{item.id}</span>
+                    <span>{item.source || "unknown source"}</span>
+                  </div>
+                  <p className="line-clamp-3 text-sm leading-6 text-slate-300">{item.question}</p>
+                </div>
+              ))}
+            </div>
+          </aside>
+
+          <div className="min-w-0 space-y-4">
+            <label className="block">
+              <span className="mb-2 block text-sm font-medium text-slate-300">合并后问题 / 主题</span>
+              <input
+                className="control"
+                disabled={isMerging}
+                value={draft.question}
+                onChange={(event) => onDraftChange({ ...draft, question: event.target.value })}
+              />
+            </label>
+
+            <label className="block">
+              <span className="mb-2 block text-sm font-medium text-slate-300">合并后可信答案 / 素材</span>
+              <textarea
+                className="control min-h-[300px] resize-none leading-7"
+                disabled={isMerging}
+                value={draft.answer}
+                onChange={(event) => onDraftChange({ ...draft, answer: event.target.value })}
+              />
+            </label>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-slate-300">来源</span>
+                <input
+                  className="control"
+                  disabled={isMerging}
+                  value={draft.source}
+                  onChange={(event) => onDraftChange({ ...draft, source: event.target.value })}
+                />
+              </label>
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-slate-300">标签</span>
+                <input
+                  className="control"
+                  disabled={isMerging}
+                  value={draft.topic_tag}
+                  onChange={(event) => onDraftChange({ ...draft, topic_tag: event.target.value })}
+                />
+              </label>
+            </div>
+
+            <div className="rounded-lg border border-amberline/25 bg-amberline/10 px-3 py-3 text-sm leading-6 text-amber-100">
+              合并会生成一条新的未发布知识，并移除这些已被合并的原始未发布知识。
+            </div>
+
+            {error ? (
+              <div className="flex items-start gap-2 rounded-lg border border-amberline/25 bg-amberline/10 px-3 py-3 text-sm text-amber-100">
+                <TriangleAlert className="mt-0.5 shrink-0 text-amberline" size={17} />
+                <span>{error}</span>
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-3 border-t border-white/10 p-5 sm:flex-row sm:justify-end">
+          <button
+            className="h-11 rounded-lg border border-white/10 bg-white/[0.035] px-4 font-medium text-slate-300 transition hover:border-white/20 hover:text-slate-100 disabled:cursor-not-allowed disabled:text-slate-600"
+            disabled={isMerging}
+            type="button"
+            onClick={onCancel}
+          >
+            取消
+          </button>
+          <button
+            className="flex h-11 items-center justify-center gap-2 rounded-lg border border-mint-300/25 bg-mint-300/12 px-4 font-medium text-mint-200 transition hover:bg-mint-300/18 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
+            disabled={!canSubmit || isMerging}
+            type="button"
+            onClick={onConfirm}
+          >
+            {isMerging ? <Loader2 className="animate-spin" size={17} /> : <Layers3 size={17} />}
+            {isMerging ? "合并中" : "确认合并"}
+          </button>
+        </div>
+      </section>
     </div>
   );
 }
@@ -2914,6 +3235,44 @@ ${item.question}
 
 可信答案 / 原始素材：
 ${item.answer}`;
+}
+
+function buildMergedKnowledgeDraft(items: KnowledgeItem[]): KnowledgeDraft {
+  const titles = items.map((item) => item.question.trim()).filter(Boolean);
+  const sources = compactUnique(items.map((item) => item.source?.trim() ?? ""));
+  const tags = compactUnique(items.flatMap((item) => (item.topic_tag ?? "").split(",").map((tag) => tag.trim()))).filter(
+    isSafeTopicTag,
+  );
+  const question = truncateField(`合并：${titles.join(" / ")}`, 4000);
+  const answer = items
+    .map((item, index) => [`## ${index + 1}. ${item.question}`, item.answer].join("\n\n"))
+    .join("\n\n---\n\n");
+
+  return {
+    question,
+    answer,
+    source: truncateField(sources.join(", "), 200),
+    topic_tag: truncateField(tags.join(","), 100),
+    blog_status: "未发布",
+  };
+}
+
+function compactUnique(values: string[]) {
+  const seen = new Set<string>();
+  return values.filter((value) => {
+    const normalized = value.trim();
+    if (!normalized || seen.has(normalized.toLowerCase())) return false;
+    seen.add(normalized.toLowerCase());
+    return true;
+  });
+}
+
+function truncateField(value: string, maxLength: number) {
+  return value.length > maxLength ? value.slice(0, maxLength) : value;
+}
+
+function isSafeTopicTag(value: string) {
+  return /^[a-zA-Z0-9_]+$/.test(value);
 }
 
 function itemToDraft(item: KnowledgeItem): KnowledgeDraft {

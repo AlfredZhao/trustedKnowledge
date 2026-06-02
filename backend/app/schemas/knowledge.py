@@ -35,6 +35,20 @@ class KnowledgeCreate(KnowledgeBase):
     pass
 
 
+class KnowledgeMergeRequest(KnowledgeBase):
+    knowledge_ids: list[int] = Field(..., min_length=2, max_length=100)
+    blog_status: Literal["未发布"] = "未发布"
+
+    @field_validator("knowledge_ids")
+    @classmethod
+    def require_distinct_ids(cls, value: list[int]) -> list[int]:
+        if any(item <= 0 for item in value):
+            raise ValueError("Knowledge IDs must be positive")
+        if len(set(value)) != len(value):
+            raise ValueError("Knowledge IDs must be distinct")
+        return value
+
+
 class KnowledgeUpdate(BaseModel):
     question: str | None = Field(default=None, min_length=1, max_length=4000)
     answer: str | None = Field(default=None, min_length=1)
