@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   CircleGauge,
   ClipboardCheck,
+  ClipboardList,
   Copy,
   Database,
   FilePlus2,
@@ -47,16 +48,32 @@ import {
   createBlogFactoryItem,
   createKnowledge,
   deleteKnowledge,
+  fetchBlogFactoryItems,
   fetchKnowledge,
+  getBlogFactoryItem,
   getKnowledge,
   mergeKnowledge,
+  updateBlogFactoryArticle,
+  updateBlogFactoryStatus,
   updateKnowledge,
 } from "./api/knowledge";
 import { fetchHistory } from "./api/history";
 import { askHistory } from "./api/historyAsk";
+import {
+  createCurrentRecord,
+  fetchCurrentRecordOptions,
+  fetchCurrentRecords,
+  updateCurrentRecord,
+} from "./api/currentRecords";
 import { fetchLlmUsage } from "./api/usage";
 import type {
   AppView,
+  BlogFactoryItem,
+  BlogFactoryStatus,
+  CurrentDay,
+  CurrentRecordItem,
+  CurrentRecordOptions,
+  CurrentWeek,
   HistoryAskResponse,
   HistoryItem,
   HistorySummary,
@@ -76,6 +93,8 @@ const emptyDraft: KnowledgeDraft = {
 
 const PAGE_SIZE = 5;
 const FACTORY_PAGE_SIZE = 6;
+const BLOG_FACTORY_PAGE_SIZE = 8;
+const CURRENT_RECORDS_PAGE_SIZE = 10;
 const HISTORY_PAGE_SIZE = 10;
 const USAGE_SAMPLE_LIMIT = 72;
 const RESET_SOURCE_TIME_ZONE = "UTC";
@@ -91,6 +110,13 @@ interface UsageChangeItem extends LlmUsageSample {
 
 const statusStyles: Record<KnowledgeStatus, string> = {
   未发布: "border-slate-500/30 bg-slate-400/10 text-slate-200",
+  已发布: "border-mint-300/30 bg-mint-300/10 text-mint-300",
+  跳过: "border-amberline/30 bg-amberline/10 text-amberline",
+};
+
+const blogFactoryStatusStyles: Record<BlogFactoryStatus, string> = {
+  待处理: "border-slate-500/30 bg-slate-400/10 text-slate-200",
+  已处理: "border-sky-300/30 bg-sky-300/10 text-sky-200",
   已发布: "border-mint-300/30 bg-mint-300/10 text-mint-300",
   跳过: "border-amberline/30 bg-amberline/10 text-amberline",
 };
@@ -139,12 +165,66 @@ function App() {
   const [isFactoryCopySaving, setIsFactoryCopySaving] = useState(false);
   const [isFactoryMerging, setIsFactoryMerging] = useState(false);
   const [factoryRefreshToken, setFactoryRefreshToken] = useState(0);
+  const [blogFactoryItems, setBlogFactoryItems] = useState<BlogFactoryItem[]>([]);
+  const [blogFactoryTotal, setBlogFactoryTotal] = useState(0);
+  const [blogFactoryPage, setBlogFactoryPage] = useState(1);
+  const [blogFactoryQuery, setBlogFactoryQuery] = useState("");
+  const [debouncedBlogFactoryQuery, setDebouncedBlogFactoryQuery] = useState("");
+  const [blogFactoryStatus, setBlogFactoryStatus] = useState<BlogFactoryStatus | "all">("all");
+  const [blogFactoryTopic, setBlogFactoryTopic] = useState("");
+  const [blogFactoryKnowledgeId, setBlogFactoryKnowledgeId] = useState("");
+  const [blogFactorySortBy, setBlogFactorySortBy] = useState<"copied_at" | "id" | "knowledge_id" | "factory_status">(
+    "copied_at",
+  );
+  const [blogFactorySortDir, setBlogFactorySortDir] = useState<"asc" | "desc">("desc");
+  const [selectedBlogFactoryItem, setSelectedBlogFactoryItem] = useState<BlogFactoryItem | null>(null);
+  const [isBlogFactoryLoading, setIsBlogFactoryLoading] = useState(false);
+  const [isBlogFactoryDetailLoading, setIsBlogFactoryDetailLoading] = useState(false);
+  const [isBlogFactoryStatusSaving, setIsBlogFactoryStatusSaving] = useState(false);
+  const [isBlogFactoryArticleSaving, setIsBlogFactoryArticleSaving] = useState(false);
+  const [blogFactoryArticleDraft, setBlogFactoryArticleDraft] = useState("");
+  const [blogFactoryArticlePathDraft, setBlogFactoryArticlePathDraft] = useState("");
+  const [blogFactoryArticleError, setBlogFactoryArticleError] = useState<string | null>(null);
+  const [hasCopiedBlogFactoryArticle, setHasCopiedBlogFactoryArticle] = useState(false);
+  const [blogFactoryError, setBlogFactoryError] = useState<string | null>(null);
+  const [blogFactoryStatusError, setBlogFactoryStatusError] = useState<string | null>(null);
+  const [blogFactoryRefreshToken, setBlogFactoryRefreshToken] = useState(0);
+  const [currentRecordItems, setCurrentRecordItems] = useState<CurrentRecordItem[]>([]);
+  const [currentRecordTotal, setCurrentRecordTotal] = useState(0);
+  const [currentRecordPage, setCurrentRecordPage] = useState(1);
+  const [currentRecordQuery, setCurrentRecordQuery] = useState("");
+  const [debouncedCurrentRecordQuery, setDebouncedCurrentRecordQuery] = useState("");
+  const [currentRecordUsername, setCurrentRecordUsername] = useState("");
+  const [currentRecordTypeFilter, setCurrentRecordTypeFilter] = useState("");
+  const [currentRecordWeek, setCurrentRecordWeek] = useState("");
+  const [currentRecordDay, setCurrentRecordDay] = useState("");
+  const [currentRecordLearnLevel, setCurrentRecordLearnLevel] = useState("");
+  const [currentRecordSortBy, setCurrentRecordSortBy] = useState<"id" | "type" | "week" | "day" | "username" | "learn_level">("id");
+  const [currentRecordSortDir, setCurrentRecordSortDir] = useState<"asc" | "desc">("desc");
+  const [currentRecordOptions, setCurrentRecordOptions] = useState<CurrentRecordOptions>({
+    users: [],
+    types: [],
+    user_types: {},
+    weeks: buildWeekOptions(),
+    days: buildDayOptions(),
+    learn_levels: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+  });
+  const [currentRecordDraft, setCurrentRecordDraft] = useState({ username: "", type: "", content: "" });
+  const [selectedCurrentRecord, setSelectedCurrentRecord] = useState<CurrentRecordItem | null>(null);
+  const [isCurrentRecordLoading, setIsCurrentRecordLoading] = useState(false);
+  const [isCurrentRecordOptionsLoading, setIsCurrentRecordOptionsLoading] = useState(false);
+  const [isCurrentRecordSaving, setIsCurrentRecordSaving] = useState(false);
+  const [isCurrentRecordUpdating, setIsCurrentRecordUpdating] = useState(false);
+  const [currentRecordError, setCurrentRecordError] = useState<string | null>(null);
+  const [currentRecordSaveError, setCurrentRecordSaveError] = useState<string | null>(null);
+  const [currentRecordRefreshToken, setCurrentRecordRefreshToken] = useState(0);
   const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
   const [historyTotal, setHistoryTotal] = useState(0);
   const [historySummary, setHistorySummary] = useState<HistorySummary>({
     total: 0,
     types: [],
     users: [],
+    user_types: {},
     min_date: null,
     max_date: null,
   });
@@ -181,6 +261,12 @@ function App() {
       setApiKey(null);
       setItems([]);
       setSelectedId(null);
+      setBlogFactoryItems([]);
+      setBlogFactoryTotal(0);
+      setSelectedBlogFactoryItem(null);
+      setCurrentRecordItems([]);
+      setCurrentRecordTotal(0);
+      setSelectedCurrentRecord(null);
       setUsageItems([]);
       setUsageTotal(0);
       setHistoryItems([]);
@@ -302,6 +388,165 @@ function App() {
     if (!apiKey) return;
 
     const timer = window.setTimeout(() => {
+      setDebouncedBlogFactoryQuery(blogFactoryQuery.trim());
+      setBlogFactoryPage(1);
+    }, 320);
+
+    return () => window.clearTimeout(timer);
+  }, [apiKey, blogFactoryQuery]);
+
+  useEffect(() => {
+    if (!apiKey || activeView !== "blogFactory") return;
+
+    let mounted = true;
+    setIsBlogFactoryLoading(true);
+    fetchBlogFactoryItems({
+      query: debouncedBlogFactoryQuery,
+      limit: BLOG_FACTORY_PAGE_SIZE,
+      offset: (blogFactoryPage - 1) * BLOG_FACTORY_PAGE_SIZE,
+      factoryStatus: blogFactoryStatus === "all" ? undefined : blogFactoryStatus,
+      topic: blogFactoryTopic,
+      knowledgeId: blogFactoryKnowledgeId,
+      sortBy: blogFactorySortBy,
+      sortDir: blogFactorySortDir,
+    })
+      .then((data) => {
+        if (!mounted) return;
+        setBlogFactoryItems(data.items);
+        setBlogFactoryTotal(data.total);
+        setBlogFactoryError(null);
+        setSelectedBlogFactoryItem((current) => {
+          const visibleItem = current ? data.items.find((item) => item.id === current.id) : null;
+          if (current && visibleItem) {
+            return { ...current, ...visibleItem, article_markdown: current.article_markdown };
+          }
+          return data.items[0] ?? null;
+        });
+      })
+      .catch((error: Error) => {
+        if (!mounted) return;
+        setBlogFactoryError(error.message);
+      })
+      .finally(() => {
+        if (!mounted) return;
+        setIsBlogFactoryLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [
+    activeView,
+    apiKey,
+    blogFactoryKnowledgeId,
+    blogFactoryPage,
+    blogFactoryRefreshToken,
+    blogFactorySortBy,
+    blogFactorySortDir,
+    blogFactoryStatus,
+    blogFactoryTopic,
+    debouncedBlogFactoryQuery,
+  ]);
+
+  useEffect(() => {
+    if (!apiKey || activeView !== "currentRecords") return;
+
+    let mounted = true;
+    setIsCurrentRecordOptionsLoading(true);
+    fetchCurrentRecordOptions()
+      .then((options) => {
+        if (!mounted) return;
+        setCurrentRecordOptions({
+          ...options,
+          user_types: options.user_types ?? {},
+          weeks: options.weeks.length > 0 ? options.weeks : buildWeekOptions(),
+          days: options.days.length > 0 ? options.days : buildDayOptions(),
+          learn_levels: options.learn_levels.length > 0 ? options.learn_levels : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+        });
+        setCurrentRecordDraft((current) => ({
+          ...current,
+          username: current.username || options.users[0] || "",
+        }));
+      })
+      .catch((error: Error) => {
+        if (!mounted) return;
+        setCurrentRecordError(error.message);
+      })
+      .finally(() => {
+        if (!mounted) return;
+        setIsCurrentRecordOptionsLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [activeView, apiKey, currentRecordRefreshToken]);
+
+  useEffect(() => {
+    if (!apiKey) return;
+
+    const timer = window.setTimeout(() => {
+      setDebouncedCurrentRecordQuery(currentRecordQuery.trim());
+      setCurrentRecordPage(1);
+    }, 320);
+
+    return () => window.clearTimeout(timer);
+  }, [apiKey, currentRecordQuery]);
+
+  useEffect(() => {
+    if (!apiKey || activeView !== "currentRecords") return;
+
+    let mounted = true;
+    setIsCurrentRecordLoading(true);
+    fetchCurrentRecords({
+      query: debouncedCurrentRecordQuery,
+      username: currentRecordUsername,
+      type: currentRecordTypeFilter,
+      week: currentRecordWeek,
+      day: currentRecordDay,
+      learnLevel: currentRecordLearnLevel,
+      sortBy: currentRecordSortBy,
+      sortDir: currentRecordSortDir,
+      limit: CURRENT_RECORDS_PAGE_SIZE,
+      offset: (currentRecordPage - 1) * CURRENT_RECORDS_PAGE_SIZE,
+    })
+      .then((data) => {
+        if (!mounted) return;
+        setCurrentRecordItems(data.items);
+        setCurrentRecordTotal(data.total);
+        setCurrentRecordError(null);
+      })
+      .catch((error: Error) => {
+        if (!mounted) return;
+        setCurrentRecordError(error.message);
+      })
+      .finally(() => {
+        if (!mounted) return;
+        setIsCurrentRecordLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [
+    activeView,
+    apiKey,
+    currentRecordDay,
+    currentRecordLearnLevel,
+    currentRecordPage,
+    currentRecordRefreshToken,
+    currentRecordSortBy,
+    currentRecordSortDir,
+    currentRecordTypeFilter,
+    currentRecordUsername,
+    currentRecordWeek,
+    debouncedCurrentRecordQuery,
+  ]);
+
+  useEffect(() => {
+    if (!apiKey) return;
+
+    const timer = window.setTimeout(() => {
       setDebouncedHistoryQuery(historyQuery.trim());
       setHistoryPage(1);
     }, 320);
@@ -333,7 +578,7 @@ function App() {
         if (!mounted) return;
         setHistoryItems(data.items);
         setHistoryTotal(data.total);
-        setHistorySummary(data.summary);
+        setHistorySummary({ ...data.summary, user_types: data.summary.user_types ?? {} });
         setHistoryError(null);
       })
       .catch((error: Error) => {
@@ -401,6 +646,13 @@ function App() {
       mounted = false;
     };
   }, [activeView, apiKey, usageRefreshToken]);
+
+  useEffect(() => {
+    setBlogFactoryArticleDraft(selectedBlogFactoryItem?.article_markdown ?? "");
+    setBlogFactoryArticlePathDraft(selectedBlogFactoryItem?.article_file_path ?? "");
+    setBlogFactoryArticleError(null);
+    setHasCopiedBlogFactoryArticle(false);
+  }, [selectedBlogFactoryItem?.id, selectedBlogFactoryItem?.article_markdown, selectedBlogFactoryItem?.article_file_path]);
 
   const trustScore = useMemo(() => {
     let score = 38;
@@ -536,6 +788,12 @@ function App() {
     setFactoryItems([]);
     setFactorySelectedId(null);
     setFactoryTask("");
+    setBlogFactoryItems([]);
+    setBlogFactoryTotal(0);
+    setSelectedBlogFactoryItem(null);
+    setCurrentRecordItems([]);
+    setCurrentRecordTotal(0);
+    setSelectedCurrentRecord(null);
     setUsageItems([]);
     setUsageTotal(0);
     setHistoryItems([]);
@@ -603,6 +861,124 @@ function App() {
     }
   }
 
+  async function handleSelectBlogFactoryItem(item: BlogFactoryItem) {
+    setSelectedBlogFactoryItem(item);
+    setBlogFactoryStatusError(null);
+    setIsBlogFactoryDetailLoading(true);
+
+    try {
+      const detail = await getBlogFactoryItem(item.id);
+      setSelectedBlogFactoryItem(detail);
+      setBlogFactoryItems((current) => current.map((entry) => (entry.id === detail.id ? detail : entry)));
+      setBlogFactoryError(null);
+    } catch (error) {
+      setBlogFactoryError(error instanceof Error ? error.message : "读取博客工厂记录失败，请稍后重试。");
+    } finally {
+      setIsBlogFactoryDetailLoading(false);
+    }
+  }
+
+  async function handleUpdateBlogFactoryStatus(status: BlogFactoryStatus) {
+    if (!selectedBlogFactoryItem || isBlogFactoryStatusSaving) return;
+
+    setIsBlogFactoryStatusSaving(true);
+    setBlogFactoryStatusError(null);
+    try {
+      const updated = await updateBlogFactoryStatus(selectedBlogFactoryItem.id, status);
+      setSelectedBlogFactoryItem(updated);
+      setBlogFactoryItems((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+      setBlogFactoryRefreshToken((current) => current + 1);
+    } catch (error) {
+      setBlogFactoryStatusError(error instanceof Error ? error.message : "状态更新失败，请稍后重试。");
+    } finally {
+      setIsBlogFactoryStatusSaving(false);
+    }
+  }
+
+  async function handleSaveBlogFactoryArticle() {
+    if (!selectedBlogFactoryItem || isBlogFactoryArticleSaving || !blogFactoryArticleDraft.trim()) return;
+
+    setIsBlogFactoryArticleSaving(true);
+    setBlogFactoryArticleError(null);
+    try {
+      const updated = await updateBlogFactoryArticle({
+        id: selectedBlogFactoryItem.id,
+        articleMarkdown: blogFactoryArticleDraft,
+        articleFilePath: blogFactoryArticlePathDraft,
+      });
+      setSelectedBlogFactoryItem(updated);
+      setBlogFactoryItems((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+      setBlogFactoryRefreshToken((current) => current + 1);
+    } catch (error) {
+      setBlogFactoryArticleError(error instanceof Error ? error.message : "Markdown 保存失败，请稍后重试。");
+    } finally {
+      setIsBlogFactoryArticleSaving(false);
+    }
+  }
+
+  async function handleCopyBlogFactoryArticle() {
+    const markdown = selectedBlogFactoryItem?.article_markdown ?? blogFactoryArticleDraft;
+    if (!markdown.trim()) return;
+
+    try {
+      await copyText(markdown);
+      setHasCopiedBlogFactoryArticle(true);
+      window.setTimeout(() => setHasCopiedBlogFactoryArticle(false), 1600);
+    } catch {
+      setBlogFactoryArticleError("复制失败。请选中文本框内容后手动复制。");
+    }
+  }
+
+  async function handleCreateCurrentRecord(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!currentRecordDraft.username.trim() || !currentRecordDraft.type.trim() || isCurrentRecordSaving) return;
+
+    setIsCurrentRecordSaving(true);
+    setCurrentRecordSaveError(null);
+    try {
+      const created = await createCurrentRecord({
+        username: currentRecordDraft.username,
+        type: currentRecordDraft.type,
+        content: currentRecordDraft.content,
+      });
+      setCurrentRecordDraft((current) => ({ username: current.username, type: "", content: "" }));
+      setSelectedCurrentRecord(created);
+      setCurrentRecordPage(1);
+      setCurrentRecordRefreshToken((current) => current + 1);
+    } catch (error) {
+      setCurrentRecordSaveError(error instanceof Error ? error.message : "当前记录新增失败，请稍后重试。");
+    } finally {
+      setIsCurrentRecordSaving(false);
+    }
+  }
+
+  async function handleUpdateCurrentRecord(record: CurrentRecordItem, next: { week: CurrentWeek; day: CurrentDay; content: string }) {
+    if (isCurrentRecordUpdating) return;
+    const wrapsToNextLevel = record.week === "W48" && next.week === "W1";
+    if (wrapsToNextLevel && (record.learn_level ?? 1) >= 10) {
+      const confirmed = window.confirm("十年磨一剑，是否该类型已经完成了修炼？确认后仍会保持 Level 10 并继续保存。");
+      if (!confirmed) return;
+    }
+
+    setIsCurrentRecordUpdating(true);
+    setCurrentRecordSaveError(null);
+    try {
+      const updated = await updateCurrentRecord({
+        id: record.id,
+        week: next.week,
+        day: next.day,
+        content: next.content,
+      });
+      setSelectedCurrentRecord(null);
+      setCurrentRecordItems((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+      setCurrentRecordRefreshToken((current) => current + 1);
+    } catch (error) {
+      setCurrentRecordSaveError(error instanceof Error ? error.message : "当前记录更新失败，请稍后重试。");
+    } finally {
+      setIsCurrentRecordUpdating(false);
+    }
+  }
+
   function handleRefreshUsage() {
     setUsageRefreshToken((current) => current + 1);
   }
@@ -633,21 +1009,29 @@ function App() {
       ? "可信知识录入工作台"
       : activeView === "factory"
         ? "可信知识加工厂"
-        : activeView === "history"
-          ? "历史记录查询"
-          : activeView === "historyAsk"
-            ? "AI 问数"
-            : "LLM 使用情况";
+        : activeView === "blogFactory"
+          ? "博客工厂记录"
+          : activeView === "currentRecords"
+            ? "当前记录录入"
+            : activeView === "history"
+              ? "历史记录查询"
+              : activeView === "historyAsk"
+                ? "AI 问数"
+                : "LLM 使用情况";
   const viewSubtitle =
     activeView === "workbench"
       ? "Trusted Knowledge"
       : activeView === "factory"
         ? "Blog Factory"
-        : activeView === "history"
-          ? "History Explorer"
-          : activeView === "historyAsk"
-            ? "Ask History"
-            : "AI Usage";
+        : activeView === "blogFactory"
+          ? "AI Blog Factory"
+          : activeView === "currentRecords"
+            ? "Current Records"
+            : activeView === "history"
+              ? "History Explorer"
+              : activeView === "historyAsk"
+                ? "Ask History"
+                : "AI Usage";
 
   return (
     <main className="min-h-screen bg-ink-950 text-slate-100">
@@ -658,12 +1042,34 @@ function App() {
         <section className="flex min-w-0 flex-col">
           <Topbar
             activeView={activeView}
-            query={activeView === "workbench" ? query : activeView === "factory" ? factoryQuery : activeView === "history" ? historyQuery : ""}
+            query={
+              activeView === "workbench"
+                ? query
+                : activeView === "factory"
+                  ? factoryQuery
+                  : activeView === "blogFactory"
+                    ? blogFactoryQuery
+                    : activeView === "currentRecords"
+                      ? currentRecordQuery
+                      : activeView === "history"
+                        ? historyQuery
+                        : ""
+            }
             statusFilter={activeView === "workbench" ? statusFilter : undefined}
             title={viewTitle}
             subtitle={viewSubtitle}
             onLogout={handleLogout}
-            onQueryChange={activeView === "factory" ? setFactoryQuery : activeView === "history" ? setHistoryQuery : setQuery}
+            onQueryChange={
+              activeView === "factory"
+                ? setFactoryQuery
+                : activeView === "blogFactory"
+                  ? setBlogFactoryQuery
+                  : activeView === "currentRecords"
+                    ? setCurrentRecordQuery
+                    : activeView === "history"
+                      ? setHistoryQuery
+                      : setQuery
+            }
             onViewChange={setActiveView}
             onStatusFilterChange={(nextStatus) => {
               setStatusFilter(nextStatus);
@@ -679,6 +1085,109 @@ function App() {
               question={historyAskQuestion}
               onQuestionChange={setHistoryAskQuestion}
               onSubmit={handleAskHistory}
+            />
+          ) : activeView === "blogFactory" ? (
+            <BlogFactoryRecords
+              items={blogFactoryItems}
+              total={blogFactoryTotal}
+              page={blogFactoryPage}
+              selectedItem={selectedBlogFactoryItem}
+              isLoading={isBlogFactoryLoading}
+              isDetailLoading={isBlogFactoryDetailLoading}
+              isStatusSaving={isBlogFactoryStatusSaving}
+              isArticleSaving={isBlogFactoryArticleSaving}
+              loadError={blogFactoryError}
+              statusError={blogFactoryStatusError}
+              articleError={blogFactoryArticleError}
+              articleDraft={blogFactoryArticleDraft}
+              articlePathDraft={blogFactoryArticlePathDraft}
+              hasCopiedArticle={hasCopiedBlogFactoryArticle}
+              filters={{
+                factoryStatus: blogFactoryStatus,
+                topic: blogFactoryTopic,
+                knowledgeId: blogFactoryKnowledgeId,
+                sortBy: blogFactorySortBy,
+                sortDir: blogFactorySortDir,
+              }}
+              onClearFilters={() => {
+                setBlogFactoryPage(1);
+                setBlogFactoryQuery("");
+                setDebouncedBlogFactoryQuery("");
+                setBlogFactoryStatus("all");
+                setBlogFactoryTopic("");
+                setBlogFactoryKnowledgeId("");
+                setBlogFactorySortBy("copied_at");
+                setBlogFactorySortDir("desc");
+              }}
+              onFilterChange={(nextFilters) => {
+                setBlogFactoryPage(1);
+                if (nextFilters.factoryStatus !== undefined) setBlogFactoryStatus(nextFilters.factoryStatus);
+                if (nextFilters.topic !== undefined) setBlogFactoryTopic(nextFilters.topic);
+                if (nextFilters.knowledgeId !== undefined) setBlogFactoryKnowledgeId(nextFilters.knowledgeId);
+                if (nextFilters.sortBy !== undefined) setBlogFactorySortBy(nextFilters.sortBy);
+                if (nextFilters.sortDir !== undefined) setBlogFactorySortDir(nextFilters.sortDir);
+              }}
+              onPageChange={setBlogFactoryPage}
+              onArticleChange={setBlogFactoryArticleDraft}
+              onArticlePathChange={setBlogFactoryArticlePathDraft}
+              onCopyArticle={handleCopyBlogFactoryArticle}
+              onSaveArticle={handleSaveBlogFactoryArticle}
+              onSelect={handleSelectBlogFactoryItem}
+              onStatusChange={handleUpdateBlogFactoryStatus}
+            />
+          ) : activeView === "currentRecords" ? (
+            <CurrentRecordsWorkspace
+              items={currentRecordItems}
+              total={currentRecordTotal}
+              page={currentRecordPage}
+              options={currentRecordOptions}
+              draft={currentRecordDraft}
+              selectedItem={selectedCurrentRecord}
+              isLoading={isCurrentRecordLoading}
+              isOptionsLoading={isCurrentRecordOptionsLoading}
+              isSaving={isCurrentRecordSaving}
+              isUpdating={isCurrentRecordUpdating}
+              loadError={currentRecordError}
+              saveError={currentRecordSaveError}
+              filters={{
+                username: currentRecordUsername,
+                type: currentRecordTypeFilter,
+                week: currentRecordWeek,
+                day: currentRecordDay,
+                learnLevel: currentRecordLearnLevel,
+                sortBy: currentRecordSortBy,
+                sortDir: currentRecordSortDir,
+              }}
+              onClearFilters={() => {
+                setCurrentRecordPage(1);
+                setCurrentRecordQuery("");
+                setDebouncedCurrentRecordQuery("");
+                setCurrentRecordUsername("");
+                setCurrentRecordTypeFilter("");
+                setCurrentRecordWeek("");
+                setCurrentRecordDay("");
+                setCurrentRecordLearnLevel("");
+                setCurrentRecordSortBy("id");
+                setCurrentRecordSortDir("desc");
+              }}
+              onDraftChange={setCurrentRecordDraft}
+              onFilterChange={(nextFilters) => {
+                setCurrentRecordPage(1);
+                if (nextFilters.username !== undefined) setCurrentRecordUsername(nextFilters.username);
+                if (nextFilters.type !== undefined) setCurrentRecordTypeFilter(nextFilters.type);
+                if (nextFilters.week !== undefined) setCurrentRecordWeek(nextFilters.week);
+                if (nextFilters.day !== undefined) setCurrentRecordDay(nextFilters.day);
+                if (nextFilters.learnLevel !== undefined) setCurrentRecordLearnLevel(nextFilters.learnLevel);
+                if (nextFilters.sortBy !== undefined) setCurrentRecordSortBy(nextFilters.sortBy);
+                if (nextFilters.sortDir !== undefined) setCurrentRecordSortDir(nextFilters.sortDir);
+              }}
+              onPageChange={setCurrentRecordPage}
+              onSelect={setSelectedCurrentRecord}
+              onSubmit={handleCreateCurrentRecord}
+              onUpdate={handleUpdateCurrentRecord}
+              onCloseEditor={() => {
+                if (!isCurrentRecordUpdating) setSelectedCurrentRecord(null);
+              }}
             />
           ) : activeView === "history" ? (
             <HistoryExplorer
@@ -834,6 +1343,8 @@ function Sidebar({
   const items: SidebarItem[] = [
     { icon: BookOpenCheck, label: "录入工作台", view: "workbench" as const },
     { icon: FlaskConical, label: "知识加工厂", view: "factory" as const },
+    { icon: ClipboardList, label: "博客工厂记录", view: "blogFactory" as const },
+    { icon: FilePlus2, label: "当前记录录入", view: "currentRecords" as const },
     { icon: History, label: "历史查询", view: "history" as const },
     { icon: Bot, label: "AI 问数", view: "historyAsk" as const },
     { icon: ShieldCheck, label: "Review" },
@@ -911,6 +1422,8 @@ function Topbar({
   const mobileNavItems = [
     { icon: BookOpenCheck, label: "录入工作台", view: "workbench" as const },
     { icon: FlaskConical, label: "知识加工厂", view: "factory" as const },
+    { icon: ClipboardList, label: "博客工厂", view: "blogFactory" as const },
+    { icon: FilePlus2, label: "当前记录", view: "currentRecords" as const },
     { icon: History, label: "历史查询", view: "history" as const },
     { icon: Bot, label: "AI 问数", view: "historyAsk" as const },
     { icon: Bot, label: "AI 用量", view: "usage" as const },
@@ -932,7 +1445,7 @@ function Topbar({
         </div>
         <h1 className="text-2xl font-semibold tracking-normal text-slate-50">{title}</h1>
       </div>
-      <nav className="grid grid-cols-2 gap-2 sm:grid-cols-5 lg:hidden" aria-label="功能页面">
+      <nav className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:hidden" aria-label="功能页面">
         {mobileNavItems.map((item) => {
           const active = item.view === activeView;
           return (
@@ -961,7 +1474,15 @@ function Topbar({
               value={query}
               onChange={(event) => onQueryChange(event.target.value)}
               className="min-w-0 flex-1 bg-transparent text-sm text-slate-100 outline-none placeholder:text-slate-500"
-              placeholder={activeView === "history" ? "搜索历史内容" : "搜索问题、来源或标签"}
+              placeholder={
+                activeView === "history"
+                  ? "搜索历史内容"
+                  : activeView === "blogFactory"
+                    ? "搜索任务、问题或答案快照"
+                    : activeView === "currentRecords"
+                      ? "搜索类型或当前内容"
+                      : "搜索问题、来源或标签"
+              }
             />
           </label>
         ) : null}
@@ -2179,6 +2700,996 @@ type HistoryFilters = {
   sortDir: "asc" | "desc";
 };
 
+type BlogFactoryFilters = {
+  factoryStatus: BlogFactoryStatus | "all";
+  topic: string;
+  knowledgeId: string;
+  sortBy: "copied_at" | "id" | "knowledge_id" | "factory_status";
+  sortDir: "asc" | "desc";
+};
+
+type CurrentRecordFilters = {
+  username: string;
+  type: string;
+  week: string;
+  day: string;
+  learnLevel: string;
+  sortBy: "id" | "type" | "week" | "day" | "username" | "learn_level";
+  sortDir: "asc" | "desc";
+};
+
+function BlogFactoryRecords({
+  items,
+  total,
+  page,
+  selectedItem,
+  isLoading,
+  isDetailLoading,
+  isStatusSaving,
+  isArticleSaving,
+  loadError,
+  statusError,
+  articleError,
+  articleDraft,
+  articlePathDraft,
+  hasCopiedArticle,
+  filters,
+  onFilterChange,
+  onClearFilters,
+  onPageChange,
+  onArticleChange,
+  onArticlePathChange,
+  onCopyArticle,
+  onSaveArticle,
+  onSelect,
+  onStatusChange,
+}: {
+  items: BlogFactoryItem[];
+  total: number;
+  page: number;
+  selectedItem: BlogFactoryItem | null;
+  isLoading: boolean;
+  isDetailLoading: boolean;
+  isStatusSaving: boolean;
+  isArticleSaving: boolean;
+  loadError: string | null;
+  statusError: string | null;
+  articleError: string | null;
+  articleDraft: string;
+  articlePathDraft: string;
+  hasCopiedArticle: boolean;
+  filters: BlogFactoryFilters;
+  onFilterChange: (filters: Partial<BlogFactoryFilters>) => void;
+  onClearFilters: () => void;
+  onPageChange: (page: number) => void;
+  onArticleChange: (value: string) => void;
+  onArticlePathChange: (value: string) => void;
+  onCopyArticle: () => void;
+  onSaveArticle: () => void;
+  onSelect: (item: BlogFactoryItem) => void;
+  onStatusChange: (status: BlogFactoryStatus) => void;
+}) {
+  const totalPages = Math.max(1, Math.ceil(total / BLOG_FACTORY_PAGE_SIZE));
+  const rangeStart = total === 0 ? 0 : (page - 1) * BLOG_FACTORY_PAGE_SIZE + 1;
+  const rangeEnd = Math.min(page * BLOG_FACTORY_PAGE_SIZE, total);
+  const statusOptions: Array<{ label: string; value: BlogFactoryStatus | "all" }> = [
+    { label: "全部状态", value: "all" },
+    { label: "待处理", value: "待处理" },
+    { label: "已处理", value: "已处理" },
+    { label: "已发布", value: "已发布" },
+    { label: "跳过", value: "跳过" },
+  ];
+  const nextStatusOptions: BlogFactoryStatus[] = ["待处理", "已处理", "已发布", "跳过"];
+
+  return (
+    <div className="grid flex-1 gap-4 px-4 pb-4 pt-2 xl:grid-cols-[300px_minmax(420px,1fr)_minmax(360px,0.86fr)]">
+      <aside className="min-w-0 rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
+        <div className="mb-5">
+          <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
+            <Filter size={17} />
+            Query Controls
+          </div>
+          <h2 className="text-lg font-semibold text-slate-50">查询条件</h2>
+        </div>
+
+        <div className="space-y-4">
+          <Field label="工厂状态" icon={<CheckCircle2 size={16} />}>
+            <select
+              className="control"
+              value={filters.factoryStatus}
+              onChange={(event) => onFilterChange({ factoryStatus: event.target.value as BlogFactoryFilters["factoryStatus"] })}
+            >
+              {statusOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          <Field label="主题标签" icon={<Tags size={16} />}>
+            <input
+              className="control"
+              value={filters.topic}
+              onChange={(event) => onFilterChange({ topic: event.target.value })}
+              placeholder="如 APEX"
+            />
+          </Field>
+
+          <Field label="知识 ID" icon={<Database size={16} />}>
+            <input
+              className="control"
+              inputMode="numeric"
+              value={filters.knowledgeId}
+              onChange={(event) => onFilterChange({ knowledgeId: event.target.value.replace(/\D/g, "") })}
+              placeholder="全部"
+            />
+          </Field>
+
+          <div className="grid grid-cols-[1fr_110px] gap-3">
+            <Field label="排序字段" icon={<ChartLine size={16} />}>
+              <select
+                className="control"
+                value={filters.sortBy}
+                onChange={(event) => onFilterChange({ sortBy: event.target.value as BlogFactoryFilters["sortBy"] })}
+              >
+                <option value="copied_at">复制时间</option>
+                <option value="id">ID</option>
+                <option value="knowledge_id">知识 ID</option>
+                <option value="factory_status">状态</option>
+              </select>
+            </Field>
+            <Field label="方向" icon={<ChartLine size={16} />}>
+              <select
+                className="control"
+                value={filters.sortDir}
+                onChange={(event) => onFilterChange({ sortDir: event.target.value as BlogFactoryFilters["sortDir"] })}
+              >
+                <option value="desc">降序</option>
+                <option value="asc">升序</option>
+              </select>
+            </Field>
+          </div>
+
+          <button
+            className="h-11 w-full rounded-lg border border-white/10 bg-white/[0.035] px-4 text-sm font-medium text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300"
+            type="button"
+            onClick={onClearFilters}
+          >
+            清空条件
+          </button>
+        </div>
+      </aside>
+
+      <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/72 p-4 shadow-soft-glow backdrop-blur-xl">
+        <div className="mb-5 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div>
+            <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
+              <ClipboardList size={17} />
+              AI_BLOG_FACTORY
+            </div>
+            <h2 className="text-xl font-semibold text-slate-50">博客工厂任务</h2>
+          </div>
+          <div className="rounded-lg border border-white/10 bg-white/[0.035] px-3 py-2 text-sm text-slate-300">
+            {total} 条匹配
+          </div>
+        </div>
+
+        {isLoading ? (
+          <LoadingStack />
+        ) : loadError ? (
+          <div className="rounded-lg border border-amberline/25 bg-amberline/10 p-4">
+            <div className="mb-2 flex items-center gap-2 text-sm font-medium text-amberline">
+              <TriangleAlert size={16} />
+              博客工厂读取失败
+            </div>
+            <p className="text-sm leading-6 text-amber-100/80">{loadError}</p>
+          </div>
+        ) : items.length === 0 ? (
+          <div className="grid min-h-[260px] place-items-center rounded-lg border border-white/10 bg-white/[0.025] p-6 text-center">
+            <div>
+              <ClipboardList className="mx-auto mb-3 text-slate-600" size={36} />
+              <div className="mb-1 font-medium text-slate-300">没有匹配的工厂任务</div>
+              <p className="text-sm text-slate-500">复制并保存 Blog 加工包后，这里会显示任务记录。</p>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {items.map((item) => (
+              <article
+                key={item.id}
+                className={`cursor-pointer rounded-lg border bg-white/[0.028] p-4 transition ${
+                  selectedItem?.id === item.id ? "border-mint-300/45 bg-mint-300/[0.055]" : "border-white/10 hover:border-white/18"
+                }`}
+                role="button"
+                tabIndex={0}
+                onClick={() => onSelect(item)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onSelect(item);
+                  }
+                }}
+              >
+                <div className="mb-3 flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                      <span>#{item.id}</span>
+                      <span>知识 #{item.knowledge_id}</span>
+                      <span>{formatHistoryDate(item.copied_at)}</span>
+                    </div>
+                    <h3 className="line-clamp-2 text-sm font-semibold leading-6 text-slate-50">
+                      {item.question_snapshot || "无问题快照"}
+                    </h3>
+                  </div>
+                  <span className={`shrink-0 rounded-full border px-2.5 py-1 text-xs ${blogFactoryStatusStyles[item.factory_status]}`}>
+                    {item.factory_status}
+                  </span>
+                </div>
+                <p className="line-clamp-2 text-sm leading-6 text-slate-400">{item.task_content || "无任务内容"}</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {item.has_article ? (
+                    <span className="rounded-md border border-mint-300/20 bg-mint-300/8 px-2 py-1 text-xs text-mint-200">
+                      {item.article_title || "已生成 Markdown"}
+                    </span>
+                  ) : (
+                    <span className="rounded-md border border-white/8 bg-white/[0.035] px-2 py-1 text-xs text-slate-500">
+                      未生成文章
+                    </span>
+                  )}
+                  <span className="rounded-md border border-white/8 bg-white/[0.035] px-2 py-1 text-xs text-slate-400">
+                    原状态 {item.blog_status_snapshot || "未记录"}
+                  </span>
+                  {item.topic_tag_snapshot ? (
+                    <span className="rounded-md border border-white/8 bg-white/[0.035] px-2 py-1 text-xs text-slate-400">
+                      {item.topic_tag_snapshot}
+                    </span>
+                  ) : null}
+                </div>
+              </article>
+            ))}
+
+            <div className="flex flex-col gap-3 rounded-lg border border-white/8 bg-white/[0.025] px-3 py-3 text-sm text-slate-400 sm:flex-row sm:items-center sm:justify-between">
+              <span>
+                {rangeStart}-{rangeEnd} / {total}
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  className="grid h-9 w-9 place-items-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600"
+                  disabled={page <= 1}
+                  title="上一页"
+                  type="button"
+                  onClick={() => onPageChange(Math.max(1, page - 1))}
+                >
+                  <ChevronLeft size={17} />
+                </button>
+                <span className="min-w-16 text-center text-xs text-slate-500">
+                  {page} / {totalPages}
+                </span>
+                <button
+                  className="grid h-9 w-9 place-items-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600"
+                  disabled={page >= totalPages}
+                  title="下一页"
+                  type="button"
+                  onClick={() => onPageChange(Math.min(totalPages, page + 1))}
+                >
+                  <ChevronRight size={17} />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </section>
+
+      <aside className="min-w-0 rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
+        <div className="mb-5 flex items-start justify-between gap-4">
+          <div>
+            <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
+              <FileText size={17} />
+              Record Detail
+            </div>
+            <h2 className="text-lg font-semibold text-slate-50">任务详情</h2>
+          </div>
+          {isDetailLoading ? <Loader2 className="mt-1 animate-spin text-mint-300" size={17} /> : null}
+        </div>
+
+        {selectedItem ? (
+          <div className="space-y-4">
+            <div className="rounded-lg border border-white/10 bg-white/[0.028] p-4">
+              <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                <span>#{selectedItem.id}</span>
+                <span>知识 #{selectedItem.knowledge_id}</span>
+                <span>{formatHistoryDate(selectedItem.copied_at)}</span>
+              </div>
+              <div className="mb-4 flex flex-wrap gap-2">
+                <span className={`rounded-full border px-2.5 py-1 text-xs ${blogFactoryStatusStyles[selectedItem.factory_status]}`}>
+                  {selectedItem.factory_status}
+                </span>
+                <span className="rounded-full border border-white/10 bg-white/[0.035] px-2.5 py-1 text-xs text-slate-400">
+                  原状态 {selectedItem.blog_status_snapshot || "未记录"}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {nextStatusOptions.map((status) => (
+                  <button
+                    key={status}
+                    className={`flex h-10 items-center justify-center gap-2 rounded-lg border px-3 text-sm font-medium transition disabled:cursor-not-allowed ${
+                      selectedItem.factory_status === status
+                        ? blogFactoryStatusStyles[status]
+                        : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-mint-300/30 hover:text-mint-300 disabled:text-slate-600"
+                    }`}
+                    disabled={isStatusSaving || selectedItem.factory_status === status}
+                    type="button"
+                    onClick={() => onStatusChange(status)}
+                  >
+                    {isStatusSaving && selectedItem.factory_status !== status ? <Loader2 className="animate-spin" size={15} /> : null}
+                    {status}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {statusError ? (
+              <div className="flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100">
+                <TriangleAlert className="mt-0.5 shrink-0 text-red-300" size={17} />
+                <span>{statusError}</span>
+              </div>
+            ) : null}
+
+            <div className="rounded-lg border border-white/10 bg-white/[0.025] p-4">
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-300">
+                    <FileText size={16} />
+                    Markdown 文章
+                  </div>
+                  <div className="flex flex-wrap gap-2 text-xs text-slate-500">
+                    <span>{selectedItem.article_title || "标题待写入"}</span>
+                    <span>{selectedItem.article_saved_at ? formatHistoryDate(selectedItem.article_saved_at) : "未保存"}</span>
+                  </div>
+                </div>
+                <button
+                  className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg border transition disabled:cursor-not-allowed disabled:text-slate-600 ${
+                    hasCopiedArticle
+                      ? "border-mint-300/30 bg-mint-300/14 text-mint-300"
+                      : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-mint-300/30 hover:text-mint-300"
+                  }`}
+                  disabled={!articleDraft.trim()}
+                  title={hasCopiedArticle ? "已复制" : "复制 Markdown"}
+                  type="button"
+                  onClick={onCopyArticle}
+                >
+                  {hasCopiedArticle ? <ClipboardCheck size={16} /> : <Copy size={16} />}
+                </button>
+              </div>
+
+              <Field label="文件路径" icon={<Database size={16} />}>
+                <input
+                  className="control"
+                  value={articlePathDraft}
+                  onChange={(event) => onArticlePathChange(event.target.value)}
+                  placeholder="/home/alfred/projects/blogs/文章标题.md"
+                />
+              </Field>
+
+              <label className="mt-4 block">
+                <span className="mb-2 flex items-center gap-2 text-sm text-slate-300">
+                  <span className="text-slate-500">
+                    <FileText size={16} />
+                  </span>
+                  Markdown 正文
+                </span>
+                <textarea
+                  className="control min-h-[260px] resize-none font-mono text-xs leading-6 text-slate-200"
+                  value={articleDraft}
+                  onChange={(event) => onArticleChange(event.target.value)}
+                  placeholder="# 文章标题&#10;&#10;把 blog skill 生成的 Markdown 粘贴到这里。"
+                />
+              </label>
+
+              {selectedItem.article_checksum ? (
+                <div className="mt-3 truncate text-xs text-slate-600" title={selectedItem.article_checksum}>
+                  SHA-256 {selectedItem.article_checksum}
+                </div>
+              ) : null}
+
+              {articleError ? (
+                <div className="mt-4 flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100">
+                  <TriangleAlert className="mt-0.5 shrink-0 text-red-300" size={17} />
+                  <span>{articleError}</span>
+                </div>
+              ) : null}
+
+              <button
+                className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
+                disabled={isArticleSaving || !articleDraft.trim()}
+                type="button"
+                onClick={onSaveArticle}
+              >
+                {isArticleSaving ? <Loader2 className="animate-spin" size={17} /> : <ClipboardCheck size={17} />}
+                {isArticleSaving ? "保存中" : "保存 Markdown"}
+              </button>
+            </div>
+
+            <DetailBlock title="任务内容" value={selectedItem.task_content} />
+            <DetailBlock title="问题快照" value={selectedItem.question_snapshot} />
+            <DetailBlock title="答案快照" value={maskSensitive(selectedItem.answer_snapshot)} />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <DetailBlock title="来源" value={selectedItem.source_snapshot || "未记录"} compact />
+              <DetailBlock title="标签" value={selectedItem.topic_tag_snapshot || "未记录"} compact />
+            </div>
+          </div>
+        ) : (
+          <div className="grid min-h-[420px] place-items-center rounded-lg border border-white/10 bg-white/[0.025] p-6 text-center">
+            <div>
+              <ClipboardList className="mx-auto mb-3 text-slate-600" size={36} />
+              <div className="mb-1 font-medium text-slate-300">选择一条任务</div>
+              <p className="text-sm leading-6 text-slate-500">右侧会显示快照内容，并允许人工更新工厂状态。</p>
+            </div>
+          </div>
+        )}
+      </aside>
+    </div>
+  );
+}
+
+function DetailBlock({ title, value, compact = false }: { title: string; value: string; compact?: boolean }) {
+  return (
+    <div className="rounded-lg border border-white/10 bg-white/[0.025] p-4">
+      <div className="mb-2 text-sm font-medium text-slate-300">{title}</div>
+      <p className={`whitespace-pre-wrap break-words text-sm leading-7 text-slate-400 [overflow-wrap:anywhere] ${compact ? "line-clamp-4" : ""}`}>
+        {value || "未记录"}
+      </p>
+    </div>
+  );
+}
+
+function CurrentRecordsWorkspace({
+  items,
+  total,
+  page,
+  options,
+  draft,
+  selectedItem,
+  isLoading,
+  isOptionsLoading,
+  isSaving,
+  isUpdating,
+  loadError,
+  saveError,
+  filters,
+  onDraftChange,
+  onFilterChange,
+  onClearFilters,
+  onPageChange,
+  onSelect,
+  onSubmit,
+  onUpdate,
+  onCloseEditor,
+}: {
+  items: CurrentRecordItem[];
+  total: number;
+  page: number;
+  options: CurrentRecordOptions;
+  draft: { username: string; type: string; content: string };
+  selectedItem: CurrentRecordItem | null;
+  isLoading: boolean;
+  isOptionsLoading: boolean;
+  isSaving: boolean;
+  isUpdating: boolean;
+  loadError: string | null;
+  saveError: string | null;
+  filters: CurrentRecordFilters;
+  onDraftChange: (draft: { username: string; type: string; content: string }) => void;
+  onFilterChange: (filters: Partial<CurrentRecordFilters>) => void;
+  onClearFilters: () => void;
+  onPageChange: (page: number) => void;
+  onSelect: (item: CurrentRecordItem) => void;
+  onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+  onUpdate: (record: CurrentRecordItem, next: { week: CurrentWeek; day: CurrentDay; content: string }) => void;
+  onCloseEditor: () => void;
+}) {
+  const totalPages = Math.max(1, Math.ceil(total / CURRENT_RECORDS_PAGE_SIZE));
+  const rangeStart = total === 0 ? 0 : (page - 1) * CURRENT_RECORDS_PAGE_SIZE + 1;
+  const rangeEnd = Math.min(page * CURRENT_RECORDS_PAGE_SIZE, total);
+  const canSubmit = draft.username.trim().length > 0 && draft.type.trim().length > 0 && !isSaving;
+  const currentTypeOptions = filters.username ? options.user_types[filters.username] ?? [] : options.types;
+
+  return (
+    <div className="grid flex-1 gap-4 px-4 pb-4 pt-2 xl:grid-cols-[340px_minmax(440px,1fr)_320px]">
+      <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/72 p-4 shadow-soft-glow backdrop-blur-xl">
+        <div className="mb-5">
+          <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
+            <FilePlus2 size={17} />
+            T_CURRENT
+          </div>
+          <h2 className="text-xl font-semibold text-slate-50">新增当前分类</h2>
+        </div>
+
+        <form className="space-y-4" onSubmit={onSubmit}>
+          <Field label="用户" icon={<ShieldCheck size={16} />}>
+            <select
+              className="control"
+              disabled={isOptionsLoading}
+              value={draft.username}
+              onChange={(event) => onDraftChange({ ...draft, username: event.target.value })}
+            >
+              <option value="">选择用户</option>
+              {options.users.map((user) => (
+                <option key={user} value={user}>
+                  {user}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          <Field label="新类型" icon={<Tags size={16} />}>
+            <input
+              className="control"
+              list="current-record-type-options"
+              maxLength={40}
+              value={draft.type}
+              onChange={(event) => onDraftChange({ ...draft, type: event.target.value })}
+              placeholder="输入新的 type"
+            />
+            <datalist id="current-record-type-options">
+              {options.types.map((type) => (
+                <option key={type} value={type} />
+              ))}
+            </datalist>
+          </Field>
+
+          <div className="grid grid-cols-3 gap-3">
+            <MetricTile icon={<CalendarClock size={17} />} label="默认周" value="W1" detail="新增类型起点" />
+            <MetricTile icon={<CalendarClock size={17} />} label="默认天" value="D1" detail="第一天" />
+            <MetricTile icon={<CircleGauge size={17} />} label="等级" value="1" detail="初始级别" />
+          </div>
+
+          <Field label="内容" icon={<FileText size={16} />}>
+            <textarea
+              className="control min-h-[220px] resize-none leading-7"
+              maxLength={4000}
+              value={draft.content}
+              onChange={(event) => onDraftChange({ ...draft, content: event.target.value })}
+              placeholder="可留空，后续从列表中编辑当前记录补充。"
+            />
+          </Field>
+
+          {saveError ? (
+            <div className="flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100">
+              <TriangleAlert className="mt-0.5 shrink-0 text-red-300" size={17} />
+              <span>{saveError}</span>
+            </div>
+          ) : null}
+
+          <button
+            className="flex h-12 w-full items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
+            disabled={!canSubmit}
+            type="submit"
+          >
+            {isSaving ? <Loader2 className="animate-spin" size={18} /> : <Plus size={18} />}
+            {isSaving ? "写入中" : "新增到 T_CURRENT"}
+          </button>
+        </form>
+      </section>
+
+      <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/72 p-4 shadow-soft-glow backdrop-blur-xl">
+        <div className="mb-5 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div>
+            <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
+              <ClipboardList size={17} />
+              Current Queue
+            </div>
+            <h2 className="text-xl font-semibold text-slate-50">当前记录列表</h2>
+          </div>
+          <div className="rounded-lg border border-white/10 bg-white/[0.035] px-3 py-2 text-sm text-slate-300">
+            {total} 条匹配
+          </div>
+        </div>
+
+        <div className="mb-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <Field label="用户" icon={<ShieldCheck size={16} />}>
+            <select
+              className="control"
+              value={filters.username}
+              onChange={(event) => {
+                const username = event.target.value;
+                const nextTypeOptions = username ? options.user_types[username] ?? [] : options.types;
+                onFilterChange({
+                  username,
+                  type: filters.type && !nextTypeOptions.includes(filters.type) ? "" : filters.type,
+                });
+              }}
+            >
+              <option value="">全部用户</option>
+              {options.users.map((user) => (
+                <option key={user} value={user}>
+                  {user}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="类型" icon={<Tags size={16} />}>
+            <select className="control" value={filters.type} onChange={(event) => onFilterChange({ type: event.target.value })}>
+              <option value="">全部类型</option>
+              {currentTypeOptions.map((type) => (
+                <option key={type} value={type}>
+                  {type}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Week / Day" icon={<CalendarClock size={16} />}>
+            <div className="grid grid-cols-2 gap-2">
+              <select className="control" value={filters.week} onChange={(event) => onFilterChange({ week: event.target.value })}>
+                <option value="">全部</option>
+                {options.weeks.map((week) => (
+                  <option key={week} value={week}>
+                    {week}
+                  </option>
+                ))}
+              </select>
+              <select className="control" value={filters.day} onChange={(event) => onFilterChange({ day: event.target.value })}>
+                <option value="">全部</option>
+                {options.days.map((day) => (
+                  <option key={day} value={day}>
+                    {day}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </Field>
+          <Field label="Level" icon={<CircleGauge size={16} />}>
+            <select
+              className="control"
+              value={filters.learnLevel}
+              onChange={(event) => onFilterChange({ learnLevel: event.target.value })}
+            >
+              <option value="">全部等级</option>
+              {options.learn_levels.map((level) => (
+                <option key={level} value={level}>
+                  Level {level}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
+
+        <div className="mb-4 grid grid-cols-[1fr_120px_auto] gap-3">
+          <Field label="排序字段" icon={<ChartLine size={16} />}>
+            <select
+              className="control"
+              value={filters.sortBy}
+              onChange={(event) => onFilterChange({ sortBy: event.target.value as CurrentRecordFilters["sortBy"] })}
+            >
+              <option value="id">ID</option>
+              <option value="type">类型</option>
+              <option value="week">Week</option>
+              <option value="day">Day</option>
+              <option value="username">用户</option>
+              <option value="learn_level">等级</option>
+            </select>
+          </Field>
+          <Field label="方向" icon={<ChartLine size={16} />}>
+            <select
+              className="control"
+              value={filters.sortDir}
+              onChange={(event) => onFilterChange({ sortDir: event.target.value as CurrentRecordFilters["sortDir"] })}
+            >
+              <option value="desc">降序</option>
+              <option value="asc">升序</option>
+            </select>
+          </Field>
+          <button
+            className="mt-7 h-11 rounded-lg border border-white/10 bg-white/[0.035] px-4 text-sm font-medium text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300"
+            type="button"
+            onClick={onClearFilters}
+          >
+            清空
+          </button>
+        </div>
+
+        {isLoading ? (
+          <LoadingStack />
+        ) : loadError ? (
+          <div className="rounded-lg border border-amberline/25 bg-amberline/10 p-4">
+            <div className="mb-2 flex items-center gap-2 text-sm font-medium text-amberline">
+              <TriangleAlert size={16} />
+              当前记录读取失败
+            </div>
+            <p className="text-sm leading-6 text-amber-100/80">{loadError}</p>
+          </div>
+        ) : items.length === 0 ? (
+          <div className="grid min-h-[260px] place-items-center rounded-lg border border-white/10 bg-white/[0.025] p-6 text-center">
+            <div>
+              <FilePlus2 className="mx-auto mb-3 text-slate-600" size={36} />
+              <div className="mb-1 font-medium text-slate-300">没有匹配的当前记录</div>
+              <p className="text-sm text-slate-500">新增一个用户类型后，这里会显示当前进度。</p>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {items.map((item) => (
+              <article
+                key={item.id}
+                className="cursor-pointer rounded-lg border border-white/10 bg-white/[0.028] p-4 transition hover:border-white/18"
+                role="button"
+                tabIndex={0}
+                onClick={() => onSelect(item)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onSelect(item);
+                  }
+                }}
+              >
+                <div className="mb-3 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div className="min-w-0">
+                    <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                      <span>#{item.id}</span>
+                      <span>{item.username}</span>
+                      <span>{item.week}</span>
+                      <span>{item.day}</span>
+                      <span>Level {item.learn_level ?? 1}</span>
+                    </div>
+                    <h3 className="line-clamp-1 text-sm font-semibold text-slate-50">{item.type}</h3>
+                  </div>
+                  <button
+                    className="flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg border border-mint-300/25 bg-mint-300/10 px-3 text-xs font-medium text-mint-200 transition hover:bg-mint-300/16"
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onSelect(item);
+                    }}
+                  >
+                    <Pencil size={14} />
+                    编辑
+                  </button>
+                </div>
+                <p className="line-clamp-3 text-sm leading-6 text-slate-400">{item.content || "当前内容未填写"}</p>
+              </article>
+            ))}
+
+            <div className="flex flex-col gap-3 rounded-lg border border-white/8 bg-white/[0.025] px-3 py-3 text-sm text-slate-400 sm:flex-row sm:items-center sm:justify-between">
+              <span>
+                {rangeStart}-{rangeEnd} / {total}
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  className="grid h-9 w-9 place-items-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600"
+                  disabled={page <= 1}
+                  title="上一页"
+                  type="button"
+                  onClick={() => onPageChange(Math.max(1, page - 1))}
+                >
+                  <ChevronLeft size={17} />
+                </button>
+                <span className="min-w-16 text-center text-xs text-slate-500">
+                  {page} / {totalPages}
+                </span>
+                <button
+                  className="grid h-9 w-9 place-items-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600"
+                  disabled={page >= totalPages}
+                  title="下一页"
+                  type="button"
+                  onClick={() => onPageChange(Math.min(totalPages, page + 1))}
+                >
+                  <ChevronRight size={17} />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </section>
+
+      <aside className="min-w-0 rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
+        <div className="mb-5">
+          <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
+            <TriangleAlert size={17} />
+            Trigger Rules
+          </div>
+          <h2 className="text-lg font-semibold text-slate-50">同步规则</h2>
+        </div>
+        <div className="space-y-3 text-sm leading-6 text-slate-400">
+          <div className="rounded-lg border border-white/10 bg-white/[0.028] p-3">
+            保存只写入 <span className="text-slate-200">T_CURRENT</span>，历史记录由数据库触发器同步。
+          </div>
+          <div className="rounded-lg border border-white/10 bg-white/[0.028] p-3">
+            只改内容会修正当前 <span className="text-slate-200">week/day</span> 的历史记录。
+          </div>
+          <div className="rounded-lg border border-white/10 bg-white/[0.028] p-3">
+            改 week 或 day 表示推进到新的记录点；week 只能前进一周，W48 后回到 W1。
+          </div>
+          <div className="rounded-lg border border-amberline/25 bg-amberline/10 p-3 text-amber-100">
+            不开放删除，因为删除 T_CURRENT 也会触发写入 T_HISTORY。
+          </div>
+        </div>
+      </aside>
+
+      <CurrentRecordEditDialog
+        item={selectedItem}
+        isUpdating={isUpdating}
+        options={options}
+        onCancel={onCloseEditor}
+        onConfirm={onUpdate}
+      />
+    </div>
+  );
+}
+
+function CurrentRecordEditDialog({
+  item,
+  options,
+  isUpdating,
+  onCancel,
+  onConfirm,
+}: {
+  item: CurrentRecordItem | null;
+  options: CurrentRecordOptions;
+  isUpdating: boolean;
+  onCancel: () => void;
+  onConfirm: (record: CurrentRecordItem, next: { week: CurrentWeek; day: CurrentDay; content: string }) => void;
+}) {
+  const [week, setWeek] = useState<CurrentWeek>("W1");
+  const [day, setDay] = useState<CurrentDay>("D1");
+  const [content, setContent] = useState("");
+
+  useEffect(() => {
+    if (!item) return;
+    setWeek(item.week);
+    setDay(item.day);
+    setContent(item.content ?? "");
+  }, [item]);
+
+  useEffect(() => {
+    if (!item) return;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape" && !isUpdating) {
+        onCancel();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isUpdating, item, onCancel]);
+
+  if (!item) return null;
+
+  const record = item;
+  const allowedWeeks = compactUnique([record.week, getNextWeek(record.week)]);
+  const progressChanged = week !== record.week || day !== record.day;
+  const nextLevel = record.week === "W48" && week === "W1" ? Math.min((record.learn_level ?? 1) + 1, 10) : (record.learn_level ?? 1);
+
+  function handleWeekChange(value: CurrentWeek) {
+    setWeek(value);
+    if (value !== record.week || day !== record.day) {
+      setContent("");
+    }
+  }
+
+  function handleDayChange(value: CurrentDay) {
+    setDay(value);
+    if (week !== record.week || value !== record.day) {
+      setContent("");
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/62 px-4 py-6 backdrop-blur-sm"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !isUpdating) {
+          onCancel();
+        }
+      }}
+    >
+      <section
+        aria-modal="true"
+        className="max-h-[92vh] w-full max-w-3xl overflow-hidden rounded-lg border border-mint-300/20 bg-ink-900 shadow-soft-glow"
+        role="dialog"
+      >
+        <div className="flex items-start justify-between gap-4 border-b border-white/10 p-5">
+          <div>
+            <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
+              <Pencil size={17} />
+              Edit Current Record
+            </div>
+            <h2 className="text-lg font-semibold text-slate-50">{item.type}</h2>
+          </div>
+          <button
+            className="grid h-9 w-9 place-items-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-400 transition hover:border-white/20 hover:text-slate-100 disabled:cursor-not-allowed disabled:text-slate-600"
+            disabled={isUpdating}
+            title="关闭"
+            type="button"
+            onClick={onCancel}
+          >
+            <X size={17} />
+          </button>
+        </div>
+
+        <div className="max-h-[calc(92vh-150px)] overflow-y-auto p-5">
+          <div className="mb-4 grid gap-3 md:grid-cols-4">
+            <MetricTile icon={<ShieldCheck size={17} />} label="用户" value={item.username} detail={`#${item.id}`} />
+            <MetricTile icon={<CalendarClock size={17} />} label="当前周" value={item.week} detail="原始值" />
+            <MetricTile icon={<CalendarClock size={17} />} label="当前天" value={item.day} detail="原始值" />
+            <MetricTile icon={<CircleGauge size={17} />} label="等级" value={`Level ${nextLevel}`} detail="保存后级别" />
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <Field label="Week" icon={<CalendarClock size={16} />}>
+              <select className="control" disabled={isUpdating} value={week} onChange={(event) => handleWeekChange(event.target.value as CurrentWeek)}>
+                {allowedWeeks.map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Day" icon={<CalendarClock size={16} />}>
+              <select className="control" disabled={isUpdating} value={day} onChange={(event) => handleDayChange(event.target.value as CurrentDay)}>
+                {options.days.map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+
+          {progressChanged ? (
+            <div className="mt-4 rounded-lg border border-mint-300/20 bg-mint-300/8 px-3 py-3 text-sm leading-6 text-mint-100/85">
+              已选择新的 week/day，内容已切换为新记录点草稿；可以留空保存，稍后再补。
+            </div>
+          ) : (
+            <div className="mt-4 rounded-lg border border-white/10 bg-white/[0.028] px-3 py-3 text-sm leading-6 text-slate-400">
+              当前未推进进度，保存会修正这个 week/day 的历史内容。
+            </div>
+          )}
+
+          <label className="mt-4 block">
+            <span className="mb-2 flex items-center gap-2 text-sm text-slate-300">
+              <span className="text-slate-500">
+                <FileText size={16} />
+              </span>
+              内容
+            </span>
+            <textarea
+              className="control min-h-[260px] resize-none leading-7"
+              disabled={isUpdating}
+              maxLength={4000}
+              value={content}
+              onChange={(event) => setContent(event.target.value)}
+              placeholder="可留空保存，后续再补充内容。"
+            />
+          </label>
+        </div>
+
+        <div className="flex flex-col gap-3 border-t border-white/10 p-5 sm:flex-row sm:justify-end">
+          <button
+            className="h-11 rounded-lg border border-white/10 bg-white/[0.035] px-4 font-medium text-slate-300 transition hover:border-white/20 hover:text-slate-100 disabled:cursor-not-allowed disabled:text-slate-600"
+            disabled={isUpdating}
+            type="button"
+            onClick={onCancel}
+          >
+            取消
+          </button>
+          <button
+            className="flex h-11 items-center justify-center gap-2 rounded-lg border border-mint-300/25 bg-mint-300/12 px-4 font-medium text-mint-200 transition hover:bg-mint-300/18 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
+            disabled={isUpdating}
+            type="button"
+            onClick={() => onConfirm(item, { week, day, content })}
+          >
+            {isUpdating ? <Loader2 className="animate-spin" size={17} /> : <Pencil size={17} />}
+            {isUpdating ? "保存中" : progressChanged ? "保存并推进" : "保存内容"}
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function HistoryAskPanel({
   answer,
   error,
@@ -2359,6 +3870,7 @@ function HistoryExplorer({
   const totalPages = Math.max(1, Math.ceil(total / HISTORY_PAGE_SIZE));
   const rangeStart = total === 0 ? 0 : (page - 1) * HISTORY_PAGE_SIZE + 1;
   const rangeEnd = Math.min(page * HISTORY_PAGE_SIZE, total);
+  const historyTypeOptions = filters.username ? summary.user_types[filters.username] ?? [] : summary.types;
 
   return (
     <div className="flex-1 px-4 pb-4 pt-2">
@@ -2373,6 +3885,28 @@ function HistoryExplorer({
           </div>
 
           <div className="space-y-4">
+            <Field label="用户" icon={<ShieldCheck size={16} />}>
+              <select
+                className="control"
+                value={filters.username}
+                onChange={(event) => {
+                  const username = event.target.value;
+                  const nextTypeOptions = username ? summary.user_types[username] ?? [] : summary.types;
+                  onFilterChange({
+                    username,
+                    type: filters.type && !nextTypeOptions.includes(filters.type) ? "" : filters.type,
+                  });
+                }}
+              >
+                <option value="">全部用户</option>
+                {summary.users.map((user) => (
+                  <option key={user} value={user}>
+                    {user}
+                  </option>
+                ))}
+              </select>
+            </Field>
+
             <Field label="类型" icon={<Layers3 size={16} />}>
               <select
                 className="control"
@@ -2380,24 +3914,9 @@ function HistoryExplorer({
                 onChange={(event) => onFilterChange({ type: event.target.value })}
               >
                 <option value="">全部类型</option>
-                {summary.types.map((type) => (
+                {historyTypeOptions.map((type) => (
                   <option key={type} value={type}>
                     {type}
-                  </option>
-                ))}
-              </select>
-            </Field>
-
-            <Field label="用户" icon={<ShieldCheck size={16} />}>
-              <select
-                className="control"
-                value={filters.username}
-                onChange={(event) => onFilterChange({ username: event.target.value })}
-              >
-                <option value="">全部用户</option>
-                {summary.users.map((user) => (
-                  <option key={user} value={user}>
-                    {user}
                   </option>
                 ))}
               </select>
@@ -3255,6 +4774,20 @@ function buildMergedKnowledgeDraft(items: KnowledgeItem[]): KnowledgeDraft {
     topic_tag: truncateField(tags.join(","), 100),
     blog_status: "未发布",
   };
+}
+
+function buildWeekOptions(): CurrentWeek[] {
+  return Array.from({ length: 48 }, (_, index) => `W${index + 1}` as CurrentWeek);
+}
+
+function buildDayOptions(): CurrentDay[] {
+  return Array.from({ length: 7 }, (_, index) => `D${index + 1}` as CurrentDay);
+}
+
+function getNextWeek(value: CurrentWeek): CurrentWeek {
+  const index = Number(value.replace("W", ""));
+  if (!Number.isFinite(index) || index >= 48) return "W1";
+  return `W${index + 1}` as CurrentWeek;
 }
 
 function compactUnique(values: string[]) {

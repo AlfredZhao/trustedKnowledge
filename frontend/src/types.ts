@@ -1,4 +1,7 @@
 export type KnowledgeStatus = "未发布" | "已发布" | "跳过";
+export type BlogFactoryStatus = "待处理" | "已处理" | "已发布" | "跳过";
+export type CurrentWeek = `W${number}`;
+export type CurrentDay = `D${number}`;
 
 export interface KnowledgeItem {
   id: number;
@@ -28,9 +31,35 @@ export interface BlogFactoryItem {
   topic_tag_snapshot: string | null;
   blog_status_snapshot: KnowledgeStatus | null;
   copied_at: string | null;
+  factory_status: BlogFactoryStatus;
+  article_markdown: string | null;
+  article_title: string | null;
+  article_file_path: string | null;
+  article_checksum: string | null;
+  article_saved_at: string | null;
+  has_article: boolean;
 }
 
-export type AppView = "workbench" | "factory" | "history" | "historyAsk" | "usage";
+export type AppView = "workbench" | "factory" | "blogFactory" | "currentRecords" | "history" | "historyAsk" | "usage";
+
+export interface CurrentRecordItem {
+  id: number;
+  type: string;
+  week: CurrentWeek;
+  day: CurrentDay;
+  content: string | null;
+  username: string;
+  learn_level: number | null;
+}
+
+export interface CurrentRecordOptions {
+  users: string[];
+  types: string[];
+  user_types: Record<string, string[]>;
+  weeks: CurrentWeek[];
+  days: CurrentDay[];
+  learn_levels: number[];
+}
 
 export interface LlmUsageSample {
   sample_time: string;
@@ -57,6 +86,7 @@ export interface HistorySummary {
   total: number;
   types: string[];
   users: string[];
+  user_types: Record<string, string[]>;
   min_date: string | null;
   max_date: string | null;
 }

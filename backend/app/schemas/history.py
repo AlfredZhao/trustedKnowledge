@@ -21,6 +21,7 @@ class HistorySummary(BaseModel):
     total: int
     types: list[str]
     users: list[str]
+    user_types: dict[str, list[str]] = {}
     min_date: date | None = None
     max_date: date | None = None
 

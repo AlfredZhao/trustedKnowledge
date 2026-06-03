@@ -142,6 +142,13 @@ async def list_history(
     """
     type_sql = "select distinct type from t_history where type is not null order by type"
     user_sql = "select distinct username from t_history where username is not null order by username"
+    user_type_sql = """
+        select username, type
+        from t_history
+        where username is not null
+          and type is not null
+        order by username, type
+    """
 
     async with acquire_connection() as connection:
         cursor = connection.cursor()
@@ -158,14 +165,27 @@ async def list_history(
         await cursor.execute(user_sql)
         user_rows = await cursor.fetchall()
 
+        await cursor.execute(user_type_sql)
+        user_type_rows = await cursor.fetchall()
+
         list_params = {**params, "offset": offset, "limit": limit}
         await cursor.execute(list_sql, list_params)
         rows = await cursor.fetchall()
+
+    user_types: dict[str, list[str]] = {}
+    for row in user_type_rows:
+        username_value, type_value = row[0], row[1]
+        if username_value is None or type_value is None:
+            continue
+        values = user_types.setdefault(username_value, [])
+        if type_value not in values:
+            values.append(type_value)
 
     summary = {
         "total": total,
         "types": [row[0] for row in type_rows if row[0] is not None],
         "users": [row[0] for row in user_rows if row[0] is not None],
+        "user_types": user_types,
         "min_date": summary_row[0] if summary_row else None,
         "max_date": summary_row[1] if summary_row else None,
     }

@@ -1,8 +1,15 @@
-import type { BlogFactoryItem, KnowledgeDraft, KnowledgeItem, KnowledgeStatus } from "../types";
+import type { BlogFactoryItem, BlogFactoryStatus, KnowledgeDraft, KnowledgeItem, KnowledgeStatus } from "../types";
 import { clearStoredApiKey, readStoredApiKey } from "./auth";
 
 export interface KnowledgeListResponse {
   items: KnowledgeItem[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface BlogFactoryListResponse {
+  items: BlogFactoryItem[];
   total: number;
   limit: number;
   offset: number;
@@ -136,6 +143,71 @@ export async function createBlogFactoryItem({
     body: JSON.stringify({
       knowledge_id: knowledgeId,
       task_content: taskContent,
+    }),
+  });
+}
+
+export async function fetchBlogFactoryItems({
+  query,
+  limit,
+  offset,
+  factoryStatus,
+  topic,
+  knowledgeId,
+  sortBy,
+  sortDir,
+}: {
+  query?: string;
+  limit: number;
+  offset: number;
+  factoryStatus?: BlogFactoryStatus;
+  topic?: string;
+  knowledgeId?: string;
+  sortBy?: "copied_at" | "id" | "knowledge_id" | "factory_status";
+  sortDir?: "asc" | "desc";
+}): Promise<BlogFactoryListResponse> {
+  const params = new URLSearchParams({
+    limit: String(limit),
+    offset: String(offset),
+    sort_by: sortBy ?? "copied_at",
+    sort_dir: sortDir ?? "desc",
+  });
+
+  if (query?.trim()) params.set("q", query.trim());
+  if (factoryStatus) params.set("factory_status", factoryStatus);
+  if (topic?.trim()) params.set("topic", topic.trim());
+  if (knowledgeId?.trim()) params.set("knowledge_id", knowledgeId.trim());
+
+  return request<BlogFactoryListResponse>(`/api/blog-factory?${params.toString()}`);
+}
+
+export async function getBlogFactoryItem(id: number): Promise<BlogFactoryItem> {
+  return request<BlogFactoryItem>(`/api/blog-factory/${id}`);
+}
+
+export async function updateBlogFactoryStatus(id: number, factoryStatus: BlogFactoryStatus): Promise<BlogFactoryItem> {
+  return request<BlogFactoryItem>(`/api/blog-factory/${id}/status`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      factory_status: factoryStatus,
+    }),
+  });
+}
+
+export async function updateBlogFactoryArticle({
+  id,
+  articleMarkdown,
+  articleFilePath,
+}: {
+  id: number;
+  articleMarkdown: string;
+  articleFilePath?: string;
+}): Promise<BlogFactoryItem> {
+  return request<BlogFactoryItem>(`/api/blog-factory/${id}/article`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      article_markdown: articleMarkdown,
+      article_file_path: articleFilePath || null,
     }),
   });
 }
