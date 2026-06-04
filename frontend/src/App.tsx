@@ -3196,83 +3196,7 @@ function CurrentRecordsWorkspace({
   const currentTypeOptions = filters.username ? options.user_types[filters.username] ?? [] : options.types;
 
   return (
-    <div className="grid flex-1 gap-4 px-4 pb-4 pt-2 xl:grid-cols-[340px_minmax(440px,1fr)_320px]">
-      <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/72 p-4 shadow-soft-glow backdrop-blur-xl">
-        <div className="mb-5">
-          <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
-            <FilePlus2 size={17} />
-            T_CURRENT
-          </div>
-          <h2 className="text-xl font-semibold text-slate-50">新增当前分类</h2>
-        </div>
-
-        <form className="space-y-4" onSubmit={onSubmit}>
-          <Field label="用户" icon={<ShieldCheck size={16} />}>
-            <select
-              className="control"
-              disabled={isOptionsLoading}
-              value={draft.username}
-              onChange={(event) => onDraftChange({ ...draft, username: event.target.value })}
-            >
-              <option value="">选择用户</option>
-              {options.users.map((user) => (
-                <option key={user} value={user}>
-                  {user}
-                </option>
-              ))}
-            </select>
-          </Field>
-
-          <Field label="新类型" icon={<Tags size={16} />}>
-            <input
-              className="control"
-              list="current-record-type-options"
-              maxLength={40}
-              value={draft.type}
-              onChange={(event) => onDraftChange({ ...draft, type: event.target.value })}
-              placeholder="输入新的 type"
-            />
-            <datalist id="current-record-type-options">
-              {options.types.map((type) => (
-                <option key={type} value={type} />
-              ))}
-            </datalist>
-          </Field>
-
-          <div className="grid grid-cols-3 gap-3">
-            <MetricTile icon={<CalendarClock size={17} />} label="默认周" value="W1" detail="新增类型起点" />
-            <MetricTile icon={<CalendarClock size={17} />} label="默认天" value="D1" detail="第一天" />
-            <MetricTile icon={<CircleGauge size={17} />} label="等级" value="1" detail="初始级别" />
-          </div>
-
-          <Field label="内容" icon={<FileText size={16} />}>
-            <textarea
-              className="control min-h-[220px] resize-none leading-7"
-              maxLength={4000}
-              value={draft.content}
-              onChange={(event) => onDraftChange({ ...draft, content: event.target.value })}
-              placeholder="可留空，后续从列表中编辑当前记录补充。"
-            />
-          </Field>
-
-          {saveError ? (
-            <div className="flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100">
-              <TriangleAlert className="mt-0.5 shrink-0 text-red-300" size={17} />
-              <span>{saveError}</span>
-            </div>
-          ) : null}
-
-          <button
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
-            disabled={!canSubmit}
-            type="submit"
-          >
-            {isSaving ? <Loader2 className="animate-spin" size={18} /> : <Plus size={18} />}
-            {isSaving ? "写入中" : "新增到 T_CURRENT"}
-          </button>
-        </form>
-      </section>
-
+    <div className="grid flex-1 gap-4 px-4 pb-4 pt-2 xl:grid-cols-[minmax(440px,1fr)_340px_320px]">
       <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/72 p-4 shadow-soft-glow backdrop-blur-xl">
         <div className="mb-5 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>
@@ -3482,6 +3406,82 @@ function CurrentRecordsWorkspace({
         )}
       </section>
 
+      <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/72 p-4 shadow-soft-glow backdrop-blur-xl">
+        <div className="mb-5">
+          <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
+            <FilePlus2 size={17} />
+            T_CURRENT
+          </div>
+          <h2 className="text-xl font-semibold text-slate-50">新增当前分类</h2>
+        </div>
+
+        <form className="space-y-4" onSubmit={onSubmit}>
+          <Field label="用户" icon={<ShieldCheck size={16} />}>
+            <select
+              className="control"
+              disabled={isOptionsLoading}
+              value={draft.username}
+              onChange={(event) => onDraftChange({ ...draft, username: event.target.value })}
+            >
+              <option value="">选择用户</option>
+              {options.users.map((user) => (
+                <option key={user} value={user}>
+                  {user}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          <Field label="新类型" icon={<Tags size={16} />}>
+            <input
+              className="control"
+              list="current-record-type-options"
+              maxLength={40}
+              value={draft.type}
+              onChange={(event) => onDraftChange({ ...draft, type: event.target.value })}
+              placeholder="输入新的 type"
+            />
+            <datalist id="current-record-type-options">
+              {options.types.map((type) => (
+                <option key={type} value={type} />
+              ))}
+            </datalist>
+          </Field>
+
+          <div className="grid grid-cols-3 gap-3">
+            <MetricTile icon={<CalendarClock size={17} />} label="默认周" value="W1" detail="新增类型起点" />
+            <MetricTile icon={<CalendarClock size={17} />} label="默认天" value="D1" detail="第一天" />
+            <MetricTile icon={<CircleGauge size={17} />} label="等级" value="1" detail="初始级别" />
+          </div>
+
+          <Field label="内容" icon={<FileText size={16} />}>
+            <textarea
+              className="control min-h-[220px] resize-none leading-7"
+              maxLength={4000}
+              value={draft.content}
+              onChange={(event) => onDraftChange({ ...draft, content: event.target.value })}
+              placeholder="可留空，后续从列表中编辑当前记录补充。"
+            />
+          </Field>
+
+          {saveError ? (
+            <div className="flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100">
+              <TriangleAlert className="mt-0.5 shrink-0 text-red-300" size={17} />
+              <span>{saveError}</span>
+            </div>
+          ) : null}
+
+          <button
+            className="flex h-12 w-full items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
+            disabled={!canSubmit}
+            type="submit"
+          >
+            {isSaving ? <Loader2 className="animate-spin" size={18} /> : <Plus size={18} />}
+            {isSaving ? "写入中" : "新增到 T_CURRENT"}
+          </button>
+        </form>
+      </section>
+
       <aside className="min-w-0 rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
         <div className="mb-5">
           <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
@@ -3577,7 +3577,7 @@ function CurrentRecordEditDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 grid place-items-center bg-black/62 px-4 py-6 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/62 px-3 py-4 backdrop-blur-sm sm:px-4 sm:py-6"
       role="presentation"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget && !isUpdating) {
@@ -3587,10 +3587,10 @@ function CurrentRecordEditDialog({
     >
       <section
         aria-modal="true"
-        className="max-h-[92vh] w-full max-w-3xl overflow-hidden rounded-lg border border-mint-300/20 bg-ink-900 shadow-soft-glow"
+        className="flex max-h-[calc(100dvh-2rem)] w-full max-w-3xl flex-col overflow-hidden rounded-lg border border-mint-300/20 bg-ink-900 shadow-soft-glow sm:max-h-[92vh]"
         role="dialog"
       >
-        <div className="flex items-start justify-between gap-4 border-b border-white/10 p-5">
+        <div className="shrink-0 flex items-start justify-between gap-4 border-b border-white/10 p-4 sm:p-5">
           <div>
             <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
               <Pencil size={17} />
@@ -3609,7 +3609,7 @@ function CurrentRecordEditDialog({
           </button>
         </div>
 
-        <div className="max-h-[calc(92vh-150px)] overflow-y-auto p-5">
+        <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
           <div className="mb-4 grid gap-3 md:grid-cols-4">
             <MetricTile icon={<ShieldCheck size={17} />} label="用户" value={item.username} detail={`#${item.id}`} />
             <MetricTile icon={<CalendarClock size={17} />} label="当前周" value={item.week} detail="原始值" />
@@ -3656,7 +3656,7 @@ function CurrentRecordEditDialog({
               内容
             </span>
             <textarea
-              className="control min-h-[260px] resize-none leading-7"
+              className="control min-h-[180px] resize-none leading-7 sm:min-h-[260px]"
               disabled={isUpdating}
               maxLength={4000}
               value={content}
@@ -3666,7 +3666,7 @@ function CurrentRecordEditDialog({
           </label>
         </div>
 
-        <div className="flex flex-col gap-3 border-t border-white/10 p-5 sm:flex-row sm:justify-end">
+        <div className="shrink-0 flex flex-col gap-3 border-t border-white/10 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:flex-row sm:justify-end sm:p-5">
           <button
             className="h-11 rounded-lg border border-white/10 bg-white/[0.035] px-4 font-medium text-slate-300 transition hover:border-white/20 hover:text-slate-100 disabled:cursor-not-allowed disabled:text-slate-600"
             disabled={isUpdating}

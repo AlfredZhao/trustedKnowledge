@@ -7,13 +7,19 @@ The format follows the common GitHub changelog convention inspired by
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 格式遵循 GitHub 常见变更日志规范，并参考 Keep a Changelog。
 
-## [Unreleased] / [未发布]
+## [0.2.1] / [fix]
 
 ### Added / 新增
 
 ### Changed / 变更
 
+- Moved the Current Records add-category panel to the right of the records list.
+- 将当前记录录入页的“新增当前分类”面板调整到“当前记录列表”右侧。
+
 ### Fixed / 修复
+
+- Fixed the Current Records edit dialog layout so the save button remains reachable on mobile PWA viewports.
+- 修复当前记录编辑弹窗在手机端 PWA 视口中“保存内容”按钮可能不可见的问题。
 
 ## [0.2.0] - 2026-06-03
 
