@@ -1,4 +1,13 @@
-import type { BlogFactoryItem, BlogFactoryStatus, KnowledgeDraft, KnowledgeItem, KnowledgeStatus } from "../types";
+import type {
+  BlogFactoryItem,
+  BlogFactoryStatus,
+  KnowledgeDraft,
+  KnowledgeItem,
+  KnowledgeStatus,
+  TodoDraft,
+  TodoItem,
+  TodoStatus,
+} from "../types";
 import { clearStoredApiKey, readStoredApiKey } from "./auth";
 
 export interface KnowledgeListResponse {
@@ -10,6 +19,13 @@ export interface KnowledgeListResponse {
 
 export interface BlogFactoryListResponse {
   items: BlogFactoryItem[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface TodoListResponse {
+  items: TodoItem[];
   total: number;
   limit: number;
   offset: number;
@@ -127,6 +143,58 @@ export async function mergeKnowledge(knowledgeIds: number[], draft: KnowledgeDra
       source: draft.source || null,
       topic_tag: draft.topic_tag || null,
       blog_status: draft.blog_status,
+    }),
+  });
+}
+
+export async function fetchTodos({
+  query,
+  limit,
+  offset,
+  status,
+}: {
+  query?: string;
+  limit: number;
+  offset: number;
+  status?: TodoStatus;
+}): Promise<TodoListResponse> {
+  const params = new URLSearchParams({
+    limit: String(limit),
+    offset: String(offset),
+  });
+
+  if (query?.trim()) params.set("q", query.trim());
+  if (status) params.set("status", status);
+
+  return request<TodoListResponse>(`/api/todos?${params.toString()}`);
+}
+
+export async function createTodo(draft: TodoDraft): Promise<TodoItem> {
+  return request<TodoItem>("/api/todos", {
+    method: "POST",
+    body: JSON.stringify({
+      title: draft.title,
+      content: draft.content,
+      source: draft.source || null,
+      topic_tag: draft.topic_tag || null,
+      todo_status: draft.todo_status,
+    }),
+  });
+}
+
+export async function getTodo(id: number): Promise<TodoItem> {
+  return request<TodoItem>(`/api/todos/${id}`);
+}
+
+export async function updateTodo(id: number, draft: TodoDraft): Promise<TodoItem> {
+  return request<TodoItem>(`/api/todos/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      title: draft.title,
+      content: draft.content,
+      source: draft.source || null,
+      topic_tag: draft.topic_tag || null,
+      todo_status: draft.todo_status,
     }),
   });
 }

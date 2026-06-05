@@ -47,15 +47,19 @@ import {
 import {
   createBlogFactoryItem,
   createKnowledge,
+  createTodo,
   deleteKnowledge,
   fetchBlogFactoryItems,
   fetchKnowledge,
+  fetchTodos,
   getBlogFactoryItem,
   getKnowledge,
+  getTodo,
   mergeKnowledge,
   updateBlogFactoryArticle,
   updateBlogFactoryStatus,
   updateKnowledge,
+  updateTodo,
 } from "./api/knowledge";
 import { fetchHistory } from "./api/history";
 import { askHistory } from "./api/historyAsk";
@@ -81,6 +85,9 @@ import type {
   KnowledgeItem,
   KnowledgeStatus,
   LlmUsageSample,
+  TodoDraft,
+  TodoItem,
+  TodoStatus,
 } from "./types";
 
 const emptyDraft: KnowledgeDraft = {
@@ -91,16 +98,101 @@ const emptyDraft: KnowledgeDraft = {
   blog_status: "未发布",
 };
 
+const emptyTodoDraft: TodoDraft = {
+  title: "",
+  content: "",
+  source: "",
+  topic_tag: "",
+  todo_status: "待处理",
+};
+
 const PAGE_SIZE = 5;
 const FACTORY_PAGE_SIZE = 6;
 const BLOG_FACTORY_PAGE_SIZE = 8;
+const TODO_PAGE_SIZE = 8;
 const CURRENT_RECORDS_PAGE_SIZE = 10;
 const HISTORY_PAGE_SIZE = 10;
 const USAGE_SAMPLE_LIMIT = 72;
-const RESET_SOURCE_TIME_ZONE = "UTC";
-const RESET_DISPLAY_TIME_ZONE = "Asia/Shanghai";
 const RESET_READY_DELAY_MS = 60 * 60 * 1000;
 const NEW_KNOWLEDGE_DRAFT_STORAGE_KEY = "trustedKnowledge.newDraft";
+const UI_STATE_STORAGE_KEY = "trustedKnowledge.uiState.v1";
+const APP_VIEWS: AppView[] = ["workbench", "factory", "blogFactory", "todos", "currentRecords", "history", "historyAsk", "usage"];
+const BLOG_FACTORY_SORT_FIELDS = ["copied_at", "id", "knowledge_id", "factory_status"] as const;
+const CURRENT_RECORD_SORT_FIELDS = ["id", "type", "week", "day", "username", "learn_level"] as const;
+const HISTORY_SORT_FIELDS = ["history_date", "id", "type", "username", "learn_level"] as const;
+const SORT_DIRECTIONS = ["asc", "desc"] as const;
+
+type BlogFactorySortBy = (typeof BLOG_FACTORY_SORT_FIELDS)[number];
+type CurrentRecordSortBy = (typeof CURRENT_RECORD_SORT_FIELDS)[number];
+type HistorySortBy = (typeof HISTORY_SORT_FIELDS)[number];
+type SortDirection = (typeof SORT_DIRECTIONS)[number];
+type HistoryVectorStatus = "all" | "0" | "1";
+
+interface StoredUiState {
+  activeView: AppView;
+  workbench: {
+    query: string;
+    statusFilter: KnowledgeStatus | "all";
+    page: number;
+    selectedId: number | null;
+    draft: KnowledgeDraft | null;
+  };
+  factory: {
+    query: string;
+    page: number;
+    selectedId: number | null;
+    task: string;
+  };
+  blogFactory: {
+    query: string;
+    page: number;
+    status: BlogFactoryStatus | "all";
+    topic: string;
+    knowledgeId: string;
+    sortBy: BlogFactorySortBy;
+    sortDir: SortDirection;
+    selectedItemId: number | null;
+    articleDraft: string;
+    articlePathDraft: string;
+  };
+  todos: {
+    query: string;
+    page: number;
+    status: TodoStatus | "all";
+    selectedId: number | null;
+    draft: TodoDraft | null;
+  };
+  currentRecords: {
+    query: string;
+    page: number;
+    username: string;
+    type: string;
+    week: string;
+    day: string;
+    learnLevel: string;
+    sortBy: CurrentRecordSortBy;
+    sortDir: SortDirection;
+    draft: { username: string; type: string; content: string };
+  };
+  history: {
+    query: string;
+    page: number;
+    type: string;
+    username: string;
+    week: string;
+    day: string;
+    learnLevel: string;
+    vectorStatus: HistoryVectorStatus;
+    dateFrom: string;
+    dateTo: string;
+    sortBy: HistorySortBy;
+    sortDir: SortDirection;
+  };
+  historyAsk: {
+    question: string;
+    answer: HistoryAskResponse | null;
+  };
+}
 
 interface UsageChangeItem extends LlmUsageSample {
   period_start: string;
@@ -121,7 +213,16 @@ const blogFactoryStatusStyles: Record<BlogFactoryStatus, string> = {
   跳过: "border-amberline/30 bg-amberline/10 text-amberline",
 };
 
+const todoStatusStyles: Record<TodoStatus, string> = {
+  待处理: "border-slate-500/30 bg-slate-400/10 text-slate-200",
+  处理中: "border-sky-300/30 bg-sky-300/10 text-sky-200",
+  已完成: "border-mint-300/30 bg-mint-300/10 text-mint-300",
+};
+
 function App() {
+  const [restoredUiState] = useState<StoredUiState>(() => readStoredUiState());
+  const restoredBlogFactoryArticleDraftRef = useRef(Boolean(restoredUiState.blogFactory.articleDraft));
+  const restoredBlogFactorySelectionRef = useRef(restoredUiState.blogFactory.selectedItemId);
   const [apiKey, setApiKey] = useState(() => {
     const wechatApiKey = readWeChatApiKeyFromHash();
     if (wechatApiKey) {
@@ -132,13 +233,14 @@ function App() {
 
     return readStoredApiKey();
   });
-  const [activeView, setActiveView] = useState<AppView>("workbench");
+  const [activeView, setActiveView] = useState<AppView>(restoredUiState.activeView);
   const [items, setItems] = useState<KnowledgeItem[]>([]);
-  const [draft, setDraft] = useState<KnowledgeDraft>(() => readStoredNewDraft() ?? emptyDraft);
-  const [query, setQuery] = useState("");
-  const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<KnowledgeStatus | "all">("all");
-  const [page, setPage] = useState(1);
+  const [draft, setDraft] = useState<KnowledgeDraft>(() => restoredUiState.workbench.draft ?? readStoredNewDraft() ?? emptyDraft);
+  const [query, setQuery] = useState(restoredUiState.workbench.query);
+  const [debouncedQuery, setDebouncedQuery] = useState(restoredUiState.workbench.query.trim());
+  const [statusFilter, setStatusFilter] = useState<KnowledgeStatus | "all">(restoredUiState.workbench.statusFilter);
+  const [isTodoEntry, setIsTodoEntry] = useState(false);
+  const [page, setPage] = useState(restoredUiState.workbench.page);
   const [totalItems, setTotalItems] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -146,17 +248,17 @@ function App() {
   const [refreshToken, setRefreshToken] = useState(0);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [selectedId, setSelectedId] = useState<number | null>(restoredUiState.workbench.selectedId);
   const [deleteTarget, setDeleteTarget] = useState<KnowledgeItem | null>(null);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [lastCreatedId, setLastCreatedId] = useState<number | null>(null);
   const [factoryItems, setFactoryItems] = useState<KnowledgeItem[]>([]);
   const [factoryTotalItems, setFactoryTotalItems] = useState(0);
-  const [factoryPage, setFactoryPage] = useState(1);
-  const [factoryQuery, setFactoryQuery] = useState("");
-  const [debouncedFactoryQuery, setDebouncedFactoryQuery] = useState("");
-  const [factorySelectedId, setFactorySelectedId] = useState<number | null>(null);
-  const [factoryTask, setFactoryTask] = useState("");
+  const [factoryPage, setFactoryPage] = useState(restoredUiState.factory.page);
+  const [factoryQuery, setFactoryQuery] = useState(restoredUiState.factory.query);
+  const [debouncedFactoryQuery, setDebouncedFactoryQuery] = useState(restoredUiState.factory.query.trim());
+  const [factorySelectedId, setFactorySelectedId] = useState<number | null>(restoredUiState.factory.selectedId);
+  const [factoryTask, setFactoryTask] = useState(restoredUiState.factory.task);
   const [factoryError, setFactoryError] = useState<string | null>(null);
   const [isFactoryLoading, setIsFactoryLoading] = useState(false);
   const [isFactoryGenerating, setIsFactoryGenerating] = useState(false);
@@ -167,40 +269,52 @@ function App() {
   const [factoryRefreshToken, setFactoryRefreshToken] = useState(0);
   const [blogFactoryItems, setBlogFactoryItems] = useState<BlogFactoryItem[]>([]);
   const [blogFactoryTotal, setBlogFactoryTotal] = useState(0);
-  const [blogFactoryPage, setBlogFactoryPage] = useState(1);
-  const [blogFactoryQuery, setBlogFactoryQuery] = useState("");
-  const [debouncedBlogFactoryQuery, setDebouncedBlogFactoryQuery] = useState("");
-  const [blogFactoryStatus, setBlogFactoryStatus] = useState<BlogFactoryStatus | "all">("all");
-  const [blogFactoryTopic, setBlogFactoryTopic] = useState("");
-  const [blogFactoryKnowledgeId, setBlogFactoryKnowledgeId] = useState("");
-  const [blogFactorySortBy, setBlogFactorySortBy] = useState<"copied_at" | "id" | "knowledge_id" | "factory_status">(
-    "copied_at",
-  );
-  const [blogFactorySortDir, setBlogFactorySortDir] = useState<"asc" | "desc">("desc");
+  const [blogFactoryPage, setBlogFactoryPage] = useState(restoredUiState.blogFactory.page);
+  const [blogFactoryQuery, setBlogFactoryQuery] = useState(restoredUiState.blogFactory.query);
+  const [debouncedBlogFactoryQuery, setDebouncedBlogFactoryQuery] = useState(restoredUiState.blogFactory.query.trim());
+  const [blogFactoryStatus, setBlogFactoryStatus] = useState<BlogFactoryStatus | "all">(restoredUiState.blogFactory.status);
+  const [blogFactoryTopic, setBlogFactoryTopic] = useState(restoredUiState.blogFactory.topic);
+  const [blogFactoryKnowledgeId, setBlogFactoryKnowledgeId] = useState(restoredUiState.blogFactory.knowledgeId);
+  const [blogFactorySortBy, setBlogFactorySortBy] = useState<BlogFactorySortBy>(restoredUiState.blogFactory.sortBy);
+  const [blogFactorySortDir, setBlogFactorySortDir] = useState<SortDirection>(restoredUiState.blogFactory.sortDir);
   const [selectedBlogFactoryItem, setSelectedBlogFactoryItem] = useState<BlogFactoryItem | null>(null);
   const [isBlogFactoryLoading, setIsBlogFactoryLoading] = useState(false);
   const [isBlogFactoryDetailLoading, setIsBlogFactoryDetailLoading] = useState(false);
   const [isBlogFactoryStatusSaving, setIsBlogFactoryStatusSaving] = useState(false);
   const [isBlogFactoryArticleSaving, setIsBlogFactoryArticleSaving] = useState(false);
-  const [blogFactoryArticleDraft, setBlogFactoryArticleDraft] = useState("");
-  const [blogFactoryArticlePathDraft, setBlogFactoryArticlePathDraft] = useState("");
+  const [blogFactoryArticleDraft, setBlogFactoryArticleDraft] = useState(restoredUiState.blogFactory.articleDraft);
+  const [blogFactoryArticlePathDraft, setBlogFactoryArticlePathDraft] = useState(restoredUiState.blogFactory.articlePathDraft);
   const [blogFactoryArticleError, setBlogFactoryArticleError] = useState<string | null>(null);
   const [hasCopiedBlogFactoryArticle, setHasCopiedBlogFactoryArticle] = useState(false);
   const [blogFactoryError, setBlogFactoryError] = useState<string | null>(null);
   const [blogFactoryStatusError, setBlogFactoryStatusError] = useState<string | null>(null);
   const [blogFactoryRefreshToken, setBlogFactoryRefreshToken] = useState(0);
+  const [todoItems, setTodoItems] = useState<TodoItem[]>([]);
+  const [todoTotal, setTodoTotal] = useState(0);
+  const [todoPage, setTodoPage] = useState(restoredUiState.todos.page);
+  const [todoQuery, setTodoQuery] = useState(restoredUiState.todos.query);
+  const [debouncedTodoQuery, setDebouncedTodoQuery] = useState(restoredUiState.todos.query.trim());
+  const [todoStatus, setTodoStatus] = useState<TodoStatus | "all">(restoredUiState.todos.status);
+  const [selectedTodoId, setSelectedTodoId] = useState<number | null>(restoredUiState.todos.selectedId);
+  const [todoDraft, setTodoDraft] = useState<TodoDraft>(restoredUiState.todos.draft ?? emptyTodoDraft);
+  const [isTodoLoading, setIsTodoLoading] = useState(false);
+  const [isTodoDetailLoading, setIsTodoDetailLoading] = useState(false);
+  const [isTodoSaving, setIsTodoSaving] = useState(false);
+  const [todoError, setTodoError] = useState<string | null>(null);
+  const [todoSaveError, setTodoSaveError] = useState<string | null>(null);
+  const [todoRefreshToken, setTodoRefreshToken] = useState(0);
   const [currentRecordItems, setCurrentRecordItems] = useState<CurrentRecordItem[]>([]);
   const [currentRecordTotal, setCurrentRecordTotal] = useState(0);
-  const [currentRecordPage, setCurrentRecordPage] = useState(1);
-  const [currentRecordQuery, setCurrentRecordQuery] = useState("");
-  const [debouncedCurrentRecordQuery, setDebouncedCurrentRecordQuery] = useState("");
-  const [currentRecordUsername, setCurrentRecordUsername] = useState("");
-  const [currentRecordTypeFilter, setCurrentRecordTypeFilter] = useState("");
-  const [currentRecordWeek, setCurrentRecordWeek] = useState("");
-  const [currentRecordDay, setCurrentRecordDay] = useState("");
-  const [currentRecordLearnLevel, setCurrentRecordLearnLevel] = useState("");
-  const [currentRecordSortBy, setCurrentRecordSortBy] = useState<"id" | "type" | "week" | "day" | "username" | "learn_level">("id");
-  const [currentRecordSortDir, setCurrentRecordSortDir] = useState<"asc" | "desc">("desc");
+  const [currentRecordPage, setCurrentRecordPage] = useState(restoredUiState.currentRecords.page);
+  const [currentRecordQuery, setCurrentRecordQuery] = useState(restoredUiState.currentRecords.query);
+  const [debouncedCurrentRecordQuery, setDebouncedCurrentRecordQuery] = useState(restoredUiState.currentRecords.query.trim());
+  const [currentRecordUsername, setCurrentRecordUsername] = useState(restoredUiState.currentRecords.username);
+  const [currentRecordTypeFilter, setCurrentRecordTypeFilter] = useState(restoredUiState.currentRecords.type);
+  const [currentRecordWeek, setCurrentRecordWeek] = useState(restoredUiState.currentRecords.week);
+  const [currentRecordDay, setCurrentRecordDay] = useState(restoredUiState.currentRecords.day);
+  const [currentRecordLearnLevel, setCurrentRecordLearnLevel] = useState(restoredUiState.currentRecords.learnLevel);
+  const [currentRecordSortBy, setCurrentRecordSortBy] = useState<CurrentRecordSortBy>(restoredUiState.currentRecords.sortBy);
+  const [currentRecordSortDir, setCurrentRecordSortDir] = useState<SortDirection>(restoredUiState.currentRecords.sortDir);
   const [currentRecordOptions, setCurrentRecordOptions] = useState<CurrentRecordOptions>({
     users: [],
     types: [],
@@ -209,7 +323,7 @@ function App() {
     days: buildDayOptions(),
     learn_levels: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
   });
-  const [currentRecordDraft, setCurrentRecordDraft] = useState({ username: "", type: "", content: "" });
+  const [currentRecordDraft, setCurrentRecordDraft] = useState(restoredUiState.currentRecords.draft);
   const [selectedCurrentRecord, setSelectedCurrentRecord] = useState<CurrentRecordItem | null>(null);
   const [isCurrentRecordLoading, setIsCurrentRecordLoading] = useState(false);
   const [isCurrentRecordOptionsLoading, setIsCurrentRecordOptionsLoading] = useState(false);
@@ -228,25 +342,23 @@ function App() {
     min_date: null,
     max_date: null,
   });
-  const [historyPage, setHistoryPage] = useState(1);
-  const [historyQuery, setHistoryQuery] = useState("");
-  const [debouncedHistoryQuery, setDebouncedHistoryQuery] = useState("");
-  const [historyType, setHistoryType] = useState("");
-  const [historyUsername, setHistoryUsername] = useState("");
-  const [historyWeek, setHistoryWeek] = useState("");
-  const [historyDay, setHistoryDay] = useState("");
-  const [historyLearnLevel, setHistoryLearnLevel] = useState("");
-  const [historyVectorStatus, setHistoryVectorStatus] = useState<"all" | "0" | "1">("all");
-  const [historyDateFrom, setHistoryDateFrom] = useState("");
-  const [historyDateTo, setHistoryDateTo] = useState("");
-  const [historySortBy, setHistorySortBy] = useState<"history_date" | "id" | "type" | "username" | "learn_level">(
-    "history_date",
-  );
-  const [historySortDir, setHistorySortDir] = useState<"asc" | "desc">("desc");
+  const [historyPage, setHistoryPage] = useState(restoredUiState.history.page);
+  const [historyQuery, setHistoryQuery] = useState(restoredUiState.history.query);
+  const [debouncedHistoryQuery, setDebouncedHistoryQuery] = useState(restoredUiState.history.query.trim());
+  const [historyType, setHistoryType] = useState(restoredUiState.history.type);
+  const [historyUsername, setHistoryUsername] = useState(restoredUiState.history.username);
+  const [historyWeek, setHistoryWeek] = useState(restoredUiState.history.week);
+  const [historyDay, setHistoryDay] = useState(restoredUiState.history.day);
+  const [historyLearnLevel, setHistoryLearnLevel] = useState(restoredUiState.history.learnLevel);
+  const [historyVectorStatus, setHistoryVectorStatus] = useState<HistoryVectorStatus>(restoredUiState.history.vectorStatus);
+  const [historyDateFrom, setHistoryDateFrom] = useState(restoredUiState.history.dateFrom);
+  const [historyDateTo, setHistoryDateTo] = useState(restoredUiState.history.dateTo);
+  const [historySortBy, setHistorySortBy] = useState<HistorySortBy>(restoredUiState.history.sortBy);
+  const [historySortDir, setHistorySortDir] = useState<SortDirection>(restoredUiState.history.sortDir);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
-  const [historyAskQuestion, setHistoryAskQuestion] = useState("");
-  const [historyAskAnswer, setHistoryAskAnswer] = useState<HistoryAskResponse | null>(null);
+  const [historyAskQuestion, setHistoryAskQuestion] = useState(restoredUiState.historyAsk.question);
+  const [historyAskAnswer, setHistoryAskAnswer] = useState<HistoryAskResponse | null>(restoredUiState.historyAsk.answer);
   const [historyAskError, setHistoryAskError] = useState<string | null>(null);
   const [isHistoryAsking, setIsHistoryAsking] = useState(false);
   const [usageItems, setUsageItems] = useState<LlmUsageSample[]>([]);
@@ -258,12 +370,16 @@ function App() {
 
   useEffect(() => {
     const handleUnauthorized = () => {
+      clearStoredUiState();
       setApiKey(null);
       setItems([]);
       setSelectedId(null);
       setBlogFactoryItems([]);
       setBlogFactoryTotal(0);
       setSelectedBlogFactoryItem(null);
+      setTodoItems([]);
+      setTodoTotal(0);
+      setSelectedTodoId(null);
       setCurrentRecordItems([]);
       setCurrentRecordTotal(0);
       setSelectedCurrentRecord(null);
@@ -279,6 +395,127 @@ function App() {
   }, []);
 
   useEffect(() => {
+    if (!apiKey) return;
+
+    writeStoredUiState({
+      activeView,
+      workbench: {
+        query,
+        statusFilter,
+        page,
+        selectedId,
+        draft,
+      },
+      factory: {
+        query: factoryQuery,
+        page: factoryPage,
+        selectedId: factorySelectedId,
+        task: factoryTask,
+      },
+      blogFactory: {
+        query: blogFactoryQuery,
+        page: blogFactoryPage,
+        status: blogFactoryStatus,
+        topic: blogFactoryTopic,
+        knowledgeId: blogFactoryKnowledgeId,
+        sortBy: blogFactorySortBy,
+        sortDir: blogFactorySortDir,
+        selectedItemId: selectedBlogFactoryItem?.id ?? restoredBlogFactorySelectionRef.current,
+        articleDraft: blogFactoryArticleDraft,
+        articlePathDraft: blogFactoryArticlePathDraft,
+      },
+      todos: {
+        query: todoQuery,
+        page: todoPage,
+        status: todoStatus,
+        selectedId: selectedTodoId,
+        draft: selectedTodoId ? todoDraft : null,
+      },
+      currentRecords: {
+        query: currentRecordQuery,
+        page: currentRecordPage,
+        username: currentRecordUsername,
+        type: currentRecordTypeFilter,
+        week: currentRecordWeek,
+        day: currentRecordDay,
+        learnLevel: currentRecordLearnLevel,
+        sortBy: currentRecordSortBy,
+        sortDir: currentRecordSortDir,
+        draft: currentRecordDraft,
+      },
+      history: {
+        query: historyQuery,
+        page: historyPage,
+        type: historyType,
+        username: historyUsername,
+        week: historyWeek,
+        day: historyDay,
+        learnLevel: historyLearnLevel,
+        vectorStatus: historyVectorStatus,
+        dateFrom: historyDateFrom,
+        dateTo: historyDateTo,
+        sortBy: historySortBy,
+        sortDir: historySortDir,
+      },
+      historyAsk: {
+        question: historyAskQuestion,
+        answer: historyAskAnswer,
+      },
+    });
+  }, [
+    activeView,
+    apiKey,
+    blogFactoryArticleDraft,
+    blogFactoryArticlePathDraft,
+    blogFactoryKnowledgeId,
+    blogFactoryPage,
+    blogFactoryQuery,
+    blogFactorySortBy,
+    blogFactorySortDir,
+    blogFactoryStatus,
+    blogFactoryTopic,
+    currentRecordDraft,
+    currentRecordDay,
+    currentRecordLearnLevel,
+    currentRecordPage,
+    currentRecordQuery,
+    currentRecordSortBy,
+    currentRecordSortDir,
+    currentRecordTypeFilter,
+    currentRecordUsername,
+    currentRecordWeek,
+    draft,
+    factoryPage,
+    factoryQuery,
+    factorySelectedId,
+    factoryTask,
+    historyAskAnswer,
+    historyAskQuestion,
+    historyDateFrom,
+    historyDateTo,
+    historyDay,
+    historyLearnLevel,
+    historyPage,
+    historyQuery,
+    historySortBy,
+    historySortDir,
+    historyType,
+    historyUsername,
+    historyVectorStatus,
+    historyWeek,
+    page,
+    query,
+    selectedBlogFactoryItem?.id,
+    selectedId,
+    statusFilter,
+    todoDraft,
+    todoPage,
+    todoQuery,
+    todoStatus,
+    selectedTodoId,
+  ]);
+
+  useEffect(() => {
     if (selectedId !== null) return;
 
     if (isEmptyDraft(draft)) {
@@ -291,14 +528,16 @@ function App() {
 
   useEffect(() => {
     if (!apiKey || activeView !== "workbench") return;
+    const nextQuery = query.trim();
+    if (nextQuery === debouncedQuery) return;
 
     const timer = window.setTimeout(() => {
-      setDebouncedQuery(query.trim());
+      setDebouncedQuery(nextQuery);
       setPage(1);
     }, 320);
 
     return () => window.clearTimeout(timer);
-  }, [apiKey, query]);
+  }, [activeView, apiKey, debouncedQuery, query]);
 
   useEffect(() => {
     if (!apiKey) return;
@@ -334,14 +573,16 @@ function App() {
 
   useEffect(() => {
     if (!apiKey) return;
+    const nextQuery = factoryQuery.trim();
+    if (nextQuery === debouncedFactoryQuery) return;
 
     const timer = window.setTimeout(() => {
-      setDebouncedFactoryQuery(factoryQuery.trim());
+      setDebouncedFactoryQuery(nextQuery);
       setFactoryPage(1);
     }, 320);
 
     return () => window.clearTimeout(timer);
-  }, [apiKey, factoryQuery]);
+  }, [apiKey, debouncedFactoryQuery, factoryQuery]);
 
   useEffect(() => {
     if (!apiKey || activeView !== "factory") return;
@@ -386,14 +627,16 @@ function App() {
 
   useEffect(() => {
     if (!apiKey) return;
+    const nextQuery = blogFactoryQuery.trim();
+    if (nextQuery === debouncedBlogFactoryQuery) return;
 
     const timer = window.setTimeout(() => {
-      setDebouncedBlogFactoryQuery(blogFactoryQuery.trim());
+      setDebouncedBlogFactoryQuery(nextQuery);
       setBlogFactoryPage(1);
     }, 320);
 
     return () => window.clearTimeout(timer);
-  }, [apiKey, blogFactoryQuery]);
+  }, [apiKey, blogFactoryQuery, debouncedBlogFactoryQuery]);
 
   useEffect(() => {
     if (!apiKey || activeView !== "blogFactory") return;
@@ -416,11 +659,13 @@ function App() {
         setBlogFactoryTotal(data.total);
         setBlogFactoryError(null);
         setSelectedBlogFactoryItem((current) => {
-          const visibleItem = current ? data.items.find((item) => item.id === current.id) : null;
+          const targetItemId = current?.id ?? restoredBlogFactorySelectionRef.current;
+          const visibleItem = targetItemId ? data.items.find((item) => item.id === targetItemId) : null;
+          restoredBlogFactorySelectionRef.current = null;
           if (current && visibleItem) {
             return { ...current, ...visibleItem, article_markdown: current.article_markdown };
           }
-          return data.items[0] ?? null;
+          return visibleItem ?? data.items[0] ?? null;
         });
       })
       .catch((error: Error) => {
@@ -447,6 +692,57 @@ function App() {
     blogFactoryTopic,
     debouncedBlogFactoryQuery,
   ]);
+
+  useEffect(() => {
+    if (!apiKey) return;
+    const nextQuery = todoQuery.trim();
+    if (nextQuery === debouncedTodoQuery) return;
+
+    const timer = window.setTimeout(() => {
+      setDebouncedTodoQuery(nextQuery);
+      setTodoPage(1);
+    }, 320);
+
+    return () => window.clearTimeout(timer);
+  }, [apiKey, debouncedTodoQuery, todoQuery]);
+
+  useEffect(() => {
+    if (!apiKey || activeView !== "todos") return;
+
+    let mounted = true;
+    setIsTodoLoading(true);
+    fetchTodos({
+      query: debouncedTodoQuery,
+      limit: TODO_PAGE_SIZE,
+      offset: (todoPage - 1) * TODO_PAGE_SIZE,
+      status: todoStatus === "all" ? undefined : todoStatus,
+    })
+      .then((data) => {
+        if (!mounted) return;
+        setTodoItems(data.items);
+        setTodoTotal(data.total);
+        setTodoError(null);
+
+        setSelectedTodoId((currentSelectedId) => {
+          if (currentSelectedId && data.items.some((item) => item.id === currentSelectedId)) return currentSelectedId;
+          const nextItem = data.items[0] ?? null;
+          setTodoDraft(nextItem ? todoItemToDraft(nextItem) : emptyTodoDraft);
+          return nextItem?.id ?? null;
+        });
+      })
+      .catch((error: Error) => {
+        if (!mounted) return;
+        setTodoError(error.message);
+      })
+      .finally(() => {
+        if (!mounted) return;
+        setIsTodoLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [activeView, apiKey, debouncedTodoQuery, todoPage, todoRefreshToken, todoStatus]);
 
   useEffect(() => {
     if (!apiKey || activeView !== "currentRecords") return;
@@ -484,14 +780,16 @@ function App() {
 
   useEffect(() => {
     if (!apiKey) return;
+    const nextQuery = currentRecordQuery.trim();
+    if (nextQuery === debouncedCurrentRecordQuery) return;
 
     const timer = window.setTimeout(() => {
-      setDebouncedCurrentRecordQuery(currentRecordQuery.trim());
+      setDebouncedCurrentRecordQuery(nextQuery);
       setCurrentRecordPage(1);
     }, 320);
 
     return () => window.clearTimeout(timer);
-  }, [apiKey, currentRecordQuery]);
+  }, [apiKey, currentRecordQuery, debouncedCurrentRecordQuery]);
 
   useEffect(() => {
     if (!apiKey || activeView !== "currentRecords") return;
@@ -545,14 +843,16 @@ function App() {
 
   useEffect(() => {
     if (!apiKey) return;
+    const nextQuery = historyQuery.trim();
+    if (nextQuery === debouncedHistoryQuery) return;
 
     const timer = window.setTimeout(() => {
-      setDebouncedHistoryQuery(historyQuery.trim());
+      setDebouncedHistoryQuery(nextQuery);
       setHistoryPage(1);
     }, 320);
 
     return () => window.clearTimeout(timer);
-  }, [apiKey, historyQuery]);
+  }, [apiKey, debouncedHistoryQuery, historyQuery]);
 
   useEffect(() => {
     if (!apiKey || activeView !== "history") return;
@@ -648,6 +948,19 @@ function App() {
   }, [activeView, apiKey, usageRefreshToken]);
 
   useEffect(() => {
+    if (restoredBlogFactoryArticleDraftRef.current && !selectedBlogFactoryItem) return;
+
+    if (
+      restoredBlogFactoryArticleDraftRef.current &&
+      selectedBlogFactoryItem?.id === restoredUiState.blogFactory.selectedItemId
+    ) {
+      restoredBlogFactoryArticleDraftRef.current = false;
+      setBlogFactoryArticleError(null);
+      setHasCopiedBlogFactoryArticle(false);
+      return;
+    }
+
+    restoredBlogFactoryArticleDraftRef.current = false;
     setBlogFactoryArticleDraft(selectedBlogFactoryItem?.article_markdown ?? "");
     setBlogFactoryArticlePathDraft(selectedBlogFactoryItem?.article_file_path ?? "");
     setBlogFactoryArticleError(null);
@@ -675,6 +988,25 @@ function App() {
 
     try {
       if (selectedId === null) {
+        if (isTodoEntry) {
+          const created = await createTodo({
+            title: draft.question,
+            content: draft.answer,
+            source: draft.source,
+            topic_tag: draft.topic_tag,
+            todo_status: "待处理",
+          });
+          setDraft(emptyDraft);
+          clearStoredNewDraft();
+          setIsTodoEntry(false);
+          setTodoDraft(todoItemToDraft(created));
+          setSelectedTodoId(created.id);
+          setTodoPage(1);
+          setTodoRefreshToken((current) => current + 1);
+          setActiveView("todos");
+          return;
+        }
+
         const created = await createKnowledge(draft);
         if (page === 1) {
           setItems((current) => [created, ...current].slice(0, PAGE_SIZE));
@@ -765,6 +1097,7 @@ function App() {
   function handleNewEntry() {
     setSelectedId(null);
     setDraft(readStoredNewDraft() ?? emptyDraft);
+    setIsTodoEntry(false);
     setSaveError(null);
   }
 
@@ -776,11 +1109,13 @@ function App() {
     setQuery("");
     setSelectedId(null);
     setDraft(readStoredNewDraft() ?? emptyDraft);
+    setIsTodoEntry(false);
   }
 
   function handleLogout() {
     clearStoredApiKey();
     clearStoredNewDraft();
+    clearStoredUiState();
     setApiKey(null);
     setItems([]);
     setSelectedId(null);
@@ -791,6 +1126,10 @@ function App() {
     setBlogFactoryItems([]);
     setBlogFactoryTotal(0);
     setSelectedBlogFactoryItem(null);
+    setTodoItems([]);
+    setTodoTotal(0);
+    setSelectedTodoId(null);
+    setTodoDraft(emptyTodoDraft);
     setCurrentRecordItems([]);
     setCurrentRecordTotal(0);
     setSelectedCurrentRecord(null);
@@ -916,6 +1255,42 @@ function App() {
     }
   }
 
+  async function handleSelectTodo(item: TodoItem) {
+    setSelectedTodoId(item.id);
+    setTodoDraft(todoItemToDraft(item));
+    setTodoSaveError(null);
+    setIsTodoDetailLoading(true);
+
+    try {
+      const detail = await getTodo(item.id);
+      setTodoDraft(todoItemToDraft(detail));
+      setTodoItems((current) => current.map((entry) => (entry.id === detail.id ? detail : entry)));
+      setTodoError(null);
+    } catch (error) {
+      setTodoError(error instanceof Error ? error.message : "读取待办事项失败，请稍后重试。");
+    } finally {
+      setIsTodoDetailLoading(false);
+    }
+  }
+
+  async function handleUpdateTodo(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (selectedTodoId === null || isTodoSaving || !todoDraft.title.trim() || !todoDraft.content.trim()) return;
+
+    setIsTodoSaving(true);
+    setTodoSaveError(null);
+    try {
+      const updated = await updateTodo(selectedTodoId, todoDraft);
+      setTodoDraft(todoItemToDraft(updated));
+      setTodoItems((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+      setTodoRefreshToken((current) => current + 1);
+    } catch (error) {
+      setTodoSaveError(error instanceof Error ? error.message : "待办事项保存失败，请稍后重试。");
+    } finally {
+      setIsTodoSaving(false);
+    }
+  }
+
   async function handleCopyBlogFactoryArticle() {
     const markdown = selectedBlogFactoryItem?.article_markdown ?? blogFactoryArticleDraft;
     if (!markdown.trim()) return;
@@ -1009,8 +1384,10 @@ function App() {
       ? "可信知识录入工作台"
       : activeView === "factory"
         ? "可信知识加工厂"
-        : activeView === "blogFactory"
-          ? "博客工厂记录"
+      : activeView === "blogFactory"
+        ? "博客工厂记录"
+        : activeView === "todos"
+          ? "待办事项"
           : activeView === "currentRecords"
             ? "当前记录录入"
             : activeView === "history"
@@ -1023,8 +1400,10 @@ function App() {
       ? "Trusted Knowledge"
       : activeView === "factory"
         ? "Blog Factory"
-        : activeView === "blogFactory"
-          ? "AI Blog Factory"
+      : activeView === "blogFactory"
+        ? "AI Blog Factory"
+        : activeView === "todos"
+          ? "AI Todo Items"
           : activeView === "currentRecords"
             ? "Current Records"
             : activeView === "history"
@@ -1049,6 +1428,8 @@ function App() {
                   ? factoryQuery
                   : activeView === "blogFactory"
                     ? blogFactoryQuery
+                    : activeView === "todos"
+                      ? todoQuery
                     : activeView === "currentRecords"
                       ? currentRecordQuery
                       : activeView === "history"
@@ -1064,6 +1445,8 @@ function App() {
                 ? setFactoryQuery
                 : activeView === "blogFactory"
                   ? setBlogFactoryQuery
+                  : activeView === "todos"
+                    ? setTodoQuery
                   : activeView === "currentRecords"
                     ? setCurrentRecordQuery
                     : activeView === "history"
@@ -1134,6 +1517,34 @@ function App() {
               onSaveArticle={handleSaveBlogFactoryArticle}
               onSelect={handleSelectBlogFactoryItem}
               onStatusChange={handleUpdateBlogFactoryStatus}
+            />
+          ) : activeView === "todos" ? (
+            <TodoWorkspace
+              items={todoItems}
+              total={todoTotal}
+              page={todoPage}
+              selectedId={selectedTodoId}
+              draft={todoDraft}
+              status={todoStatus}
+              isLoading={isTodoLoading}
+              isDetailLoading={isTodoDetailLoading}
+              isSaving={isTodoSaving}
+              loadError={todoError}
+              saveError={todoSaveError}
+              onClearFilters={() => {
+                setTodoPage(1);
+                setTodoQuery("");
+                setDebouncedTodoQuery("");
+                setTodoStatus("all");
+              }}
+              onDraftChange={setTodoDraft}
+              onPageChange={setTodoPage}
+              onSelect={handleSelectTodo}
+              onStatusFilterChange={(nextStatus) => {
+                setTodoPage(1);
+                setTodoStatus(nextStatus);
+              }}
+              onSubmit={handleUpdateTodo}
             />
           ) : activeView === "currentRecords" ? (
             <CurrentRecordsWorkspace
@@ -1260,8 +1671,10 @@ function App() {
                 saveError={saveError}
                 trustScore={trustScore}
                 hasSensitiveSignal={hasSensitiveSignal}
+                isTodoEntry={isTodoEntry}
                 onDraftChange={setDraft}
                 onDelete={handleRequestDelete}
+                onTodoEntryChange={setIsTodoEntry}
                 onNewEntry={handleNewEntry}
                 onSubmit={handleSubmit}
               />
@@ -1344,6 +1757,7 @@ function Sidebar({
     { icon: BookOpenCheck, label: "录入工作台", view: "workbench" as const },
     { icon: FlaskConical, label: "知识加工厂", view: "factory" as const },
     { icon: ClipboardList, label: "博客工厂记录", view: "blogFactory" as const },
+    { icon: ClipboardCheck, label: "待办事项", view: "todos" as const },
     { icon: FilePlus2, label: "当前记录录入", view: "currentRecords" as const },
     { icon: History, label: "历史查询", view: "history" as const },
     { icon: Bot, label: "AI 问数", view: "historyAsk" as const },
@@ -1423,6 +1837,7 @@ function Topbar({
     { icon: BookOpenCheck, label: "录入工作台", view: "workbench" as const },
     { icon: FlaskConical, label: "知识加工厂", view: "factory" as const },
     { icon: ClipboardList, label: "博客工厂", view: "blogFactory" as const },
+    { icon: ClipboardCheck, label: "待办事项", view: "todos" as const },
     { icon: FilePlus2, label: "当前记录", view: "currentRecords" as const },
     { icon: History, label: "历史查询", view: "history" as const },
     { icon: Bot, label: "AI 问数", view: "historyAsk" as const },
@@ -1479,6 +1894,8 @@ function Topbar({
                   ? "搜索历史内容"
                   : activeView === "blogFactory"
                     ? "搜索任务、问题或答案快照"
+                    : activeView === "todos"
+                      ? "搜索待办标题、内容或标签"
                     : activeView === "currentRecords"
                       ? "搜索类型或当前内容"
                       : "搜索问题、来源或标签"
@@ -1802,8 +2219,10 @@ function KnowledgeForm({
   saveError,
   trustScore,
   hasSensitiveSignal,
+  isTodoEntry,
   onDraftChange,
   onDelete,
+  onTodoEntryChange,
   onNewEntry,
   onSubmit,
 }: {
@@ -1816,8 +2235,10 @@ function KnowledgeForm({
   saveError: string | null;
   trustScore: number;
   hasSensitiveSignal: boolean;
+  isTodoEntry: boolean;
   onDraftChange: (draft: KnowledgeDraft) => void;
   onDelete: () => void;
+  onTodoEntryChange: (isTodoEntry: boolean) => void;
   onNewEntry: () => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
 }) {
@@ -1855,6 +2276,23 @@ function KnowledgeForm({
       </div>
 
       <form className="space-y-4" onSubmit={onSubmit}>
+        {!isEditing ? (
+          <label className="flex items-start gap-3 rounded-lg border border-white/10 bg-white/[0.028] px-3 py-3">
+            <input
+              checked={isTodoEntry}
+              className="mt-1 h-4 w-4 rounded border-white/20 bg-white/[0.035] text-mint-300 accent-[#7dd3c7]"
+              type="checkbox"
+              onChange={(event) => onTodoEntryChange(event.target.checked)}
+            />
+            <span className="min-w-0">
+              <span className="block text-sm font-medium text-slate-200">这是待办事项</span>
+              <span className="mt-1 block text-xs leading-5 text-slate-500">
+                勾选后本次新增会写入待办事项表，不进入可信知识库。
+              </span>
+            </span>
+          </label>
+        ) : null}
+
         <Field label="问题 / 标题" icon={<Sparkles size={16} />}>
           <input
             value={draft.question}
@@ -1874,7 +2312,7 @@ function KnowledgeForm({
           />
         </Field>
 
-        <div className="grid gap-4 md:grid-cols-[1fr_1fr_220px]">
+        <div className={`grid gap-4 ${isTodoEntry ? "md:grid-cols-2" : "md:grid-cols-[1fr_1fr_220px]"}`}>
           <Field label="来源" icon={<Database size={16} />}>
             <input
               value={draft.source}
@@ -1893,12 +2331,14 @@ function KnowledgeForm({
               maxLength={100}
             />
           </Field>
-          <Field label="状态" icon={<CheckCircle2 size={16} />}>
-            <StatusSegmentedControl
-              value={draft.blog_status}
-              onChange={(blog_status) => onDraftChange({ ...draft, blog_status })}
-            />
-          </Field>
+          {!isTodoEntry ? (
+            <Field label="状态" icon={<CheckCircle2 size={16} />}>
+              <StatusSegmentedControl
+                value={draft.blog_status}
+                onChange={(blog_status) => onDraftChange({ ...draft, blog_status })}
+              />
+            </Field>
+          ) : null}
         </div>
 
         {hasSensitiveSignal ? (
@@ -1939,7 +2379,9 @@ function KnowledgeForm({
               ? "Validating · Writing to Oracle"
               : isEditing
                 ? "保存修改"
-                : "提交到知识库"}
+                : isTodoEntry
+                  ? "提交到待办事项"
+                  : "提交到知识库"}
           </button>
 
           {isEditing ? (
@@ -3144,6 +3586,296 @@ function DetailBlock({ title, value, compact = false }: { title: string; value: 
   );
 }
 
+function TodoWorkspace({
+  items,
+  total,
+  page,
+  selectedId,
+  draft,
+  status,
+  isLoading,
+  isDetailLoading,
+  isSaving,
+  loadError,
+  saveError,
+  onDraftChange,
+  onClearFilters,
+  onPageChange,
+  onSelect,
+  onStatusFilterChange,
+  onSubmit,
+}: {
+  items: TodoItem[];
+  total: number;
+  page: number;
+  selectedId: number | null;
+  draft: TodoDraft;
+  status: TodoStatus | "all";
+  isLoading: boolean;
+  isDetailLoading: boolean;
+  isSaving: boolean;
+  loadError: string | null;
+  saveError: string | null;
+  onDraftChange: (draft: TodoDraft) => void;
+  onClearFilters: () => void;
+  onPageChange: (page: number) => void;
+  onSelect: (item: TodoItem) => void;
+  onStatusFilterChange: (status: TodoStatus | "all") => void;
+  onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+}) {
+  const totalPages = Math.max(1, Math.ceil(total / TODO_PAGE_SIZE));
+  const rangeStart = total === 0 ? 0 : (page - 1) * TODO_PAGE_SIZE + 1;
+  const rangeEnd = Math.min(page * TODO_PAGE_SIZE, total);
+  const statusOptions: Array<{ label: string; value: TodoStatus | "all" }> = [
+    { label: "全部状态", value: "all" },
+    { label: "待处理", value: "待处理" },
+    { label: "处理中", value: "处理中" },
+    { label: "已完成", value: "已完成" },
+  ];
+  const canSave = selectedId !== null && draft.title.trim().length > 0 && draft.content.trim().length > 0 && !isSaving;
+
+  return (
+    <div className="grid flex-1 gap-4 px-4 pb-4 pt-2 xl:grid-cols-[minmax(420px,1fr)_minmax(360px,0.78fr)]">
+      <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/72 p-4 shadow-soft-glow backdrop-blur-xl">
+        <div className="mb-5 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div>
+            <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
+              <ClipboardCheck size={17} />
+              AI_TODO_ITEMS
+            </div>
+            <h2 className="text-xl font-semibold text-slate-50">待办事项列表</h2>
+          </div>
+          <div className="rounded-lg border border-white/10 bg-white/[0.035] px-3 py-2 text-sm text-slate-300">
+            {total} 条匹配
+          </div>
+        </div>
+
+        <div className="mb-4 grid gap-3 sm:grid-cols-[minmax(0,240px)_auto]">
+          <Field label="待办状态" icon={<CheckCircle2 size={16} />}>
+            <select
+              className="control"
+              value={status}
+              onChange={(event) => onStatusFilterChange(event.target.value as TodoStatus | "all")}
+            >
+              {statusOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <button
+            className="mt-7 h-11 rounded-lg border border-white/10 bg-white/[0.035] px-4 text-sm font-medium text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300"
+            type="button"
+            onClick={onClearFilters}
+          >
+            清空条件
+          </button>
+        </div>
+
+        {isLoading ? (
+          <LoadingStack />
+        ) : loadError ? (
+          <div className="rounded-lg border border-amberline/25 bg-amberline/10 p-4">
+            <div className="mb-2 flex items-center gap-2 text-sm font-medium text-amberline">
+              <TriangleAlert size={16} />
+              待办事项读取失败
+            </div>
+            <p className="text-sm leading-6 text-amber-100/80">{loadError}</p>
+          </div>
+        ) : items.length === 0 ? (
+          <div className="grid min-h-[260px] place-items-center rounded-lg border border-white/10 bg-white/[0.025] p-6 text-center">
+            <div>
+              <ClipboardCheck className="mx-auto mb-3 text-slate-600" size={36} />
+              <div className="mb-1 font-medium text-slate-300">没有匹配的待办事项</div>
+              <p className="text-sm text-slate-500">在录入工作台勾选待办事项后，这里会显示记录。</p>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {items.map((item) => (
+              <article
+                key={item.id}
+                className={`cursor-pointer rounded-lg border bg-white/[0.028] p-4 transition ${
+                  selectedId === item.id ? "border-mint-300/45 bg-mint-300/[0.055]" : "border-white/10 hover:border-white/18"
+                }`}
+                role="button"
+                tabIndex={0}
+                onClick={() => onSelect(item)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onSelect(item);
+                  }
+                }}
+              >
+                <div className="mb-3 flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                      <span>#{item.id}</span>
+                      <span>{formatHistoryDate(item.created_at)}</span>
+                      {item.updated_at ? <span>更新 {formatHistoryDate(item.updated_at)}</span> : null}
+                    </div>
+                    <h3 className="line-clamp-2 text-sm font-semibold leading-6 text-slate-50">{item.title}</h3>
+                  </div>
+                  <span className={`shrink-0 rounded-full border px-2.5 py-1 text-xs ${todoStatusStyles[item.todo_status]}`}>
+                    {item.todo_status}
+                  </span>
+                </div>
+                <p className="line-clamp-3 text-sm leading-6 text-slate-400">{item.content}</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {item.source ? (
+                    <span className="rounded-md border border-white/8 bg-white/[0.035] px-2 py-1 text-xs text-slate-400">
+                      {item.source}
+                    </span>
+                  ) : null}
+                  {item.topic_tag ? (
+                    <span className="rounded-md border border-white/8 bg-white/[0.035] px-2 py-1 text-xs text-slate-400">
+                      {item.topic_tag}
+                    </span>
+                  ) : null}
+                </div>
+              </article>
+            ))}
+
+            <div className="flex flex-col gap-3 rounded-lg border border-white/8 bg-white/[0.025] px-3 py-3 text-sm text-slate-400 sm:flex-row sm:items-center sm:justify-between">
+              <span>
+                {rangeStart}-{rangeEnd} / {total}
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  className="grid h-9 w-9 place-items-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600"
+                  disabled={page <= 1}
+                  title="上一页"
+                  type="button"
+                  onClick={() => onPageChange(Math.max(1, page - 1))}
+                >
+                  <ChevronLeft size={17} />
+                </button>
+                <span className="min-w-16 text-center text-xs text-slate-500">
+                  {page} / {totalPages}
+                </span>
+                <button
+                  className="grid h-9 w-9 place-items-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600"
+                  disabled={page >= totalPages}
+                  title="下一页"
+                  type="button"
+                  onClick={() => onPageChange(Math.min(totalPages, page + 1))}
+                >
+                  <ChevronRight size={17} />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </section>
+
+      <aside className="min-w-0 rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
+        <div className="mb-5 flex items-start justify-between gap-4">
+          <div>
+            <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
+              <Pencil size={17} />
+              Todo Detail
+            </div>
+            <h2 className="text-lg font-semibold text-slate-50">编辑待办事项</h2>
+          </div>
+          {isDetailLoading ? <Loader2 className="mt-1 animate-spin text-mint-300" size={17} /> : null}
+        </div>
+
+        {selectedId !== null ? (
+          <form className="space-y-4" onSubmit={onSubmit}>
+            <Field label="标题" icon={<Sparkles size={16} />}>
+              <input
+                className="control"
+                maxLength={4000}
+                value={draft.title}
+                onChange={(event) => onDraftChange({ ...draft, title: event.target.value })}
+                placeholder="待办事项标题"
+              />
+            </Field>
+
+            <Field label="内容" icon={<FileText size={16} />}>
+              <textarea
+                className="control min-h-[260px] resize-none leading-7"
+                value={draft.content}
+                onChange={(event) => onDraftChange({ ...draft, content: event.target.value })}
+                placeholder="补充待办事项背景、验收标准或下一步动作。"
+              />
+            </Field>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field label="来源" icon={<Database size={16} />}>
+                <input
+                  className="control"
+                  maxLength={200}
+                  value={draft.source}
+                  onChange={(event) => onDraftChange({ ...draft, source: event.target.value })}
+                  placeholder="manual / internal"
+                />
+              </Field>
+              <Field label="标签" icon={<Tags size={16} />}>
+                <input
+                  className="control"
+                  maxLength={100}
+                  value={draft.topic_tag}
+                  onChange={(event) => onDraftChange({ ...draft, topic_tag: event.target.value })}
+                  placeholder="APEX,TODO"
+                />
+              </Field>
+            </div>
+
+            <Field label="状态" icon={<CheckCircle2 size={16} />}>
+              <div className="grid h-[46px] grid-cols-3 gap-1 rounded-lg border border-white/10 bg-white/[0.035] p-1">
+                {(["待处理", "处理中", "已完成"] as TodoStatus[]).map((nextStatus) => {
+                  const active = draft.todo_status === nextStatus;
+                  return (
+                    <button
+                      key={nextStatus}
+                      className={`min-w-0 rounded-md border px-2 text-sm font-medium transition ${
+                        active
+                          ? todoStatusStyles[nextStatus]
+                          : "border-transparent text-slate-500 hover:border-white/10 hover:bg-white/[0.035] hover:text-slate-200"
+                      }`}
+                      type="button"
+                      onClick={() => onDraftChange({ ...draft, todo_status: nextStatus })}
+                    >
+                      {nextStatus}
+                    </button>
+                  );
+                })}
+              </div>
+            </Field>
+
+            {saveError ? (
+              <div className="flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100">
+                <TriangleAlert className="mt-0.5 shrink-0 text-red-300" size={17} />
+                <span>{saveError}</span>
+              </div>
+            ) : null}
+
+            <button
+              className="flex h-12 w-full items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
+              disabled={!canSave}
+              type="submit"
+            >
+              {isSaving ? <Loader2 className="animate-spin" size={18} /> : <Pencil size={18} />}
+              {isSaving ? "保存中" : "保存待办事项"}
+            </button>
+          </form>
+        ) : (
+          <div className="grid min-h-[420px] place-items-center rounded-lg border border-white/10 bg-white/[0.025] p-6 text-center">
+            <div>
+              <ClipboardCheck className="mx-auto mb-3 text-slate-600" size={36} />
+              <div className="mb-1 font-medium text-slate-300">选择一条待办事项</div>
+              <p className="text-sm leading-6 text-slate-500">右侧会显示完整内容，并允许编辑内容和状态。</p>
+            </div>
+          </div>
+        )}
+      </aside>
+    </div>
+  );
+}
+
 function CurrentRecordsWorkspace({
   items,
   total,
@@ -4235,7 +4967,7 @@ function LlmUsageDashboard({
               <MetricTile
                 icon={<CalendarClock size={17} />}
                 label={hasRemainingBudget ? "本周期状态" : "下个周期可用"}
-                value={hasRemainingBudget ? "可用中" : formatResetDate(readyAt, RESET_DISPLAY_TIME_ZONE)}
+                value={hasRemainingBudget ? "可用中" : formatResetDate(readyAt)}
                 detail={
                   hasRemainingBudget
                     ? `${formatAmount(latest.remaining_budget)} 额度剩余`
@@ -4357,9 +5089,9 @@ function LlmUsageDashboard({
             <div className="mb-4 rounded-lg border border-mint-300/20 bg-mint-300/8 p-4">
               <div className="mb-1 text-xs uppercase tracking-[0.18em] text-mint-300/70">NEXT_RESET_AT</div>
               <div className="text-lg font-semibold leading-7 text-mint-100">
-                {formatResetDate(resetAt, RESET_SOURCE_TIME_ZONE)}
+                {formatResetDate(resetAt)}
               </div>
-              <div className="mt-2 text-sm text-mint-100/75">官方重置时间 · GMT</div>
+              <div className="mt-2 text-sm text-mint-100/75">UTC 换算 · Asia/Shanghai</div>
             </div>
 
             {hasRemainingBudget ? (
@@ -4374,7 +5106,7 @@ function LlmUsageDashboard({
               <div className="mb-4 rounded-lg border border-white/10 bg-white/[0.028] p-4">
                 <div className="mb-1 text-xs uppercase tracking-[0.18em] text-slate-500">NEXT_CYCLE_READY</div>
                 <div className="text-lg font-semibold leading-7 text-slate-100">
-                  {formatResetDate(readyAt, RESET_DISPLAY_TIME_ZONE)}
+                  {formatResetDate(readyAt)}
                 </div>
                 <div className="mt-2 text-sm text-slate-500">{formatResetDistance(readyAt, "可用")}</div>
               </div>
@@ -4551,37 +5283,34 @@ function formatHistoryDate(value: string | null) {
 
 function formatDateTime(value: string | null) {
   if (!value) return "未记录";
-  const date = parseUtcDate(value);
+  const date = parseServerLocalDate(value);
   if (!date || Number.isNaN(date.getTime())) return "未记录";
   return new Intl.DateTimeFormat("zh-CN", {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
-    timeZone: RESET_DISPLAY_TIME_ZONE,
-    timeZoneName: "short",
   }).format(date);
 }
 
 function formatTimeOnly(value: string | null) {
   if (!value) return "--:--";
-  const date = parseUtcDate(value);
+  const date = parseServerLocalDate(value);
   if (!date || Number.isNaN(date.getTime())) return "--:--";
   return new Intl.DateTimeFormat("zh-CN", {
     hour: "2-digit",
     minute: "2-digit",
-    timeZone: RESET_DISPLAY_TIME_ZONE,
   }).format(date);
 }
 
-function formatResetDate(value: Date | null, timeZone?: string) {
+function formatResetDate(value: Date | null) {
   if (!value || Number.isNaN(value.getTime())) return "未记录";
   return new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai",
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
-    ...(timeZone ? { timeZone, timeZoneName: "short" } : {}),
   }).format(value);
 }
 
@@ -4627,10 +5356,16 @@ function getTrendBarHeight(percent: number) {
   return Math.max(4, percent);
 }
 
+function parseServerLocalDate(value: string | null) {
+  if (!value) return null;
+  return new Date(value.replace(" ", "T"));
+}
+
 function parseUtcDate(value: string | null) {
   if (!value) return null;
-  const hasTimeZone = /(?:Z|[+-]\d{2}:?\d{2})$/.test(value);
-  return new Date(hasTimeZone ? value : `${value.replace(" ", "T")}Z`);
+  const normalized = value.trim().replace(" ", "T");
+  const hasTimeZone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(normalized);
+  return new Date(hasTimeZone ? normalized : `${normalized}Z`);
 }
 
 function getResetReadyAt(resetAt: Date | null) {
@@ -4818,6 +5553,16 @@ function itemToDraft(item: KnowledgeItem): KnowledgeDraft {
   };
 }
 
+function todoItemToDraft(item: TodoItem): TodoDraft {
+  return {
+    title: item.title,
+    content: item.content,
+    source: item.source ?? "",
+    topic_tag: item.topic_tag ?? "",
+    todo_status: item.todo_status,
+  };
+}
+
 function readStoredNewDraft(): KnowledgeDraft | null {
   try {
     const value = window.localStorage.getItem(NEW_KNOWLEDGE_DRAFT_STORAGE_KEY);
@@ -4843,12 +5588,270 @@ function clearStoredNewDraft() {
   window.localStorage.removeItem(NEW_KNOWLEDGE_DRAFT_STORAGE_KEY);
 }
 
+function readStoredUiState(): StoredUiState {
+  try {
+    const value = window.localStorage.getItem(UI_STATE_STORAGE_KEY);
+    if (!value) return buildDefaultUiState();
+
+    const stored = JSON.parse(value) as unknown;
+    if (!isPlainRecord(stored)) return buildDefaultUiState();
+
+    const defaults = buildDefaultUiState();
+    const workbench = readRecord(stored.workbench);
+    const factory = readRecord(stored.factory);
+    const blogFactory = readRecord(stored.blogFactory);
+    const todos = readRecord(stored.todos);
+    const currentRecords = readRecord(stored.currentRecords);
+    const history = readRecord(stored.history);
+    const historyAsk = readRecord(stored.historyAsk);
+    const workbenchDraft = readKnowledgeDraft(workbench.draft);
+    const todoDraft = readTodoDraft(todos.draft);
+    const currentRecordDraft = readRecord(currentRecords.draft);
+
+    return {
+      activeView: readAppView(stored.activeView, defaults.activeView),
+      workbench: {
+        query: readString(workbench.query),
+        statusFilter: readKnowledgeStatusFilter(workbench.statusFilter, defaults.workbench.statusFilter),
+        page: readPositiveInteger(workbench.page, defaults.workbench.page),
+        selectedId: readNullablePositiveInteger(workbench.selectedId),
+        draft: workbenchDraft && !isEmptyDraft(workbenchDraft) ? workbenchDraft : null,
+      },
+      factory: {
+        query: readString(factory.query),
+        page: readPositiveInteger(factory.page, defaults.factory.page),
+        selectedId: readNullablePositiveInteger(factory.selectedId),
+        task: readString(factory.task),
+      },
+      blogFactory: {
+        query: readString(blogFactory.query),
+        page: readPositiveInteger(blogFactory.page, defaults.blogFactory.page),
+        status: readBlogFactoryStatusFilter(blogFactory.status, defaults.blogFactory.status),
+        topic: readString(blogFactory.topic),
+        knowledgeId: readString(blogFactory.knowledgeId).replace(/\D/g, ""),
+        sortBy: readStringUnion(blogFactory.sortBy, BLOG_FACTORY_SORT_FIELDS, defaults.blogFactory.sortBy),
+        sortDir: readStringUnion(blogFactory.sortDir, SORT_DIRECTIONS, defaults.blogFactory.sortDir),
+        selectedItemId: readNullablePositiveInteger(blogFactory.selectedItemId),
+        articleDraft: readString(blogFactory.articleDraft),
+        articlePathDraft: readString(blogFactory.articlePathDraft),
+      },
+      todos: {
+        query: readString(todos.query),
+        page: readPositiveInteger(todos.page, defaults.todos.page),
+        status: readTodoStatusFilter(todos.status, defaults.todos.status),
+        selectedId: readNullablePositiveInteger(todos.selectedId),
+        draft: todoDraft && !isEmptyTodoDraft(todoDraft) ? todoDraft : null,
+      },
+      currentRecords: {
+        query: readString(currentRecords.query),
+        page: readPositiveInteger(currentRecords.page, defaults.currentRecords.page),
+        username: readString(currentRecords.username),
+        type: readString(currentRecords.type),
+        week: readString(currentRecords.week),
+        day: readString(currentRecords.day),
+        learnLevel: readString(currentRecords.learnLevel).replace(/\D/g, ""),
+        sortBy: readStringUnion(currentRecords.sortBy, CURRENT_RECORD_SORT_FIELDS, defaults.currentRecords.sortBy),
+        sortDir: readStringUnion(currentRecords.sortDir, SORT_DIRECTIONS, defaults.currentRecords.sortDir),
+        draft: {
+          username: readString(currentRecordDraft.username),
+          type: readString(currentRecordDraft.type),
+          content: readString(currentRecordDraft.content),
+        },
+      },
+      history: {
+        query: readString(history.query),
+        page: readPositiveInteger(history.page, defaults.history.page),
+        type: readString(history.type),
+        username: readString(history.username),
+        week: readString(history.week),
+        day: readString(history.day),
+        learnLevel: readString(history.learnLevel).replace(/\D/g, ""),
+        vectorStatus: readStringUnion(history.vectorStatus, ["all", "0", "1"] as const, defaults.history.vectorStatus),
+        dateFrom: readString(history.dateFrom),
+        dateTo: readString(history.dateTo),
+        sortBy: readStringUnion(history.sortBy, HISTORY_SORT_FIELDS, defaults.history.sortBy),
+        sortDir: readStringUnion(history.sortDir, SORT_DIRECTIONS, defaults.history.sortDir),
+      },
+      historyAsk: {
+        question: readString(historyAsk.question),
+        answer: readHistoryAskResponse(historyAsk.answer),
+      },
+    };
+  } catch {
+    clearStoredUiState();
+    return buildDefaultUiState();
+  }
+}
+
+function writeStoredUiState(state: StoredUiState) {
+  try {
+    window.localStorage.setItem(UI_STATE_STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    // Storage can be unavailable in private mode or under quota pressure.
+  }
+}
+
+function clearStoredUiState() {
+  window.localStorage.removeItem(UI_STATE_STORAGE_KEY);
+}
+
+function buildDefaultUiState(): StoredUiState {
+  return {
+    activeView: "workbench",
+    workbench: {
+      query: "",
+      statusFilter: "all",
+      page: 1,
+      selectedId: null,
+      draft: null,
+    },
+    factory: {
+      query: "",
+      page: 1,
+      selectedId: null,
+      task: "",
+    },
+    blogFactory: {
+      query: "",
+      page: 1,
+      status: "all",
+      topic: "",
+      knowledgeId: "",
+      sortBy: "copied_at",
+      sortDir: "desc",
+      selectedItemId: null,
+      articleDraft: "",
+      articlePathDraft: "",
+    },
+    todos: {
+      query: "",
+      page: 1,
+      status: "all",
+      selectedId: null,
+      draft: null,
+    },
+    currentRecords: {
+      query: "",
+      page: 1,
+      username: "",
+      type: "",
+      week: "",
+      day: "",
+      learnLevel: "",
+      sortBy: "id",
+      sortDir: "desc",
+      draft: { username: "", type: "", content: "" },
+    },
+    history: {
+      query: "",
+      page: 1,
+      type: "",
+      username: "",
+      week: "",
+      day: "",
+      learnLevel: "",
+      vectorStatus: "all",
+      dateFrom: "",
+      dateTo: "",
+      sortBy: "history_date",
+      sortDir: "desc",
+    },
+    historyAsk: {
+      question: "",
+      answer: null,
+    },
+  };
+}
+
+function readKnowledgeDraft(value: unknown): KnowledgeDraft | null {
+  const draft = readRecord(value);
+  const nextDraft: KnowledgeDraft = {
+    question: readString(draft.question),
+    answer: readString(draft.answer),
+    source: readString(draft.source),
+    topic_tag: readString(draft.topic_tag),
+    blog_status: isKnowledgeStatus(draft.blog_status) ? draft.blog_status : "未发布",
+  };
+
+  return nextDraft;
+}
+
+function readTodoDraft(value: unknown): TodoDraft | null {
+  const draft = readRecord(value);
+  const nextDraft: TodoDraft = {
+    title: readString(draft.title),
+    content: readString(draft.content),
+    source: readString(draft.source),
+    topic_tag: readString(draft.topic_tag),
+    todo_status: isTodoStatus(draft.todo_status) ? draft.todo_status : "待处理",
+  };
+
+  return nextDraft;
+}
+
+function readHistoryAskResponse(value: unknown): HistoryAskResponse | null {
+  if (!isPlainRecord(value) || typeof value.answer !== "string") return null;
+  return value as unknown as HistoryAskResponse;
+}
+
+function readAppView(value: unknown, fallback: AppView): AppView {
+  return APP_VIEWS.includes(value as AppView) ? (value as AppView) : fallback;
+}
+
+function readKnowledgeStatusFilter(value: unknown, fallback: KnowledgeStatus | "all") {
+  return value === "all" || isKnowledgeStatus(value) ? value : fallback;
+}
+
+function readBlogFactoryStatusFilter(value: unknown, fallback: BlogFactoryStatus | "all") {
+  return value === "all" || isBlogFactoryStatus(value) ? value : fallback;
+}
+
+function readTodoStatusFilter(value: unknown, fallback: TodoStatus | "all") {
+  return value === "all" || isTodoStatus(value) ? value : fallback;
+}
+
+function readStringUnion<const T extends readonly string[]>(value: unknown, values: T, fallback: T[number]): T[number] {
+  return typeof value === "string" && values.includes(value) ? value : fallback;
+}
+
+function readPositiveInteger(value: unknown, fallback: number) {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : fallback;
+}
+
+function readNullablePositiveInteger(value: unknown) {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null;
+}
+
+function readString(value: unknown) {
+  return typeof value === "string" ? value : "";
+}
+
+function readRecord(value: unknown): Record<string, unknown> {
+  return isPlainRecord(value) ? value : {};
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function isEmptyDraft(draft: KnowledgeDraft) {
   return !draft.question.trim() && !draft.answer.trim() && !draft.source.trim() && !draft.topic_tag.trim();
 }
 
+function isEmptyTodoDraft(draft: TodoDraft) {
+  return !draft.title.trim() && !draft.content.trim() && !draft.source.trim() && !draft.topic_tag.trim();
+}
+
 function isKnowledgeStatus(value: unknown): value is KnowledgeStatus {
   return value === "未发布" || value === "已发布" || value === "跳过";
+}
+
+function isBlogFactoryStatus(value: unknown): value is BlogFactoryStatus {
+  return value === "待处理" || value === "已处理" || value === "已发布" || value === "跳过";
+}
+
+function isTodoStatus(value: unknown): value is TodoStatus {
+  return value === "待处理" || value === "处理中" || value === "已完成";
 }
 
 export default App;

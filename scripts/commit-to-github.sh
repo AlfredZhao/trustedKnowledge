@@ -16,18 +16,262 @@ usage() {
 Usage:
   scripts/commit-to-github.sh [commit message]
   scripts/commit-to-github.sh -m "commit message"
+  scripts/commit-to-github.sh --version X.Y.Z
+  scripts/commit-to-github.sh --version X.Y.Z -m "Release X.Y.Z"
 
 Options:
-  -m, --message MSG   Commit message to use.
-      --version X.Y.Z Release version to validate and tag as vX.Y.Z.
-      --no-tag        Do not create or push a Git tag, even with --version.
-      --skip-build    Skip frontend build verification.
-      --dry-run       Show checks and pending changes without committing.
-  -h, --help          Show this help.
+  -m, --message MSG
+      Commit message to use. If omitted, the script uses:
+        - "Update project YYYY-MM-DD HH:MM:SS" for normal commits
+        - "Release X.Y.Z" for version releases
+
+  --version X.Y.Z
+      Release version. The value may also be written as vX.Y.Z.
+      This validates that CHANGELOG.md "本次版本更新" currently uses
+      the same version, creates and pushes tag vX.Y.Z, then rolls
+      CHANGELOG.md forward to the next patch version.
+
+      Example: --version 0.2.1
+        1. commit current changes
+        2. create and push tag v0.2.1
+        3. move 0.2.1 from "本次版本更新" to "历史版本更新"
+        4. open an empty "本次版本更新" section for 0.2.2
+        5. commit and push that changelog rollover
+
+  --no-tag
+      Do not create or push a Git tag, even with --version.
+      With --no-tag, CHANGELOG.md is not rolled forward.
+
+  --skip-build
+      Skip frontend build verification.
+
+  --dry-run
+      Show checks, version parsing, pending changes, and diff stats
+      without staging, committing, tagging, rolling changelog, or pushing.
+
+  -h, --help
+      Show this help.
 
 Environment:
-  GIT_REMOTE          Git remote to push to. Defaults to origin.
+  GIT_REMOTE
+      Git remote to push to. Defaults to origin.
+
+Common Examples:
+  scripts/commit-to-github.sh
+      Normal commit and push. Runs frontend build if frontend/package.json exists.
+      No tag is created. CHANGELOG.md is not rolled forward.
+
+  scripts/commit-to-github.sh -m "add todo workflow"
+      Normal commit and push with a custom commit message.
+
+  scripts/commit-to-github.sh -m "docs update" --skip-build
+      Commit and push without running the frontend build.
+
+  scripts/commit-to-github.sh --dry-run --skip-build
+      Preview what would be committed without changing Git state.
+
+  scripts/commit-to-github.sh --version 0.2.1
+      Release 0.2.1. Requires CHANGELOG.md current section to be 0.2.1.
+      Tags v0.2.1 and then opens 0.2.2 for the next development cycle.
+
+  scripts/commit-to-github.sh --version v0.2.1 -m "Release 0.2.1"
+      Same release flow, with an explicit commit message.
+
+  scripts/commit-to-github.sh --version 0.2.1 --dry-run --skip-build
+      Preview a release. Shows the next changelog version but does not commit,
+      tag, push, or edit CHANGELOG.md.
+
+  scripts/commit-to-github.sh --version 0.2.1 --no-tag
+      Commit with release validation but do not tag or roll CHANGELOG.md.
+
+Version Mismatch Behavior:
+  If --version does not match the version under "## 本次版本更新",
+  interactive runs ask you to choose:
+    1) change the current CHANGELOG.md version to the requested version
+    2) cancel without committing
+
+  Non-interactive or --dry-run mismatch exits with an explanatory message.
 USAGE
+}
+
+fail() {
+  echo "$*" >&2
+  exit 1
+}
+
+normalize_version() {
+  local version="${1#v}"
+
+  if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "Version must use semantic form X.Y.Z or vX.Y.Z, for example 0.2.1." >&2
+    return 2
+  fi
+
+  echo "$version"
+}
+
+bump_patch_version() {
+  local version="$1"
+  local major minor patch
+
+  IFS=. read -r major minor patch <<<"$version"
+  echo "$major.$minor.$((patch + 1))"
+}
+
+get_current_changelog_version() {
+  awk '
+    /^## 本次版本更新[[:space:]]*$/ { in_current = 1; next }
+    /^## / && in_current { exit }
+    in_current && /^### \[[0-9]+\.[0-9]+\.[0-9]+\]/ { print; exit }
+  ' "$PROJECT_ROOT/CHANGELOG.md" | sed -E 's/^### \[([0-9]+\.[0-9]+\.[0-9]+)\].*/\1/'
+}
+
+set_current_changelog_version() {
+  local version="$1"
+  local changelog="$PROJECT_ROOT/CHANGELOG.md"
+  local temp_file
+
+  temp_file="$(mktemp)"
+  awk -v version="$version" '
+    BEGIN { in_current = 0; changed = 0 }
+    /^## 本次版本更新[[:space:]]*$/ { in_current = 1; print; next }
+    /^## / && in_current { in_current = 0 }
+    in_current && changed == 0 && /^### \[[0-9]+\.[0-9]+\.[0-9]+\]/ {
+      print "### [" version "]"
+      changed = 1
+      next
+    }
+    { print }
+    END {
+      if (changed == 0) {
+        exit 3
+      }
+    }
+  ' "$changelog" >"$temp_file" || {
+    rm -f "$temp_file"
+    fail "Unable to update the current CHANGELOG.md version section."
+  }
+
+  mv "$temp_file" "$changelog"
+}
+
+prepare_release_changelog() {
+  local version="$1"
+  local current_version section_count choice
+
+  [[ -f "$PROJECT_ROOT/CHANGELOG.md" ]] || fail "CHANGELOG.md is required when --version is used."
+
+  current_version="$(get_current_changelog_version)"
+  if [[ -z "$current_version" ]]; then
+    fail "CHANGELOG.md must contain a version section under '## 本次版本更新', for example: ### [$version]"
+  fi
+
+  if [[ "$current_version" != "$version" ]]; then
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+      fail "CHANGELOG.md current version is $current_version, but --version is $version. Dry run will not modify it."
+    fi
+
+    if [[ ! -t 0 ]]; then
+      fail "CHANGELOG.md current version is $current_version, but --version is $version. Run interactively to choose whether to update it."
+    fi
+
+    echo "CHANGELOG.md current version is $current_version, but the release version is $version."
+    echo "Choose how to continue:"
+    echo "  1) Change the current CHANGELOG.md version to $version and continue"
+    echo "  2) Cancel without committing"
+    printf "Enter 1 or 2: "
+
+    if ! read -r choice; then
+      fail "No choice provided."
+    fi
+
+    case "$choice" in
+      1)
+        set_current_changelog_version "$version"
+        current_version="$version"
+        echo "Updated CHANGELOG.md current version to $version."
+        echo
+        ;;
+      2)
+        echo "Cancelled."
+        exit 0
+        ;;
+      *)
+        fail "Invalid choice: $choice"
+        ;;
+    esac
+  fi
+
+  section_count="$(grep -Ec "^### \\[$version\\]" "$PROJECT_ROOT/CHANGELOG.md" || true)"
+  if [[ "$section_count" -gt 1 ]]; then
+    fail "CHANGELOG.md contains multiple sections for $version. Keep only one current release section before tagging."
+  fi
+}
+
+roll_changelog_after_release() {
+  local version="$1"
+  local next_version="$2"
+  local release_date
+
+  release_date="$(date '+%Y-%m-%d')"
+
+  python3 - "$PROJECT_ROOT/CHANGELOG.md" "$version" "$next_version" "$release_date" <<'PY'
+from pathlib import Path
+import re
+import sys
+
+path = Path(sys.argv[1])
+version = sys.argv[2]
+next_version = sys.argv[3]
+release_date = sys.argv[4]
+
+text = path.read_text()
+
+current_heading = "## 本次版本更新"
+history_heading = "## 历史版本更新"
+
+if current_heading not in text:
+    raise SystemExit(f"Missing changelog heading: {current_heading}")
+if history_heading not in text:
+    raise SystemExit(f"Missing changelog heading: {history_heading}")
+
+if re.search(rf"^### \[{re.escape(version)}\]", text.split(history_heading, 1)[1], re.M):
+    raise SystemExit(f"Historical changelog already contains {version}")
+
+pattern = re.compile(
+    rf"(^## 本次版本更新\s*\n+)(### \[{re.escape(version)}\][^\n]*\n.*?)(?=^## 历史版本更新\s*$)",
+    re.M | re.S,
+)
+match = pattern.search(text)
+if not match:
+    raise SystemExit(f"Unable to find current changelog section for {version}")
+
+release_block = match.group(2).strip()
+release_block = re.sub(
+    rf"^### \[{re.escape(version)}\][^\n]*$",
+    f"### [{version}] - {release_date}",
+    release_block,
+    count=1,
+    flags=re.M,
+)
+
+next_block = f"""## 本次版本更新
+
+### [{next_version}]
+
+#### Added / 新增
+
+#### Changed / 变更
+
+#### Fixed / 修复
+
+"""
+
+text = pattern.sub(next_block, text, count=1)
+text = text.replace(f"{history_heading}\n\n", f"{history_heading}\n\n{release_block}\n\n", 1)
+
+path.write_text(text)
+PY
 }
 
 while [[ $# -gt 0 ]]; do
@@ -105,26 +349,15 @@ if ! git remote get-url "$GIT_REMOTE" >/dev/null 2>&1; then
 fi
 
 if [[ -n "$VERSION" ]]; then
-  if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    echo "Version must use semantic form X.Y.Z, for example 0.2.0." >&2
-    exit 2
-  fi
-
-  if [[ ! -f "$PROJECT_ROOT/CHANGELOG.md" ]]; then
-    echo "CHANGELOG.md is required when --version is used." >&2
-    exit 1
-  fi
-
-  if ! grep -qE "^## \\[$VERSION\\]" "$PROJECT_ROOT/CHANGELOG.md"; then
-    echo "CHANGELOG.md does not contain a release section starting with: ## [$VERSION]" >&2
-    echo "Move the relevant Unreleased entries into a versioned section before releasing." >&2
-    exit 1
-  fi
+  VERSION="$(normalize_version "$VERSION")"
+  prepare_release_changelog "$VERSION"
 
   if [[ "$CREATE_TAG" -eq 1 ]] && git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
     echo "Tag v$VERSION already exists." >&2
     exit 1
   fi
+
+  NEXT_VERSION="$(bump_patch_version "$VERSION")"
 fi
 
 if [[ -z "$COMMIT_MESSAGE" ]]; then
@@ -140,6 +373,9 @@ echo "Branch:  $BRANCH"
 echo "Remote:  $GIT_REMOTE ($(git remote get-url "$GIT_REMOTE"))"
 if [[ -n "$VERSION" ]]; then
   echo "Version: $VERSION"
+  if [[ "${NEXT_VERSION:-}" != "" && "$CREATE_TAG" -eq 1 ]]; then
+    echo "Next:    $NEXT_VERSION"
+  fi
   if [[ "$CREATE_TAG" -eq 1 ]]; then
     echo "Tag:     v$VERSION"
   else
@@ -217,6 +453,16 @@ if [[ -n "$VERSION" && "$CREATE_TAG" -eq 1 ]]; then
   echo
   echo "Pushing tag v$VERSION..."
   git push "$GIT_REMOTE" "v$VERSION"
+
+  echo
+  echo "Rolling CHANGELOG.md forward to $NEXT_VERSION..."
+  roll_changelog_after_release "$VERSION" "$NEXT_VERSION"
+  git add "$PROJECT_ROOT/CHANGELOG.md"
+  git commit -m "Start changelog for $NEXT_VERSION"
+
+  echo
+  echo "Pushing changelog rollover commit..."
+  git push
 fi
 
 echo
@@ -224,4 +470,5 @@ echo "Done. Latest commit:"
 git --no-pager log -1 --oneline
 if [[ -n "$VERSION" && "$CREATE_TAG" -eq 1 ]]; then
   echo "Tagged release: v$VERSION"
+  echo "Opened changelog section: $NEXT_VERSION"
 fi

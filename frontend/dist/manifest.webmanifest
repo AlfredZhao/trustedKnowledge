@@ -1,0 +1,11 @@
+{
+  "name": "Trusted Knowledge",
+  "short_name": "TrustedKnowledge",
+  "description": "Trusted Knowledge management workspace",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#0f766e",
+  "orientation": "portrait-primary"
+}

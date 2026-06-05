@@ -1,5 +1,6 @@
 export type KnowledgeStatus = "未发布" | "已发布" | "跳过";
 export type BlogFactoryStatus = "待处理" | "已处理" | "已发布" | "跳过";
+export type TodoStatus = "待处理" | "处理中" | "已完成";
 export type CurrentWeek = `W${number}`;
 export type CurrentDay = `D${number}`;
 
@@ -21,6 +22,25 @@ export interface KnowledgeDraft {
   blog_status: KnowledgeStatus;
 }
 
+export interface TodoItem {
+  id: number;
+  title: string;
+  content: string;
+  source: string | null;
+  topic_tag: string | null;
+  todo_status: TodoStatus;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface TodoDraft {
+  title: string;
+  content: string;
+  source: string;
+  topic_tag: string;
+  todo_status: TodoStatus;
+}
+
 export interface BlogFactoryItem {
   id: number;
   knowledge_id: number;
@@ -40,7 +60,7 @@ export interface BlogFactoryItem {
   has_article: boolean;
 }
 
-export type AppView = "workbench" | "factory" | "blogFactory" | "currentRecords" | "history" | "historyAsk" | "usage";
+export type AppView = "workbench" | "factory" | "blogFactory" | "todos" | "currentRecords" | "history" | "historyAsk" | "usage";
 
 export interface CurrentRecordItem {
   id: number;
