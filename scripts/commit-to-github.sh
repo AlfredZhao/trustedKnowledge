@@ -29,14 +29,13 @@ Options:
       Release version. The value may also be written as vX.Y.Z.
       This validates that CHANGELOG.md "本次版本更新" currently uses
       the same version, creates and pushes tag vX.Y.Z, then rolls
-      CHANGELOG.md forward to the next patch version.
+      CHANGELOG.md forward locally to the next patch version.
 
       Example: --version 0.2.1
         1. commit current changes
         2. create and push tag v0.2.1
         3. move 0.2.1 from "本次版本更新" to "历史版本更新"
-        4. open an empty "本次版本更新" section for 0.2.2
-        5. commit and push that changelog rollover
+        4. open an empty local "本次版本更新" section for 0.2.2
 
   --no-tag
       Do not create or push a Git tag, even with --version.
@@ -72,7 +71,7 @@ Common Examples:
 
   scripts/commit-to-github.sh --version 0.2.1
       Release 0.2.1. Requires CHANGELOG.md current section to be 0.2.1.
-      Tags v0.2.1 and then opens 0.2.2 for the next development cycle.
+      Tags v0.2.1 and then opens 0.2.2 locally for the next development cycle.
 
   scripts/commit-to-github.sh --version v0.2.1 -m "Release 0.2.1"
       Same release flow, with an explicit commit message.
@@ -455,14 +454,8 @@ if [[ -n "$VERSION" && "$CREATE_TAG" -eq 1 ]]; then
   git push "$GIT_REMOTE" "v$VERSION"
 
   echo
-  echo "Rolling CHANGELOG.md forward to $NEXT_VERSION..."
+  echo "Rolling CHANGELOG.md forward locally to $NEXT_VERSION..."
   roll_changelog_after_release "$VERSION" "$NEXT_VERSION"
-  git add "$PROJECT_ROOT/CHANGELOG.md"
-  git commit -m "Start changelog for $NEXT_VERSION"
-
-  echo
-  echo "Pushing changelog rollover commit..."
-  git push
 fi
 
 echo
@@ -470,5 +463,6 @@ echo "Done. Latest commit:"
 git --no-pager log -1 --oneline
 if [[ -n "$VERSION" && "$CREATE_TAG" -eq 1 ]]; then
   echo "Tagged release: v$VERSION"
-  echo "Opened changelog section: $NEXT_VERSION"
+  echo "Opened local changelog section: $NEXT_VERSION"
+  echo "CHANGELOG.md is now modified locally for the next development cycle."
 fi

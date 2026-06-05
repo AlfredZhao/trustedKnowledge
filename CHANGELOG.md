@@ -17,6 +17,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Fixed / 修复
 
+- Fixed `scripts/commit-to-github.sh` so release changelog rollover is left as a local follow-up change instead of being committed and pushed with the release flow.
+- 修复 `scripts/commit-to-github.sh`，发布后的 changelog 下版本占位只保留为本地后续改动，不再随发布流程自动提交并推送。
+
 ## 历史版本更新
 
 ### [0.2.1] - 2026-06-05
