@@ -9,7 +9,17 @@ The format follows the common GitHub changelog convention inspired by
 
 ## 本次版本更新
 
-### [0.2.1]
+### [0.2.2]
+
+#### Added / 新增
+
+#### Changed / 变更
+
+#### Fixed / 修复
+
+## 历史版本更新
+
+### [0.2.1] - 2026-06-05
 
 #### Added / 新增
 
@@ -37,8 +47,6 @@ The format follows the common GitHub changelog convention inspired by
 
 - Fixed the Current Records edit dialog layout so the save button remains reachable on mobile PWA viewports.
 - 修复当前记录编辑弹窗在手机端 PWA 视口中“保存内容”按钮可能不可见的问题。
-
-## 历史版本更新
 
 ### [0.2.0] - 2026-06-03
 
