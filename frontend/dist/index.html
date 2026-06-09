@@ -6,10 +6,92 @@
     <meta name="theme-color" content="#0f766e" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <title>Trusted Knowledge</title>
-    <script type="module" crossorigin src="/assets/index-Boyh4rkp.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-h6GW6TRf.css">
+    <style>
+      :root {
+        color-scheme: dark;
+        background: #080b0f;
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+          sans-serif;
+      }
+
+      body {
+        margin: 0;
+        min-width: 320px;
+        min-height: 100vh;
+        background:
+          radial-gradient(circle at top left, rgba(125, 211, 199, 0.1), transparent 34%),
+          linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent 24%),
+          #080b0f;
+      }
+
+      .app-boot {
+        display: grid;
+        min-height: 100vh;
+        place-items: center;
+        padding: 24px;
+        color: #e2e8f0;
+      }
+
+      .app-boot__panel {
+        display: grid;
+        justify-items: center;
+        gap: 16px;
+        text-align: center;
+      }
+
+      .app-boot__mark {
+        position: relative;
+        width: 48px;
+        height: 48px;
+        border-radius: 12px;
+        border: 1px solid rgba(125, 211, 199, 0.3);
+        background: rgba(125, 211, 199, 0.1);
+      }
+
+      .app-boot__mark::after {
+        position: absolute;
+        inset: 10px;
+        border: 2px solid rgba(125, 211, 199, 0.18);
+        border-top-color: #7dd3c7;
+        border-radius: 999px;
+        content: "";
+        animation: app-boot-spin 0.9s linear infinite;
+      }
+
+      .app-boot__title {
+        margin: 0;
+        color: #f8fafc;
+        font-size: 18px;
+        font-weight: 650;
+      }
+
+      .app-boot__text {
+        margin: 0;
+        color: #94a3b8;
+        font-size: 13px;
+      }
+
+      @keyframes app-boot-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
+    <script type="module" crossorigin src="/assets/index-rFft95GQ.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-DhvgiChE.css">
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <main class="app-boot" aria-label="应用加载中">
+        <section class="app-boot__panel">
+          <div class="app-boot__mark" aria-hidden="true"></div>
+          <div>
+            <h1 class="app-boot__title">Trusted Knowledge</h1>
+            <p class="app-boot__text">加载中...</p>
+          </div>
+        </section>
+      </main>
+    </div>
   </body>
 </html>

@@ -9,6 +9,7 @@ import type {
   TodoStatus,
 } from "../types";
 import { clearStoredApiKey, readStoredApiKey } from "./auth";
+import { buildApiCacheKey, readCachedApiResponse, writeCachedApiResponse } from "./localCache";
 
 export interface KnowledgeListResponse {
   items: KnowledgeItem[];
@@ -35,6 +36,8 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.trim() ?? "";
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const apiKey = readStoredApiKey();
+  const method = options?.method ?? "GET";
+  const cacheKey = method === "GET" ? buildApiCacheKey(path, apiKey) : null;
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...options,
     headers: {
@@ -57,7 +60,9 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     return undefined as T;
   }
 
-  return response.json() as Promise<T>;
+  const data = (await response.json()) as T;
+  if (cacheKey) writeCachedApiResponse(cacheKey, data);
+  return data;
 }
 
 async function readErrorDetail(response: Response): Promise<string | null> {
@@ -82,6 +87,36 @@ export async function fetchKnowledge({
   offset: number;
   status?: KnowledgeStatus;
 }): Promise<KnowledgeListResponse> {
+  return request<KnowledgeListResponse>(buildKnowledgeListPath({ query, limit, offset, status }));
+}
+
+export function readCachedKnowledge({
+  query,
+  limit,
+  offset,
+  status,
+}: {
+  query?: string;
+  limit: number;
+  offset: number;
+  status?: KnowledgeStatus;
+}): KnowledgeListResponse | null {
+  return readCachedApiResponse<KnowledgeListResponse>(
+    buildApiCacheKey(buildKnowledgeListPath({ query, limit, offset, status }), readStoredApiKey()),
+  );
+}
+
+function buildKnowledgeListPath({
+  query,
+  limit,
+  offset,
+  status,
+}: {
+  query?: string;
+  limit: number;
+  offset: number;
+  status?: KnowledgeStatus;
+}): string {
   const params = new URLSearchParams({
     limit: String(limit),
     offset: String(offset),
@@ -94,7 +129,7 @@ export async function fetchKnowledge({
     params.set("status", status);
   }
 
-  return request<KnowledgeListResponse>(`/api/knowledge?${params.toString()}`);
+  return `/api/knowledge?${params.toString()}`;
 }
 
 export async function createKnowledge(draft: KnowledgeDraft): Promise<KnowledgeItem> {
@@ -158,6 +193,36 @@ export async function fetchTodos({
   offset: number;
   status?: TodoStatus;
 }): Promise<TodoListResponse> {
+  return request<TodoListResponse>(buildTodoListPath({ query, limit, offset, status }));
+}
+
+export function readCachedTodos({
+  query,
+  limit,
+  offset,
+  status,
+}: {
+  query?: string;
+  limit: number;
+  offset: number;
+  status?: TodoStatus;
+}): TodoListResponse | null {
+  return readCachedApiResponse<TodoListResponse>(
+    buildApiCacheKey(buildTodoListPath({ query, limit, offset, status }), readStoredApiKey()),
+  );
+}
+
+function buildTodoListPath({
+  query,
+  limit,
+  offset,
+  status,
+}: {
+  query?: string;
+  limit: number;
+  offset: number;
+  status?: TodoStatus;
+}): string {
   const params = new URLSearchParams({
     limit: String(limit),
     offset: String(offset),
@@ -166,7 +231,7 @@ export async function fetchTodos({
   if (query?.trim()) params.set("q", query.trim());
   if (status) params.set("status", status);
 
-  return request<TodoListResponse>(`/api/todos?${params.toString()}`);
+  return `/api/todos?${params.toString()}`;
 }
 
 export async function createTodo(draft: TodoDraft): Promise<TodoItem> {
@@ -234,6 +299,57 @@ export async function fetchBlogFactoryItems({
   sortBy?: "copied_at" | "id" | "knowledge_id" | "factory_status";
   sortDir?: "asc" | "desc";
 }): Promise<BlogFactoryListResponse> {
+  return request<BlogFactoryListResponse>(
+    buildBlogFactoryListPath({ query, limit, offset, factoryStatus, topic, knowledgeId, sortBy, sortDir }),
+  );
+}
+
+export function readCachedBlogFactoryItems({
+  query,
+  limit,
+  offset,
+  factoryStatus,
+  topic,
+  knowledgeId,
+  sortBy,
+  sortDir,
+}: {
+  query?: string;
+  limit: number;
+  offset: number;
+  factoryStatus?: BlogFactoryStatus;
+  topic?: string;
+  knowledgeId?: string;
+  sortBy?: "copied_at" | "id" | "knowledge_id" | "factory_status";
+  sortDir?: "asc" | "desc";
+}): BlogFactoryListResponse | null {
+  return readCachedApiResponse<BlogFactoryListResponse>(
+    buildApiCacheKey(
+      buildBlogFactoryListPath({ query, limit, offset, factoryStatus, topic, knowledgeId, sortBy, sortDir }),
+      readStoredApiKey(),
+    ),
+  );
+}
+
+function buildBlogFactoryListPath({
+  query,
+  limit,
+  offset,
+  factoryStatus,
+  topic,
+  knowledgeId,
+  sortBy,
+  sortDir,
+}: {
+  query?: string;
+  limit: number;
+  offset: number;
+  factoryStatus?: BlogFactoryStatus;
+  topic?: string;
+  knowledgeId?: string;
+  sortBy?: "copied_at" | "id" | "knowledge_id" | "factory_status";
+  sortDir?: "asc" | "desc";
+}): string {
   const params = new URLSearchParams({
     limit: String(limit),
     offset: String(offset),
@@ -246,7 +362,7 @@ export async function fetchBlogFactoryItems({
   if (topic?.trim()) params.set("topic", topic.trim());
   if (knowledgeId?.trim()) params.set("knowledge_id", knowledgeId.trim());
 
-  return request<BlogFactoryListResponse>(`/api/blog-factory?${params.toString()}`);
+  return `/api/blog-factory?${params.toString()}`;
 }
 
 export async function getBlogFactoryItem(id: number): Promise<BlogFactoryItem> {

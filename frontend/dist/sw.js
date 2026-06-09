@@ -1,4 +1,4 @@
-const CACHE_NAME = "trusted-knowledge-shell-v1";
+const CACHE_NAME = "trusted-knowledge-shell-v2";
 const APP_SHELL_URLS = ["/", "/index.html", "/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {

@@ -16,10 +16,15 @@ Edit `.env` with the real Oracle password:
 TRUSTED_KNOWLEDGE_DB_USER=dev_alfred
 TRUSTED_KNOWLEDGE_DB_PASSWORD=...
 TRUSTED_KNOWLEDGE_DB_DSN=localhost:1521/orclpdb1
+TRUSTED_KNOWLEDGE_DB_POOL_PING_INTERVAL=60
+TRUSTED_KNOWLEDGE_DB_POOL_TIMEOUT=300
+TRUSTED_KNOWLEDGE_DB_POOL_MAX_LIFETIME_SESSION=3600
 TRUSTED_KNOWLEDGE_ADMIN_USERNAME=admin
 TRUSTED_KNOWLEDGE_ADMIN_PASSWORD=...
 TRUSTED_KNOWLEDGE_API_KEY=...
 ```
+
+The pool ping/lifetime settings keep idle Oracle sessions from being reused too long after mobile PWA resumes or network interruptions.
 
 All `/api/knowledge` routes require:
 

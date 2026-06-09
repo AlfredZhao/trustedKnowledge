@@ -11,6 +11,13 @@ class Settings(BaseSettings):
     db_pool_min: int = Field(1, validation_alias="TRUSTED_KNOWLEDGE_DB_POOL_MIN", ge=1)
     db_pool_max: int = Field(4, validation_alias="TRUSTED_KNOWLEDGE_DB_POOL_MAX", ge=1)
     db_pool_increment: int = Field(1, validation_alias="TRUSTED_KNOWLEDGE_DB_POOL_INCREMENT", ge=1)
+    db_pool_ping_interval: int = Field(60, validation_alias="TRUSTED_KNOWLEDGE_DB_POOL_PING_INTERVAL", ge=0)
+    db_pool_timeout: int = Field(300, validation_alias="TRUSTED_KNOWLEDGE_DB_POOL_TIMEOUT", ge=0)
+    db_pool_max_lifetime_session: int = Field(
+        3600,
+        validation_alias="TRUSTED_KNOWLEDGE_DB_POOL_MAX_LIFETIME_SESSION",
+        ge=0,
+    )
     cors_origins: str = Field(
         "http://localhost:8021,http://127.0.0.1:8021",
         validation_alias="TRUSTED_KNOWLEDGE_CORS_ORIGINS",

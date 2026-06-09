@@ -1,5 +1,6 @@
 import type { HistoryItem, HistorySummary } from "../types";
 import { clearStoredApiKey, readStoredApiKey } from "./auth";
+import { buildApiCacheKey, readCachedApiResponse, writeCachedApiResponse } from "./localCache";
 
 export interface HistoryQuery {
   query?: string;
@@ -29,6 +30,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.trim() ?? "";
 
 async function request<T>(path: string): Promise<T> {
   const apiKey = readStoredApiKey();
+  const cacheKey = buildApiCacheKey(path, apiKey);
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: {
       "Content-Type": "application/json",
@@ -45,7 +47,9 @@ async function request<T>(path: string): Promise<T> {
     throw new Error(detail || `Request failed with HTTP ${response.status}`);
   }
 
-  return response.json() as Promise<T>;
+  const data = (await response.json()) as T;
+  writeCachedApiResponse(cacheKey, data);
+  return data;
 }
 
 async function readErrorDetail(response: Response): Promise<string | null> {
@@ -60,6 +64,14 @@ async function readErrorDetail(response: Response): Promise<string | null> {
 }
 
 export async function fetchHistory(query: HistoryQuery): Promise<HistoryListResponse> {
+  return request<HistoryListResponse>(buildHistoryPath(query));
+}
+
+export function readCachedHistory(query: HistoryQuery): HistoryListResponse | null {
+  return readCachedApiResponse<HistoryListResponse>(buildApiCacheKey(buildHistoryPath(query), readStoredApiKey()));
+}
+
+function buildHistoryPath(query: HistoryQuery): string {
   const params = new URLSearchParams({
     limit: String(query.limit),
     offset: String(query.offset),
@@ -77,5 +89,5 @@ export async function fetchHistory(query: HistoryQuery): Promise<HistoryListResp
   if (query.dateFrom) params.set("date_from", query.dateFrom);
   if (query.dateTo) params.set("date_to", query.dateTo);
 
-  return request<HistoryListResponse>(`/api/history?${params.toString()}`);
+  return `/api/history?${params.toString()}`;
 }

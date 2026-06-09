@@ -13,12 +13,24 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Added / 新增
 
+- Added an English Materials workspace before AI Ask, backed by `T_DOUYIN_DETAILS`, with controlled material creation and browsing.
+- 新增位于 AI 问数前的英语素材管理界面，底层使用 `T_DOUYIN_DETAILS`，支持受控录入与查看素材。
+
+- Added a mobile PWA boot screen and local GET response cache so restored workspaces can render cached data before database-backed refreshes finish.
+- 新增手机 PWA 启动加载界面与本地 GET 响应缓存，使恢复后的工作区可先展示缓存数据，再等待数据库接口刷新。
+
+- Added configurable Oracle pool ping, idle timeout, and session lifetime settings for healthier database connection reuse.
+- 新增 Oracle 连接池 ping、空闲超时与会话生命周期配置，降低数据库连接复用异常带来的首请求延迟风险。
+
 #### Changed / 变更
 
 #### Fixed / 修复
 
 - Fixed `scripts/commit-to-github.sh` so release changelog rollover is left as a local follow-up change instead of being committed and pushed with the release flow.
 - 修复 `scripts/commit-to-github.sh`，发布后的 changelog 下版本占位只保留为本地后续改动，不再随发布流程自动提交并推送。
+
+- Fixed an extra Workbench data fetch that could run while another workspace was active.
+- 修复切换到其他工作区时工作台仍可能额外发起数据请求的问题。
 
 ## 历史版本更新
 

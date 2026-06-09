@@ -1,5 +1,6 @@
 import type { CurrentDay, CurrentRecordItem, CurrentRecordOptions, CurrentWeek } from "../types";
 import { clearStoredApiKey, readStoredApiKey } from "./auth";
+import { buildApiCacheKey, readCachedApiResponse, writeCachedApiResponse } from "./localCache";
 
 export interface CurrentRecordListResponse {
   items: CurrentRecordItem[];
@@ -25,6 +26,8 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.trim() ?? "";
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const apiKey = readStoredApiKey();
+  const method = options?.method ?? "GET";
+  const cacheKey = method === "GET" ? buildApiCacheKey(path, apiKey) : null;
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...options,
     headers: {
@@ -43,7 +46,9 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     throw new Error(detail || `Request failed with HTTP ${response.status}`);
   }
 
-  return response.json() as Promise<T>;
+  const data = (await response.json()) as T;
+  if (cacheKey) writeCachedApiResponse(cacheKey, data);
+  return data;
 }
 
 async function readErrorDetail(response: Response): Promise<string | null> {
@@ -58,6 +63,16 @@ async function readErrorDetail(response: Response): Promise<string | null> {
 }
 
 export async function fetchCurrentRecords(query: CurrentRecordQuery): Promise<CurrentRecordListResponse> {
+  return request<CurrentRecordListResponse>(buildCurrentRecordsPath(query));
+}
+
+export function readCachedCurrentRecords(query: CurrentRecordQuery): CurrentRecordListResponse | null {
+  return readCachedApiResponse<CurrentRecordListResponse>(
+    buildApiCacheKey(buildCurrentRecordsPath(query), readStoredApiKey()),
+  );
+}
+
+function buildCurrentRecordsPath(query: CurrentRecordQuery): string {
   const params = new URLSearchParams({
     limit: String(query.limit),
     offset: String(query.offset),
@@ -72,11 +87,17 @@ export async function fetchCurrentRecords(query: CurrentRecordQuery): Promise<Cu
   if (query.day?.trim()) params.set("day", query.day.trim());
   if (query.learnLevel?.trim()) params.set("learn_level", query.learnLevel.trim());
 
-  return request<CurrentRecordListResponse>(`/api/current-records?${params.toString()}`);
+  return `/api/current-records?${params.toString()}`;
 }
 
 export async function fetchCurrentRecordOptions(): Promise<CurrentRecordOptions> {
   return request<CurrentRecordOptions>("/api/current-records/options");
+}
+
+export function readCachedCurrentRecordOptions(): CurrentRecordOptions | null {
+  return readCachedApiResponse<CurrentRecordOptions>(
+    buildApiCacheKey("/api/current-records/options", readStoredApiKey()),
+  );
 }
 
 export async function createCurrentRecord({

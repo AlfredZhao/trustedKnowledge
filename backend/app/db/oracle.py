@@ -25,6 +25,9 @@ async def init_pool() -> None:
         min=settings.db_pool_min,
         max=settings.db_pool_max,
         increment=settings.db_pool_increment,
+        ping_interval=settings.db_pool_ping_interval,
+        timeout=settings.db_pool_timeout,
+        max_lifetime_session=settings.db_pool_max_lifetime_session,
     )
     _pool = await pool if inspect.isawaitable(pool) else pool
 

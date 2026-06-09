@@ -56,20 +56,32 @@ import {
   getKnowledge,
   getTodo,
   mergeKnowledge,
+  readCachedBlogFactoryItems,
+  readCachedKnowledge,
+  readCachedTodos,
   updateBlogFactoryArticle,
   updateBlogFactoryStatus,
   updateKnowledge,
   updateTodo,
 } from "./api/knowledge";
-import { fetchHistory } from "./api/history";
+import { fetchHistory, readCachedHistory } from "./api/history";
 import { askHistory } from "./api/historyAsk";
 import {
   createCurrentRecord,
   fetchCurrentRecordOptions,
   fetchCurrentRecords,
+  readCachedCurrentRecordOptions,
+  readCachedCurrentRecords,
   updateCurrentRecord,
 } from "./api/currentRecords";
-import { fetchLlmUsage } from "./api/usage";
+import {
+  createEnglishMaterial,
+  fetchEnglishMaterials,
+  getEnglishMaterial,
+  readCachedEnglishMaterials,
+} from "./api/englishMaterials";
+import { clearApiResponseCache } from "./api/localCache";
+import { fetchLlmUsage, readCachedLlmUsage } from "./api/usage";
 import type {
   AppView,
   BlogFactoryItem,
@@ -78,6 +90,8 @@ import type {
   CurrentRecordItem,
   CurrentRecordOptions,
   CurrentWeek,
+  EnglishMaterialDraft,
+  EnglishMaterialItem,
   HistoryAskResponse,
   HistoryItem,
   HistorySummary,
@@ -106,25 +120,49 @@ const emptyTodoDraft: TodoDraft = {
   todo_status: "待处理",
 };
 
+const emptyEnglishMaterialDraft: EnglishMaterialDraft = {
+  sequence_no: "",
+  category: "",
+  base_expression: "",
+  professional_sentence: "",
+  chinese_translation: "",
+  full_script: "",
+  title: "",
+  flag: "0",
+};
+
 const PAGE_SIZE = 5;
 const FACTORY_PAGE_SIZE = 6;
 const BLOG_FACTORY_PAGE_SIZE = 8;
 const TODO_PAGE_SIZE = 8;
 const CURRENT_RECORDS_PAGE_SIZE = 10;
+const ENGLISH_MATERIALS_PAGE_SIZE = 10;
 const HISTORY_PAGE_SIZE = 10;
 const USAGE_SAMPLE_LIMIT = 72;
 const RESET_READY_DELAY_MS = 60 * 60 * 1000;
 const NEW_KNOWLEDGE_DRAFT_STORAGE_KEY = "trustedKnowledge.newDraft";
 const UI_STATE_STORAGE_KEY = "trustedKnowledge.uiState.v1";
-const APP_VIEWS: AppView[] = ["workbench", "factory", "blogFactory", "todos", "currentRecords", "history", "historyAsk", "usage"];
+const APP_VIEWS: AppView[] = [
+  "workbench",
+  "factory",
+  "blogFactory",
+  "todos",
+  "currentRecords",
+  "history",
+  "englishMaterials",
+  "historyAsk",
+  "usage",
+];
 const BLOG_FACTORY_SORT_FIELDS = ["copied_at", "id", "knowledge_id", "factory_status"] as const;
 const CURRENT_RECORD_SORT_FIELDS = ["id", "type", "week", "day", "username", "learn_level"] as const;
 const HISTORY_SORT_FIELDS = ["history_date", "id", "type", "username", "learn_level"] as const;
+const ENGLISH_MATERIAL_SORT_FIELDS = ["id", "sequence_no", "category", "base_expression", "title", "flag"] as const;
 const SORT_DIRECTIONS = ["asc", "desc"] as const;
 
 type BlogFactorySortBy = (typeof BLOG_FACTORY_SORT_FIELDS)[number];
 type CurrentRecordSortBy = (typeof CURRENT_RECORD_SORT_FIELDS)[number];
 type HistorySortBy = (typeof HISTORY_SORT_FIELDS)[number];
+type EnglishMaterialSortBy = (typeof ENGLISH_MATERIAL_SORT_FIELDS)[number];
 type SortDirection = (typeof SORT_DIRECTIONS)[number];
 type HistoryVectorStatus = "all" | "0" | "1";
 
@@ -173,6 +211,16 @@ interface StoredUiState {
     sortBy: CurrentRecordSortBy;
     sortDir: SortDirection;
     draft: { username: string; type: string; content: string };
+  };
+  englishMaterials: {
+    query: string;
+    page: number;
+    category: string;
+    flag: "" | "0" | "1";
+    sortBy: EnglishMaterialSortBy;
+    sortDir: SortDirection;
+    selectedId: number | null;
+    draft: EnglishMaterialDraft;
   };
   history: {
     query: string;
@@ -332,6 +380,23 @@ function App() {
   const [currentRecordError, setCurrentRecordError] = useState<string | null>(null);
   const [currentRecordSaveError, setCurrentRecordSaveError] = useState<string | null>(null);
   const [currentRecordRefreshToken, setCurrentRecordRefreshToken] = useState(0);
+  const [englishMaterialItems, setEnglishMaterialItems] = useState<EnglishMaterialItem[]>([]);
+  const [englishMaterialTotal, setEnglishMaterialTotal] = useState(0);
+  const [englishMaterialPage, setEnglishMaterialPage] = useState(restoredUiState.englishMaterials.page);
+  const [englishMaterialQuery, setEnglishMaterialQuery] = useState(restoredUiState.englishMaterials.query);
+  const [debouncedEnglishMaterialQuery, setDebouncedEnglishMaterialQuery] = useState(restoredUiState.englishMaterials.query.trim());
+  const [englishMaterialCategory, setEnglishMaterialCategory] = useState(restoredUiState.englishMaterials.category);
+  const [englishMaterialFlag, setEnglishMaterialFlag] = useState(restoredUiState.englishMaterials.flag);
+  const [englishMaterialSortBy, setEnglishMaterialSortBy] = useState<EnglishMaterialSortBy>(restoredUiState.englishMaterials.sortBy);
+  const [englishMaterialSortDir, setEnglishMaterialSortDir] = useState<SortDirection>(restoredUiState.englishMaterials.sortDir);
+  const [selectedEnglishMaterial, setSelectedEnglishMaterial] = useState<EnglishMaterialItem | null>(null);
+  const [englishMaterialDraft, setEnglishMaterialDraft] = useState<EnglishMaterialDraft>(restoredUiState.englishMaterials.draft);
+  const [isEnglishMaterialLoading, setIsEnglishMaterialLoading] = useState(false);
+  const [isEnglishMaterialDetailLoading, setIsEnglishMaterialDetailLoading] = useState(false);
+  const [isEnglishMaterialSaving, setIsEnglishMaterialSaving] = useState(false);
+  const [englishMaterialError, setEnglishMaterialError] = useState<string | null>(null);
+  const [englishMaterialSaveError, setEnglishMaterialSaveError] = useState<string | null>(null);
+  const [englishMaterialRefreshToken, setEnglishMaterialRefreshToken] = useState(0);
   const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
   const [historyTotal, setHistoryTotal] = useState(0);
   const [historySummary, setHistorySummary] = useState<HistorySummary>({
@@ -370,6 +435,7 @@ function App() {
 
   useEffect(() => {
     const handleUnauthorized = () => {
+      clearApiResponseCache();
       clearStoredUiState();
       setApiKey(null);
       setItems([]);
@@ -383,6 +449,9 @@ function App() {
       setCurrentRecordItems([]);
       setCurrentRecordTotal(0);
       setSelectedCurrentRecord(null);
+      setEnglishMaterialItems([]);
+      setEnglishMaterialTotal(0);
+      setSelectedEnglishMaterial(null);
       setUsageItems([]);
       setUsageTotal(0);
       setHistoryItems([]);
@@ -443,6 +512,16 @@ function App() {
         sortDir: currentRecordSortDir,
         draft: currentRecordDraft,
       },
+      englishMaterials: {
+        query: englishMaterialQuery,
+        page: englishMaterialPage,
+        category: englishMaterialCategory,
+        flag: englishMaterialFlag,
+        sortBy: englishMaterialSortBy,
+        sortDir: englishMaterialSortDir,
+        selectedId: selectedEnglishMaterial?.id ?? null,
+        draft: englishMaterialDraft,
+      },
       history: {
         query: historyQuery,
         page: historyPage,
@@ -484,6 +563,13 @@ function App() {
     currentRecordTypeFilter,
     currentRecordUsername,
     currentRecordWeek,
+    englishMaterialCategory,
+    englishMaterialDraft,
+    englishMaterialFlag,
+    englishMaterialPage,
+    englishMaterialQuery,
+    englishMaterialSortBy,
+    englishMaterialSortDir,
     draft,
     factoryPage,
     factoryQuery,
@@ -506,6 +592,7 @@ function App() {
     page,
     query,
     selectedBlogFactoryItem?.id,
+    selectedEnglishMaterial?.id,
     selectedId,
     statusFilter,
     todoDraft,
@@ -540,17 +627,24 @@ function App() {
   }, [activeView, apiKey, debouncedQuery, query]);
 
   useEffect(() => {
-    if (!apiKey) return;
+    if (!apiKey || activeView !== "workbench") return;
 
     let mounted = true;
-
-    setIsLoading(true);
-    fetchKnowledge({
+    const requestQuery = {
       query: debouncedQuery,
       limit: PAGE_SIZE,
       offset: (page - 1) * PAGE_SIZE,
       status: statusFilter === "all" ? undefined : statusFilter,
-    })
+    };
+    const cached = readCachedKnowledge(requestQuery);
+    if (cached) {
+      setItems(cached.items);
+      setTotalItems(cached.total);
+      setLoadError(null);
+    }
+
+    setIsLoading(!cached);
+    fetchKnowledge(requestQuery)
       .then((data) => {
         if (!mounted) return;
         setItems(data.items);
@@ -588,13 +682,21 @@ function App() {
     if (!apiKey || activeView !== "factory") return;
 
     let mounted = true;
-    setIsFactoryLoading(true);
-    fetchKnowledge({
+    const requestQuery = {
       query: debouncedFactoryQuery,
       limit: FACTORY_PAGE_SIZE,
       offset: (factoryPage - 1) * FACTORY_PAGE_SIZE,
       status: "未发布",
-    })
+    } as const;
+    const cached = readCachedKnowledge(requestQuery);
+    if (cached) {
+      setFactoryItems(cached.items);
+      setFactoryTotalItems(cached.total);
+      setFactoryError(null);
+    }
+
+    setIsFactoryLoading(!cached);
+    fetchKnowledge(requestQuery)
       .then((data) => {
         if (!mounted) return;
         setFactoryItems(data.items);
@@ -642,8 +744,7 @@ function App() {
     if (!apiKey || activeView !== "blogFactory") return;
 
     let mounted = true;
-    setIsBlogFactoryLoading(true);
-    fetchBlogFactoryItems({
+    const requestQuery = {
       query: debouncedBlogFactoryQuery,
       limit: BLOG_FACTORY_PAGE_SIZE,
       offset: (blogFactoryPage - 1) * BLOG_FACTORY_PAGE_SIZE,
@@ -652,7 +753,16 @@ function App() {
       knowledgeId: blogFactoryKnowledgeId,
       sortBy: blogFactorySortBy,
       sortDir: blogFactorySortDir,
-    })
+    };
+    const cached = readCachedBlogFactoryItems(requestQuery);
+    if (cached) {
+      setBlogFactoryItems(cached.items);
+      setBlogFactoryTotal(cached.total);
+      setBlogFactoryError(null);
+    }
+
+    setIsBlogFactoryLoading(!cached);
+    fetchBlogFactoryItems(requestQuery)
       .then((data) => {
         if (!mounted) return;
         setBlogFactoryItems(data.items);
@@ -710,13 +820,21 @@ function App() {
     if (!apiKey || activeView !== "todos") return;
 
     let mounted = true;
-    setIsTodoLoading(true);
-    fetchTodos({
+    const requestQuery = {
       query: debouncedTodoQuery,
       limit: TODO_PAGE_SIZE,
       offset: (todoPage - 1) * TODO_PAGE_SIZE,
       status: todoStatus === "all" ? undefined : todoStatus,
-    })
+    };
+    const cached = readCachedTodos(requestQuery);
+    if (cached) {
+      setTodoItems(cached.items);
+      setTodoTotal(cached.total);
+      setTodoError(null);
+    }
+
+    setIsTodoLoading(!cached);
+    fetchTodos(requestQuery)
       .then((data) => {
         if (!mounted) return;
         setTodoItems(data.items);
@@ -748,7 +866,18 @@ function App() {
     if (!apiKey || activeView !== "currentRecords") return;
 
     let mounted = true;
-    setIsCurrentRecordOptionsLoading(true);
+    const cached = readCachedCurrentRecordOptions();
+    if (cached) {
+      setCurrentRecordOptions({
+        ...cached,
+        user_types: cached.user_types ?? {},
+        weeks: cached.weeks.length > 0 ? cached.weeks : buildWeekOptions(),
+        days: cached.days.length > 0 ? cached.days : buildDayOptions(),
+        learn_levels: cached.learn_levels.length > 0 ? cached.learn_levels : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+      });
+    }
+
+    setIsCurrentRecordOptionsLoading(!cached);
     fetchCurrentRecordOptions()
       .then((options) => {
         if (!mounted) return;
@@ -795,8 +924,7 @@ function App() {
     if (!apiKey || activeView !== "currentRecords") return;
 
     let mounted = true;
-    setIsCurrentRecordLoading(true);
-    fetchCurrentRecords({
+    const requestQuery = {
       query: debouncedCurrentRecordQuery,
       username: currentRecordUsername,
       type: currentRecordTypeFilter,
@@ -807,7 +935,16 @@ function App() {
       sortDir: currentRecordSortDir,
       limit: CURRENT_RECORDS_PAGE_SIZE,
       offset: (currentRecordPage - 1) * CURRENT_RECORDS_PAGE_SIZE,
-    })
+    };
+    const cached = readCachedCurrentRecords(requestQuery);
+    if (cached) {
+      setCurrentRecordItems(cached.items);
+      setCurrentRecordTotal(cached.total);
+      setCurrentRecordError(null);
+    }
+
+    setIsCurrentRecordLoading(!cached);
+    fetchCurrentRecords(requestQuery)
       .then((data) => {
         if (!mounted) return;
         setCurrentRecordItems(data.items);
@@ -843,6 +980,76 @@ function App() {
 
   useEffect(() => {
     if (!apiKey) return;
+    const nextQuery = englishMaterialQuery.trim();
+    if (nextQuery === debouncedEnglishMaterialQuery) return;
+
+    const timer = window.setTimeout(() => {
+      setDebouncedEnglishMaterialQuery(nextQuery);
+      setEnglishMaterialPage(1);
+    }, 320);
+
+    return () => window.clearTimeout(timer);
+  }, [apiKey, englishMaterialQuery, debouncedEnglishMaterialQuery]);
+
+  useEffect(() => {
+    if (!apiKey || activeView !== "englishMaterials") return;
+
+    let mounted = true;
+    const requestQuery = {
+      query: debouncedEnglishMaterialQuery,
+      category: englishMaterialCategory,
+      flag: englishMaterialFlag,
+      sortBy: englishMaterialSortBy,
+      sortDir: englishMaterialSortDir,
+      limit: ENGLISH_MATERIALS_PAGE_SIZE,
+      offset: (englishMaterialPage - 1) * ENGLISH_MATERIALS_PAGE_SIZE,
+    };
+    const cached = readCachedEnglishMaterials(requestQuery);
+    if (cached) {
+      setEnglishMaterialItems(cached.items);
+      setEnglishMaterialTotal(cached.total);
+      setEnglishMaterialError(null);
+    }
+
+    setIsEnglishMaterialLoading(!cached);
+    fetchEnglishMaterials(requestQuery)
+      .then((data) => {
+        if (!mounted) return;
+        setEnglishMaterialItems(data.items);
+        setEnglishMaterialTotal(data.total);
+        setEnglishMaterialError(null);
+        setSelectedEnglishMaterial((current) => {
+          if (current && data.items.some((item) => item.id === current.id)) return current;
+          const restoredId = restoredUiState.englishMaterials.selectedId;
+          return (restoredId ? data.items.find((item) => item.id === restoredId) : null) ?? data.items[0] ?? null;
+        });
+      })
+      .catch((error: Error) => {
+        if (!mounted) return;
+        setEnglishMaterialError(error.message);
+      })
+      .finally(() => {
+        if (!mounted) return;
+        setIsEnglishMaterialLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [
+    activeView,
+    apiKey,
+    debouncedEnglishMaterialQuery,
+    englishMaterialCategory,
+    englishMaterialFlag,
+    englishMaterialPage,
+    englishMaterialRefreshToken,
+    englishMaterialSortBy,
+    englishMaterialSortDir,
+  ]);
+
+  useEffect(() => {
+    if (!apiKey) return;
     const nextQuery = historyQuery.trim();
     if (nextQuery === debouncedHistoryQuery) return;
 
@@ -858,8 +1065,7 @@ function App() {
     if (!apiKey || activeView !== "history") return;
 
     let mounted = true;
-    setIsHistoryLoading(true);
-    fetchHistory({
+    const requestQuery = {
       query: debouncedHistoryQuery,
       type: historyType,
       username: historyUsername,
@@ -873,7 +1079,17 @@ function App() {
       sortDir: historySortDir,
       limit: HISTORY_PAGE_SIZE,
       offset: (historyPage - 1) * HISTORY_PAGE_SIZE,
-    })
+    };
+    const cached = readCachedHistory(requestQuery);
+    if (cached) {
+      setHistoryItems(cached.items);
+      setHistoryTotal(cached.total);
+      setHistorySummary({ ...cached.summary, user_types: cached.summary.user_types ?? {} });
+      setHistoryError(null);
+    }
+
+    setIsHistoryLoading(!cached);
+    fetchHistory(requestQuery)
       .then((data) => {
         if (!mounted) return;
         setHistoryItems(data.items);
@@ -915,9 +1131,15 @@ function App() {
 
     let mounted = true;
     const refreshOnly = usageRefreshToken > 0 && usageItems.length > 0;
+    const cached = readCachedLlmUsage(USAGE_SAMPLE_LIMIT);
 
     if (refreshOnly) {
       setIsUsageRefreshing(true);
+    } else if (cached) {
+      setUsageItems(cached.items);
+      setUsageTotal(cached.total);
+      setUsageError(null);
+      setIsUsageLoading(false);
     } else {
       setIsUsageLoading(true);
     }
@@ -1114,6 +1336,7 @@ function App() {
 
   function handleLogout() {
     clearStoredApiKey();
+    clearApiResponseCache();
     clearStoredNewDraft();
     clearStoredUiState();
     setApiKey(null);
@@ -1133,6 +1356,10 @@ function App() {
     setCurrentRecordItems([]);
     setCurrentRecordTotal(0);
     setSelectedCurrentRecord(null);
+    setEnglishMaterialItems([]);
+    setEnglishMaterialTotal(0);
+    setSelectedEnglishMaterial(null);
+    setEnglishMaterialDraft(emptyEnglishMaterialDraft);
     setUsageItems([]);
     setUsageTotal(0);
     setHistoryItems([]);
@@ -1354,6 +1581,42 @@ function App() {
     }
   }
 
+  async function handleCreateEnglishMaterial(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!englishMaterialDraft.base_expression.trim() || isEnglishMaterialSaving) return;
+
+    setIsEnglishMaterialSaving(true);
+    setEnglishMaterialSaveError(null);
+    try {
+      const created = await createEnglishMaterial(englishMaterialDraft);
+      setEnglishMaterialDraft(emptyEnglishMaterialDraft);
+      setSelectedEnglishMaterial(created);
+      setEnglishMaterialPage(1);
+      setEnglishMaterialRefreshToken((current) => current + 1);
+    } catch (error) {
+      setEnglishMaterialSaveError(error instanceof Error ? error.message : "英语素材保存失败，请稍后重试。");
+    } finally {
+      setIsEnglishMaterialSaving(false);
+    }
+  }
+
+  async function handleSelectEnglishMaterial(item: EnglishMaterialItem) {
+    setSelectedEnglishMaterial(item);
+    setEnglishMaterialSaveError(null);
+    setIsEnglishMaterialDetailLoading(true);
+
+    try {
+      const detail = await getEnglishMaterial(item.id);
+      setSelectedEnglishMaterial(detail);
+      setEnglishMaterialItems((current) => current.map((entry) => (entry.id === detail.id ? detail : entry)));
+      setEnglishMaterialError(null);
+    } catch (error) {
+      setEnglishMaterialError(error instanceof Error ? error.message : "读取英语素材详情失败，请稍后重试。");
+    } finally {
+      setIsEnglishMaterialDetailLoading(false);
+    }
+  }
+
   function handleRefreshUsage() {
     setUsageRefreshToken((current) => current + 1);
   }
@@ -1392,6 +1655,8 @@ function App() {
             ? "当前记录录入"
             : activeView === "history"
               ? "历史记录查询"
+              : activeView === "englishMaterials"
+                ? "英语素材管理"
               : activeView === "historyAsk"
                 ? "AI 问数"
                 : "LLM 使用情况";
@@ -1408,6 +1673,8 @@ function App() {
             ? "Current Records"
             : activeView === "history"
               ? "History Explorer"
+              : activeView === "englishMaterials"
+                ? "English Materials"
               : activeView === "historyAsk"
                 ? "Ask History"
                 : "AI Usage";
@@ -1432,6 +1699,8 @@ function App() {
                       ? todoQuery
                     : activeView === "currentRecords"
                       ? currentRecordQuery
+                      : activeView === "englishMaterials"
+                        ? englishMaterialQuery
                       : activeView === "history"
                         ? historyQuery
                         : ""
@@ -1447,8 +1716,10 @@ function App() {
                   ? setBlogFactoryQuery
                   : activeView === "todos"
                     ? setTodoQuery
-                  : activeView === "currentRecords"
-                    ? setCurrentRecordQuery
+                    : activeView === "currentRecords"
+                      ? setCurrentRecordQuery
+                      : activeView === "englishMaterials"
+                        ? setEnglishMaterialQuery
                     : activeView === "history"
                       ? setHistoryQuery
                       : setQuery
@@ -1599,6 +1870,45 @@ function App() {
               onCloseEditor={() => {
                 if (!isCurrentRecordUpdating) setSelectedCurrentRecord(null);
               }}
+            />
+          ) : activeView === "englishMaterials" ? (
+            <EnglishMaterialsWorkspace
+              items={englishMaterialItems}
+              total={englishMaterialTotal}
+              page={englishMaterialPage}
+              selectedItem={selectedEnglishMaterial}
+              draft={englishMaterialDraft}
+              isLoading={isEnglishMaterialLoading}
+              isDetailLoading={isEnglishMaterialDetailLoading}
+              isSaving={isEnglishMaterialSaving}
+              loadError={englishMaterialError}
+              saveError={englishMaterialSaveError}
+              filters={{
+                category: englishMaterialCategory,
+                flag: englishMaterialFlag,
+                sortBy: englishMaterialSortBy,
+                sortDir: englishMaterialSortDir,
+              }}
+              onClearFilters={() => {
+                setEnglishMaterialPage(1);
+                setEnglishMaterialQuery("");
+                setDebouncedEnglishMaterialQuery("");
+                setEnglishMaterialCategory("");
+                setEnglishMaterialFlag("");
+                setEnglishMaterialSortBy("id");
+                setEnglishMaterialSortDir("desc");
+              }}
+              onDraftChange={setEnglishMaterialDraft}
+              onFilterChange={(nextFilters) => {
+                setEnglishMaterialPage(1);
+                if (nextFilters.category !== undefined) setEnglishMaterialCategory(nextFilters.category);
+                if (nextFilters.flag !== undefined) setEnglishMaterialFlag(nextFilters.flag);
+                if (nextFilters.sortBy !== undefined) setEnglishMaterialSortBy(nextFilters.sortBy);
+                if (nextFilters.sortDir !== undefined) setEnglishMaterialSortDir(nextFilters.sortDir);
+              }}
+              onPageChange={setEnglishMaterialPage}
+              onSelect={handleSelectEnglishMaterial}
+              onSubmit={handleCreateEnglishMaterial}
             />
           ) : activeView === "history" ? (
             <HistoryExplorer
@@ -1760,6 +2070,7 @@ function Sidebar({
     { icon: ClipboardCheck, label: "待办事项", view: "todos" as const },
     { icon: FilePlus2, label: "当前记录录入", view: "currentRecords" as const },
     { icon: History, label: "历史查询", view: "history" as const },
+    { icon: BookOpenCheck, label: "英语素材管理", view: "englishMaterials" as const },
     { icon: Bot, label: "AI 问数", view: "historyAsk" as const },
     { icon: ShieldCheck, label: "Review" },
     { icon: Database, label: "Sources" },
@@ -1840,6 +2151,7 @@ function Topbar({
     { icon: ClipboardCheck, label: "待办事项", view: "todos" as const },
     { icon: FilePlus2, label: "当前记录", view: "currentRecords" as const },
     { icon: History, label: "历史查询", view: "history" as const },
+    { icon: BookOpenCheck, label: "英语素材", view: "englishMaterials" as const },
     { icon: Bot, label: "AI 问数", view: "historyAsk" as const },
     { icon: Bot, label: "AI 用量", view: "usage" as const },
   ];
@@ -1898,6 +2210,8 @@ function Topbar({
                       ? "搜索待办标题、内容或标签"
                     : activeView === "currentRecords"
                       ? "搜索类型或当前内容"
+                      : activeView === "englishMaterials"
+                        ? "搜索标题、分类、英文或中文内容"
                       : "搜索问题、来源或标签"
               }
             />
@@ -3160,6 +3474,13 @@ type CurrentRecordFilters = {
   sortDir: "asc" | "desc";
 };
 
+type EnglishMaterialFilters = {
+  category: string;
+  flag: "" | "0" | "1";
+  sortBy: "id" | "sequence_no" | "category" | "base_expression" | "title" | "flag";
+  sortDir: "asc" | "desc";
+};
+
 function BlogFactoryRecords({
   items,
   total,
@@ -4245,6 +4566,390 @@ function CurrentRecordsWorkspace({
         onCancel={onCloseEditor}
         onConfirm={onUpdate}
       />
+    </div>
+  );
+}
+
+function EnglishMaterialsWorkspace({
+  items,
+  total,
+  page,
+  selectedItem,
+  draft,
+  isLoading,
+  isDetailLoading,
+  isSaving,
+  loadError,
+  saveError,
+  filters,
+  onDraftChange,
+  onFilterChange,
+  onClearFilters,
+  onPageChange,
+  onSelect,
+  onSubmit,
+}: {
+  items: EnglishMaterialItem[];
+  total: number;
+  page: number;
+  selectedItem: EnglishMaterialItem | null;
+  draft: EnglishMaterialDraft;
+  isLoading: boolean;
+  isDetailLoading: boolean;
+  isSaving: boolean;
+  loadError: string | null;
+  saveError: string | null;
+  filters: EnglishMaterialFilters;
+  onDraftChange: (draft: EnglishMaterialDraft) => void;
+  onFilterChange: (filters: Partial<EnglishMaterialFilters>) => void;
+  onClearFilters: () => void;
+  onPageChange: (page: number) => void;
+  onSelect: (item: EnglishMaterialItem) => void;
+  onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+}) {
+  const totalPages = Math.max(1, Math.ceil(total / ENGLISH_MATERIALS_PAGE_SIZE));
+  const rangeStart = total === 0 ? 0 : (page - 1) * ENGLISH_MATERIALS_PAGE_SIZE + 1;
+  const rangeEnd = Math.min(page * ENGLISH_MATERIALS_PAGE_SIZE, total);
+  const canSubmit = draft.base_expression.trim().length > 0 && !isSaving;
+
+  return (
+    <div className="grid flex-1 gap-4 px-4 pb-4 pt-2 xl:grid-cols-[minmax(460px,1fr)_360px_340px]">
+      <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/72 p-4 shadow-soft-glow backdrop-blur-xl">
+        <div className="mb-5 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div>
+            <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
+              <BookOpenCheck size={17} />
+              T_DOUYIN_DETAILS
+            </div>
+            <h2 className="text-xl font-semibold text-slate-50">英语素材列表</h2>
+          </div>
+          <div className="rounded-lg border border-white/10 bg-white/[0.035] px-3 py-2 text-sm text-slate-300">
+            {total} 条素材
+          </div>
+        </div>
+
+        <div className="mb-4 grid gap-3 md:grid-cols-[1fr_120px_1fr_auto]">
+          <Field label="分类标识" icon={<Tags size={16} />}>
+            <input
+              className="control"
+              maxLength={50}
+              value={filters.category}
+              onChange={(event) => onFilterChange({ category: event.target.value })}
+              placeholder="按分类精确筛选"
+            />
+          </Field>
+          <Field label="Flag" icon={<CircleGauge size={16} />}>
+            <select
+              className="control"
+              value={filters.flag}
+              onChange={(event) => onFilterChange({ flag: event.target.value as EnglishMaterialFilters["flag"] })}
+            >
+              <option value="">全部</option>
+              <option value="0">0</option>
+              <option value="1">1</option>
+            </select>
+          </Field>
+          <Field label="排序" icon={<ChartLine size={16} />}>
+            <div className="grid grid-cols-2 gap-2">
+              <select
+                className="control"
+                value={filters.sortBy}
+                onChange={(event) => onFilterChange({ sortBy: event.target.value as EnglishMaterialFilters["sortBy"] })}
+              >
+                <option value="id">ID</option>
+                <option value="sequence_no">序号</option>
+                <option value="category">分类</option>
+                <option value="base_expression">基础表达</option>
+                <option value="title">标题</option>
+                <option value="flag">Flag</option>
+              </select>
+              <select
+                className="control"
+                value={filters.sortDir}
+                onChange={(event) => onFilterChange({ sortDir: event.target.value as EnglishMaterialFilters["sortDir"] })}
+              >
+                <option value="desc">降序</option>
+                <option value="asc">升序</option>
+              </select>
+            </div>
+          </Field>
+          <button
+            className="mt-7 h-11 rounded-lg border border-white/10 bg-white/[0.035] px-4 text-sm font-medium text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300"
+            type="button"
+            onClick={onClearFilters}
+          >
+            清空
+          </button>
+        </div>
+
+        {isLoading ? (
+          <LoadingStack />
+        ) : loadError ? (
+          <div className="rounded-lg border border-amberline/25 bg-amberline/10 p-4">
+            <div className="mb-2 flex items-center gap-2 text-sm font-medium text-amberline">
+              <TriangleAlert size={16} />
+              英语素材读取失败
+            </div>
+            <p className="text-sm leading-6 text-amber-100/80">{loadError}</p>
+          </div>
+        ) : items.length === 0 ? (
+          <div className="grid min-h-[260px] place-items-center rounded-lg border border-white/10 bg-white/[0.025] p-6 text-center">
+            <div>
+              <BookOpenCheck className="mx-auto mb-3 text-slate-600" size={36} />
+              <div className="mb-1 font-medium text-slate-300">没有匹配的英语素材</div>
+              <p className="text-sm text-slate-500">新增素材后，这里会展示 `T_DOUYIN_DETAILS` 记录。</p>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {items.map((item) => {
+              const active = selectedItem?.id === item.id;
+              return (
+                <article
+                  key={item.id}
+                  className={`cursor-pointer rounded-lg border p-4 transition ${
+                    active ? "border-mint-300/25 bg-mint-300/8" : "border-white/10 bg-white/[0.028] hover:border-white/18"
+                  }`}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => onSelect(item)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      onSelect(item);
+                    }
+                  }}
+                >
+                  <div className="mb-3 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div className="min-w-0">
+                      <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                        <span>#{item.id}</span>
+                        <span>序号 {item.sequence_no ?? "-"}</span>
+                        <span>{item.category || "未分类"}</span>
+                        <span>FLAG {item.flag}</span>
+                      </div>
+                      <h3 className="line-clamp-1 text-sm font-semibold text-slate-50">
+                        {item.title || item.base_expression || "未命名素材"}
+                      </h3>
+                    </div>
+                    <button
+                      className="flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg border border-mint-300/25 bg-mint-300/10 px-3 text-xs font-medium text-mint-200 transition hover:bg-mint-300/16"
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onSelect(item);
+                      }}
+                    >
+                      <Search size={14} />
+                      查看
+                    </button>
+                  </div>
+                  <p className="line-clamp-2 text-sm leading-6 text-slate-300">{item.base_expression || "基础表达未填写"}</p>
+                  <p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-500">{item.chinese_translation || "中文翻译未填写"}</p>
+                </article>
+              );
+            })}
+
+            <div className="flex flex-col gap-3 rounded-lg border border-white/8 bg-white/[0.025] px-3 py-3 text-sm text-slate-400 sm:flex-row sm:items-center sm:justify-between">
+              <span>
+                {rangeStart}-{rangeEnd} / {total}
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  className="grid h-9 w-9 place-items-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600"
+                  disabled={page <= 1}
+                  title="上一页"
+                  type="button"
+                  onClick={() => onPageChange(Math.max(1, page - 1))}
+                >
+                  <ChevronLeft size={17} />
+                </button>
+                <span className="min-w-16 text-center text-xs text-slate-500">
+                  {page} / {totalPages}
+                </span>
+                <button
+                  className="grid h-9 w-9 place-items-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600"
+                  disabled={page >= totalPages}
+                  title="下一页"
+                  type="button"
+                  onClick={() => onPageChange(Math.min(totalPages, page + 1))}
+                >
+                  <ChevronRight size={17} />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </section>
+
+      <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/72 p-4 shadow-soft-glow backdrop-blur-xl">
+        <div className="mb-5">
+          <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
+            <Plus size={17} />
+            New Material
+          </div>
+          <h2 className="text-xl font-semibold text-slate-50">录入英语素材</h2>
+        </div>
+
+        <form className="space-y-4" onSubmit={onSubmit}>
+          <div className="grid grid-cols-[1fr_110px] gap-3">
+            <Field label="标题" icon={<FileText size={16} />}>
+              <input
+                className="control"
+                maxLength={200}
+                value={draft.title}
+                onChange={(event) => onDraftChange({ ...draft, title: event.target.value })}
+                placeholder="素材标题"
+              />
+            </Field>
+            <Field label="序号" icon={<CircleGauge size={16} />}>
+              <input
+                className="control"
+                min={1}
+                type="number"
+                value={draft.sequence_no}
+                onChange={(event) => onDraftChange({ ...draft, sequence_no: event.target.value.replace(/\D/g, "") })}
+                placeholder="可空"
+              />
+            </Field>
+          </div>
+
+          <div className="grid grid-cols-[1fr_110px] gap-3">
+            <Field label="分类标识" icon={<Tags size={16} />}>
+              <input
+                className="control"
+                maxLength={50}
+                value={draft.category}
+                onChange={(event) => onDraftChange({ ...draft, category: event.target.value })}
+                placeholder="如 workplace"
+              />
+            </Field>
+            <Field label="Flag" icon={<CircleGauge size={16} />}>
+              <select
+                className="control"
+                value={draft.flag}
+                onChange={(event) => onDraftChange({ ...draft, flag: event.target.value as EnglishMaterialDraft["flag"] })}
+              >
+                <option value="0">0</option>
+                <option value="1">1</option>
+              </select>
+            </Field>
+          </div>
+
+          <Field label="基础表达" icon={<BookOpenCheck size={16} />}>
+            <input
+              className="control"
+              maxLength={50}
+              value={draft.base_expression}
+              onChange={(event) => onDraftChange({ ...draft, base_expression: event.target.value })}
+              placeholder="必填，例如 make it happen"
+            />
+          </Field>
+
+          <Field label="职业完整句式" icon={<FileText size={16} />}>
+            <textarea
+              className="control min-h-[110px] resize-none leading-7"
+              maxLength={255}
+              value={draft.professional_sentence}
+              onChange={(event) => onDraftChange({ ...draft, professional_sentence: event.target.value })}
+              placeholder="适合职场场景的完整英文句式。"
+            />
+          </Field>
+
+          <Field label="地道中文翻译" icon={<FileText size={16} />}>
+            <textarea
+              className="control min-h-[110px] resize-none leading-7"
+              maxLength={255}
+              value={draft.chinese_translation}
+              onChange={(event) => onDraftChange({ ...draft, chinese_translation: event.target.value })}
+              placeholder="中文解释或翻译。"
+            />
+          </Field>
+
+          <Field label="完整口播内容" icon={<ClipboardList size={16} />}>
+            <textarea
+              className="control min-h-[180px] resize-none leading-7"
+              maxLength={4000}
+              value={draft.full_script}
+              onChange={(event) => onDraftChange({ ...draft, full_script: event.target.value })}
+              placeholder="用于短视频口播的完整内容。"
+            />
+          </Field>
+
+          {saveError ? (
+            <div className="flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100">
+              <TriangleAlert className="mt-0.5 shrink-0 text-red-300" size={17} />
+              <span>{saveError}</span>
+            </div>
+          ) : null}
+
+          <button
+            className="flex h-12 w-full items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
+            disabled={!canSubmit}
+            type="submit"
+          >
+            {isSaving ? <Loader2 className="animate-spin" size={18} /> : <Plus size={18} />}
+            {isSaving ? "写入中" : "保存到 T_DOUYIN_DETAILS"}
+          </button>
+        </form>
+      </section>
+
+      <aside className="min-w-0 rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
+        <div className="mb-5">
+          <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
+            <Search size={17} />
+            Material Detail
+          </div>
+          <h2 className="text-lg font-semibold text-slate-50">素材查看</h2>
+        </div>
+
+        {isDetailLoading ? (
+          <LoadingStack />
+        ) : selectedItem ? (
+          <div className="space-y-4">
+            <div className="grid gap-3">
+              <MetricTile icon={<Database size={17} />} label="记录 ID" value={`#${selectedItem.id}`} detail={`FLAG ${selectedItem.flag}`} />
+              <MetricTile
+                icon={<Tags size={17} />}
+                label="分类"
+                value={selectedItem.category || "未分类"}
+                detail={`序号 ${selectedItem.sequence_no ?? "-"}`}
+              />
+            </div>
+
+            <div className="rounded-lg border border-white/10 bg-white/[0.028] p-4">
+              <div className="mb-2 text-xs uppercase text-slate-500">TITLE</div>
+              <div className="text-sm font-medium leading-6 text-slate-100">{selectedItem.title || "未填写标题"}</div>
+            </div>
+
+            <div className="rounded-lg border border-mint-300/20 bg-mint-300/8 p-4">
+              <div className="mb-2 text-xs uppercase text-mint-300/70">BASE_EXPRESSION</div>
+              <div className="text-sm font-medium leading-6 text-mint-100">{selectedItem.base_expression || "未填写基础表达"}</div>
+            </div>
+
+            <EnglishMaterialDetailBlock label="职业完整句式" value={selectedItem.professional_sentence} />
+            <EnglishMaterialDetailBlock label="地道中文翻译" value={selectedItem.chinese_translation} />
+            <EnglishMaterialDetailBlock label="完整口播内容" value={selectedItem.full_script} tall />
+          </div>
+        ) : (
+          <div className="grid min-h-[300px] place-items-center rounded-lg border border-white/10 bg-white/[0.025] p-6 text-center">
+            <div>
+              <BookOpenCheck className="mx-auto mb-3 text-slate-600" size={36} />
+              <div className="mb-1 font-medium text-slate-300">选择一条素材</div>
+              <p className="text-sm leading-6 text-slate-500">右侧会显示英文句式、中文翻译和完整口播内容。</p>
+            </div>
+          </div>
+        )}
+      </aside>
+    </div>
+  );
+}
+
+function EnglishMaterialDetailBlock({ label, value, tall = false }: { label: string; value: string | null; tall?: boolean }) {
+  return (
+    <div className={`rounded-lg border border-white/10 bg-white/[0.028] p-4 ${tall ? "min-h-[160px]" : ""}`}>
+      <div className="mb-2 text-xs uppercase text-slate-500">{label}</div>
+      <div className="whitespace-pre-wrap text-sm leading-7 text-slate-300">{value || "未填写"}</div>
     </div>
   );
 }
@@ -5602,11 +6307,13 @@ function readStoredUiState(): StoredUiState {
     const blogFactory = readRecord(stored.blogFactory);
     const todos = readRecord(stored.todos);
     const currentRecords = readRecord(stored.currentRecords);
+    const englishMaterials = readRecord(stored.englishMaterials);
     const history = readRecord(stored.history);
     const historyAsk = readRecord(stored.historyAsk);
     const workbenchDraft = readKnowledgeDraft(workbench.draft);
     const todoDraft = readTodoDraft(todos.draft);
     const currentRecordDraft = readRecord(currentRecords.draft);
+    const englishMaterialDraft = readEnglishMaterialDraft(englishMaterials.draft);
 
     return {
       activeView: readAppView(stored.activeView, defaults.activeView),
@@ -5657,6 +6364,16 @@ function readStoredUiState(): StoredUiState {
           type: readString(currentRecordDraft.type),
           content: readString(currentRecordDraft.content),
         },
+      },
+      englishMaterials: {
+        query: readString(englishMaterials.query),
+        page: readPositiveInteger(englishMaterials.page, defaults.englishMaterials.page),
+        category: readString(englishMaterials.category),
+        flag: readStringUnion(englishMaterials.flag, ["", "0", "1"] as const, defaults.englishMaterials.flag),
+        sortBy: readStringUnion(englishMaterials.sortBy, ENGLISH_MATERIAL_SORT_FIELDS, defaults.englishMaterials.sortBy),
+        sortDir: readStringUnion(englishMaterials.sortDir, SORT_DIRECTIONS, defaults.englishMaterials.sortDir),
+        selectedId: readNullablePositiveInteger(englishMaterials.selectedId),
+        draft: englishMaterialDraft,
       },
       history: {
         query: readString(history.query),
@@ -5742,6 +6459,16 @@ function buildDefaultUiState(): StoredUiState {
       sortDir: "desc",
       draft: { username: "", type: "", content: "" },
     },
+    englishMaterials: {
+      query: "",
+      page: 1,
+      category: "",
+      flag: "",
+      sortBy: "id",
+      sortDir: "desc",
+      selectedId: null,
+      draft: emptyEnglishMaterialDraft,
+    },
     history: {
       query: "",
       page: 1,
@@ -5787,6 +6514,20 @@ function readTodoDraft(value: unknown): TodoDraft | null {
   };
 
   return nextDraft;
+}
+
+function readEnglishMaterialDraft(value: unknown): EnglishMaterialDraft {
+  const draft = readRecord(value);
+  return {
+    sequence_no: readString(draft.sequence_no).replace(/\D/g, ""),
+    category: readString(draft.category),
+    base_expression: readString(draft.base_expression),
+    professional_sentence: readString(draft.professional_sentence),
+    chinese_translation: readString(draft.chinese_translation),
+    full_script: readString(draft.full_script),
+    title: readString(draft.title),
+    flag: readStringUnion(draft.flag, ["0", "1"] as const, "0"),
+  };
 }
 
 function readHistoryAskResponse(value: unknown): HistoryAskResponse | null {

@@ -60,7 +60,16 @@ export interface BlogFactoryItem {
   has_article: boolean;
 }
 
-export type AppView = "workbench" | "factory" | "blogFactory" | "todos" | "currentRecords" | "history" | "historyAsk" | "usage";
+export type AppView =
+  | "workbench"
+  | "factory"
+  | "blogFactory"
+  | "todos"
+  | "currentRecords"
+  | "history"
+  | "englishMaterials"
+  | "historyAsk"
+  | "usage";
 
 export interface CurrentRecordItem {
   id: number;
@@ -79,6 +88,29 @@ export interface CurrentRecordOptions {
   weeks: CurrentWeek[];
   days: CurrentDay[];
   learn_levels: number[];
+}
+
+export interface EnglishMaterialItem {
+  id: number;
+  sequence_no: number | null;
+  category: string | null;
+  base_expression: string | null;
+  professional_sentence: string | null;
+  chinese_translation: string | null;
+  full_script: string | null;
+  flag: number;
+  title: string | null;
+}
+
+export interface EnglishMaterialDraft {
+  sequence_no: string;
+  category: string;
+  base_expression: string;
+  professional_sentence: string;
+  chinese_translation: string;
+  full_script: string;
+  title: string;
+  flag: "0" | "1";
 }
 
 export interface LlmUsageSample {
