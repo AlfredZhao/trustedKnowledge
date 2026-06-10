@@ -45,6 +45,8 @@ import {
   startWeChatLogin,
 } from "./api/auth";
 import {
+  convertKnowledgeToTodo,
+  convertTodoToKnowledge,
   createBlogFactoryItem,
   createKnowledge,
   createTodo,
@@ -66,6 +68,7 @@ import {
 } from "./api/knowledge";
 import { fetchHistory, readCachedHistory } from "./api/history";
 import { askHistory } from "./api/historyAsk";
+import { streamCodex } from "./api/codex";
 import {
   createCurrentRecord,
   fetchCurrentRecordOptions,
@@ -74,11 +77,13 @@ import {
   readCachedCurrentRecords,
   updateCurrentRecord,
 } from "./api/currentRecords";
+import { checkBackendHealth, restartServices } from "./api/system";
 import {
   createEnglishMaterial,
   fetchEnglishMaterials,
   getEnglishMaterial,
   readCachedEnglishMaterials,
+  updateEnglishMaterial,
 } from "./api/englishMaterials";
 import { clearApiResponseCache } from "./api/localCache";
 import { fetchLlmUsage, readCachedLlmUsage } from "./api/usage";
@@ -86,6 +91,7 @@ import type {
   AppView,
   BlogFactoryItem,
   BlogFactoryStatus,
+  CodexRunResponse,
   CurrentDay,
   CurrentRecordItem,
   CurrentRecordOptions,
@@ -99,6 +105,7 @@ import type {
   KnowledgeItem,
   KnowledgeStatus,
   LlmUsageSample,
+  SystemRestartResponse,
   TodoDraft,
   TodoItem,
   TodoStatus,
@@ -142,6 +149,9 @@ const USAGE_SAMPLE_LIMIT = 72;
 const RESET_READY_DELAY_MS = 60 * 60 * 1000;
 const NEW_KNOWLEDGE_DRAFT_STORAGE_KEY = "trustedKnowledge.newDraft";
 const UI_STATE_STORAGE_KEY = "trustedKnowledge.uiState.v1";
+const MOBILE_VIEWPORT_CONTENT = "width=device-width, initial-scale=1.0, viewport-fit=cover";
+const MOBILE_VIEWPORT_RESET_CONTENT =
+  "width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, viewport-fit=cover";
 const APP_VIEWS: AppView[] = [
   "workbench",
   "factory",
@@ -151,6 +161,7 @@ const APP_VIEWS: AppView[] = [
   "history",
   "englishMaterials",
   "historyAsk",
+  "aiCoding",
   "usage",
 ];
 const BLOG_FACTORY_SORT_FIELDS = ["copied_at", "id", "knowledge_id", "factory_status"] as const;
@@ -168,6 +179,7 @@ type HistoryVectorStatus = "all" | "0" | "1";
 
 interface StoredUiState {
   activeView: AppView;
+  sidebarExpanded: boolean;
   workbench: {
     query: string;
     statusFilter: KnowledgeStatus | "all";
@@ -248,6 +260,20 @@ interface UsageChangeItem extends LlmUsageSample {
   sample_count: number;
 }
 
+interface AiCodingMessage {
+  id: number;
+  prompt: string;
+  response: CodexRunResponse | null;
+  archivedKnowledgeId?: number;
+}
+
+type ConversionTarget = "knowledgeToTodo" | "todoToKnowledge";
+
+interface PendingCurrentRecordUpdate {
+  record: CurrentRecordItem;
+  next: { week: CurrentWeek; day: CurrentDay; content: string };
+}
+
 const statusStyles: Record<KnowledgeStatus, string> = {
   未发布: "border-slate-500/30 bg-slate-400/10 text-slate-200",
   已发布: "border-mint-300/30 bg-mint-300/10 text-mint-300",
@@ -282,6 +308,7 @@ function App() {
     return readStoredApiKey();
   });
   const [activeView, setActiveView] = useState<AppView>(restoredUiState.activeView);
+  const [isSidebarExpanded, setIsSidebarExpanded] = useState(restoredUiState.sidebarExpanded);
   const [items, setItems] = useState<KnowledgeItem[]>([]);
   const [draft, setDraft] = useState<KnowledgeDraft>(() => restoredUiState.workbench.draft ?? readStoredNewDraft() ?? emptyDraft);
   const [query, setQuery] = useState(restoredUiState.workbench.query);
@@ -293,6 +320,7 @@ function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isConvertingKnowledgeToTodo, setIsConvertingKnowledgeToTodo] = useState(false);
   const [refreshToken, setRefreshToken] = useState(0);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -348,9 +376,11 @@ function App() {
   const [isTodoLoading, setIsTodoLoading] = useState(false);
   const [isTodoDetailLoading, setIsTodoDetailLoading] = useState(false);
   const [isTodoSaving, setIsTodoSaving] = useState(false);
+  const [isConvertingTodoToKnowledge, setIsConvertingTodoToKnowledge] = useState(false);
   const [todoError, setTodoError] = useState<string | null>(null);
   const [todoSaveError, setTodoSaveError] = useState<string | null>(null);
   const [todoRefreshToken, setTodoRefreshToken] = useState(0);
+  const [conversionTarget, setConversionTarget] = useState<ConversionTarget | null>(null);
   const [currentRecordItems, setCurrentRecordItems] = useState<CurrentRecordItem[]>([]);
   const [currentRecordTotal, setCurrentRecordTotal] = useState(0);
   const [currentRecordPage, setCurrentRecordPage] = useState(restoredUiState.currentRecords.page);
@@ -380,6 +410,7 @@ function App() {
   const [currentRecordError, setCurrentRecordError] = useState<string | null>(null);
   const [currentRecordSaveError, setCurrentRecordSaveError] = useState<string | null>(null);
   const [currentRecordRefreshToken, setCurrentRecordRefreshToken] = useState(0);
+  const [pendingCurrentRecordUpdate, setPendingCurrentRecordUpdate] = useState<PendingCurrentRecordUpdate | null>(null);
   const [englishMaterialItems, setEnglishMaterialItems] = useState<EnglishMaterialItem[]>([]);
   const [englishMaterialTotal, setEnglishMaterialTotal] = useState(0);
   const [englishMaterialPage, setEnglishMaterialPage] = useState(restoredUiState.englishMaterials.page);
@@ -390,10 +421,14 @@ function App() {
   const [englishMaterialSortBy, setEnglishMaterialSortBy] = useState<EnglishMaterialSortBy>(restoredUiState.englishMaterials.sortBy);
   const [englishMaterialSortDir, setEnglishMaterialSortDir] = useState<SortDirection>(restoredUiState.englishMaterials.sortDir);
   const [selectedEnglishMaterial, setSelectedEnglishMaterial] = useState<EnglishMaterialItem | null>(null);
+  const [isEnglishMaterialDetailOpen, setIsEnglishMaterialDetailOpen] = useState(false);
   const [englishMaterialDraft, setEnglishMaterialDraft] = useState<EnglishMaterialDraft>(restoredUiState.englishMaterials.draft);
+  const [englishMaterialDetailDraft, setEnglishMaterialDetailDraft] = useState<EnglishMaterialDraft>(emptyEnglishMaterialDraft);
   const [isEnglishMaterialLoading, setIsEnglishMaterialLoading] = useState(false);
   const [isEnglishMaterialDetailLoading, setIsEnglishMaterialDetailLoading] = useState(false);
   const [isEnglishMaterialSaving, setIsEnglishMaterialSaving] = useState(false);
+  const [isEnglishMaterialDetailSaving, setIsEnglishMaterialDetailSaving] = useState(false);
+  const [englishMaterialCopiedLabel, setEnglishMaterialCopiedLabel] = useState<string | null>(null);
   const [englishMaterialError, setEnglishMaterialError] = useState<string | null>(null);
   const [englishMaterialSaveError, setEnglishMaterialSaveError] = useState<string | null>(null);
   const [englishMaterialRefreshToken, setEnglishMaterialRefreshToken] = useState(0);
@@ -425,6 +460,7 @@ function App() {
   const [historyAskQuestion, setHistoryAskQuestion] = useState(restoredUiState.historyAsk.question);
   const [historyAskAnswer, setHistoryAskAnswer] = useState<HistoryAskResponse | null>(restoredUiState.historyAsk.answer);
   const [historyAskError, setHistoryAskError] = useState<string | null>(null);
+  const [hasCopiedHistoryAskAnswer, setHasCopiedHistoryAskAnswer] = useState(false);
   const [isHistoryAsking, setIsHistoryAsking] = useState(false);
   const [usageItems, setUsageItems] = useState<LlmUsageSample[]>([]);
   const [usageTotal, setUsageTotal] = useState(0);
@@ -432,6 +468,49 @@ function App() {
   const [isUsageRefreshing, setIsUsageRefreshing] = useState(false);
   const [usageError, setUsageError] = useState<string | null>(null);
   const [usageRefreshToken, setUsageRefreshToken] = useState(0);
+  const [aiCodingPrompt, setAiCodingPrompt] = useState("");
+  const [aiCodingMessages, setAiCodingMessages] = useState<AiCodingMessage[]>([]);
+  const [liveCodexOutput, setLiveCodexOutput] = useState("");
+  const [liveCodexErrorOutput, setLiveCodexErrorOutput] = useState("");
+  const [liveCodexStatus, setLiveCodexStatus] = useState("");
+  const [isCodexRunning, setIsCodexRunning] = useState(false);
+  const [codexError, setCodexError] = useState<string | null>(null);
+  const [codexArchiveLoadingId, setCodexArchiveLoadingId] = useState<number | null>(null);
+  const [codexArchiveError, setCodexArchiveError] = useState<string | null>(null);
+  const [restartConfirm, setRestartConfirm] = useState("");
+  const [restartResponse, setRestartResponse] = useState<SystemRestartResponse | null>(null);
+  const [restartError, setRestartError] = useState<string | null>(null);
+  const [isRestartingServices, setIsRestartingServices] = useState(false);
+
+  useEffect(() => {
+    if (!isMobileViewport()) return;
+
+    let resetTimer: number | undefined;
+
+    function handleFocusOut(event: FocusEvent) {
+      if (!isEditableElement(event.target)) return;
+
+      window.clearTimeout(resetTimer);
+      resetTimer = window.setTimeout(() => {
+        if (!isEditableElement(document.activeElement)) {
+          restoreMobileViewportScale({ blurActiveElement: false });
+        }
+      }, 180);
+    }
+
+    function handleViewportChange() {
+      restoreMobileViewportScale();
+    }
+
+    window.addEventListener("focusout", handleFocusOut);
+    window.addEventListener("orientationchange", handleViewportChange);
+
+    return () => {
+      window.clearTimeout(resetTimer);
+      window.removeEventListener("focusout", handleFocusOut);
+      window.removeEventListener("orientationchange", handleViewportChange);
+    };
+  }, []);
 
   useEffect(() => {
     const handleUnauthorized = () => {
@@ -440,15 +519,19 @@ function App() {
       setApiKey(null);
       setItems([]);
       setSelectedId(null);
+      setIsConvertingKnowledgeToTodo(false);
       setBlogFactoryItems([]);
       setBlogFactoryTotal(0);
       setSelectedBlogFactoryItem(null);
       setTodoItems([]);
       setTodoTotal(0);
       setSelectedTodoId(null);
+      setIsConvertingTodoToKnowledge(false);
+      setConversionTarget(null);
       setCurrentRecordItems([]);
       setCurrentRecordTotal(0);
       setSelectedCurrentRecord(null);
+      setPendingCurrentRecordUpdate(null);
       setEnglishMaterialItems([]);
       setEnglishMaterialTotal(0);
       setSelectedEnglishMaterial(null);
@@ -457,6 +540,16 @@ function App() {
       setHistoryItems([]);
       setHistoryTotal(0);
       setHistoryAskAnswer(null);
+      setHasCopiedHistoryAskAnswer(false);
+      setAiCodingMessages([]);
+      setLiveCodexOutput("");
+      setLiveCodexErrorOutput("");
+      setLiveCodexStatus("");
+      setCodexError(null);
+      setCodexArchiveLoadingId(null);
+      setCodexArchiveError(null);
+      setRestartResponse(null);
+      setRestartError(null);
     };
 
     window.addEventListener("trusted-knowledge:unauthorized", handleUnauthorized);
@@ -468,6 +561,7 @@ function App() {
 
     writeStoredUiState({
       activeView,
+      sidebarExpanded: isSidebarExpanded,
       workbench: {
         query,
         statusFilter,
@@ -589,6 +683,7 @@ function App() {
     historyUsername,
     historyVectorStatus,
     historyWeek,
+    isSidebarExpanded,
     page,
     query,
     selectedBlogFactoryItem?.id,
@@ -1246,6 +1341,7 @@ function App() {
       setItems((current) => current.map((item) => (item.id === updated.id ? updated : item)));
       setDraft(itemToDraft(updated));
       setLastCreatedId(updated.id);
+      restoreMobileViewportScale();
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : "提交失败，请稍后重试。");
     } finally {
@@ -1316,11 +1412,44 @@ function App() {
     setDeleteTarget(selectedItem);
   }
 
+  function handleConvertSelectedKnowledgeToTodo() {
+    if (selectedId === null || isConvertingKnowledgeToTodo || isSaving || isDeleting) return;
+    setConversionTarget("knowledgeToTodo");
+  }
+
+  async function confirmConvertSelectedKnowledgeToTodo() {
+    if (selectedId === null || isConvertingKnowledgeToTodo || isSaving || isDeleting) return;
+
+    setConversionTarget(null);
+    setIsConvertingKnowledgeToTodo(true);
+    setSaveError(null);
+    try {
+      const converted = await convertKnowledgeToTodo(selectedId);
+      setItems((current) => current.filter((item) => item.id !== selectedId));
+      setTotalItems((current) => Math.max(0, current - 1));
+      setSelectedId(null);
+      setDraft(emptyDraft);
+      setLastCreatedId(null);
+      setTodoDraft(todoItemToDraft(converted));
+      setSelectedTodoId(converted.id);
+      setTodoPage(1);
+      setTodoStatus("all");
+      setTodoRefreshToken((current) => current + 1);
+      setRefreshToken((current) => current + 1);
+      setActiveView("todos");
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "转换为待办事项失败，请稍后重试。");
+    } finally {
+      setIsConvertingKnowledgeToTodo(false);
+    }
+  }
+
   function handleNewEntry() {
     setSelectedId(null);
     setDraft(readStoredNewDraft() ?? emptyDraft);
     setIsTodoEntry(false);
     setSaveError(null);
+    restoreMobileViewportScale();
   }
 
   function handleLogin(nextApiKey: string) {
@@ -1356,16 +1485,20 @@ function App() {
     setCurrentRecordItems([]);
     setCurrentRecordTotal(0);
     setSelectedCurrentRecord(null);
-    setEnglishMaterialItems([]);
-    setEnglishMaterialTotal(0);
-    setSelectedEnglishMaterial(null);
-    setEnglishMaterialDraft(emptyEnglishMaterialDraft);
+      setEnglishMaterialItems([]);
+      setEnglishMaterialTotal(0);
+      setSelectedEnglishMaterial(null);
+      setIsEnglishMaterialDetailOpen(false);
+      setEnglishMaterialDraft(emptyEnglishMaterialDraft);
+      setEnglishMaterialDetailDraft(emptyEnglishMaterialDraft);
+      setEnglishMaterialCopiedLabel(null);
     setUsageItems([]);
     setUsageTotal(0);
     setHistoryItems([]);
     setHistoryTotal(0);
     setHistoryAskAnswer(null);
     setHistoryAskQuestion("");
+    setHasCopiedHistoryAskAnswer(false);
   }
 
   async function handleGenerateFactoryTask(item: KnowledgeItem) {
@@ -1518,6 +1651,37 @@ function App() {
     }
   }
 
+  function handleConvertSelectedTodoToKnowledge() {
+    if (selectedTodoId === null || isConvertingTodoToKnowledge || isTodoSaving) return;
+    setConversionTarget("todoToKnowledge");
+  }
+
+  async function confirmConvertSelectedTodoToKnowledge() {
+    if (selectedTodoId === null || isConvertingTodoToKnowledge || isTodoSaving) return;
+
+    setConversionTarget(null);
+    setIsConvertingTodoToKnowledge(true);
+    setTodoSaveError(null);
+    try {
+      const converted = await convertTodoToKnowledge(selectedTodoId);
+      setTodoItems((current) => current.filter((item) => item.id !== selectedTodoId));
+      setTodoTotal((current) => Math.max(0, current - 1));
+      setSelectedTodoId(null);
+      setTodoDraft(emptyTodoDraft);
+      setDraft(itemToDraft(converted));
+      setSelectedId(converted.id);
+      setPage(1);
+      setStatusFilter("all");
+      setTodoRefreshToken((current) => current + 1);
+      setRefreshToken((current) => current + 1);
+      setActiveView("workbench");
+    } catch (error) {
+      setTodoSaveError(error instanceof Error ? error.message : "转换为可信知识失败，请稍后重试。");
+    } finally {
+      setIsConvertingTodoToKnowledge(false);
+    }
+  }
+
   async function handleCopyBlogFactoryArticle() {
     const markdown = selectedBlogFactoryItem?.article_markdown ?? blogFactoryArticleDraft;
     if (!markdown.trim()) return;
@@ -1558,9 +1722,18 @@ function App() {
     if (isCurrentRecordUpdating) return;
     const wrapsToNextLevel = record.week === "W48" && next.week === "W1";
     if (wrapsToNextLevel && (record.learn_level ?? 1) >= 10) {
-      const confirmed = window.confirm("十年磨一剑，是否该类型已经完成了修炼？确认后仍会保持 Level 10 并继续保存。");
-      if (!confirmed) return;
+      setPendingCurrentRecordUpdate({ record, next });
+      return;
     }
+
+    await updateCurrentRecordAfterConfirm(record, next);
+  }
+
+  async function updateCurrentRecordAfterConfirm(
+    record: CurrentRecordItem,
+    next: { week: CurrentWeek; day: CurrentDay; content: string },
+  ) {
+    if (isCurrentRecordUpdating) return;
 
     setIsCurrentRecordUpdating(true);
     setCurrentRecordSaveError(null);
@@ -1591,6 +1764,7 @@ function App() {
       const created = await createEnglishMaterial(englishMaterialDraft);
       setEnglishMaterialDraft(emptyEnglishMaterialDraft);
       setSelectedEnglishMaterial(created);
+      setIsEnglishMaterialDetailOpen(false);
       setEnglishMaterialPage(1);
       setEnglishMaterialRefreshToken((current) => current + 1);
     } catch (error) {
@@ -1600,20 +1774,60 @@ function App() {
     }
   }
 
-  async function handleSelectEnglishMaterial(item: EnglishMaterialItem) {
+  async function handleSelectEnglishMaterial(item: EnglishMaterialItem, { openDetail = true }: { openDetail?: boolean } = {}) {
     setSelectedEnglishMaterial(item);
+    setEnglishMaterialDetailDraft(englishMaterialItemToDraft(item));
+    setEnglishMaterialCopiedLabel(null);
+    if (openDetail) setIsEnglishMaterialDetailOpen(true);
     setEnglishMaterialSaveError(null);
     setIsEnglishMaterialDetailLoading(true);
 
     try {
       const detail = await getEnglishMaterial(item.id);
       setSelectedEnglishMaterial(detail);
+      setEnglishMaterialDetailDraft(englishMaterialItemToDraft(detail));
       setEnglishMaterialItems((current) => current.map((entry) => (entry.id === detail.id ? detail : entry)));
       setEnglishMaterialError(null);
     } catch (error) {
       setEnglishMaterialError(error instanceof Error ? error.message : "读取英语素材详情失败，请稍后重试。");
     } finally {
       setIsEnglishMaterialDetailLoading(false);
+    }
+  }
+
+  async function handleSaveEnglishMaterialDetail() {
+    if (!selectedEnglishMaterial || isEnglishMaterialDetailSaving || !englishMaterialDetailDraft.base_expression.trim()) return;
+
+    setIsEnglishMaterialDetailSaving(true);
+    setEnglishMaterialSaveError(null);
+    try {
+      const updated = await updateEnglishMaterial(selectedEnglishMaterial.id, englishMaterialDetailDraft);
+      setSelectedEnglishMaterial(updated);
+      setEnglishMaterialDetailDraft(englishMaterialItemToDraft(updated));
+      setEnglishMaterialItems((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+      setEnglishMaterialRefreshToken((current) => current + 1);
+    } catch (error) {
+      setEnglishMaterialSaveError(error instanceof Error ? error.message : "英语素材详情保存失败，请稍后重试。");
+    } finally {
+      setIsEnglishMaterialDetailSaving(false);
+    }
+  }
+
+  async function handleCopyEnglishMaterialText(value: string, label: string) {
+    if (!value.trim()) {
+      setEnglishMaterialError(`${label}为空，无法复制。`);
+      return;
+    }
+
+    try {
+      await copyText(value);
+      setEnglishMaterialError(null);
+      setEnglishMaterialCopiedLabel(label);
+      window.setTimeout(() => {
+        setEnglishMaterialCopiedLabel((current) => (current === label ? null : current));
+      }, 1600);
+    } catch {
+      setEnglishMaterialError("复制失败。请选中文本后手动复制。");
     }
   }
 
@@ -1628,6 +1842,7 @@ function App() {
 
     setIsHistoryAsking(true);
     setHistoryAskError(null);
+    setHasCopiedHistoryAskAnswer(false);
     try {
       const answer = await askHistory(question);
       setHistoryAskAnswer(answer);
@@ -1635,6 +1850,121 @@ function App() {
       setHistoryAskError(error instanceof Error ? error.message : "AI 问数失败，请稍后重试。");
     } finally {
       setIsHistoryAsking(false);
+    }
+  }
+
+  async function handleCopyHistoryAskAnswer() {
+    if (!historyAskAnswer?.answer.trim()) return;
+
+    try {
+      await copyText(historyAskAnswer.answer);
+      setHasCopiedHistoryAskAnswer(true);
+      window.setTimeout(() => setHasCopiedHistoryAskAnswer(false), 1600);
+    } catch {
+      setHistoryAskError("复制失败。请选中回答后手动复制。");
+    }
+  }
+
+  function handleOpenHistoryFromAsk() {
+    if (!historyAskAnswer) return;
+
+    const keyword = historyAskAnswer.filters.keyword ?? "";
+    const username = historyAskAnswer.filters.username ?? "";
+    setHistoryPage(1);
+    setHistoryQuery(keyword);
+    setDebouncedHistoryQuery(keyword.trim());
+    setHistoryUsername(username);
+    setHistoryType(historyAskAnswer.filters.type ?? "");
+    setHistoryWeek(historyAskAnswer.filters.week ?? "");
+    setHistoryDay(historyAskAnswer.filters.day ?? "");
+    setHistoryLearnLevel(
+      historyAskAnswer.filters.learn_level === null || historyAskAnswer.filters.learn_level === undefined
+        ? ""
+        : String(historyAskAnswer.filters.learn_level),
+    );
+    setHistoryVectorStatus(readHistoryAskVectorStatus(historyAskAnswer.filters.vector_status));
+    setHistoryDateFrom(historyAskAnswer.filters.date_from ?? "");
+    setHistoryDateTo(historyAskAnswer.filters.date_to ?? "");
+    setHistorySortBy("history_date");
+    setHistorySortDir("desc");
+    setActiveView("history");
+  }
+
+  async function handleRunCodex(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const prompt = aiCodingPrompt.trim();
+    if (!prompt || isCodexRunning) return;
+
+    setIsCodexRunning(true);
+    setCodexError(null);
+    setLiveCodexOutput("");
+    setLiveCodexErrorOutput("");
+    setLiveCodexStatus("正在启动 Codex...");
+    try {
+      const response = await streamCodex(prompt, (event) => {
+        if (event.type === "stdout") {
+          setLiveCodexOutput((current) => appendLogLine(current, event.message));
+          setLiveCodexStatus("Codex 正在输出结果...");
+        } else if (event.type === "stderr") {
+          setLiveCodexErrorOutput((current) => appendLogLine(current, event.message));
+          setLiveCodexStatus("Codex 正在输出诊断信息...");
+        } else if (event.type === "status" || event.type === "heartbeat") {
+          setLiveCodexStatus(event.message);
+        } else if (event.type === "error") {
+          setLiveCodexErrorOutput((current) => appendLogLine(current, event.message));
+          setLiveCodexStatus("Codex 执行出现错误。");
+        } else if (event.type === "complete") {
+          setLiveCodexStatus("Codex 执行完成。");
+        }
+      });
+      setAiCodingMessages((current) => [
+        {
+          id: Date.now(),
+          prompt,
+          response,
+        },
+        ...current,
+      ]);
+      setAiCodingPrompt("");
+    } catch (error) {
+      setCodexError(error instanceof Error ? error.message : "Codex 执行失败，请稍后重试。");
+    } finally {
+      setIsCodexRunning(false);
+      setLiveCodexStatus("");
+    }
+  }
+
+  async function handleRestartServices() {
+    if (restartConfirm !== "RESTART" || isRestartingServices) return;
+
+    setIsRestartingServices(true);
+    setRestartError(null);
+    setRestartResponse(null);
+    try {
+      const response = await restartServices();
+      setRestartResponse(response);
+      await waitForBackendRecovery();
+      window.location.reload();
+    } catch (error) {
+      setRestartError(error instanceof Error ? error.message : "服务重启触发失败，请稍后重试。");
+      setIsRestartingServices(false);
+    }
+  }
+
+  async function handleArchiveCodexMessage(message: AiCodingMessage) {
+    if (!message.response || message.archivedKnowledgeId || codexArchiveLoadingId !== null) return;
+
+    setCodexArchiveLoadingId(message.id);
+    setCodexArchiveError(null);
+    try {
+      const created = await createKnowledge(buildCodexKnowledgeDraft(message));
+      setAiCodingMessages((current) =>
+        current.map((item) => (item.id === message.id ? { ...item, archivedKnowledgeId: created.id } : item)),
+      );
+    } catch (error) {
+      setCodexArchiveError(error instanceof Error ? error.message : "归档到可信知识失败，请稍后重试。");
+    } finally {
+      setCodexArchiveLoadingId(null);
     }
   }
 
@@ -1659,6 +1989,8 @@ function App() {
                 ? "英语素材管理"
               : activeView === "historyAsk"
                 ? "AI 问数"
+                : activeView === "aiCoding"
+                  ? "AI 编程界面"
                 : "LLM 使用情况";
   const viewSubtitle =
     activeView === "workbench"
@@ -1677,13 +2009,24 @@ function App() {
                 ? "English Materials"
               : activeView === "historyAsk"
                 ? "Ask History"
+                : activeView === "aiCoding"
+                  ? "Codex Workspace"
                 : "AI Usage";
 
   return (
     <main className="min-h-screen bg-ink-950 text-slate-100">
       <div className="fixed inset-0 pointer-events-none bg-[radial-gradient(circle_at_top_left,rgba(125,211,199,0.09),transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.035),transparent_22%)]" />
-      <div className="relative grid min-h-screen grid-cols-1 lg:grid-cols-[76px_minmax(0,1fr)]">
-        <Sidebar activeView={activeView} onViewChange={setActiveView} />
+      <div
+        className={`relative grid min-h-screen grid-cols-1 transition-[grid-template-columns] duration-200 ${
+          isSidebarExpanded ? "lg:grid-cols-[220px_minmax(0,1fr)]" : "lg:grid-cols-[76px_minmax(0,1fr)]"
+        }`}
+      >
+        <Sidebar
+          activeView={activeView}
+          isExpanded={isSidebarExpanded}
+          onToggleExpanded={() => setIsSidebarExpanded((expanded) => !expanded)}
+          onViewChange={setActiveView}
+        />
 
         <section className="flex min-w-0 flex-col">
           <Topbar
@@ -1735,10 +2078,34 @@ function App() {
             <HistoryAskPanel
               answer={historyAskAnswer}
               error={historyAskError}
+              hasCopiedAnswer={hasCopiedHistoryAskAnswer}
               isLoading={isHistoryAsking}
               question={historyAskQuestion}
+              onCopyAnswer={handleCopyHistoryAskAnswer}
+              onOpenHistory={handleOpenHistoryFromAsk}
               onQuestionChange={setHistoryAskQuestion}
               onSubmit={handleAskHistory}
+            />
+          ) : activeView === "aiCoding" ? (
+            <AiCodingWorkspace
+              codexError={codexError}
+              isCodexRunning={isCodexRunning}
+              isRestartingServices={isRestartingServices}
+              liveErrorOutput={liveCodexErrorOutput}
+              liveOutput={liveCodexOutput}
+              liveStatus={liveCodexStatus}
+              messages={aiCodingMessages}
+              prompt={aiCodingPrompt}
+              archiveError={codexArchiveError}
+              archiveLoadingId={codexArchiveLoadingId}
+              restartConfirm={restartConfirm}
+              restartError={restartError}
+              restartResponse={restartResponse}
+              onArchiveMessage={handleArchiveCodexMessage}
+              onPromptChange={setAiCodingPrompt}
+              onRestartConfirmChange={setRestartConfirm}
+              onRestartServices={handleRestartServices}
+              onSubmit={handleRunCodex}
             />
           ) : activeView === "blogFactory" ? (
             <BlogFactoryRecords
@@ -1800,6 +2167,7 @@ function App() {
               isLoading={isTodoLoading}
               isDetailLoading={isTodoDetailLoading}
               isSaving={isTodoSaving}
+              isConvertingToKnowledge={isConvertingTodoToKnowledge}
               loadError={todoError}
               saveError={todoSaveError}
               onClearFilters={() => {
@@ -1811,6 +2179,7 @@ function App() {
               onDraftChange={setTodoDraft}
               onPageChange={setTodoPage}
               onSelect={handleSelectTodo}
+              onConvertToKnowledge={handleConvertSelectedTodoToKnowledge}
               onStatusFilterChange={(nextStatus) => {
                 setTodoPage(1);
                 setTodoStatus(nextStatus);
@@ -1877,10 +2246,14 @@ function App() {
               total={englishMaterialTotal}
               page={englishMaterialPage}
               selectedItem={selectedEnglishMaterial}
+              isDetailOpen={isEnglishMaterialDetailOpen}
               draft={englishMaterialDraft}
+              detailDraft={englishMaterialDetailDraft}
               isLoading={isEnglishMaterialLoading}
               isDetailLoading={isEnglishMaterialDetailLoading}
               isSaving={isEnglishMaterialSaving}
+              isDetailSaving={isEnglishMaterialDetailSaving}
+              copiedLabel={englishMaterialCopiedLabel}
               loadError={englishMaterialError}
               saveError={englishMaterialSaveError}
               filters={{
@@ -1906,7 +2279,13 @@ function App() {
                 if (nextFilters.sortBy !== undefined) setEnglishMaterialSortBy(nextFilters.sortBy);
                 if (nextFilters.sortDir !== undefined) setEnglishMaterialSortDir(nextFilters.sortDir);
               }}
+              onCloseDetail={() => {
+                if (!isEnglishMaterialDetailLoading) setIsEnglishMaterialDetailOpen(false);
+              }}
+              onCopyText={handleCopyEnglishMaterialText}
+              onDetailDraftChange={setEnglishMaterialDetailDraft}
               onPageChange={setEnglishMaterialPage}
+              onSaveDetail={handleSaveEnglishMaterialDetail}
               onSelect={handleSelectEnglishMaterial}
               onSubmit={handleCreateEnglishMaterial}
             />
@@ -1977,6 +2356,7 @@ function App() {
                 selectedId={selectedId}
                 isSaving={isSaving}
                 isDeleting={isDeleting}
+                isConvertingToTodo={isConvertingKnowledgeToTodo}
                 isDetailLoading={isDetailLoading}
                 saveError={saveError}
                 trustScore={trustScore}
@@ -1984,6 +2364,7 @@ function App() {
                 isTodoEntry={isTodoEntry}
                 onDraftChange={setDraft}
                 onDelete={handleRequestDelete}
+                onConvertToTodo={handleConvertSelectedKnowledgeToTodo}
                 onTodoEntryChange={setIsTodoEntry}
                 onNewEntry={handleNewEntry}
                 onSubmit={handleSubmit}
@@ -2046,15 +2427,82 @@ function App() {
         }}
         onConfirm={handleDeleteSelected}
       />
+      <AppConfirmDialog
+        confirmLabel={
+          conversionTarget === "knowledgeToTodo"
+            ? isConvertingKnowledgeToTodo
+              ? "转换中"
+              : "确认转为待办"
+            : isConvertingTodoToKnowledge
+              ? "转换中"
+              : "确认转为知识"
+        }
+        description={
+          conversionTarget === "knowledgeToTodo"
+            ? "此操作会创建一条待办事项，并删除当前可信知识。转换会在一个数据库事务中完成，失败时源记录会保留。"
+            : "此操作会创建一条可信知识，并删除当前待办事项。转换会在一个数据库事务中完成，失败时源记录会保留。"
+        }
+        icon={conversionTarget === "knowledgeToTodo" ? <ClipboardCheck size={19} /> : <BookOpenCheck size={19} />}
+        isOpen={conversionTarget !== null}
+        isPending={isConvertingKnowledgeToTodo || isConvertingTodoToKnowledge}
+        target={
+          conversionTarget === "knowledgeToTodo"
+            ? selectedId
+              ? `可信知识 #${selectedId}`
+              : "可信知识"
+            : selectedTodoId
+              ? `待办事项 #${selectedTodoId}`
+              : "待办事项"
+        }
+        title={conversionTarget === "knowledgeToTodo" ? "确认转为待办事项" : "确认转为可信知识"}
+        tone="warning"
+        onCancel={() => {
+          if (!isConvertingKnowledgeToTodo && !isConvertingTodoToKnowledge) setConversionTarget(null);
+        }}
+        onConfirm={() => {
+          if (conversionTarget === "knowledgeToTodo") {
+            void confirmConvertSelectedKnowledgeToTodo();
+          } else if (conversionTarget === "todoToKnowledge") {
+            void confirmConvertSelectedTodoToKnowledge();
+          }
+        }}
+      />
+      <AppConfirmDialog
+        confirmLabel={isCurrentRecordUpdating ? "保存中" : "确认保存"}
+        description="当前类型已经到达 Level 10 且即将从 W48 回到 W1。确认后会保持 Level 10 并继续保存本次推进。"
+        icon={<CircleGauge size={19} />}
+        isOpen={pendingCurrentRecordUpdate !== null}
+        isPending={isCurrentRecordUpdating}
+        target={
+          pendingCurrentRecordUpdate
+            ? `${pendingCurrentRecordUpdate.record.username} / ${pendingCurrentRecordUpdate.record.type}`
+            : ""
+        }
+        title="确认完成修炼周期"
+        tone="warning"
+        onCancel={() => {
+          if (!isCurrentRecordUpdating) setPendingCurrentRecordUpdate(null);
+        }}
+        onConfirm={() => {
+          if (!pendingCurrentRecordUpdate) return;
+          const { record, next } = pendingCurrentRecordUpdate;
+          setPendingCurrentRecordUpdate(null);
+          void updateCurrentRecordAfterConfirm(record, next);
+        }}
+      />
     </main>
   );
 }
 
 function Sidebar({
   activeView,
+  isExpanded,
+  onToggleExpanded,
   onViewChange,
 }: {
   activeView: AppView;
+  isExpanded: boolean;
+  onToggleExpanded: () => void;
   onViewChange: (view: AppView) => void;
 }) {
   type SidebarItem = {
@@ -2072,6 +2520,7 @@ function Sidebar({
     { icon: History, label: "历史查询", view: "history" as const },
     { icon: BookOpenCheck, label: "英语素材管理", view: "englishMaterials" as const },
     { icon: Bot, label: "AI 问数", view: "historyAsk" as const },
+    { icon: WandSparkles, label: "AI 编程", view: "aiCoding" as const },
     { icon: ShieldCheck, label: "Review" },
     { icon: Database, label: "Sources" },
   ];
@@ -2079,44 +2528,61 @@ function Sidebar({
   const usageActive = activeView === "usage";
 
   return (
-    <aside className="hidden border-r border-white/8 bg-ink-900/78 px-3 py-4 backdrop-blur-xl lg:flex lg:flex-col lg:items-center">
-      <div className="mb-8 grid h-10 w-10 place-items-center rounded-lg border border-mint-300/25 bg-mint-300/10 text-mint-300 shadow-soft-glow">
+    <aside
+      className={`hidden border-r border-white/8 bg-ink-900/78 px-3 py-4 backdrop-blur-xl lg:flex lg:flex-col ${
+        isExpanded ? "lg:items-stretch" : "lg:items-center"
+      }`}
+    >
+      <button
+        className={`mb-8 flex h-10 items-center rounded-lg border border-mint-300/25 bg-mint-300/10 text-mint-300 shadow-soft-glow transition hover:border-mint-300/40 hover:bg-mint-300/15 ${
+          isExpanded ? "w-full justify-start gap-3 px-3" : "w-10 justify-center"
+        }`}
+        title={isExpanded ? "收起功能名称" : "展开功能名称"}
+        type="button"
+        aria-expanded={isExpanded}
+        aria-label={isExpanded ? "收起左侧功能名称" : "展开左侧功能名称"}
+        onClick={onToggleExpanded}
+      >
         <Layers3 size={19} />
-      </div>
-      <nav className="flex flex-1 flex-col gap-3">
+        {isExpanded ? <span className="truncate text-sm font-medium text-mint-100">功能导航</span> : null}
+      </button>
+      <nav className="flex flex-1 flex-col gap-3" aria-label="桌面功能页面">
         {items.map((item) => {
           const active = "view" in item && item.view === activeView;
           return (
-          <button
-            key={item.label}
-            className={`grid h-11 w-11 place-items-center rounded-lg border transition ${
-              active
-                ? "border-mint-300/25 bg-mint-300/10 text-mint-300"
-                : "border-transparent text-slate-500 hover:border-white/10 hover:bg-white/[0.04] hover:text-slate-200"
-            }`}
-            title={item.label}
-            type="button"
-            onClick={() => {
-              if (item.view) onViewChange(item.view);
-            }}
-          >
-            <item.icon size={19} />
-          </button>
+            <button
+              key={item.label}
+              className={`flex h-11 items-center rounded-lg border text-sm font-medium transition ${
+                active
+                  ? "border-mint-300/25 bg-mint-300/10 text-mint-300"
+                  : "border-transparent text-slate-500 hover:border-white/10 hover:bg-white/[0.04] hover:text-slate-200"
+              } ${isExpanded ? "w-full justify-start gap-3 px-3" : "w-11 justify-center"}`}
+              title={item.label}
+              type="button"
+              aria-current={active ? "page" : undefined}
+              onClick={() => {
+                if (item.view) onViewChange(item.view);
+              }}
+            >
+              <item.icon size={19} className="shrink-0" />
+              {isExpanded ? <span className="truncate">{item.label}</span> : null}
+            </button>
           );
         })}
       </nav>
       <button
-        className={`grid h-10 w-10 place-items-center rounded-lg border text-xs font-semibold transition ${
+        className={`flex h-10 items-center rounded-lg border text-xs font-semibold transition ${
           usageActive
             ? "border-mint-300/25 bg-mint-300/10 text-mint-300"
             : "border-white/10 text-slate-300 hover:border-mint-300/30 hover:bg-white/[0.04] hover:text-mint-300"
-        }`}
+        } ${isExpanded ? "w-full justify-start gap-3 px-3" : "w-10 justify-center"}`}
         title="LLM 使用情况"
         type="button"
         aria-current={usageActive ? "page" : undefined}
         onClick={() => onViewChange("usage")}
       >
-        AI
+        <span className="grid h-5 w-5 shrink-0 place-items-center">AI</span>
+        {isExpanded ? <span className="truncate text-sm font-medium">LLM 使用情况</span> : null}
       </button>
     </aside>
   );
@@ -2153,6 +2619,7 @@ function Topbar({
     { icon: History, label: "历史查询", view: "history" as const },
     { icon: BookOpenCheck, label: "英语素材", view: "englishMaterials" as const },
     { icon: Bot, label: "AI 问数", view: "historyAsk" as const },
+    { icon: WandSparkles, label: "AI 编程", view: "aiCoding" as const },
     { icon: Bot, label: "AI 用量", view: "usage" as const },
   ];
   const statusOptions: Array<{ label: string; value: KnowledgeStatus | "all" }> = [
@@ -2194,7 +2661,7 @@ function Topbar({
         })}
       </nav>
       <div className="flex min-w-0 items-center gap-2">
-        {activeView !== "usage" && activeView !== "historyAsk" ? (
+        {activeView !== "usage" && activeView !== "historyAsk" && activeView !== "aiCoding" ? (
           <label className="flex h-11 min-w-0 flex-1 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-slate-400 md:w-80">
             <Search size={17} />
             <input
@@ -2523,12 +2990,125 @@ function DeleteConfirmDialog({
   );
 }
 
+function AppConfirmDialog({
+  confirmLabel,
+  description,
+  icon,
+  isOpen,
+  isPending,
+  target,
+  title,
+  tone = "warning",
+  onCancel,
+  onConfirm,
+}: {
+  confirmLabel: string;
+  description: string;
+  icon: React.ReactNode;
+  isOpen: boolean;
+  isPending: boolean;
+  target: string;
+  title: string;
+  tone?: "warning" | "danger";
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  useEffect(() => {
+    if (!isOpen) return;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape" && !isPending) {
+        onCancel();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, isPending, onCancel]);
+
+  if (!isOpen) return null;
+
+  const toneClasses =
+    tone === "danger"
+      ? {
+          icon: "border-red-300/25 bg-red-400/10 text-red-200",
+          label: "text-red-200",
+          notice: "border-red-300/25 bg-red-400/10 text-red-100",
+          button: "border-red-300/25 bg-red-400/12 text-red-200 hover:bg-red-400/18",
+        }
+      : {
+          icon: "border-amberline/25 bg-amberline/10 text-amberline",
+          label: "text-amber-100",
+          notice: "border-amberline/25 bg-amberline/10 text-amber-100",
+          button: "border-amberline/25 bg-amberline/10 text-amber-100 hover:bg-amberline/15",
+        };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/62 px-4 backdrop-blur-sm"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !isPending) {
+          onCancel();
+        }
+      }}
+    >
+      <section
+        aria-modal="true"
+        className="w-full max-w-md rounded-lg border border-white/10 bg-ink-900 p-5 shadow-soft-glow"
+        role="dialog"
+      >
+        <div className="mb-4 flex items-start gap-3">
+          <div className={`grid h-10 w-10 shrink-0 place-items-center rounded-lg border ${toneClasses.icon}`}>
+            {icon}
+          </div>
+          <div className="min-w-0">
+            <div className={`mb-1 text-sm font-medium ${toneClasses.label}`}>需要确认</div>
+            <h2 className="line-clamp-2 text-lg font-semibold text-slate-50">{title}</h2>
+          </div>
+        </div>
+
+        <div className="mb-4 rounded-lg border border-white/10 bg-white/[0.035] px-3 py-3 text-sm leading-6 text-slate-400">
+          <div className="mb-1 text-xs uppercase tracking-[0.18em] text-slate-600">Target</div>
+          <div className="text-slate-300">{target}</div>
+        </div>
+
+        <div className={`mb-5 flex items-start gap-2 rounded-lg border px-3 py-3 text-sm ${toneClasses.notice}`}>
+          <TriangleAlert className="mt-0.5 shrink-0" size={17} />
+          <span>{description}</span>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <button
+            className="h-11 rounded-lg border border-white/10 bg-white/[0.035] px-4 font-medium text-slate-300 transition hover:border-white/20 hover:text-slate-100 disabled:cursor-not-allowed disabled:text-slate-600"
+            disabled={isPending}
+            type="button"
+            onClick={onCancel}
+          >
+            取消
+          </button>
+          <button
+            className={`flex h-11 items-center justify-center gap-2 rounded-lg border px-4 font-medium transition disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500 ${toneClasses.button}`}
+            disabled={isPending}
+            type="button"
+            onClick={onConfirm}
+          >
+            {isPending ? <Loader2 className="animate-spin" size={17} /> : icon}
+            {confirmLabel}
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function KnowledgeForm({
   draft,
   mode,
   selectedId,
   isSaving,
   isDeleting,
+  isConvertingToTodo,
   isDetailLoading,
   saveError,
   trustScore,
@@ -2536,6 +3116,7 @@ function KnowledgeForm({
   isTodoEntry,
   onDraftChange,
   onDelete,
+  onConvertToTodo,
   onTodoEntryChange,
   onNewEntry,
   onSubmit,
@@ -2545,6 +3126,7 @@ function KnowledgeForm({
   selectedId: number | null;
   isSaving: boolean;
   isDeleting: boolean;
+  isConvertingToTodo: boolean;
   isDetailLoading: boolean;
   saveError: string | null;
   trustScore: number;
@@ -2552,6 +3134,7 @@ function KnowledgeForm({
   isTodoEntry: boolean;
   onDraftChange: (draft: KnowledgeDraft) => void;
   onDelete: () => void;
+  onConvertToTodo: () => void;
   onTodoEntryChange: (isTodoEntry: boolean) => void;
   onNewEntry: () => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
@@ -2676,9 +3259,9 @@ function KnowledgeForm({
           </div>
         ) : null}
 
-        <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+        <div className={`grid gap-3 ${isEditing ? "sm:grid-cols-[1fr_auto_auto]" : "sm:grid-cols-[1fr_auto]"}`}>
           <button
-            disabled={!canSubmit || isDeleting}
+            disabled={!canSubmit || isDeleting || isConvertingToTodo}
             className="flex h-12 w-full items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
             type="submit"
           >
@@ -2700,8 +3283,20 @@ function KnowledgeForm({
 
           {isEditing ? (
             <button
+              className="flex h-12 items-center justify-center gap-2 rounded-lg border border-amberline/25 bg-amberline/10 px-4 font-medium text-amber-100 transition hover:bg-amberline/15 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
+              disabled={isDeleting || isSaving || isConvertingToTodo}
+              type="button"
+              onClick={onConvertToTodo}
+            >
+              {isConvertingToTodo ? <Loader2 className="animate-spin" size={18} /> : <ClipboardCheck size={18} />}
+              {isConvertingToTodo ? "转换中" : "转为待办"}
+            </button>
+          ) : null}
+
+          {isEditing ? (
+            <button
               className="flex h-12 items-center justify-center gap-2 rounded-lg border border-red-300/25 bg-red-400/10 px-4 font-medium text-red-200 transition hover:bg-red-400/15 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
-              disabled={isDeleting || isSaving}
+              disabled={isDeleting || isSaving || isConvertingToTodo}
               type="button"
               onClick={onDelete}
             >
@@ -3917,12 +4512,14 @@ function TodoWorkspace({
   isLoading,
   isDetailLoading,
   isSaving,
+  isConvertingToKnowledge,
   loadError,
   saveError,
   onDraftChange,
   onClearFilters,
   onPageChange,
   onSelect,
+  onConvertToKnowledge,
   onStatusFilterChange,
   onSubmit,
 }: {
@@ -3935,12 +4532,14 @@ function TodoWorkspace({
   isLoading: boolean;
   isDetailLoading: boolean;
   isSaving: boolean;
+  isConvertingToKnowledge: boolean;
   loadError: string | null;
   saveError: string | null;
   onDraftChange: (draft: TodoDraft) => void;
   onClearFilters: () => void;
   onPageChange: (page: number) => void;
   onSelect: (item: TodoItem) => void;
+  onConvertToKnowledge: () => void;
   onStatusFilterChange: (status: TodoStatus | "all") => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
 }) {
@@ -3953,7 +4552,12 @@ function TodoWorkspace({
     { label: "处理中", value: "处理中" },
     { label: "已完成", value: "已完成" },
   ];
-  const canSave = selectedId !== null && draft.title.trim().length > 0 && draft.content.trim().length > 0 && !isSaving;
+  const canSave =
+    selectedId !== null &&
+    draft.title.trim().length > 0 &&
+    draft.content.trim().length > 0 &&
+    !isSaving &&
+    !isConvertingToKnowledge;
 
   return (
     <div className="grid flex-1 gap-4 px-4 pb-4 pt-2 xl:grid-cols-[minmax(420px,1fr)_minmax(360px,0.78fr)]">
@@ -4174,14 +4778,25 @@ function TodoWorkspace({
               </div>
             ) : null}
 
-            <button
-              className="flex h-12 w-full items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
-              disabled={!canSave}
-              type="submit"
-            >
-              {isSaving ? <Loader2 className="animate-spin" size={18} /> : <Pencil size={18} />}
-              {isSaving ? "保存中" : "保存待办事项"}
-            </button>
+            <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+              <button
+                className="flex h-12 w-full items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
+                disabled={!canSave}
+                type="submit"
+              >
+                {isSaving ? <Loader2 className="animate-spin" size={18} /> : <Pencil size={18} />}
+                {isSaving ? "保存中" : "保存待办事项"}
+              </button>
+              <button
+                className="flex h-12 items-center justify-center gap-2 rounded-lg border border-amberline/25 bg-amberline/10 px-4 font-medium text-amber-100 transition hover:bg-amberline/15 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
+                disabled={isSaving || isConvertingToKnowledge}
+                type="button"
+                onClick={onConvertToKnowledge}
+              >
+                {isConvertingToKnowledge ? <Loader2 className="animate-spin" size={18} /> : <BookOpenCheck size={18} />}
+                {isConvertingToKnowledge ? "转换中" : "转为知识"}
+              </button>
+            </div>
           </form>
         ) : (
           <div className="grid min-h-[420px] place-items-center rounded-lg border border-white/10 bg-white/[0.025] p-6 text-center">
@@ -4575,17 +5190,25 @@ function EnglishMaterialsWorkspace({
   total,
   page,
   selectedItem,
+  isDetailOpen,
   draft,
+  detailDraft,
   isLoading,
   isDetailLoading,
   isSaving,
+  isDetailSaving,
+  copiedLabel,
   loadError,
   saveError,
   filters,
   onDraftChange,
   onFilterChange,
   onClearFilters,
+  onCloseDetail,
+  onCopyText,
+  onDetailDraftChange,
   onPageChange,
+  onSaveDetail,
   onSelect,
   onSubmit,
 }: {
@@ -4593,17 +5216,25 @@ function EnglishMaterialsWorkspace({
   total: number;
   page: number;
   selectedItem: EnglishMaterialItem | null;
+  isDetailOpen: boolean;
   draft: EnglishMaterialDraft;
+  detailDraft: EnglishMaterialDraft;
   isLoading: boolean;
   isDetailLoading: boolean;
   isSaving: boolean;
+  isDetailSaving: boolean;
+  copiedLabel: string | null;
   loadError: string | null;
   saveError: string | null;
   filters: EnglishMaterialFilters;
   onDraftChange: (draft: EnglishMaterialDraft) => void;
   onFilterChange: (filters: Partial<EnglishMaterialFilters>) => void;
   onClearFilters: () => void;
+  onCloseDetail: () => void;
+  onCopyText: (value: string, label: string) => void;
+  onDetailDraftChange: (draft: EnglishMaterialDraft) => void;
   onPageChange: (page: number) => void;
+  onSaveDetail: () => void;
   onSelect: (item: EnglishMaterialItem) => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
 }) {
@@ -4611,9 +5242,12 @@ function EnglishMaterialsWorkspace({
   const rangeStart = total === 0 ? 0 : (page - 1) * ENGLISH_MATERIALS_PAGE_SIZE + 1;
   const rangeEnd = Math.min(page * ENGLISH_MATERIALS_PAGE_SIZE, total);
   const canSubmit = draft.base_expression.trim().length > 0 && !isSaving;
+  const selectedIndex = selectedItem ? items.findIndex((item) => item.id === selectedItem.id) : -1;
+  const previousItem = selectedIndex > 0 ? items[selectedIndex - 1] : null;
+  const nextItem = selectedIndex >= 0 && selectedIndex < items.length - 1 ? items[selectedIndex + 1] : null;
 
   return (
-    <div className="grid flex-1 gap-4 px-4 pb-4 pt-2 xl:grid-cols-[minmax(460px,1fr)_360px_340px]">
+    <div className="grid flex-1 gap-4 px-4 pb-4 pt-2 xl:grid-cols-[minmax(520px,1fr)_380px]">
       <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/72 p-4 shadow-soft-glow backdrop-blur-xl">
         <div className="mb-5 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>
@@ -4741,7 +5375,7 @@ function EnglishMaterialsWorkspace({
                       }}
                     >
                       <Search size={14} />
-                      查看
+                      打开
                     </button>
                   </div>
                   <p className="line-clamp-2 text-sm leading-6 text-slate-300">{item.base_expression || "基础表达未填写"}</p>
@@ -4894,53 +5528,21 @@ function EnglishMaterialsWorkspace({
         </form>
       </section>
 
-      <aside className="min-w-0 rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
-        <div className="mb-5">
-          <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
-            <Search size={17} />
-            Material Detail
-          </div>
-          <h2 className="text-lg font-semibold text-slate-50">素材查看</h2>
-        </div>
-
-        {isDetailLoading ? (
-          <LoadingStack />
-        ) : selectedItem ? (
-          <div className="space-y-4">
-            <div className="grid gap-3">
-              <MetricTile icon={<Database size={17} />} label="记录 ID" value={`#${selectedItem.id}`} detail={`FLAG ${selectedItem.flag}`} />
-              <MetricTile
-                icon={<Tags size={17} />}
-                label="分类"
-                value={selectedItem.category || "未分类"}
-                detail={`序号 ${selectedItem.sequence_no ?? "-"}`}
-              />
-            </div>
-
-            <div className="rounded-lg border border-white/10 bg-white/[0.028] p-4">
-              <div className="mb-2 text-xs uppercase text-slate-500">TITLE</div>
-              <div className="text-sm font-medium leading-6 text-slate-100">{selectedItem.title || "未填写标题"}</div>
-            </div>
-
-            <div className="rounded-lg border border-mint-300/20 bg-mint-300/8 p-4">
-              <div className="mb-2 text-xs uppercase text-mint-300/70">BASE_EXPRESSION</div>
-              <div className="text-sm font-medium leading-6 text-mint-100">{selectedItem.base_expression || "未填写基础表达"}</div>
-            </div>
-
-            <EnglishMaterialDetailBlock label="职业完整句式" value={selectedItem.professional_sentence} />
-            <EnglishMaterialDetailBlock label="地道中文翻译" value={selectedItem.chinese_translation} />
-            <EnglishMaterialDetailBlock label="完整口播内容" value={selectedItem.full_script} tall />
-          </div>
-        ) : (
-          <div className="grid min-h-[300px] place-items-center rounded-lg border border-white/10 bg-white/[0.025] p-6 text-center">
-            <div>
-              <BookOpenCheck className="mx-auto mb-3 text-slate-600" size={36} />
-              <div className="mb-1 font-medium text-slate-300">选择一条素材</div>
-              <p className="text-sm leading-6 text-slate-500">右侧会显示英文句式、中文翻译和完整口播内容。</p>
-            </div>
-          </div>
-        )}
-      </aside>
+      <EnglishMaterialDetailDialog
+        copiedLabel={copiedLabel}
+        draft={detailDraft}
+        isLoading={isDetailLoading}
+        isSaving={isDetailSaving}
+        item={isDetailOpen ? selectedItem : null}
+        nextItem={nextItem}
+        onClose={onCloseDetail}
+        onCopyText={onCopyText}
+        onDraftChange={onDetailDraftChange}
+        onNext={nextItem ? () => onSelect(nextItem) : undefined}
+        onPrevious={previousItem ? () => onSelect(previousItem) : undefined}
+        onSave={onSaveDetail}
+        previousItem={previousItem}
+      />
     </div>
   );
 }
@@ -4950,6 +5552,250 @@ function EnglishMaterialDetailBlock({ label, value, tall = false }: { label: str
     <div className={`rounded-lg border border-white/10 bg-white/[0.028] p-4 ${tall ? "min-h-[160px]" : ""}`}>
       <div className="mb-2 text-xs uppercase text-slate-500">{label}</div>
       <div className="whitespace-pre-wrap text-sm leading-7 text-slate-300">{value || "未填写"}</div>
+    </div>
+  );
+}
+
+function EnglishMaterialDetailDialog({
+  copiedLabel,
+  draft,
+  isLoading,
+  isSaving,
+  item,
+  nextItem,
+  onClose,
+  onCopyText,
+  onDraftChange,
+  onNext,
+  onPrevious,
+  onSave,
+  previousItem,
+}: {
+  copiedLabel: string | null;
+  draft: EnglishMaterialDraft;
+  isLoading: boolean;
+  isSaving: boolean;
+  item: EnglishMaterialItem | null;
+  nextItem: EnglishMaterialItem | null;
+  onClose: () => void;
+  onCopyText: (value: string, label: string) => void;
+  onDraftChange: (draft: EnglishMaterialDraft) => void;
+  onNext?: () => void;
+  onPrevious?: () => void;
+  onSave: () => void;
+  previousItem: EnglishMaterialItem | null;
+}) {
+  useEffect(() => {
+    if (!item) return;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape" && !isLoading) {
+        onClose();
+      } else if (event.key === "ArrowLeft" && onPrevious && !isLoading) {
+        onPrevious();
+      } else if (event.key === "ArrowRight" && onNext && !isLoading) {
+        onNext();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isLoading, item, onClose, onNext, onPrevious]);
+
+  if (!item) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end bg-black/62 px-0 backdrop-blur-sm sm:items-center sm:justify-center sm:px-4"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !isLoading) {
+          onClose();
+        }
+      }}
+    >
+      <section
+        aria-modal="true"
+        className="flex max-h-[100dvh] w-full flex-col overflow-hidden rounded-t-lg border border-white/10 bg-ink-900 shadow-soft-glow sm:max-h-[88vh] sm:max-w-3xl sm:rounded-lg"
+        role="dialog"
+      >
+        <div className="shrink-0 border-b border-white/10 p-4 sm:p-5">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
+                <BookOpenCheck size={17} />
+                Material Detail
+              </div>
+              <h2 className="line-clamp-2 text-xl font-semibold text-slate-50">
+                {draft.title || draft.base_expression || item.title || item.base_expression || "未命名素材"}
+              </h2>
+            </div>
+            <button
+              className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600"
+              disabled={isLoading}
+              title="关闭"
+              type="button"
+              onClick={onClose}
+            >
+              <X size={17} />
+            </button>
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2 text-xs">
+            <span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-slate-400">#{item.id}</span>
+            <span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-slate-400">
+              序号 {draft.sequence_no || "-"}
+            </span>
+            <span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-slate-400">
+              {draft.category || "未分类"}
+            </span>
+            <span className="rounded-md border border-mint-300/20 bg-mint-300/8 px-2 py-1 text-mint-200">FLAG {draft.flag}</span>
+          </div>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
+          {isLoading ? (
+            <LoadingStack />
+          ) : (
+            <div className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_110px]">
+                <Field label="标题" icon={<FileText size={16} />}>
+                  <input
+                    className="control"
+                    maxLength={200}
+                    value={draft.title}
+                    onChange={(event) => onDraftChange({ ...draft, title: event.target.value })}
+                    placeholder="素材标题"
+                  />
+                </Field>
+                <Field label="序号" icon={<CircleGauge size={16} />}>
+                  <input
+                    className="control"
+                    min={1}
+                    type="number"
+                    value={draft.sequence_no}
+                    onChange={(event) => onDraftChange({ ...draft, sequence_no: event.target.value.replace(/\D/g, "") })}
+                    placeholder="可空"
+                  />
+                </Field>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_110px]">
+                <Field label="分类标识" icon={<Tags size={16} />}>
+                  <input
+                    className="control"
+                    maxLength={50}
+                    value={draft.category}
+                    onChange={(event) => onDraftChange({ ...draft, category: event.target.value })}
+                    placeholder="如 workplace"
+                  />
+                </Field>
+                <Field label="Flag" icon={<CircleGauge size={16} />}>
+                  <select
+                    className="control"
+                    value={draft.flag}
+                    onChange={(event) => onDraftChange({ ...draft, flag: event.target.value as EnglishMaterialDraft["flag"] })}
+                  >
+                    <option value="0">0</option>
+                    <option value="1">1</option>
+                  </select>
+                </Field>
+              </div>
+
+              <Field label="基础表达" icon={<BookOpenCheck size={16} />}>
+                <input
+                  className="control"
+                  maxLength={50}
+                  value={draft.base_expression}
+                  onChange={(event) => onDraftChange({ ...draft, base_expression: event.target.value })}
+                  placeholder="必填，例如 make it happen"
+                />
+              </Field>
+
+              <div className="grid gap-4 lg:grid-cols-2">
+                <Field label="职业完整句式" icon={<FileText size={16} />}>
+                  <textarea
+                    className="control min-h-[130px] resize-none leading-7"
+                    maxLength={255}
+                    value={draft.professional_sentence}
+                    onChange={(event) => onDraftChange({ ...draft, professional_sentence: event.target.value })}
+                    placeholder="适合职场场景的完整英文句式。"
+                  />
+                </Field>
+                <Field label="地道中文翻译" icon={<FileText size={16} />}>
+                  <textarea
+                    className="control min-h-[130px] resize-none leading-7"
+                    maxLength={255}
+                    value={draft.chinese_translation}
+                    onChange={(event) => onDraftChange({ ...draft, chinese_translation: event.target.value })}
+                    placeholder="中文解释或翻译。"
+                  />
+                </Field>
+              </div>
+
+              <Field label="完整口播内容" icon={<ClipboardList size={16} />}>
+                <textarea
+                  className="control min-h-[220px] resize-none leading-7"
+                  maxLength={4000}
+                  value={draft.full_script}
+                  onChange={(event) => onDraftChange({ ...draft, full_script: event.target.value })}
+                  placeholder="用于短视频口播的完整内容。"
+                />
+              </Field>
+            </div>
+          )}
+        </div>
+
+        <div className="shrink-0 border-t border-white/10 bg-ink-900/96 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-4">
+          <div className="grid gap-2 sm:grid-cols-4">
+            <button
+              className="flex h-11 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-sm font-medium text-slate-300 transition hover:border-mint-300/30 hover:text-mint-200 disabled:cursor-not-allowed disabled:text-slate-600"
+              disabled={isLoading || !draft.professional_sentence}
+              type="button"
+              onClick={() => onCopyText(draft.professional_sentence, "职业完整句式")}
+            >
+              {copiedLabel === "职业完整句式" ? <CheckCircle2 size={16} /> : <Copy size={16} />}
+              {copiedLabel === "职业完整句式" ? "已复制" : "复制句式"}
+            </button>
+            <button
+              className="flex h-11 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-sm font-medium text-slate-300 transition hover:border-mint-300/30 hover:text-mint-200 disabled:cursor-not-allowed disabled:text-slate-600"
+              disabled={isLoading || !draft.full_script}
+              type="button"
+              onClick={() => onCopyText(draft.full_script, "完整口播内容")}
+            >
+              {copiedLabel === "完整口播内容" ? <CheckCircle2 size={16} /> : <ClipboardList size={16} />}
+              {copiedLabel === "完整口播内容" ? "已复制" : "复制脚本"}
+            </button>
+            <button
+              className="flex h-11 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-sm font-medium text-slate-300 transition hover:border-mint-300/30 hover:text-mint-200 disabled:cursor-not-allowed disabled:text-slate-600"
+              disabled={isLoading || !previousItem || !onPrevious}
+              type="button"
+              onClick={onPrevious}
+            >
+              <ChevronLeft size={16} />
+              上一个
+            </button>
+            <button
+              className="flex h-11 items-center justify-center gap-2 rounded-lg border border-mint-300/25 bg-mint-300/10 px-3 text-sm font-medium text-mint-200 transition hover:bg-mint-300/16 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-600"
+              disabled={isLoading || !nextItem || !onNext}
+              type="button"
+              onClick={onNext}
+            >
+              <ChevronRight size={16} />
+              下一个
+            </button>
+          </div>
+          <button
+            className="mt-2 flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
+            disabled={isLoading || isSaving || !draft.base_expression.trim()}
+            type="button"
+            onClick={onSave}
+          >
+            {isSaving ? <Loader2 className="animate-spin" size={17} /> : <ClipboardCheck size={17} />}
+            {isSaving ? "保存中" : "保存修改"}
+          </button>
+        </div>
+      </section>
     </div>
   );
 }
@@ -5130,19 +5976,30 @@ function CurrentRecordEditDialog({
 function HistoryAskPanel({
   answer,
   error,
+  hasCopiedAnswer,
   isLoading,
   question,
+  onCopyAnswer,
+  onOpenHistory,
   onQuestionChange,
   onSubmit,
 }: {
   answer: HistoryAskResponse | null;
   error: string | null;
+  hasCopiedAnswer: boolean;
   isLoading: boolean;
   question: string;
+  onCopyAnswer: () => void;
+  onOpenHistory: () => void;
   onQuestionChange: (question: string) => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
 }) {
   const canSubmit = question.trim().length >= 2 && !isLoading;
+  const examples = [
+    "总结最近30天关于“中信泰富”的工作记录。",
+    "针对 alfred 的 W01 工作记录，统计 Level 3 的工作量。",
+    "向量待更新的历史记录里哪类工作最多？",
+  ];
 
   return (
     <div className="flex-1 px-4 pb-4 pt-2">
@@ -5163,6 +6020,18 @@ function HistoryAskPanel({
               onChange={(event) => onQuestionChange(event.target.value)}
               placeholder="例如：针对 alfred 的工作记录，请总结关于“中信泰富”项目的工作量统计。"
             />
+            <div className="flex flex-wrap gap-2">
+              {examples.map((example) => (
+                <button
+                  key={example}
+                  className="rounded-md border border-white/10 bg-white/[0.035] px-3 py-1.5 text-xs text-slate-400 transition hover:border-mint-300/30 hover:text-mint-200"
+                  type="button"
+                  onClick={() => onQuestionChange(example)}
+                >
+                  {example}
+                </button>
+              ))}
+            </div>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="text-xs leading-5 text-slate-500">
                 当前按记录数、活跃日期、类型分布和代表性记录统计；不会直接让 AI 执行任意 SQL。
@@ -5190,6 +6059,43 @@ function HistoryAskPanel({
               <LoadingStack />
             ) : answer ? (
               <div className="space-y-4">
+                <div className="flex flex-col gap-3 rounded-lg border border-white/10 bg-black/15 p-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    <span
+                      className={`rounded-md border px-2 py-1 ${
+                        answer.llm_used
+                          ? "border-mint-300/25 bg-mint-300/10 text-mint-200"
+                          : "border-amberline/25 bg-amberline/10 text-amber-100"
+                      }`}
+                    >
+                      {answer.llm_used ? "LLM 总结" : "统计兜底"}
+                    </span>
+                    <span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-slate-400">
+                      {formatAmount(answer.stats.matched_count)} 条记录
+                    </span>
+                    <span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-slate-400">
+                      {formatAmount(answer.stats.active_days)} 个活跃日期
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      className="flex h-9 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-xs text-slate-300 transition hover:border-mint-300/30 hover:text-mint-200"
+                      type="button"
+                      onClick={onCopyAnswer}
+                    >
+                      {hasCopiedAnswer ? <CheckCircle2 size={15} /> : <Copy size={15} />}
+                      {hasCopiedAnswer ? "已复制" : "复制回答"}
+                    </button>
+                    <button
+                      className="flex h-9 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-xs text-slate-300 transition hover:border-mint-300/30 hover:text-mint-200"
+                      type="button"
+                      onClick={onOpenHistory}
+                    >
+                      <History size={15} />
+                      查看记录
+                    </button>
+                  </div>
+                </div>
                 <div className="whitespace-pre-wrap text-sm leading-7 text-slate-200">{answer.answer}</div>
                 {answer.warning ? (
                   <div className="rounded-lg border border-amberline/25 bg-amberline/10 px-3 py-3 text-sm text-amber-100">
@@ -5229,9 +6135,9 @@ function HistoryAskPanel({
                 />
                 <MetricTile
                   icon={<Search size={17} />}
-                  label="识别关键词"
-                  value={answer.filters.keyword || "未限定"}
-                  detail={answer.filters.username ? `用户 ${answer.filters.username}` : "未限定用户"}
+                  label="识别条件"
+                  value={formatAmount(getHistoryAskFilterEntries(answer.filters).length)}
+                  detail="可带入历史筛选"
                 />
                 <MetricTile
                   icon={<CalendarClock size={17} />}
@@ -5241,21 +6147,10 @@ function HistoryAskPanel({
                 />
               </div>
 
-              <div className="rounded-lg border border-white/10 bg-white/[0.028] p-3">
-                <div className="mb-3 text-sm font-medium text-slate-200">类型分布</div>
-                <div className="space-y-2">
-                  {Object.entries(answer.stats.type_counts).length > 0 ? (
-                    Object.entries(answer.stats.type_counts).map(([label, value]) => (
-                      <div key={label} className="flex items-center justify-between gap-3 text-sm">
-                        <span className="truncate text-slate-400">{label}</span>
-                        <span className="text-slate-200">{value}</span>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="text-sm text-slate-500">暂无分布数据</div>
-                  )}
-                </div>
-              </div>
+              <HistoryAskFilterSummary filters={answer.filters} />
+              <HistoryAskDistribution title="类型分布" items={answer.stats.type_counts} />
+              <HistoryAskDistribution title="周期分布" items={answer.stats.week_counts} />
+              <HistoryAskDistribution title="等级分布" items={answer.stats.learn_level_counts} />
 
               <div className="space-y-3">
                 {answer.evidence.map((item) => (
@@ -5276,6 +6171,404 @@ function HistoryAskPanel({
             </div>
           )}
         </aside>
+      </div>
+    </div>
+  );
+}
+
+function HistoryAskDistribution({
+  title,
+  items,
+}: {
+  title: string;
+  items: Record<string, number>;
+}) {
+  const entries = Object.entries(items);
+
+  return (
+    <div className="rounded-lg border border-white/10 bg-white/[0.028] p-3">
+      <div className="mb-3 text-sm font-medium text-slate-200">{title}</div>
+      <div className="space-y-2">
+        {entries.length > 0 ? (
+          entries.map(([label, value]) => (
+            <div key={label} className="flex items-center justify-between gap-3 text-sm">
+              <span className="truncate text-slate-400">{label}</span>
+              <span className="text-slate-200">{formatAmount(value)}</span>
+            </div>
+          ))
+        ) : (
+          <div className="text-sm text-slate-500">暂无分布数据</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function HistoryAskFilterSummary({ filters }: { filters: HistoryAskResponse["filters"] }) {
+  const entries = getHistoryAskFilterEntries(filters);
+
+  return (
+    <div className="rounded-lg border border-white/10 bg-white/[0.028] p-3">
+      <div className="mb-3 text-sm font-medium text-slate-200">识别条件</div>
+      {entries.length > 0 ? (
+        <div className="flex flex-wrap gap-2">
+          {entries.map((entry) => (
+            <span
+              key={entry.label}
+              className="rounded-md border border-mint-300/20 bg-mint-300/8 px-2 py-1 text-xs text-mint-100"
+            >
+              {entry.label}: {entry.value}
+            </span>
+          ))}
+        </div>
+      ) : (
+        <div className="text-sm text-slate-500">未识别到明确筛选条件，按全部历史记录统计。</div>
+      )}
+    </div>
+  );
+}
+
+function AiCodingWorkspace({
+  codexError,
+  isCodexRunning,
+  isRestartingServices,
+  liveErrorOutput,
+  liveOutput,
+  liveStatus,
+  messages,
+  prompt,
+  archiveError,
+  archiveLoadingId,
+  restartConfirm,
+  restartError,
+  restartResponse,
+  onArchiveMessage,
+  onPromptChange,
+  onRestartConfirmChange,
+  onRestartServices,
+  onSubmit,
+}: {
+  codexError: string | null;
+  isCodexRunning: boolean;
+  isRestartingServices: boolean;
+  liveErrorOutput: string;
+  liveOutput: string;
+  liveStatus: string;
+  messages: AiCodingMessage[];
+  prompt: string;
+  archiveError: string | null;
+  archiveLoadingId: number | null;
+  restartConfirm: string;
+  restartError: string | null;
+  restartResponse: SystemRestartResponse | null;
+  onArchiveMessage: (message: AiCodingMessage) => void;
+  onPromptChange: (value: string) => void;
+  onRestartConfirmChange: (value: string) => void;
+  onRestartServices: () => void;
+  onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+}) {
+  const canRunCodex = prompt.trim().length >= 2 && !isCodexRunning;
+  const canRestart = restartConfirm === "RESTART" && !isRestartingServices;
+
+  return (
+    <div className="flex-1 px-4 pb-4 pt-2">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/72 p-4 shadow-soft-glow backdrop-blur-xl">
+          <div className="mb-5">
+            <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
+              <WandSparkles size={17} />
+              Codex
+            </div>
+            <h2 className="text-xl font-semibold text-slate-50">AI 编程任务</h2>
+          </div>
+
+          <form className="space-y-4" onSubmit={onSubmit}>
+            <textarea
+              className="control min-h-[170px] resize-none leading-7"
+              disabled={isCodexRunning}
+              maxLength={12000}
+              value={prompt}
+              onChange={(event) => onPromptChange(event.target.value)}
+              placeholder="例如：请调整 AI 编程界面的移动端布局，并运行前端构建验证。"
+            />
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="text-xs leading-5 text-slate-500">
+                Codex 会在当前项目目录内运行；需要重启服务时，请使用右侧人工确认按钮。
+              </div>
+              <button
+                className="flex h-11 min-w-32 items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
+                disabled={!canRunCodex}
+                type="submit"
+              >
+                {isCodexRunning ? <Loader2 className="animate-spin" size={17} /> : <Sparkles size={17} />}
+                {isCodexRunning ? "执行中" : "提交任务"}
+              </button>
+            </div>
+          </form>
+
+          {codexError ? (
+            <div className="mt-4 flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100">
+              <TriangleAlert className="mt-0.5 shrink-0 text-red-300" size={17} />
+              <span>{codexError}</span>
+            </div>
+          ) : null}
+
+          {archiveError ? (
+            <div className="mt-4 flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100">
+              <TriangleAlert className="mt-0.5 shrink-0 text-red-300" size={17} />
+              <span>{archiveError}</span>
+            </div>
+          ) : null}
+
+          <div className="mt-5 space-y-4">
+            {isCodexRunning ? (
+              <div className="space-y-3 rounded-lg border border-white/10 bg-white/[0.025] p-4">
+                <div className="flex items-center gap-2 text-sm text-mint-200">
+                  <Loader2 className="animate-spin" size={17} />
+                  <span>{liveStatus || "Codex 正在运行..."}</span>
+                </div>
+                <CodexOutputBlock
+                  title="Live Output"
+                  value={liveOutput || "等待 Codex 输出事件..."}
+                />
+                {liveErrorOutput ? (
+                  <CodexOutputBlock title="Live Error Output" value={liveErrorOutput} tone="warning" />
+                ) : null}
+              </div>
+            ) : messages.length === 0 ? (
+              <div className="grid min-h-[260px] place-items-center rounded-lg border border-white/10 bg-white/[0.025] p-6 text-center">
+                <div>
+                  <Bot className="mx-auto mb-3 text-slate-600" size={36} />
+                  <div className="mb-1 font-medium text-slate-300">等待编程任务</div>
+                  <p className="text-sm text-slate-500">提交后会显示 Codex 输出、退出码和本次工作区变更。</p>
+                </div>
+              </div>
+            ) : (
+              messages.map((message) => {
+                const resultText = message.response ? extractCodexResultText(message.response) : "";
+
+                return (
+                  <article key={message.id} className="rounded-lg border border-white/10 bg-white/[0.025] p-4">
+                    {message.response ? (
+                      <CodexCompletionSummaryCard
+                        isArchiving={archiveLoadingId === message.id}
+                        message={message}
+                        onArchive={() => onArchiveMessage(message)}
+                      />
+                    ) : null}
+
+                    <div className="mb-3 rounded-lg border border-mint-300/15 bg-mint-300/8 p-3">
+                      <div className="mb-2 text-xs font-medium uppercase tracking-[0.18em] text-mint-300/80">Prompt</div>
+                      <div className="whitespace-pre-wrap text-sm leading-6 text-slate-200">{message.prompt}</div>
+                    </div>
+
+                    {message.response ? (
+                      <div className="space-y-3">
+                        <div className="flex flex-wrap gap-2 text-xs">
+                          <span
+                            className={`rounded-md border px-2 py-1 ${
+                              message.response.exit_code === 0
+                                ? "border-mint-300/25 bg-mint-300/10 text-mint-200"
+                                : "border-red-400/25 bg-red-400/10 text-red-100"
+                            }`}
+                          >
+                            exit {message.response.exit_code}
+                          </span>
+                          <span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-slate-400">
+                            {message.response.duration_seconds}s
+                          </span>
+                        </div>
+
+                        {resultText ? (
+                          <CodexOutputBlock title="任务结论" value={resultText} />
+                        ) : (
+                          <CodexOutputBlock title="任务结论" value="未能从 Codex 输出中提取到可读结论，请展开调试日志查看原始输出。" />
+                        )}
+                        {message.response.error_output ? (
+                          <CodexOutputBlock title="Error Output" value={message.response.error_output} tone="warning" />
+                        ) : null}
+                        <details className="rounded-lg border border-white/10 bg-black/15 p-3">
+                          <summary className="cursor-pointer text-xs font-medium uppercase tracking-[0.18em] text-slate-500">
+                            调试日志
+                          </summary>
+                          <div className="mt-3 space-y-3">
+                            <CodexOutputBlock title="Raw Output" value={message.response.output || "Codex 未返回标准输出。"} />
+                            <CodexOutputBlock title="Git Status" value={message.response.git_status || "工作区没有新增变更。"} />
+                          </div>
+                        </details>
+                      </div>
+                    ) : null}
+                  </article>
+                );
+              })
+            )}
+          </div>
+        </section>
+
+        <aside className="min-w-0 rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
+          <div className="mb-5">
+            <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
+              <RefreshCw size={17} />
+              Operations
+            </div>
+            <h2 className="text-lg font-semibold text-slate-50">服务重启</h2>
+          </div>
+
+          <div className="space-y-4">
+            <div className="rounded-lg border border-amberline/25 bg-amberline/10 p-3 text-sm leading-6 text-amber-100/85">
+              该操作会调用服务端 `scripts/restart-all.sh`，前端和后端会短暂不可用。
+            </div>
+
+            <Field label="确认文本" icon={<ShieldCheck size={16} />}>
+              <input
+                className="control"
+                disabled={isRestartingServices}
+                value={restartConfirm}
+                onChange={(event) => onRestartConfirmChange(event.target.value)}
+                placeholder="输入 RESTART"
+              />
+            </Field>
+
+            <button
+              className="flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-red-400/30 bg-red-400/10 px-4 text-sm font-medium text-red-100 transition hover:bg-red-400/15 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
+              disabled={!canRestart}
+              type="button"
+              onClick={onRestartServices}
+            >
+              {isRestartingServices ? <Loader2 className="animate-spin" size={17} /> : <RefreshCw size={17} />}
+              {isRestartingServices ? "重启中" : "确认重启全部服务"}
+            </button>
+
+            {restartResponse ? (
+              <div className="rounded-lg border border-mint-300/25 bg-mint-300/10 p-3 text-sm leading-6 text-mint-100">
+                <div>{restartResponse.message}</div>
+                <div className="mt-2 break-all text-xs text-mint-200/75">Log: {restartResponse.log_path}</div>
+              </div>
+            ) : null}
+
+            {restartError ? (
+              <div className="rounded-lg border border-red-400/25 bg-red-400/10 p-3 text-sm leading-6 text-red-100">
+                {restartError}
+              </div>
+            ) : null}
+          </div>
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+function CodexOutputBlock({
+  title,
+  value,
+  tone = "default",
+}: {
+  title: string;
+  value: string;
+  tone?: "default" | "warning";
+}) {
+  return (
+    <div
+      className={`rounded-lg border p-3 ${
+        tone === "warning" ? "border-amberline/25 bg-amberline/10" : "border-white/10 bg-black/20"
+      }`}
+    >
+      <div className={`mb-2 text-xs font-medium uppercase tracking-[0.18em] ${tone === "warning" ? "text-amberline" : "text-slate-500"}`}>
+        {title}
+      </div>
+      <pre className="max-h-[420px] overflow-auto whitespace-pre-wrap break-words text-xs leading-5 text-slate-300">{value}</pre>
+    </div>
+  );
+}
+
+function CodexCompletionSummaryCard({
+  isArchiving,
+  message,
+  onArchive,
+}: {
+  isArchiving: boolean;
+  message: AiCodingMessage;
+  onArchive: () => void;
+}) {
+  if (!message.response) return null;
+
+  const summary = getCodexCompletionSummary(message.response);
+  const success = message.response.exit_code === 0;
+  const knowledgePreview = buildCodexKnowledgeDraft(message);
+  const resultText = extractCodexResultText(message.response);
+
+  return (
+    <div
+      className={`mb-3 rounded-lg border p-3 ${
+        success ? "border-mint-300/25 bg-mint-300/10" : "border-red-400/25 bg-red-400/10"
+      }`}
+    >
+      <div className="mb-3 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div className="min-w-0">
+          <div className={`mb-1 flex items-center gap-2 text-sm font-medium ${success ? "text-mint-100" : "text-red-100"}`}>
+            {success ? <CheckCircle2 size={17} /> : <TriangleAlert size={17} />}
+            {success ? "任务已完成" : "任务执行结束，但返回非零退出码"}
+          </div>
+          <div className="text-xs leading-5 text-slate-400">
+            exit {message.response.exit_code} · {message.response.duration_seconds}s · {summary.changedFiles.length} 个变更文件
+          </div>
+        </div>
+
+        <button
+          className="flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-sm font-medium text-slate-200 transition hover:border-mint-300/30 hover:text-mint-200 disabled:cursor-not-allowed disabled:text-slate-500"
+          disabled={isArchiving || Boolean(message.archivedKnowledgeId)}
+          type="button"
+          onClick={onArchive}
+        >
+          {isArchiving ? <Loader2 className="animate-spin" size={16} /> : <Archive size={16} />}
+          {message.archivedKnowledgeId ? `已归档 #${message.archivedKnowledgeId}` : isArchiving ? "归档中" : "归档精简记录"}
+        </button>
+      </div>
+
+      {resultText ? (
+        <div className="mb-3 rounded-lg border border-white/10 bg-black/15 p-3">
+          <div className="mb-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-500">任务结论</div>
+          <div className="max-h-64 overflow-auto whitespace-pre-wrap break-words text-sm leading-6 text-slate-300">
+            {resultText}
+          </div>
+        </div>
+      ) : null}
+
+      <div className="grid gap-3 md:grid-cols-2">
+        <div className="rounded-lg border border-white/10 bg-black/15 p-3">
+          <div className="mb-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-500">重启判断</div>
+          <div className={`text-sm leading-6 ${summary.restartRecommended ? "text-amber-100" : "text-slate-300"}`}>
+            {summary.restartText}
+          </div>
+        </div>
+        <div className="rounded-lg border border-white/10 bg-black/15 p-3">
+          <div className="mb-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-500">变更文件</div>
+          {summary.changedFiles.length > 0 ? (
+            <div className="space-y-1 text-xs leading-5 text-slate-300">
+              {summary.changedFiles.slice(0, 6).map((file) => (
+                <div key={file} className="truncate">
+                  {file}
+                </div>
+              ))}
+              {summary.changedFiles.length > 6 ? (
+                <div className="text-slate-500">还有 {summary.changedFiles.length - 6} 个文件，见 Git Status。</div>
+              ) : null}
+            </div>
+          ) : (
+            <div className="text-sm text-slate-500">没有检测到工作区变更。</div>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-3 rounded-lg border border-white/10 bg-black/15 p-3">
+        <div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-500">
+          <Archive size={14} />
+          归档预览
+        </div>
+        <div className="mb-2 text-sm font-medium leading-6 text-slate-200">{knowledgePreview.question}</div>
+        <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs leading-5 text-slate-400">
+          {knowledgePreview.answer}
+        </pre>
       </div>
     </div>
   );
@@ -6041,6 +7334,41 @@ function formatAmount(value: number) {
   }).format(value);
 }
 
+function formatHistoryAskVectorStatus(value: number | null | undefined) {
+  if (value === 1) return "待更新";
+  if (value === 0) return "已就绪";
+  return "";
+}
+
+function readHistoryAskVectorStatus(value: number | null | undefined): HistoryVectorStatus {
+  if (value === 1) return "1";
+  if (value === 0) return "0";
+  return "all";
+}
+
+function getHistoryAskFilterEntries(filters: HistoryAskResponse["filters"]) {
+  const entries: Array<{ label: string; value: string }> = [];
+  const vectorStatus = formatHistoryAskVectorStatus(filters.vector_status);
+
+  if (filters.keyword) entries.push({ label: "关键词", value: filters.keyword });
+  if (filters.username) entries.push({ label: "用户", value: filters.username });
+  if (filters.type) entries.push({ label: "类型", value: filters.type });
+  if (filters.week) entries.push({ label: "周期", value: filters.week });
+  if (filters.day) entries.push({ label: "Day", value: filters.day });
+  if (filters.learn_level !== null && filters.learn_level !== undefined) {
+    entries.push({ label: "等级", value: String(filters.learn_level) });
+  }
+  if (vectorStatus) entries.push({ label: "向量", value: vectorStatus });
+  if (filters.date_from || filters.date_to) {
+    entries.push({
+      label: "日期",
+      value: `${filters.date_from ?? "不限"} 至 ${filters.date_to ?? "不限"}`,
+    });
+  }
+
+  return entries;
+}
+
 function formatPercent(value: number) {
   return `${new Intl.NumberFormat("zh-CN", {
     maximumFractionDigits: 1,
@@ -6293,6 +7621,39 @@ function clearStoredNewDraft() {
   window.localStorage.removeItem(NEW_KNOWLEDGE_DRAFT_STORAGE_KEY);
 }
 
+function isMobileViewport() {
+  return window.matchMedia("(max-width: 768px), (pointer: coarse)").matches;
+}
+
+function isEditableElement(element: EventTarget | Element | null): element is HTMLElement {
+  if (!(element instanceof HTMLElement)) return false;
+
+  return element.tagName === "INPUT" || element.tagName === "TEXTAREA" || element.tagName === "SELECT" || element.isContentEditable;
+}
+
+function restoreMobileViewportScale({ blurActiveElement = true }: { blurActiveElement?: boolean } = {}) {
+  if (!isMobileViewport()) return;
+
+  const activeElement = document.activeElement;
+  if (blurActiveElement && isEditableElement(activeElement)) {
+    activeElement.blur();
+  }
+
+  document.documentElement.scrollLeft = 0;
+  document.body.scrollLeft = 0;
+  window.scrollTo({ left: 0, top: window.scrollY, behavior: "auto" });
+
+  const viewport = document.querySelector<HTMLMetaElement>('meta[name="viewport"]');
+  if (!viewport) return;
+
+  viewport.setAttribute("content", MOBILE_VIEWPORT_RESET_CONTENT);
+  window.setTimeout(() => {
+    viewport.setAttribute("content", MOBILE_VIEWPORT_CONTENT);
+    document.documentElement.scrollLeft = 0;
+    document.body.scrollLeft = 0;
+  }, 220);
+}
+
 function readStoredUiState(): StoredUiState {
   try {
     const value = window.localStorage.getItem(UI_STATE_STORAGE_KEY);
@@ -6317,6 +7678,7 @@ function readStoredUiState(): StoredUiState {
 
     return {
       activeView: readAppView(stored.activeView, defaults.activeView),
+      sidebarExpanded: typeof stored.sidebarExpanded === "boolean" ? stored.sidebarExpanded : defaults.sidebarExpanded,
       workbench: {
         query: readString(workbench.query),
         statusFilter: readKnowledgeStatusFilter(workbench.statusFilter, defaults.workbench.statusFilter),
@@ -6415,6 +7777,7 @@ function clearStoredUiState() {
 function buildDefaultUiState(): StoredUiState {
   return {
     activeView: "workbench",
+    sidebarExpanded: false,
     workbench: {
       query: "",
       statusFilter: "all",
@@ -6530,6 +7893,19 @@ function readEnglishMaterialDraft(value: unknown): EnglishMaterialDraft {
   };
 }
 
+function englishMaterialItemToDraft(item: EnglishMaterialItem): EnglishMaterialDraft {
+  return {
+    sequence_no: item.sequence_no ? String(item.sequence_no) : "",
+    category: item.category ?? "",
+    base_expression: item.base_expression ?? "",
+    professional_sentence: item.professional_sentence ?? "",
+    chinese_translation: item.chinese_translation ?? "",
+    full_script: item.full_script ?? "",
+    title: item.title ?? "",
+    flag: item.flag === 1 ? "1" : "0",
+  };
+}
+
 function readHistoryAskResponse(value: unknown): HistoryAskResponse | null {
   if (!isPlainRecord(value) || typeof value.answer !== "string") return null;
   return value as unknown as HistoryAskResponse;
@@ -6593,6 +7969,295 @@ function isBlogFactoryStatus(value: unknown): value is BlogFactoryStatus {
 
 function isTodoStatus(value: unknown): value is TodoStatus {
   return value === "待处理" || value === "处理中" || value === "已完成";
+}
+
+async function waitForBackendRecovery() {
+  await sleep(2000);
+  const deadline = Date.now() + 90_000;
+  let healthyCount = 0;
+
+  while (Date.now() < deadline) {
+    if (await checkBackendHealth()) {
+      healthyCount += 1;
+      if (healthyCount >= 2) return;
+    } else {
+      healthyCount = 0;
+    }
+    await sleep(2000);
+  }
+
+  throw new Error("服务重启已触发，但 90 秒内未检测到后端恢复。请查看 logs/web-restart.log。");
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function appendLogLine(current: string, line: string) {
+  return current ? `${current}\n${line}` : line;
+}
+
+function buildCodexKnowledgeDraft(message: AiCodingMessage): KnowledgeDraft {
+  const response = message.response;
+  const question = truncateField(`AI 编程变更记录：${buildCodexRecordTitle(message.prompt)}`, 4000);
+  if (!response) {
+    return {
+      question,
+      answer: "Codex 任务尚未完成。",
+      source: "AI 编程界面 / Codex",
+      topic_tag: "ai_coding,codex",
+      blog_status: "未发布",
+    };
+  }
+
+  const summary = getCodexCompletionSummary(response);
+  const verificationLines = extractCodexVerificationLines(response);
+  const resultText = extractCodexResultText(response);
+  const answer = [
+    "任务目标：",
+    message.prompt.trim(),
+    "",
+    "Codex答复：",
+    resultText || "未能从 Codex 输出中提取到可读答复，请回到 AI 编程界面查看调试日志。",
+    "",
+    "执行结果：",
+    `- 状态：${response.exit_code === 0 ? "完成" : "失败"}`,
+    `- Exit Code：${response.exit_code}`,
+    `- 耗时：${response.duration_seconds}s`,
+    "",
+    "验证线索：",
+    verificationLines.length > 0 ? verificationLines.map((line) => `- ${line}`).join("\n") : "- 未从 Codex 输出中提取到明确验证命令或结果。",
+    "",
+    "工作区变更：",
+    formatCodexChangedFiles(summary.changedFiles),
+    "",
+    "重启建议：",
+    summary.restartText,
+    "",
+    "备注：",
+    "完整执行日志保留在 AI 编程界面，本知识条目仅记录可检索的变更结论。",
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  return {
+    question,
+    answer,
+    source: "AI 编程界面 / Codex",
+    topic_tag: "ai_coding,codex",
+    blog_status: "未发布",
+  };
+}
+
+function extractCodexResultText(response: CodexRunResponse) {
+  const assistantMessages = extractCodexAssistantMessages(`${response.output}\n${response.error_output}`);
+  if (assistantMessages.length > 0) {
+    return truncateField(dedupeLines(assistantMessages).join("\n\n"), 8000);
+  }
+
+  const plainText = extractPlainCodexAnswer(response.output);
+  return plainText ? truncateField(plainText, 8000) : "";
+}
+
+function extractCodexAssistantMessages(output: string) {
+  const messages: string[] = [];
+
+  for (const line of output.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("{")) continue;
+
+    try {
+      const event = JSON.parse(trimmed) as unknown;
+      messages.push(...extractAssistantTextFromEvent(event));
+    } catch {
+      continue;
+    }
+  }
+
+  return messages.map(cleanCodexText).filter((message) => message.length > 0);
+}
+
+function extractAssistantTextFromEvent(event: unknown): string[] {
+  if (!isPlainRecord(event)) return [];
+
+  const nestedMessage = event.msg;
+  if (isPlainRecord(nestedMessage)) {
+    const nestedText = extractAssistantTextFromEvent(nestedMessage);
+    if (nestedText.length > 0) return nestedText;
+  }
+
+  const item = event.item;
+  if (isPlainRecord(item) && item.role === "assistant") {
+    return extractTextFragments(item.content ?? item.message ?? item.text);
+  }
+  if (isPlainRecord(item) && (item.type === "agent_message" || item.type === "assistant_message")) {
+    return extractTextFragments(item.text ?? item.message ?? item.content);
+  }
+
+  if (event.role === "assistant") {
+    return extractTextFragments(event.content ?? event.message ?? event.text);
+  }
+
+  const eventType = typeof event.type === "string" ? event.type : "";
+  if (eventType === "agent_message" || eventType === "assistant_message") {
+    return extractTextFragments(event.message ?? event.content ?? event.text);
+  }
+
+  if (eventType === "response.output_text.done" || eventType === "response.output_text") {
+    return extractTextFragments(event.text);
+  }
+
+  return [];
+}
+
+function extractTextFragments(value: unknown): string[] {
+  if (typeof value === "string") return [value];
+  if (Array.isArray(value)) return value.flatMap(extractTextFragments);
+  if (!isPlainRecord(value)) return [];
+
+  const fragments: string[] = [];
+  for (const key of ["text", "message", "content", "parts"]) {
+    if (key in value) {
+      fragments.push(...extractTextFragments(value[key]));
+    }
+  }
+  return fragments;
+}
+
+function extractPlainCodexAnswer(output: string) {
+  const cleaned = cleanCodexText(output);
+  if (!cleaned || cleaned.startsWith("{")) return "";
+
+  const sectionHeadings = [
+    "任务结论",
+    "执行结果",
+    "方案",
+    "可选方案",
+    "建议",
+    "评估",
+    "已完成",
+    "Summary",
+    "Result",
+  ];
+  const headingPattern = new RegExp(`(?:^|\\n)(?:\\*\\*)?(${sectionHeadings.join("|")})(?:\\*\\*)?[：:]?\\s*\\n`, "i");
+  const match = cleaned.match(headingPattern);
+  return match?.index !== undefined ? cleaned.slice(match.index).trim() : cleaned.trim();
+}
+
+function cleanCodexText(value: string) {
+  return value
+    .replace(/\u001b\[[0-9;]*m/g, "")
+    .replace(/\r\n/g, "\n")
+    .trim();
+}
+
+function dedupeLines(values: string[]) {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    const normalized = value.replace(/\s+/g, " ").trim();
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    result.push(value);
+  }
+  return result;
+}
+
+function getCodexCompletionSummary(response: CodexRunResponse) {
+  const changedFiles = parseGitStatusFiles(response.git_status);
+  const restartRecommended =
+    response.exit_code === 0 &&
+    changedFiles.some((file) =>
+      file.startsWith("backend/") ||
+      file.startsWith("scripts/") ||
+      file === "backend/.env" ||
+      file === "frontend/package.json" ||
+      file === "frontend/package-lock.json" ||
+      file.startsWith("frontend/vite.config") ||
+      file.startsWith("frontend/tailwind.config") ||
+      file.startsWith("frontend/postcss.config"),
+    );
+
+  const frontendOnly =
+    response.exit_code === 0 &&
+    changedFiles.length > 0 &&
+    changedFiles.every((file) => file.startsWith("frontend/src/") || file === "frontend/index.html");
+
+  const restartText =
+    response.exit_code !== 0
+      ? "任务未成功完成，建议先查看错误输出，不要立即重启。"
+      : restartRecommended
+        ? "建议人工确认后重启服务，后端、脚本、构建配置或依赖相关变更通常需要重新加载。"
+        : frontendOnly
+          ? "通常无需重启后端；开发服务可能已热更新，必要时刷新页面即可。"
+          : changedFiles.length > 0
+            ? "未检测到必须重启的变更；如页面行为未更新，可人工重启服务。"
+            : "未检测到工作区变更，无需重启服务。";
+
+  return {
+    changedFiles,
+    restartRecommended,
+    restartText,
+  };
+}
+
+function parseGitStatusFiles(value: string) {
+  return value
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const renameMatch = line.match(/^.. (.+) -> (.+)$/);
+      if (renameMatch) return renameMatch[2];
+      const statusMatch = line.match(/^(?:[ MADRCU?!]{1,2}|[MADRCU?!])\s+(.+)$/);
+      return statusMatch ? statusMatch[1].trim() : line;
+    })
+    .filter(Boolean);
+}
+
+function buildCodexRecordTitle(prompt: string) {
+  const firstLine = prompt.trim().split("\n").find(Boolean) ?? "未命名任务";
+  return truncateField(firstLine, 120);
+}
+
+function formatCodexChangedFiles(files: string[]) {
+  if (files.length === 0) return "- 未检测到工作区变更";
+
+  const visibleFiles = files.slice(0, 20).map((file) => `- ${file}`);
+  if (files.length > visibleFiles.length) {
+    visibleFiles.push(`- 另有 ${files.length - visibleFiles.length} 个文件，详见 Git Status。`);
+  }
+  return visibleFiles.join("\n");
+}
+
+function extractCodexVerificationLines(response: CodexRunResponse) {
+  const lines = `${response.output}\n${response.error_output}`
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const verificationPatterns = [
+    /npm run build/i,
+    /python -m compileall/i,
+    /pytest/i,
+    /vitest/i,
+    /eslint/i,
+    /tsc/i,
+    /✓ built/i,
+    /passed/i,
+    /failed/i,
+    /error:/i,
+  ];
+
+  const matches: string[] = [];
+  for (const line of lines) {
+    if (verificationPatterns.some((pattern) => pattern.test(line))) {
+      matches.push(truncateField(line, 220));
+    }
+    if (matches.length >= 8) break;
+  }
+
+  return Array.from(new Set(matches));
 }
 
 export default App;

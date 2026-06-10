@@ -103,3 +103,19 @@ export async function createEnglishMaterial(draft: EnglishMaterialDraft): Promis
     }),
   });
 }
+
+export async function updateEnglishMaterial(id: number, draft: EnglishMaterialDraft): Promise<EnglishMaterialItem> {
+  return request<EnglishMaterialItem>(`/api/english-materials/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      sequence_no: draft.sequence_no.trim() ? Number(draft.sequence_no) : null,
+      category: draft.category || null,
+      base_expression: draft.base_expression,
+      professional_sentence: draft.professional_sentence || null,
+      chinese_translation: draft.chinese_translation || null,
+      full_script: draft.full_script || null,
+      title: draft.title || null,
+      flag: Number(draft.flag),
+    }),
+  });
+}

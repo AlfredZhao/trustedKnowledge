@@ -8,11 +8,13 @@ from app.repositories.english_materials import (
     create_english_material,
     get_english_material,
     list_english_materials,
+    update_english_material,
 )
 from app.schemas.english_materials import (
     EnglishMaterialCreate,
     EnglishMaterialItem,
     EnglishMaterialListResponse,
+    EnglishMaterialUpdate,
 )
 
 
@@ -81,3 +83,21 @@ async def post_english_material(payload: EnglishMaterialCreate) -> EnglishMateri
         ) from exc
 
     return EnglishMaterialItem.model_validate(created)
+
+
+@router.patch("/{material_id}", response_model=EnglishMaterialItem)
+async def patch_english_material(material_id: int, payload: EnglishMaterialUpdate) -> EnglishMaterialItem:
+    try:
+        updated = await update_english_material(material_id, payload)
+    except oracledb.Error as exc:
+        error = exc.args[0] if exc.args else exc
+        message = getattr(error, "message", str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Oracle rejected the English material update: {message}",
+        ) from exc
+
+    if updated is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="English material not found")
+
+    return EnglishMaterialItem.model_validate(updated)

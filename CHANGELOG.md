@@ -9,7 +9,53 @@ The format follows the common GitHub changelog convention inspired by
 
 ## 本次版本更新
 
-### [0.2.2]
+### [0.2.3]
+
+#### Added / 新增
+
+- Added an AI Coding workspace with a controlled streaming Codex task runner and a manually confirmed web restart action for `scripts/restart-all.sh`.
+- 新增 AI 编程界面，支持流式提交与查看 Codex 编程任务，并提供人工确认后调用 `scripts/restart-all.sh` 的网页重启操作。
+
+- Added a desktop sidebar toggle so the left navigation can switch between icon-only and full label modes.
+- 新增电脑端左侧导航展开按钮，可在仅图标模式与完整功能名称模式之间切换。
+
+- Added transactional conversion between trusted knowledge and todo items with manual confirmation in both workspaces.
+- 新增可信知识与待办事项之间的事务型互转能力，并在两个工作区提供人工确认入口。
+
+- Added quick examples, answer copy, source status, and history-filter handoff to the AI Ask workspace.
+- 为 AI 问数界面新增快捷示例、复制回答、回答来源状态，以及跳转历史筛选的核对入口。
+
+- Added deterministic AI Ask condition recognition for date ranges, types, weeks, days, levels, and vector status.
+- 为 AI 问数新增确定性条件识别，支持日期范围、类型、周期、星期、等级和向量状态。
+
+#### Changed / 变更
+
+- Changed AI Ask distribution statistics to use full matched result sets instead of representative evidence samples.
+- 将 AI 问数的分布统计改为基于全量匹配结果，而不是代表性记录抽样。
+
+- Refined the AI Coding completion card and knowledge archive content so saved records capture concise task outcomes instead of raw Codex logs.
+- 优化 AI 编程任务完成卡片与知识库归档内容，使保存记录聚焦精简的任务结论，而不是原始 Codex 日志。
+
+- Changed English Materials detail viewing from a fixed side panel to an in-app dialog for clearer mobile reading.
+- 将英语素材详情查看从固定侧栏改为应用内弹窗，提升手机端阅读体验。
+
+- Improved the English Materials detail dialog with explicit open state, previous/next navigation, and copy actions for sentences and scripts.
+- 优化英语素材详情弹窗，增加显式打开状态、上一条/下一条切换，以及句式和脚本复制操作。
+
+- Added editing and save support inside the English Materials detail dialog, plus visible copy-success feedback.
+- 新增英语素材详情弹窗内的编辑保存能力，并为复制操作增加明确的成功反馈。
+
+#### Fixed / 修复
+
+- Fixed AI Coding result cards and knowledge archives so Codex's actual answer is surfaced before raw output, git status, and restart metadata.
+- 修复 AI 编程任务卡片与知识库归档内容，优先展示 Codex 实际答复，而不是原始 Output、Git Status 与重启元数据。
+
+- Fixed mobile PWA viewport drift after editing by preventing input-focus zoom from leaking into the main screen and blocking page-level horizontal scrolling.
+- 修复手机端 PWA 编辑后界面缩放状态残留的问题，并禁止页面级左右滑动导致的误操作。
+
+## 历史版本更新
+
+### [0.2.2] - 2026-06-09
 
 #### Added / 新增
 
@@ -31,8 +77,6 @@ The format follows the common GitHub changelog convention inspired by
 
 - Fixed an extra Workbench data fetch that could run while another workspace was active.
 - 修复切换到其他工作区时工作台仍可能额外发起数据请求的问题。
-
-## 历史版本更新
 
 ### [0.2.1] - 2026-06-05
 

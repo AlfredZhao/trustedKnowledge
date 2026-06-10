@@ -5,11 +5,13 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.auth import router as auth_router
 from app.api.blog_factory import router as blog_factory_router
+from app.api.codex import router as codex_router
 from app.api.current_records import router as current_records_router
 from app.api.english_materials import router as english_materials_router
 from app.api.history_ask import router as history_ask_router
 from app.api.history import router as history_router
 from app.api.knowledge import router as knowledge_router
+from app.api.system import router as system_router
 from app.api.todos import router as todos_router
 from app.api.usage import router as usage_router
 from app.core.config import settings
@@ -42,11 +44,13 @@ app.add_middleware(
 
 app.include_router(auth_router, prefix="/api")
 app.include_router(blog_factory_router, prefix="/api")
+app.include_router(codex_router, prefix="/api")
 app.include_router(current_records_router, prefix="/api")
 app.include_router(english_materials_router, prefix="/api")
 app.include_router(history_ask_router, prefix="/api")
 app.include_router(history_router, prefix="/api")
 app.include_router(knowledge_router, prefix="/api")
+app.include_router(system_router, prefix="/api")
 app.include_router(todos_router, prefix="/api")
 app.include_router(usage_router, prefix="/api")
 

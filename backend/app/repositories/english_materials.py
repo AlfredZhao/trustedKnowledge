@@ -3,7 +3,7 @@ from typing import Any
 import oracledb
 
 from app.db.oracle import acquire_connection
-from app.schemas.english_materials import EnglishMaterialCreate
+from app.schemas.english_materials import EnglishMaterialCreate, EnglishMaterialUpdate
 
 
 LIST_COLUMNS = """
@@ -25,6 +25,17 @@ SORT_COLUMNS = {
     "base_expression": '"基础表达"',
     "title": "title",
     "flag": "flag",
+}
+
+UPDATE_COLUMNS = {
+    "sequence_no": '"序号"',
+    "category": '"分类标识"',
+    "base_expression": '"基础表达"',
+    "professional_sentence": '"职业完整句式"',
+    "chinese_translation": '"地道中文翻译"',
+    "full_script": '"完整口播内容"',
+    "flag": "flag",
+    "title": "title",
 }
 
 
@@ -173,3 +184,26 @@ async def create_english_material(payload: EnglishMaterialCreate) -> dict[str, A
     if created is None:
         raise RuntimeError("English material row was inserted but could not be reloaded")
     return created
+
+
+async def update_english_material(material_id: int, payload: EnglishMaterialUpdate) -> dict[str, Any] | None:
+    values = payload.model_dump(exclude_unset=True)
+    if not values:
+        return await get_english_material(material_id)
+
+    assignments = [f"{UPDATE_COLUMNS[key]} = :{key}" for key in values]
+    sql = f"""
+        update t_douyin_details
+        set {", ".join(assignments)}
+        where id = :material_id
+    """
+
+    async with acquire_connection() as connection:
+        cursor = connection.cursor()
+        await cursor.execute(sql, {**values, "material_id": material_id})
+        if cursor.rowcount == 0:
+            await connection.rollback()
+            return None
+        await connection.commit()
+
+    return await get_english_material(material_id)

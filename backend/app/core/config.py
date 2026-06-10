@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     wechat_redirect_uri: str = Field("", validation_alias="TRUSTED_KNOWLEDGE_WECHAT_REDIRECT_URI")
     wechat_allowed_openids: str = Field("", validation_alias="TRUSTED_KNOWLEDGE_WECHAT_ALLOWED_OPENIDS")
     wechat_allowed_unionids: str = Field("", validation_alias="TRUSTED_KNOWLEDGE_WECHAT_ALLOWED_UNIONIDS")
+    allow_web_restart: bool = Field(False, validation_alias="TRUSTED_KNOWLEDGE_ALLOW_WEB_RESTART")
+    allow_web_codex: bool = Field(False, validation_alias="TRUSTED_KNOWLEDGE_ALLOW_WEB_CODEX")
+    codex_bin: str = Field("codex", validation_alias="TRUSTED_KNOWLEDGE_CODEX_BIN")
 
     model_config = SettingsConfigDict(
         env_file=".env",

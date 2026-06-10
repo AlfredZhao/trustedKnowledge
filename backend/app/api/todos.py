@@ -4,7 +4,9 @@ import oracledb
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 
 from app.core.security import require_api_key
+from app.repositories.conversions import convert_todo_to_knowledge
 from app.repositories.todos import create_todo, get_todo_by_id, list_todos, update_todo
+from app.schemas.knowledge import KnowledgeItem
 from app.schemas.todos import TodoCreate, TodoItem, TodoListResponse, TodoUpdate
 
 
@@ -52,6 +54,24 @@ async def post_todo(payload: TodoCreate) -> TodoItem:
         ) from exc
 
     return TodoItem.model_validate(created)
+
+
+@router.post("/{todo_id}/convert-to-knowledge", response_model=KnowledgeItem, status_code=status.HTTP_201_CREATED)
+async def post_todo_convert_to_knowledge(todo_id: Annotated[int, Path(ge=1)]) -> KnowledgeItem:
+    try:
+        converted = await convert_todo_to_knowledge(todo_id)
+    except oracledb.Error as exc:
+        error = exc.args[0] if exc.args else exc
+        message = getattr(error, "message", str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Oracle rejected the todo conversion: {message}",
+        ) from exc
+
+    if converted is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Todo item not found")
+
+    return KnowledgeItem.model_validate(converted)
 
 
 @router.get("/{todo_id}", response_model=TodoItem)

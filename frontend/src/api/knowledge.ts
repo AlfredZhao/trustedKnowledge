@@ -168,6 +168,18 @@ export async function deleteKnowledge(id: number): Promise<void> {
   });
 }
 
+export async function convertKnowledgeToTodo(id: number): Promise<TodoItem> {
+  return request<TodoItem>(`/api/knowledge/${id}/convert-to-todo`, {
+    method: "POST",
+  });
+}
+
+export async function convertTodoToKnowledge(id: number): Promise<KnowledgeItem> {
+  return request<KnowledgeItem>(`/api/todos/${id}/convert-to-knowledge`, {
+    method: "POST",
+  });
+}
+
 export async function mergeKnowledge(knowledgeIds: number[], draft: KnowledgeDraft): Promise<KnowledgeItem> {
   return request<KnowledgeItem>("/api/knowledge/merge", {
     method: "POST",

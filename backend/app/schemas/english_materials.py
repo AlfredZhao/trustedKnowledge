@@ -35,6 +35,40 @@ class EnglishMaterialCreate(BaseModel):
         return value
 
 
+class EnglishMaterialUpdate(BaseModel):
+    sequence_no: int | None = Field(default=None, ge=1)
+    category: str | None = Field(default=None, max_length=50)
+    base_expression: str | None = Field(default=None, min_length=1, max_length=50)
+    professional_sentence: str | None = Field(default=None, max_length=255)
+    chinese_translation: str | None = Field(default=None, max_length=255)
+    full_script: str | None = Field(default=None, max_length=4000)
+    title: str | None = Field(default=None, max_length=200)
+    flag: int | None = Field(default=None, ge=0, le=1)
+
+    @field_validator(
+        "category",
+        "base_expression",
+        "professional_sentence",
+        "chinese_translation",
+        "full_script",
+        "title",
+        mode="before",
+    )
+    @classmethod
+    def strip_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        return stripped or None
+
+    @field_validator("base_expression")
+    @classmethod
+    def require_base_expression_when_present(cls, value: str | None) -> str | None:
+        if value is None:
+            raise ValueError("base_expression cannot be blank")
+        return value
+
+
 class EnglishMaterialItem(BaseModel):
     id: int
     sequence_no: int | None = None

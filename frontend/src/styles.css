@@ -10,15 +10,40 @@
   background: #080b0f;
 }
 
+html {
+  width: 100%;
+  min-width: 320px;
+  overflow-x: hidden;
+  background: #080b0f;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 * {
   box-sizing: border-box;
 }
 
 body {
   margin: 0;
+  width: 100%;
   min-width: 320px;
   min-height: 100vh;
+  overflow-x: clip;
   background: #080b0f;
+  touch-action: pan-y;
+}
+
+#root {
+  width: 100%;
+  min-height: 100vh;
+  overflow-x: clip;
+}
+
+@supports not (overflow: clip) {
+  body,
+  #root {
+    overflow-x: hidden;
+  }
 }
 
 button,
@@ -41,8 +66,16 @@ button:disabled {
   color: #f8fafc;
 }
 
+@media (max-width: 639px) {
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+
 @layer components {
   .control {
-    @apply w-full rounded-lg border border-white/10 bg-white/[0.035] px-3 py-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-mint-300/40 focus:bg-white/[0.052] focus:ring-4 focus:ring-mint-300/10;
+    @apply w-full rounded-lg border border-white/10 bg-white/[0.035] px-3 py-3 text-base text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-mint-300/40 focus:bg-white/[0.052] focus:ring-4 focus:ring-mint-300/10 sm:text-sm;
   }
 }

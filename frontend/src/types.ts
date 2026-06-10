@@ -69,6 +69,7 @@ export type AppView =
   | "history"
   | "englishMaterials"
   | "historyAsk"
+  | "aiCoding"
   | "usage";
 
 export interface CurrentRecordItem {
@@ -146,6 +147,13 @@ export interface HistorySummary {
 export interface HistoryAskFilters {
   keyword: string | null;
   username: string | null;
+  type?: string | null;
+  week?: string | null;
+  day?: string | null;
+  learn_level?: number | null;
+  vector_status?: number | null;
+  date_from?: string | null;
+  date_to?: string | null;
 }
 
 export interface HistoryAskStats {
@@ -175,4 +183,22 @@ export interface HistoryAskResponse {
   evidence: HistoryAskEvidence[];
   llm_used: boolean;
   warning: string | null;
+}
+
+export interface CodexRunResponse {
+  output: string;
+  error_output: string;
+  exit_code: number;
+  duration_seconds: number;
+  git_status: string;
+}
+
+export type CodexStreamEvent =
+  | { type: "status" | "stdout" | "stderr" | "heartbeat" | "error"; message: string }
+  | { type: "complete"; response: CodexRunResponse };
+
+export interface SystemRestartResponse {
+  accepted: boolean;
+  message: string;
+  log_path: string;
 }

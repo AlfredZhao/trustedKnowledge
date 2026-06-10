@@ -10,6 +10,13 @@ class HistoryAskRequest(BaseModel):
 class HistoryAskFilters(BaseModel):
     keyword: str | None = None
     username: str | None = None
+    type: str | None = None
+    week: str | None = None
+    day: str | None = None
+    learn_level: int | None = None
+    vector_status: int | None = None
+    date_from: date | None = None
+    date_to: date | None = None
 
 
 class HistoryAskStats(BaseModel):
