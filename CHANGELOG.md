@@ -9,7 +9,17 @@ The format follows the common GitHub changelog convention inspired by
 
 ## 本次版本更新
 
-### [0.2.3]
+### [0.2.4]
+
+#### Added / 新增
+
+#### Changed / 变更
+
+#### Fixed / 修复
+
+## 历史版本更新
+
+### [0.2.3] - 2026-06-10
 
 #### Added / 新增
 
@@ -52,8 +62,6 @@ The format follows the common GitHub changelog convention inspired by
 
 - Fixed mobile PWA viewport drift after editing by preventing input-focus zoom from leaking into the main screen and blocking page-level horizontal scrolling.
 - 修复手机端 PWA 编辑后界面缩放状态残留的问题，并禁止页面级左右滑动导致的误操作。
-
-## 历史版本更新
 
 ### [0.2.2] - 2026-06-09
 
