@@ -17,6 +17,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Fixed / 修复
 
+- Fixed `backend/.env.example` so it matches the current backend environment structure while keeping sensitive values redacted.
+- 修复 `backend/.env.example`，使其与当前后端环境变量结构对齐，并保留敏感信息脱敏占位。
+
 - Fixed the History query date filters so start and end date fields stack cleanly on mobile and stay within the page bounds.
 - 修复历史查询模块开始日期与结束日期筛选框在手机端重叠、越界的问题。
 
