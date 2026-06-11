@@ -17,6 +17,12 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Fixed / 修复
 
+- Fixed the History query date filters so start and end date fields stack cleanly on mobile and stay within the page bounds.
+- 修复历史查询模块开始日期与结束日期筛选框在手机端重叠、越界的问题。
+
+- Fixed desktop and mobile function navigation labels so they share one source and use the mobile names consistently.
+- 修复电脑端与手机端功能导航名称不一致的问题，统一使用手机端当前名称并改为共享配置。
+
 ## 历史版本更新
 
 ### [0.2.3] - 2026-06-10

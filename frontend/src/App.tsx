@@ -164,6 +164,23 @@ const APP_VIEWS: AppView[] = [
   "aiCoding",
   "usage",
 ];
+type FunctionNavItem = {
+  icon: typeof BookOpenCheck;
+  label: string;
+  view: AppView;
+};
+const FUNCTION_NAV_ITEMS: FunctionNavItem[] = [
+  { icon: BookOpenCheck, label: "录入工作台", view: "workbench" },
+  { icon: FlaskConical, label: "知识加工厂", view: "factory" },
+  { icon: ClipboardList, label: "博客工厂", view: "blogFactory" },
+  { icon: ClipboardCheck, label: "待办事项", view: "todos" },
+  { icon: FilePlus2, label: "当前记录", view: "currentRecords" },
+  { icon: History, label: "历史查询", view: "history" },
+  { icon: BookOpenCheck, label: "英语素材", view: "englishMaterials" },
+  { icon: Bot, label: "AI 问数", view: "historyAsk" },
+  { icon: WandSparkles, label: "AI 编程", view: "aiCoding" },
+  { icon: Bot, label: "AI 用量", view: "usage" },
+];
 const BLOG_FACTORY_SORT_FIELDS = ["copied_at", "id", "knowledge_id", "factory_status"] as const;
 const CURRENT_RECORD_SORT_FIELDS = ["id", "type", "week", "day", "username", "learn_level"] as const;
 const HISTORY_SORT_FIELDS = ["history_date", "id", "type", "username", "learn_level"] as const;
@@ -2505,26 +2522,17 @@ function Sidebar({
   onToggleExpanded: () => void;
   onViewChange: (view: AppView) => void;
 }) {
-  type SidebarItem = {
+  type SidebarUtilityItem = {
     icon: typeof BookOpenCheck;
     label: string;
-    view?: AppView;
   };
 
-  const items: SidebarItem[] = [
-    { icon: BookOpenCheck, label: "录入工作台", view: "workbench" as const },
-    { icon: FlaskConical, label: "知识加工厂", view: "factory" as const },
-    { icon: ClipboardList, label: "博客工厂记录", view: "blogFactory" as const },
-    { icon: ClipboardCheck, label: "待办事项", view: "todos" as const },
-    { icon: FilePlus2, label: "当前记录录入", view: "currentRecords" as const },
-    { icon: History, label: "历史查询", view: "history" as const },
-    { icon: BookOpenCheck, label: "英语素材管理", view: "englishMaterials" as const },
-    { icon: Bot, label: "AI 问数", view: "historyAsk" as const },
-    { icon: WandSparkles, label: "AI 编程", view: "aiCoding" as const },
+  const utilityItems: SidebarUtilityItem[] = [
     { icon: ShieldCheck, label: "Review" },
     { icon: Database, label: "Sources" },
   ];
-
+  const primaryItems = FUNCTION_NAV_ITEMS.filter((item) => item.view !== "usage");
+  const usageItem = FUNCTION_NAV_ITEMS.find((item) => item.view === "usage");
   const usageActive = activeView === "usage";
 
   return (
@@ -2547,11 +2555,11 @@ function Sidebar({
         {isExpanded ? <span className="truncate text-sm font-medium text-mint-100">功能导航</span> : null}
       </button>
       <nav className="flex flex-1 flex-col gap-3" aria-label="桌面功能页面">
-        {items.map((item) => {
-          const active = "view" in item && item.view === activeView;
+        {primaryItems.map((item) => {
+          const active = item.view === activeView;
           return (
             <button
-              key={item.label}
+              key={item.view}
               className={`flex h-11 items-center rounded-lg border text-sm font-medium transition ${
                 active
                   ? "border-mint-300/25 bg-mint-300/10 text-mint-300"
@@ -2560,30 +2568,43 @@ function Sidebar({
               title={item.label}
               type="button"
               aria-current={active ? "page" : undefined}
-              onClick={() => {
-                if (item.view) onViewChange(item.view);
-              }}
+              onClick={() => onViewChange(item.view)}
             >
               <item.icon size={19} className="shrink-0" />
               {isExpanded ? <span className="truncate">{item.label}</span> : null}
             </button>
           );
         })}
+        {utilityItems.map((item) => (
+          <button
+            key={item.label}
+            className={`flex h-11 items-center rounded-lg border border-transparent text-sm font-medium text-slate-500 transition hover:border-white/10 hover:bg-white/[0.04] hover:text-slate-200 ${
+              isExpanded ? "w-full justify-start gap-3 px-3" : "w-11 justify-center"
+            }`}
+            title={item.label}
+            type="button"
+          >
+            <item.icon size={19} className="shrink-0" />
+            {isExpanded ? <span className="truncate">{item.label}</span> : null}
+          </button>
+        ))}
       </nav>
-      <button
-        className={`flex h-10 items-center rounded-lg border text-xs font-semibold transition ${
-          usageActive
-            ? "border-mint-300/25 bg-mint-300/10 text-mint-300"
-            : "border-white/10 text-slate-300 hover:border-mint-300/30 hover:bg-white/[0.04] hover:text-mint-300"
-        } ${isExpanded ? "w-full justify-start gap-3 px-3" : "w-10 justify-center"}`}
-        title="LLM 使用情况"
-        type="button"
-        aria-current={usageActive ? "page" : undefined}
-        onClick={() => onViewChange("usage")}
-      >
-        <span className="grid h-5 w-5 shrink-0 place-items-center">AI</span>
-        {isExpanded ? <span className="truncate text-sm font-medium">LLM 使用情况</span> : null}
-      </button>
+      {usageItem ? (
+        <button
+          className={`flex h-10 items-center rounded-lg border text-xs font-semibold transition ${
+            usageActive
+              ? "border-mint-300/25 bg-mint-300/10 text-mint-300"
+              : "border-white/10 text-slate-300 hover:border-mint-300/30 hover:bg-white/[0.04] hover:text-mint-300"
+          } ${isExpanded ? "w-full justify-start gap-3 px-3" : "w-10 justify-center"}`}
+          title={usageItem.label}
+          type="button"
+          aria-current={usageActive ? "page" : undefined}
+          onClick={() => onViewChange(usageItem.view)}
+        >
+          <span className="grid h-5 w-5 shrink-0 place-items-center">AI</span>
+          {isExpanded ? <span className="truncate text-sm font-medium">{usageItem.label}</span> : null}
+        </button>
+      ) : null}
     </aside>
   );
 }
@@ -2610,18 +2631,6 @@ function Topbar({
   onStatusFilterChange?: (status: KnowledgeStatus | "all") => void;
 }) {
   const [isFilterOpen, setIsFilterOpen] = useState(false);
-  const mobileNavItems = [
-    { icon: BookOpenCheck, label: "录入工作台", view: "workbench" as const },
-    { icon: FlaskConical, label: "知识加工厂", view: "factory" as const },
-    { icon: ClipboardList, label: "博客工厂", view: "blogFactory" as const },
-    { icon: ClipboardCheck, label: "待办事项", view: "todos" as const },
-    { icon: FilePlus2, label: "当前记录", view: "currentRecords" as const },
-    { icon: History, label: "历史查询", view: "history" as const },
-    { icon: BookOpenCheck, label: "英语素材", view: "englishMaterials" as const },
-    { icon: Bot, label: "AI 问数", view: "historyAsk" as const },
-    { icon: WandSparkles, label: "AI 编程", view: "aiCoding" as const },
-    { icon: Bot, label: "AI 用量", view: "usage" as const },
-  ];
   const statusOptions: Array<{ label: string; value: KnowledgeStatus | "all" }> = [
     { label: "全部状态", value: "all" },
     { label: "未发布", value: "未发布" },
@@ -2640,7 +2649,7 @@ function Topbar({
         <h1 className="text-2xl font-semibold tracking-normal text-slate-50">{title}</h1>
       </div>
       <nav className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:hidden" aria-label="功能页面">
-        {mobileNavItems.map((item) => {
+        {FUNCTION_NAV_ITEMS.map((item) => {
           const active = item.view === activeView;
           return (
             <button
@@ -3352,7 +3361,7 @@ function Field({
   children: React.ReactNode;
 }) {
   return (
-    <label className="block">
+    <label className="block min-w-0">
       <span className="mb-2 flex items-center gap-2 text-sm text-slate-300">
         <span className="text-slate-500">{icon}</span>
         {label}
@@ -6671,10 +6680,10 @@ function HistoryExplorer({
               </Field>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Field label="开始日期" icon={<CalendarClock size={16} />}>
                 <input
-                  className="control"
+                  className="control history-date-control"
                   type="date"
                   value={filters.dateFrom}
                   onChange={(event) => onFilterChange({ dateFrom: event.target.value })}
@@ -6682,7 +6691,7 @@ function HistoryExplorer({
               </Field>
               <Field label="结束日期" icon={<CalendarClock size={16} />}>
                 <input
-                  className="control"
+                  className="control history-date-control"
                   type="date"
                   value={filters.dateTo}
                   onChange={(event) => onFilterChange({ dateTo: event.target.value })}

@@ -76,6 +76,30 @@ button:disabled {
 
 @layer components {
   .control {
-    @apply w-full rounded-lg border border-white/10 bg-white/[0.035] px-3 py-3 text-base text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-mint-300/40 focus:bg-white/[0.052] focus:ring-4 focus:ring-mint-300/10 sm:text-sm;
+    @apply block min-w-0 max-w-full w-full rounded-lg border border-white/10 bg-white/[0.035] px-3 py-3 text-base text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-mint-300/40 focus:bg-white/[0.052] focus:ring-4 focus:ring-mint-300/10 sm:text-sm;
+    min-inline-size: 0;
+    max-inline-size: 100%;
+  }
+
+  .history-date-control {
+    inline-size: 100%;
+    min-inline-size: 0;
+    max-inline-size: 100%;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  .history-date-control::-webkit-datetime-edit {
+    min-inline-size: 0;
+  }
+
+  .history-date-control::-webkit-date-and-time-value {
+    min-inline-size: 0;
+    text-align: left;
+  }
+
+  .history-date-control::-webkit-calendar-picker-indicator {
+    flex-shrink: 0;
+    margin-left: 0;
   }
 }
