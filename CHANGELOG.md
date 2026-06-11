@@ -23,6 +23,9 @@ The format follows the common GitHub changelog convention inspired by
 - Fixed desktop and mobile function navigation labels so they share one source and use the mobile names consistently.
 - 修复电脑端与手机端功能导航名称不一致的问题，统一使用手机端当前名称并改为共享配置。
 
+- Fixed the desktop function navigation expand/collapse interaction so labels and button widths animate more smoothly.
+- 优化电脑端功能导航展开与收起交互，使功能名称和按钮宽度过渡更丝滑。
+
 ## 历史版本更新
 
 ### [0.2.3] - 2026-06-10

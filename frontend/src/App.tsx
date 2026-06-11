@@ -2034,7 +2034,7 @@ function App() {
     <main className="min-h-screen bg-ink-950 text-slate-100">
       <div className="fixed inset-0 pointer-events-none bg-[radial-gradient(circle_at_top_left,rgba(125,211,199,0.09),transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.035),transparent_22%)]" />
       <div
-        className={`relative grid min-h-screen grid-cols-1 transition-[grid-template-columns] duration-200 ${
+        className={`relative grid min-h-screen grid-cols-1 transition-[grid-template-columns] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-[grid-template-columns] motion-reduce:transition-none ${
           isSidebarExpanded ? "lg:grid-cols-[220px_minmax(0,1fr)]" : "lg:grid-cols-[76px_minmax(0,1fr)]"
         }`}
       >
@@ -2534,6 +2534,11 @@ function Sidebar({
   const primaryItems = FUNCTION_NAV_ITEMS.filter((item) => item.view !== "usage");
   const usageItem = FUNCTION_NAV_ITEMS.find((item) => item.view === "usage");
   const usageActive = activeView === "usage";
+  const sidebarButtonMotion =
+    "transition-[width,gap,color,background-color,border-color,box-shadow,transform] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none";
+  const sidebarLabelMotion = `min-w-0 overflow-hidden whitespace-nowrap transition-[max-width,opacity,transform] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${
+    isExpanded ? "max-w-36 translate-x-0 opacity-100" : "max-w-0 -translate-x-1 opacity-0"
+  }`;
 
   return (
     <aside
@@ -2542,8 +2547,8 @@ function Sidebar({
       }`}
     >
       <button
-        className={`mb-8 flex h-10 items-center rounded-lg border border-mint-300/25 bg-mint-300/10 text-mint-300 shadow-soft-glow transition hover:border-mint-300/40 hover:bg-mint-300/15 ${
-          isExpanded ? "w-full justify-start gap-3 px-3" : "w-10 justify-center"
+        className={`mb-8 flex h-10 items-center overflow-hidden rounded-lg border border-mint-300/25 bg-mint-300/10 text-mint-300 shadow-soft-glow hover:border-mint-300/40 hover:bg-mint-300/15 ${sidebarButtonMotion} ${
+          isExpanded ? "w-full justify-start gap-3 px-[10.5px]" : "w-10 justify-start gap-0 px-[10.5px]"
         }`}
         title={isExpanded ? "收起功能名称" : "展开功能名称"}
         type="button"
@@ -2551,8 +2556,8 @@ function Sidebar({
         aria-label={isExpanded ? "收起左侧功能名称" : "展开左侧功能名称"}
         onClick={onToggleExpanded}
       >
-        <Layers3 size={19} />
-        {isExpanded ? <span className="truncate text-sm font-medium text-mint-100">功能导航</span> : null}
+        <Layers3 size={19} className="shrink-0" />
+        <span className={`${sidebarLabelMotion} text-sm font-medium text-mint-100`}>功能导航</span>
       </button>
       <nav className="flex flex-1 flex-col gap-3" aria-label="桌面功能页面">
         {primaryItems.map((item) => {
@@ -2560,49 +2565,49 @@ function Sidebar({
           return (
             <button
               key={item.view}
-              className={`flex h-11 items-center rounded-lg border text-sm font-medium transition ${
+              className={`flex h-11 items-center overflow-hidden rounded-lg border text-sm font-medium ${sidebarButtonMotion} ${
                 active
                   ? "border-mint-300/25 bg-mint-300/10 text-mint-300"
                   : "border-transparent text-slate-500 hover:border-white/10 hover:bg-white/[0.04] hover:text-slate-200"
-              } ${isExpanded ? "w-full justify-start gap-3 px-3" : "w-11 justify-center"}`}
+              } ${isExpanded ? "w-full justify-start gap-3 px-[12.5px]" : "w-11 justify-start gap-0 px-[12.5px]"}`}
               title={item.label}
               type="button"
               aria-current={active ? "page" : undefined}
               onClick={() => onViewChange(item.view)}
             >
               <item.icon size={19} className="shrink-0" />
-              {isExpanded ? <span className="truncate">{item.label}</span> : null}
+              <span className={sidebarLabelMotion}>{item.label}</span>
             </button>
           );
         })}
         {utilityItems.map((item) => (
           <button
             key={item.label}
-            className={`flex h-11 items-center rounded-lg border border-transparent text-sm font-medium text-slate-500 transition hover:border-white/10 hover:bg-white/[0.04] hover:text-slate-200 ${
-              isExpanded ? "w-full justify-start gap-3 px-3" : "w-11 justify-center"
+            className={`flex h-11 items-center overflow-hidden rounded-lg border border-transparent text-sm font-medium text-slate-500 hover:border-white/10 hover:bg-white/[0.04] hover:text-slate-200 ${sidebarButtonMotion} ${
+              isExpanded ? "w-full justify-start gap-3 px-[12.5px]" : "w-11 justify-start gap-0 px-[12.5px]"
             }`}
             title={item.label}
             type="button"
           >
             <item.icon size={19} className="shrink-0" />
-            {isExpanded ? <span className="truncate">{item.label}</span> : null}
+            <span className={sidebarLabelMotion}>{item.label}</span>
           </button>
         ))}
       </nav>
       {usageItem ? (
         <button
-          className={`flex h-10 items-center rounded-lg border text-xs font-semibold transition ${
+          className={`flex h-10 items-center overflow-hidden rounded-lg border text-xs font-semibold ${sidebarButtonMotion} ${
             usageActive
               ? "border-mint-300/25 bg-mint-300/10 text-mint-300"
               : "border-white/10 text-slate-300 hover:border-mint-300/30 hover:bg-white/[0.04] hover:text-mint-300"
-          } ${isExpanded ? "w-full justify-start gap-3 px-3" : "w-10 justify-center"}`}
+          } ${isExpanded ? "w-full justify-start gap-3 px-2.5" : "w-10 justify-start gap-0 px-2.5"}`}
           title={usageItem.label}
           type="button"
           aria-current={usageActive ? "page" : undefined}
           onClick={() => onViewChange(usageItem.view)}
         >
           <span className="grid h-5 w-5 shrink-0 place-items-center">AI</span>
-          {isExpanded ? <span className="truncate text-sm font-medium">{usageItem.label}</span> : null}
+          <span className={`${sidebarLabelMotion} text-sm font-medium`}>{usageItem.label}</span>
         </button>
       ) : null}
     </aside>
