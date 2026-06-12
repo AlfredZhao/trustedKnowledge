@@ -811,6 +811,12 @@ function App() {
     fetchKnowledge(requestQuery)
       .then((data) => {
         if (!mounted) return;
+        const nextTotalPages = Math.max(1, Math.ceil(data.total / FACTORY_PAGE_SIZE));
+        if (data.total > 0 && data.items.length === 0 && factoryPage > nextTotalPages) {
+          setFactoryPage(nextTotalPages);
+          return;
+        }
+
         setFactoryItems(data.items);
         setFactoryTotalItems(data.total);
         setFactoryError(null);
@@ -1330,6 +1336,7 @@ function App() {
             topic_tag: draft.topic_tag,
             todo_status: "待处理",
           });
+          clearApiResponseCache();
           setDraft(emptyDraft);
           clearStoredNewDraft();
           setIsTodoEntry(false);
@@ -1342,6 +1349,7 @@ function App() {
         }
 
         const created = await createKnowledge(draft);
+        clearApiResponseCache();
         if (page === 1) {
           setItems((current) => [created, ...current].slice(0, PAGE_SIZE));
         } else {
@@ -1355,6 +1363,7 @@ function App() {
       }
 
       const updated = await updateKnowledge(selectedId, draft);
+      clearApiResponseCache();
       setItems((current) => current.map((item) => (item.id === updated.id ? updated : item)));
       setDraft(itemToDraft(updated));
       setLastCreatedId(updated.id);
@@ -1392,6 +1401,7 @@ function App() {
 
     try {
       await deleteKnowledge(deleteTarget.id);
+      clearApiResponseCache();
       setSelectedId(null);
       setDeleteTarget(null);
       setDraft(emptyDraft);
@@ -1442,6 +1452,7 @@ function App() {
     setSaveError(null);
     try {
       const converted = await convertKnowledgeToTodo(selectedId);
+      clearApiResponseCache();
       setItems((current) => current.filter((item) => item.id !== selectedId));
       setTotalItems((current) => Math.max(0, current - 1));
       setSelectedId(null);
@@ -1565,6 +1576,7 @@ function App() {
     setIsFactoryMerging(true);
     try {
       const merged = await mergeKnowledge(knowledgeIds, mergeDraft);
+      clearApiResponseCache();
       setFactorySelectedId(merged.id);
       setFactoryTask("");
       setHasCopiedFactoryTask(false);
@@ -1681,6 +1693,7 @@ function App() {
     setTodoSaveError(null);
     try {
       const converted = await convertTodoToKnowledge(selectedTodoId);
+      clearApiResponseCache();
       setTodoItems((current) => current.filter((item) => item.id !== selectedTodoId));
       setTodoTotal((current) => Math.max(0, current - 1));
       setSelectedTodoId(null);
@@ -1975,6 +1988,7 @@ function App() {
     setCodexArchiveError(null);
     try {
       const created = await createKnowledge(buildCodexKnowledgeDraft(message));
+      clearApiResponseCache();
       setAiCodingMessages((current) =>
         current.map((item) => (item.id === message.id ? { ...item, archivedKnowledgeId: created.id } : item)),
       );
@@ -2421,6 +2435,12 @@ function App() {
               isCopySaving={isFactoryCopySaving}
               isMerging={isFactoryMerging}
               copyError={factoryCopyError}
+              searchQuery={factoryQuery}
+              onClearSearch={() => {
+                setFactoryQuery("");
+                setDebouncedFactoryQuery("");
+                setFactoryPage(1);
+              }}
               onCopyTask={handleCopyFactoryTask}
               onGenerateTask={handleGenerateFactoryTask}
               onMergeKnowledge={handleMergeFactoryKnowledge}
@@ -3535,6 +3555,8 @@ function KnowledgeFactory({
   isCopySaving,
   isMerging,
   copyError,
+  searchQuery,
+  onClearSearch,
   onCopyTask,
   onGenerateTask,
   onMergeKnowledge,
@@ -3554,6 +3576,8 @@ function KnowledgeFactory({
   isCopySaving: boolean;
   isMerging: boolean;
   copyError: string | null;
+  searchQuery: string;
+  onClearSearch: () => void;
   onCopyTask: () => void;
   onGenerateTask: (item: KnowledgeItem) => void;
   onMergeKnowledge: (knowledgeIds: number[], mergeDraft: KnowledgeDraft) => Promise<KnowledgeItem>;
@@ -3569,6 +3593,7 @@ function KnowledgeFactory({
   const rangeEnd = Math.min(page * pageSize, totalItems);
   const selectedMergeIds = selectedMergeItems.map((item) => item.id);
   const allVisibleSelected = items.length > 0 && items.every((item) => selectedMergeIds.includes(item.id));
+  const trimmedSearchQuery = searchQuery.trim();
 
   useEffect(() => {
     setSelectedMergeItems((current) => current.map((selected) => items.find((item) => item.id === selected.id) ?? selected));
@@ -3643,7 +3668,21 @@ function KnowledgeFactory({
           </div>
         ) : items.length === 0 ? (
           <div className="rounded-lg border border-white/10 bg-white/[0.025] p-6 text-center text-sm leading-6 text-slate-500">
-            暂无未发布知识。可以回到录入工作台新增，或把状态切换为未发布。
+            {trimmedSearchQuery ? (
+              <div>
+                <div className="mb-1 font-medium text-slate-300">没有匹配的未发布知识</div>
+                <p>当前搜索：{trimmedSearchQuery}</p>
+                <button
+                  className="mt-4 h-9 rounded-lg border border-mint-300/25 bg-mint-300/10 px-3 text-sm font-medium text-mint-200 transition hover:bg-mint-300/16"
+                  type="button"
+                  onClick={onClearSearch}
+                >
+                  清除搜索
+                </button>
+              </div>
+            ) : (
+              "暂无未发布知识。可以回到录入工作台新增，或把状态切换为未发布。"
+            )}
           </div>
         ) : (
           <div className="space-y-3">

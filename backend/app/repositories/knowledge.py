@@ -41,7 +41,9 @@ def _build_filters(
     if q:
         clauses.append(
             "(lower(question) like '%' || lower(:q) || '%' "
-            "or lower(dbms_lob.substr(answer, 4000, 1)) like '%' || lower(:q) || '%')"
+            "or lower(dbms_lob.substr(answer, 4000, 1)) like '%' || lower(:q) || '%' "
+            "or lower(source) like '%' || lower(:q) || '%' "
+            "or lower(topic_tag) like '%' || lower(:q) || '%')"
         )
         params["q"] = q
 
