@@ -170,8 +170,8 @@ type FunctionNavItem = {
   view: AppView;
 };
 const FUNCTION_NAV_ITEMS: FunctionNavItem[] = [
-  { icon: BookOpenCheck, label: "录入工作台", view: "workbench" },
-  { icon: FlaskConical, label: "知识加工厂", view: "factory" },
+  { icon: BookOpenCheck, label: "知识录入", view: "workbench" },
+  { icon: FlaskConical, label: "知识加工", view: "factory" },
   { icon: ClipboardList, label: "博客工厂", view: "blogFactory" },
   { icon: ClipboardCheck, label: "待办事项", view: "todos" },
   { icon: FilePlus2, label: "当前记录", view: "currentRecords" },
@@ -2005,9 +2005,9 @@ function App() {
 
   const viewTitle =
     activeView === "workbench"
-      ? "可信知识录入工作台"
+      ? "可信知识录入"
       : activeView === "factory"
-        ? "可信知识加工厂"
+        ? "可信知识加工"
       : activeView === "blogFactory"
         ? "博客工厂记录"
         : activeView === "todos"
@@ -3175,6 +3175,15 @@ function KnowledgeForm({
 }) {
   const canSubmit = draft.question.trim().length > 0 && draft.answer.trim().length > 0 && !isSaving;
   const isEditing = mode === "edit";
+  const formTitle = isEditing ? "编辑可信知识" : isTodoEntry ? "录入待办事项" : "录入可信知识";
+  const titleFieldLabel = isTodoEntry ? "待办事项标题" : "问题 / 标题";
+  const contentFieldLabel = isTodoEntry ? "待办事项内容" : "可信答案";
+  const titlePlaceholder = isTodoEntry
+    ? "例如：整理 Linux 防火墙开放端口操作步骤"
+    : "例如：Linux 主机防火墙如何同时开启 80 和 443？";
+  const contentPlaceholder = isTodoEntry
+    ? "补充待办事项背景、验收标准或下一步动作。"
+    : "写入可验证、可复用、上下文完整的答案...";
 
   return (
     <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/74 p-4 shadow-soft-glow backdrop-blur-xl">
@@ -3185,7 +3194,7 @@ function KnowledgeForm({
             {isEditing ? `Editing #${selectedId}` : "New Entry"}
           </div>
           <h2 className="text-xl font-semibold text-slate-50">
-            {isEditing ? "编辑可信知识" : "录入可信知识"}
+            {formTitle}
           </h2>
         </div>
         <div className="flex items-center gap-2">
@@ -3224,22 +3233,22 @@ function KnowledgeForm({
           </label>
         ) : null}
 
-        <Field label="问题 / 标题" icon={<Sparkles size={16} />}>
+        <Field label={titleFieldLabel} icon={<Sparkles size={16} />}>
           <input
             value={draft.question}
             onChange={(event) => onDraftChange({ ...draft, question: event.target.value })}
             className="control"
-            placeholder="例如：Linux 主机防火墙如何同时开启 80 和 443？"
+            placeholder={titlePlaceholder}
             maxLength={4000}
           />
         </Field>
 
-        <Field label="可信答案" icon={<Archive size={16} />}>
+        <Field label={contentFieldLabel} icon={<Archive size={16} />}>
           <textarea
             value={draft.answer}
             onChange={(event) => onDraftChange({ ...draft, answer: event.target.value })}
             className="control min-h-[330px] resize-none leading-7"
-            placeholder="写入可验证、可复用、上下文完整的答案..."
+            placeholder={contentPlaceholder}
           />
         </Field>
 
@@ -3681,7 +3690,7 @@ function KnowledgeFactory({
                 </button>
               </div>
             ) : (
-              "暂无未发布知识。可以回到录入工作台新增，或把状态切换为未发布。"
+              "暂无未发布知识。可以回到知识录入新增，或把状态切换为未发布。"
             )}
           </div>
         ) : (
@@ -4666,7 +4675,7 @@ function TodoWorkspace({
             <div>
               <ClipboardCheck className="mx-auto mb-3 text-slate-600" size={36} />
               <div className="mb-1 font-medium text-slate-300">没有匹配的待办事项</div>
-              <p className="text-sm text-slate-500">在录入工作台勾选待办事项后，这里会显示记录。</p>
+              <p className="text-sm text-slate-500">在知识录入勾选待办事项后，这里会显示记录。</p>
             </div>
           </div>
         ) : (
