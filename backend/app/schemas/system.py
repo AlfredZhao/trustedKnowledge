@@ -9,3 +9,12 @@ class RestartResponse(BaseModel):
     accepted: bool
     message: str
     log_path: str
+
+
+class GithubSyncResponse(BaseModel):
+    success: bool
+    message: str
+    exit_code: int
+    output_tail: str
+    log_path: str
+    completed_at: str

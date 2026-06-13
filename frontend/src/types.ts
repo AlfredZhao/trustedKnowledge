@@ -216,3 +216,12 @@ export interface SystemRestartResponse {
   message: string;
   log_path: string;
 }
+
+export interface GithubSyncResponse {
+  success: boolean;
+  message: string;
+  exit_code: number;
+  output_tail: string;
+  log_path: string;
+  completed_at: string;
+}

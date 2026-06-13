@@ -1,4 +1,4 @@
-import type { SystemRestartResponse } from "../types";
+import type { GithubSyncResponse, SystemRestartResponse } from "../types";
 import { clearStoredApiKey, readStoredApiKey } from "./auth";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.trim() ?? "";
@@ -41,6 +41,13 @@ export async function restartServices(): Promise<SystemRestartResponse> {
   return request<SystemRestartResponse>("/api/system/restart", {
     method: "POST",
     body: JSON.stringify({ confirm: "RESTART" }),
+  });
+}
+
+export async function syncCodeToGithub(): Promise<GithubSyncResponse> {
+  return request<GithubSyncResponse>("/api/system/github-sync", {
+    method: "POST",
+    body: JSON.stringify({}),
   });
 }
 

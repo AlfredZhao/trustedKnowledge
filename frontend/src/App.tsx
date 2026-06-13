@@ -17,6 +17,7 @@ import {
   Filter,
   FileText,
   FlaskConical,
+  Github,
   History,
   Layers3,
   LogOut,
@@ -77,7 +78,7 @@ import {
   readCachedCurrentRecords,
   updateCurrentRecord,
 } from "./api/currentRecords";
-import { checkBackendHealth, restartServices } from "./api/system";
+import { checkBackendHealth, restartServices, syncCodeToGithub } from "./api/system";
 import {
   createEnglishMaterial,
   fetchEnglishMaterials,
@@ -99,6 +100,7 @@ import type {
   CurrentWeek,
   EnglishMaterialDraft,
   EnglishMaterialItem,
+  GithubSyncResponse,
   HistoryAskResponse,
   HistoryItem,
   HistorySummary,
@@ -275,6 +277,7 @@ interface StoredUiState {
     prompt: string;
     messages: AiCodingMessage[];
     activeJobId: string | null;
+    githubSyncStatus: GithubSyncResponse | null;
   };
 }
 
@@ -514,6 +517,9 @@ function App() {
   const [restartResponse, setRestartResponse] = useState<SystemRestartResponse | null>(null);
   const [restartError, setRestartError] = useState<string | null>(null);
   const [isRestartingServices, setIsRestartingServices] = useState(false);
+  const [githubSyncStatus, setGithubSyncStatus] = useState<GithubSyncResponse | null>(restoredUiState.aiCoding.githubSyncStatus);
+  const [githubSyncError, setGithubSyncError] = useState<string | null>(null);
+  const [isGithubSyncing, setIsGithubSyncing] = useState(false);
 
   useEffect(() => {
     if (!isMobileViewport()) return;
@@ -675,6 +681,7 @@ function App() {
         prompt: aiCodingPrompt,
         messages: aiCodingMessages,
         activeJobId: activeCodexJobId,
+        githubSyncStatus,
       },
     });
   }, [
@@ -714,6 +721,7 @@ function App() {
     factoryQuery,
     factorySelectedId,
     factoryTask,
+    githubSyncStatus,
     historyAskAnswer,
     historyAskQuestion,
     historyDateFrom,
@@ -1692,6 +1700,9 @@ function App() {
     setHistoryAskAnswer(null);
     setHistoryAskQuestion("");
     setHasCopiedHistoryAskAnswer(false);
+    setGithubSyncStatus(null);
+    setGithubSyncError(null);
+    setIsGithubSyncing(false);
   }
 
   async function handleGenerateFactoryTask(item: KnowledgeItem) {
@@ -2196,6 +2207,26 @@ function App() {
     }
   }
 
+  async function handleSyncCodeToGithub() {
+    if (isGithubSyncing) return;
+
+    setIsGithubSyncing(true);
+    setGithubSyncError(null);
+    try {
+      const response = await syncCodeToGithub();
+      setGithubSyncStatus(response);
+    } catch (error) {
+      setGithubSyncError(error instanceof Error ? error.message : "同步代码到 GitHub 失败，请稍后重试。");
+    } finally {
+      setIsGithubSyncing(false);
+    }
+  }
+
+  function handleClearGithubSyncStatus() {
+    setGithubSyncStatus(null);
+    setGithubSyncError(null);
+  }
+
   async function handleArchiveCodexMessage(message: AiCodingMessage) {
     if (!message.response || message.archivedKnowledgeId || codexArchiveLoadingId !== null) return;
 
@@ -2352,7 +2383,10 @@ function App() {
           ) : activeView === "aiCoding" ? (
             <AiCodingWorkspace
               codexError={codexError}
+              githubSyncError={githubSyncError}
+              githubSyncStatus={githubSyncStatus}
               isCodexRunning={isCodexRunning}
+              isGithubSyncing={isGithubSyncing}
               isRestartingServices={isRestartingServices}
               liveErrorOutput={liveCodexErrorOutput}
               liveOutput={liveCodexOutput}
@@ -2365,9 +2399,11 @@ function App() {
               restartError={restartError}
               restartResponse={restartResponse}
               onArchiveMessage={handleArchiveCodexMessage}
+              onClearGithubSyncStatus={handleClearGithubSyncStatus}
               onPromptChange={setAiCodingPrompt}
               onRestartConfirmChange={setRestartConfirm}
               onRestartServices={handleRestartServices}
+              onSyncCodeToGithub={handleSyncCodeToGithub}
               onSubmit={handleRunCodex}
             />
           ) : activeView === "blogFactory" ? (
@@ -6642,7 +6678,10 @@ function HistoryAskFilterSummary({ filters }: { filters: HistoryAskResponse["fil
 
 function AiCodingWorkspace({
   codexError,
+  githubSyncError,
+  githubSyncStatus,
   isCodexRunning,
+  isGithubSyncing,
   isRestartingServices,
   liveErrorOutput,
   liveOutput,
@@ -6655,13 +6694,18 @@ function AiCodingWorkspace({
   restartError,
   restartResponse,
   onArchiveMessage,
+  onClearGithubSyncStatus,
   onPromptChange,
   onRestartConfirmChange,
   onRestartServices,
+  onSyncCodeToGithub,
   onSubmit,
 }: {
   codexError: string | null;
+  githubSyncError: string | null;
+  githubSyncStatus: GithubSyncResponse | null;
   isCodexRunning: boolean;
+  isGithubSyncing: boolean;
   isRestartingServices: boolean;
   liveErrorOutput: string;
   liveOutput: string;
@@ -6674,12 +6718,15 @@ function AiCodingWorkspace({
   restartError: string | null;
   restartResponse: SystemRestartResponse | null;
   onArchiveMessage: (message: AiCodingMessage) => void;
+  onClearGithubSyncStatus: () => void;
   onPromptChange: (value: string) => void;
   onRestartConfirmChange: (value: string) => void;
   onRestartServices: () => void;
+  onSyncCodeToGithub: () => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
 }) {
   const canRunCodex = prompt.trim().length >= 2 && !isCodexRunning;
+  const canSyncCode = !isGithubSyncing;
   const canRestart = restartConfirm === "RESTART" && !isRestartingServices;
 
   return (
@@ -6820,49 +6867,118 @@ function AiCodingWorkspace({
         <aside className="min-w-0 rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
           <div className="mb-5">
             <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
-              <RefreshCw size={17} />
+              <Github size={17} />
               Operations
             </div>
-            <h2 className="text-lg font-semibold text-slate-50">服务重启</h2>
+            <h2 className="text-lg font-semibold text-slate-50">代码与服务</h2>
           </div>
 
-          <div className="space-y-4">
-            <div className="rounded-lg border border-amberline/25 bg-amberline/10 p-3 text-sm leading-6 text-amber-100/85">
-              该操作会调用服务端 `scripts/restart-all.sh`，前端和后端会短暂不可用。
+          <div className="space-y-5">
+            <div className="space-y-4 rounded-lg border border-white/10 bg-white/[0.025] p-3">
+              <div>
+                <div className="mb-1 flex items-center gap-2 text-sm font-medium text-slate-100">
+                  <Github size={16} />
+                  同步到 GitHub
+                </div>
+                <div className="text-xs leading-5 text-slate-500">调用服务端 `scripts/commit-to-github.sh` 提交并推送当前代码。</div>
+              </div>
+
+              <button
+                className="flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
+                disabled={!canSyncCode}
+                type="button"
+                onClick={onSyncCodeToGithub}
+              >
+                {isGithubSyncing ? <Loader2 className="animate-spin" size={17} /> : <Github size={17} />}
+                {isGithubSyncing ? "同步中" : "同步代码到 GitHub"}
+              </button>
+
+              {githubSyncStatus ? (
+                <div className="space-y-3 rounded-lg border border-white/10 bg-black/15 p-3">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                      <span
+                        className={`rounded-md border px-2 py-1 ${
+                          githubSyncStatus.success
+                            ? "border-mint-300/25 bg-mint-300/10 text-mint-200"
+                            : "border-red-400/25 bg-red-400/10 text-red-100"
+                        }`}
+                      >
+                        {githubSyncStatus.success ? "同步完成" : "同步失败"}
+                      </span>
+                      <span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-slate-400">
+                        exit {githubSyncStatus.exit_code}
+                      </span>
+                    </div>
+                    <button
+                      className="flex h-8 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-xs text-slate-400 transition hover:border-red-400/30 hover:text-red-100"
+                      type="button"
+                      onClick={onClearGithubSyncStatus}
+                    >
+                      <Trash2 size={14} />
+                      清理结果
+                    </button>
+                  </div>
+                  <div className="text-xs leading-5 text-slate-500">
+                    {formatDateTime(githubSyncStatus.completed_at)} · Log: {githubSyncStatus.log_path}
+                  </div>
+                  <CodexOutputBlock title="最近 5 行日志" value={githubSyncStatus.output_tail || githubSyncStatus.message} />
+                </div>
+              ) : null}
+
+              {githubSyncError ? (
+                <div className="rounded-lg border border-red-400/25 bg-red-400/10 p-3 text-sm leading-6 text-red-100">
+                  {githubSyncError}
+                </div>
+              ) : null}
             </div>
 
-            <Field label="确认文本" icon={<ShieldCheck size={16} />}>
-              <input
-                className="control"
-                disabled={isRestartingServices}
-                value={restartConfirm}
-                onChange={(event) => onRestartConfirmChange(event.target.value)}
-                placeholder="输入 RESTART"
-              />
-            </Field>
-
-            <button
-              className="flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-red-400/30 bg-red-400/10 px-4 text-sm font-medium text-red-100 transition hover:bg-red-400/15 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
-              disabled={!canRestart}
-              type="button"
-              onClick={onRestartServices}
-            >
-              {isRestartingServices ? <Loader2 className="animate-spin" size={17} /> : <RefreshCw size={17} />}
-              {isRestartingServices ? "重启中" : "确认重启全部服务"}
-            </button>
-
-            {restartResponse ? (
-              <div className="rounded-lg border border-mint-300/25 bg-mint-300/10 p-3 text-sm leading-6 text-mint-100">
-                <div>{restartResponse.message}</div>
-                <div className="mt-2 break-all text-xs text-mint-200/75">Log: {restartResponse.log_path}</div>
+            <div className="space-y-4 rounded-lg border border-white/10 bg-white/[0.025] p-3">
+              <div>
+                <div className="mb-1 flex items-center gap-2 text-sm font-medium text-slate-100">
+                  <RefreshCw size={16} />
+                  服务重启
+                </div>
+                <div className="text-xs leading-5 text-slate-500">人工确认后调用服务端重启脚本。</div>
               </div>
-            ) : null}
 
-            {restartError ? (
-              <div className="rounded-lg border border-red-400/25 bg-red-400/10 p-3 text-sm leading-6 text-red-100">
-                {restartError}
+              <div className="rounded-lg border border-amberline/25 bg-amberline/10 p-3 text-sm leading-6 text-amber-100/85">
+                该操作会调用服务端 `scripts/restart-all.sh`，前端和后端会短暂不可用。
               </div>
-            ) : null}
+
+              <Field label="确认文本" icon={<ShieldCheck size={16} />}>
+                <input
+                  className="control"
+                  disabled={isRestartingServices}
+                  value={restartConfirm}
+                  onChange={(event) => onRestartConfirmChange(event.target.value)}
+                  placeholder="输入 RESTART"
+                />
+              </Field>
+
+              <button
+                className="flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-red-400/30 bg-red-400/10 px-4 text-sm font-medium text-red-100 transition hover:bg-red-400/15 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
+                disabled={!canRestart}
+                type="button"
+                onClick={onRestartServices}
+              >
+                {isRestartingServices ? <Loader2 className="animate-spin" size={17} /> : <RefreshCw size={17} />}
+                {isRestartingServices ? "重启中" : "确认重启全部服务"}
+              </button>
+
+              {restartResponse ? (
+                <div className="rounded-lg border border-mint-300/25 bg-mint-300/10 p-3 text-sm leading-6 text-mint-100">
+                  <div>{restartResponse.message}</div>
+                  <div className="mt-2 break-all text-xs text-mint-200/75">Log: {restartResponse.log_path}</div>
+                </div>
+              ) : null}
+
+              {restartError ? (
+                <div className="rounded-lg border border-red-400/25 bg-red-400/10 p-3 text-sm leading-6 text-red-100">
+                  {restartError}
+                </div>
+              ) : null}
+            </div>
           </div>
         </aside>
       </div>
@@ -8172,6 +8288,7 @@ function readStoredUiState(): StoredUiState {
         prompt: readString(aiCoding.prompt),
         messages: readAiCodingMessages(aiCoding.messages),
         activeJobId: readNullableString(aiCoding.activeJobId),
+        githubSyncStatus: readGithubSyncResponse(aiCoding.githubSyncStatus),
       },
     };
   } catch {
@@ -8272,6 +8389,7 @@ function buildDefaultUiState(): StoredUiState {
       prompt: "",
       messages: [],
       activeJobId: null,
+      githubSyncStatus: null,
     },
   };
 }
@@ -8363,6 +8481,18 @@ function readCodexRunResponse(value: unknown): CodexRunResponse | null {
     exit_code: typeof value.exit_code === "number" ? value.exit_code : 0,
     duration_seconds: typeof value.duration_seconds === "number" ? value.duration_seconds : 0,
     git_status: readString(value.git_status),
+  };
+}
+
+function readGithubSyncResponse(value: unknown): GithubSyncResponse | null {
+  if (!isPlainRecord(value)) return null;
+  return {
+    success: Boolean(value.success),
+    message: readString(value.message),
+    exit_code: typeof value.exit_code === "number" ? value.exit_code : 0,
+    output_tail: readString(value.output_tail),
+    log_path: readString(value.log_path),
+    completed_at: readString(value.completed_at),
   };
 }
 

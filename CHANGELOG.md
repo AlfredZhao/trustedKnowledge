@@ -25,6 +25,9 @@ The format follows the common GitHub changelog convention inspired by
 - Added a global AI Coding task status indicator in the top bar so background Codex task progress and completion stay visible across workspaces.
 - 为 AI 编程新增顶部公共任务状态提示，使后台 Codex 任务执行中与完成状态可在各功能界面持续可见。
 
+- Added an AI Coding GitHub sync action that runs `scripts/commit-to-github.sh` and preserves the latest sync log tail until manually cleared.
+- 为 AI 编程新增 GitHub 同步按钮，可调用 `scripts/commit-to-github.sh`，并保留最近一次同步日志尾部直到手动清理。
+
 #### Changed / 变更
 
 - Updated the Todo edit panel field wording from title/content to task goal/task content.
