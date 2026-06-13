@@ -39,6 +39,9 @@ The format follows the common GitHub changelog convention inspired by
 - Updated the knowledge entry form copy so selecting `这是待办事项` switches the heading, title field, and content field to todo-specific wording.
 - 更新知识录入表单文案，勾选 `这是待办事项` 后标题、标题字段和内容字段会切换为待办事项语境。
 
+- Changed the AI Coding workspace to show only the latest task result, and hide it after that latest task is archived.
+- 调整 AI 编程界面仅显示最近一次任务情况；最近一次任务归档后不再显示旧任务。
+
 #### Fixed / 修复
 
 - Fixed the Knowledge Factory unpublished queue so stale cached empty results and out-of-range restored pages no longer hide existing unpublished knowledge.

@@ -6728,6 +6728,8 @@ function AiCodingWorkspace({
   const canRunCodex = prompt.trim().length >= 2 && !isCodexRunning;
   const canSyncCode = !isGithubSyncing;
   const canRestart = restartConfirm === "RESTART" && !isRestartingServices;
+  const latestMessage = messages[0];
+  const visibleLatestMessage = latestMessage?.archivedKnowledgeId ? null : latestMessage;
 
   return (
     <div className="flex-1 px-4 pb-4 pt-2">
@@ -6794,7 +6796,7 @@ function AiCodingWorkspace({
                   <CodexOutputBlock title="Live Error Output" value={liveErrorOutput} tone="warning" />
                 ) : null}
               </div>
-            ) : messages.length === 0 ? (
+            ) : !visibleLatestMessage ? (
               <div className="grid min-h-[260px] place-items-center rounded-lg border border-white/10 bg-white/[0.025] p-6 text-center">
                 <div>
                   <Bot className="mx-auto mb-3 text-slate-600" size={36} />
@@ -6803,63 +6805,11 @@ function AiCodingWorkspace({
                 </div>
               </div>
             ) : (
-              messages.map((message) => {
-                const resultText = message.response ? extractCodexResultText(message.response) : "";
-
-                return (
-                  <article key={message.id} className="rounded-lg border border-white/10 bg-white/[0.025] p-4">
-                    {message.response ? (
-                      <CodexCompletionSummaryCard
-                        isArchiving={archiveLoadingId === message.id}
-                        message={message}
-                        onArchive={() => onArchiveMessage(message)}
-                      />
-                    ) : null}
-
-                    <div className="mb-3 rounded-lg border border-mint-300/15 bg-mint-300/8 p-3">
-                      <div className="mb-2 text-xs font-medium uppercase tracking-[0.18em] text-mint-300/80">Prompt</div>
-                      <div className="whitespace-pre-wrap text-sm leading-6 text-slate-200">{message.prompt}</div>
-                    </div>
-
-                    {message.response ? (
-                      <div className="space-y-3">
-                        <div className="flex flex-wrap gap-2 text-xs">
-                          <span
-                            className={`rounded-md border px-2 py-1 ${
-                              message.response.exit_code === 0
-                                ? "border-mint-300/25 bg-mint-300/10 text-mint-200"
-                                : "border-red-400/25 bg-red-400/10 text-red-100"
-                            }`}
-                          >
-                            exit {message.response.exit_code}
-                          </span>
-                          <span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-slate-400">
-                            {message.response.duration_seconds}s
-                          </span>
-                        </div>
-
-                        {resultText ? (
-                          <CodexOutputBlock title="任务结论" value={resultText} />
-                        ) : (
-                          <CodexOutputBlock title="任务结论" value="未能从 Codex 输出中提取到可读结论，请展开调试日志查看原始输出。" />
-                        )}
-                        {message.response.error_output ? (
-                          <CodexOutputBlock title="Error Output" value={message.response.error_output} tone="warning" />
-                        ) : null}
-                        <details className="rounded-lg border border-white/10 bg-black/15 p-3">
-                          <summary className="cursor-pointer text-xs font-medium uppercase tracking-[0.18em] text-slate-500">
-                            调试日志
-                          </summary>
-                          <div className="mt-3 space-y-3">
-                            <CodexOutputBlock title="Raw Output" value={message.response.output || "Codex 未返回标准输出。"} />
-                            <CodexOutputBlock title="Git Status" value={message.response.git_status || "工作区没有新增变更。"} />
-                          </div>
-                        </details>
-                      </div>
-                    ) : null}
-                  </article>
-                );
-              })
+              <AiCodingMessageCard
+                archiveLoadingId={archiveLoadingId}
+                message={visibleLatestMessage}
+                onArchiveMessage={onArchiveMessage}
+              />
             )}
           </div>
         </section>
@@ -6983,6 +6933,72 @@ function AiCodingWorkspace({
         </aside>
       </div>
     </div>
+  );
+}
+
+function AiCodingMessageCard({
+  archiveLoadingId,
+  message,
+  onArchiveMessage,
+}: {
+  archiveLoadingId: number | null;
+  message: AiCodingMessage;
+  onArchiveMessage: (message: AiCodingMessage) => void;
+}) {
+  const resultText = message.response ? extractCodexResultText(message.response) : "";
+
+  return (
+    <article className="rounded-lg border border-white/10 bg-white/[0.025] p-4">
+      {message.response ? (
+        <CodexCompletionSummaryCard
+          isArchiving={archiveLoadingId === message.id}
+          message={message}
+          onArchive={() => onArchiveMessage(message)}
+        />
+      ) : null}
+
+      <div className="mb-3 rounded-lg border border-mint-300/15 bg-mint-300/8 p-3">
+        <div className="mb-2 text-xs font-medium uppercase tracking-[0.18em] text-mint-300/80">Prompt</div>
+        <div className="whitespace-pre-wrap text-sm leading-6 text-slate-200">{message.prompt}</div>
+      </div>
+
+      {message.response ? (
+        <div className="space-y-3">
+          <div className="flex flex-wrap gap-2 text-xs">
+            <span
+              className={`rounded-md border px-2 py-1 ${
+                message.response.exit_code === 0
+                  ? "border-mint-300/25 bg-mint-300/10 text-mint-200"
+                  : "border-red-400/25 bg-red-400/10 text-red-100"
+              }`}
+            >
+              exit {message.response.exit_code}
+            </span>
+            <span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-slate-400">
+              {message.response.duration_seconds}s
+            </span>
+          </div>
+
+          {resultText ? (
+            <CodexOutputBlock title="任务结论" value={resultText} />
+          ) : (
+            <CodexOutputBlock title="任务结论" value="未能从 Codex 输出中提取到可读结论，请展开调试日志查看原始输出。" />
+          )}
+          {message.response.error_output ? (
+            <CodexOutputBlock title="Error Output" value={message.response.error_output} tone="warning" />
+          ) : null}
+          <details className="rounded-lg border border-white/10 bg-black/15 p-3">
+            <summary className="cursor-pointer text-xs font-medium uppercase tracking-[0.18em] text-slate-500">
+              调试日志
+            </summary>
+            <div className="mt-3 space-y-3">
+              <CodexOutputBlock title="Raw Output" value={message.response.output || "Codex 未返回标准输出。"} />
+              <CodexOutputBlock title="Git Status" value={message.response.git_status || "工作区没有新增变更。"} />
+            </div>
+          </details>
+        </div>
+      ) : null}
+    </article>
   );
 }
 
