@@ -82,6 +82,7 @@ import { checkBackendHealth, restartServices, syncCodeToGithub } from "./api/sys
 import {
   createEnglishMaterial,
   fetchEnglishMaterials,
+  fetchNextEnglishMaterialSequence,
   getEnglishMaterial,
   readCachedEnglishMaterials,
   updateEnglishMaterial,
@@ -321,6 +322,16 @@ const todoStatusStyles: Record<TodoStatus, string> = {
   已完成: "border-mint-300/30 bg-mint-300/10 text-mint-300",
 };
 
+const englishMaterialFlagLabels: Record<EnglishMaterialDraft["flag"], string> = {
+  "0": "草稿箱",
+  "1": "已发表",
+};
+
+const englishMaterialFlagStyles: Record<EnglishMaterialDraft["flag"], string> = {
+  "0": "border-slate-500/30 bg-slate-400/10 text-slate-200",
+  "1": "border-mint-300/30 bg-mint-300/10 text-mint-300",
+};
+
 function App() {
   const [restoredUiState] = useState<StoredUiState>(() => readStoredUiState());
   const restoredBlogFactoryArticleDraftRef = useRef(Boolean(restoredUiState.blogFactory.articleDraft));
@@ -464,6 +475,10 @@ function App() {
   const [englishMaterialError, setEnglishMaterialError] = useState<string | null>(null);
   const [englishMaterialSaveError, setEnglishMaterialSaveError] = useState<string | null>(null);
   const [englishMaterialRefreshToken, setEnglishMaterialRefreshToken] = useState(0);
+  const englishMaterialSequenceTouchedRef = useRef(
+    Boolean(restoredUiState.englishMaterials.draft.sequence_no) &&
+      !isBlankEnglishMaterialDraftExceptSequence(restoredUiState.englishMaterials.draft),
+  );
   const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
   const [historyTotal, setHistoryTotal] = useState(0);
   const [historySummary, setHistorySummary] = useState<HistorySummary>({
@@ -1298,6 +1313,32 @@ function App() {
   ]);
 
   useEffect(() => {
+    if (!apiKey || activeView !== "englishMaterials") return;
+
+    let mounted = true;
+    fetchNextEnglishMaterialSequence()
+      .then((nextSequence) => {
+        if (!mounted) return;
+        setEnglishMaterialDraft((current) => {
+          if (
+            englishMaterialSequenceTouchedRef.current ||
+            (current.sequence_no.trim() && !isBlankEnglishMaterialDraftExceptSequence(current))
+          ) {
+            return current;
+          }
+          return { ...current, sequence_no: String(nextSequence) };
+        });
+      })
+      .catch(() => {
+        // The field remains editable if the default sequence cannot be loaded.
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [activeView, apiKey, englishMaterialRefreshToken]);
+
+  useEffect(() => {
     if (!apiKey) return;
     const nextQuery = historyQuery.trim();
     if (nextQuery === debouncedHistoryQuery) return;
@@ -1690,6 +1731,7 @@ function App() {
       setEnglishMaterialTotal(0);
       setSelectedEnglishMaterial(null);
       setIsEnglishMaterialDetailOpen(false);
+      englishMaterialSequenceTouchedRef.current = false;
       setEnglishMaterialDraft(emptyEnglishMaterialDraft);
       setEnglishMaterialDetailDraft(emptyEnglishMaterialDraft);
       setEnglishMaterialCopiedLabel(null);
@@ -2028,6 +2070,7 @@ function App() {
     setEnglishMaterialSaveError(null);
     try {
       const created = await createEnglishMaterial(englishMaterialDraft);
+      englishMaterialSequenceTouchedRef.current = false;
       setEnglishMaterialDraft(emptyEnglishMaterialDraft);
       setSelectedEnglishMaterial(created);
       setIsEnglishMaterialDetailOpen(false);
@@ -2038,6 +2081,15 @@ function App() {
     } finally {
       setIsEnglishMaterialSaving(false);
     }
+  }
+
+  function handleEnglishMaterialDraftChange(nextDraft: EnglishMaterialDraft) {
+    setEnglishMaterialDraft((current) => {
+      if (nextDraft.sequence_no !== current.sequence_no) {
+        englishMaterialSequenceTouchedRef.current = true;
+      }
+      return nextDraft;
+    });
   }
 
   async function handleSelectEnglishMaterial(item: EnglishMaterialItem, { openDetail = true }: { openDetail?: boolean } = {}) {
@@ -2575,7 +2627,7 @@ function App() {
                 setEnglishMaterialSortBy("id");
                 setEnglishMaterialSortDir("desc");
               }}
-              onDraftChange={setEnglishMaterialDraft}
+              onDraftChange={handleEnglishMaterialDraftChange}
               onFilterChange={(nextFilters) => {
                 setEnglishMaterialPage(1);
                 if (nextFilters.category !== undefined) setEnglishMaterialCategory(nextFilters.category);
@@ -5720,15 +5772,15 @@ function EnglishMaterialsWorkspace({
               placeholder="按分类精确筛选"
             />
           </Field>
-          <Field label="Flag" icon={<CircleGauge size={16} />}>
+          <Field label="发布状态" icon={<CircleGauge size={16} />}>
             <select
               className="control"
               value={filters.flag}
               onChange={(event) => onFilterChange({ flag: event.target.value as EnglishMaterialFilters["flag"] })}
             >
-              <option value="">全部</option>
-              <option value="0">0</option>
-              <option value="1">1</option>
+              <option value="">全部状态</option>
+              <option value="0">{englishMaterialFlagLabels["0"]}</option>
+              <option value="1">{englishMaterialFlagLabels["1"]}</option>
             </select>
           </Field>
           <Field label="排序" icon={<ChartLine size={16} />}>
@@ -5743,7 +5795,7 @@ function EnglishMaterialsWorkspace({
                 <option value="category">分类</option>
                 <option value="base_expression">基础表达</option>
                 <option value="title">标题</option>
-                <option value="flag">Flag</option>
+                <option value="flag">发布状态</option>
               </select>
               <select
                 className="control"
@@ -5808,7 +5860,13 @@ function EnglishMaterialsWorkspace({
                         <span>#{item.id}</span>
                         <span>序号 {item.sequence_no ?? "-"}</span>
                         <span>{item.category || "未分类"}</span>
-                        <span>FLAG {item.flag}</span>
+                        <span
+                          className={`rounded-md border px-2 py-1 ${
+                            englishMaterialFlagStyles[item.flag === 1 ? "1" : "0"]
+                          }`}
+                        >
+                          {englishMaterialFlagLabels[item.flag === 1 ? "1" : "0"]}
+                        </span>
                       </div>
                       <h3 className="line-clamp-1 text-sm font-semibold text-slate-50">
                         {item.title || item.base_expression || "未命名素材"}
@@ -5906,14 +5964,14 @@ function EnglishMaterialsWorkspace({
                 placeholder="如 workplace"
               />
             </Field>
-            <Field label="Flag" icon={<CircleGauge size={16} />}>
+            <Field label="发布状态" icon={<CircleGauge size={16} />}>
               <select
                 className="control"
                 value={draft.flag}
                 onChange={(event) => onDraftChange({ ...draft, flag: event.target.value as EnglishMaterialDraft["flag"] })}
               >
-                <option value="0">0</option>
-                <option value="1">1</option>
+                <option value="0">{englishMaterialFlagLabels["0"]}</option>
+                <option value="1">{englishMaterialFlagLabels["1"]}</option>
               </select>
             </Field>
           </div>
@@ -6097,7 +6155,9 @@ function EnglishMaterialDetailDialog({
             <span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-slate-400">
               {draft.category || "未分类"}
             </span>
-            <span className="rounded-md border border-mint-300/20 bg-mint-300/8 px-2 py-1 text-mint-200">FLAG {draft.flag}</span>
+            <span className={`rounded-md border px-2 py-1 ${englishMaterialFlagStyles[draft.flag]}`}>
+              {englishMaterialFlagLabels[draft.flag]}
+            </span>
           </div>
         </div>
 
@@ -6138,14 +6198,14 @@ function EnglishMaterialDetailDialog({
                     placeholder="如 workplace"
                   />
                 </Field>
-                <Field label="Flag" icon={<CircleGauge size={16} />}>
+                <Field label="发布状态" icon={<CircleGauge size={16} />}>
                   <select
                     className="control"
                     value={draft.flag}
                     onChange={(event) => onDraftChange({ ...draft, flag: event.target.value as EnglishMaterialDraft["flag"] })}
                   >
-                    <option value="0">0</option>
-                    <option value="1">1</option>
+                    <option value="0">{englishMaterialFlagLabels["0"]}</option>
+                    <option value="1">{englishMaterialFlagLabels["1"]}</option>
                   </select>
                 </Field>
               </div>
@@ -8448,6 +8508,18 @@ function readEnglishMaterialDraft(value: unknown): EnglishMaterialDraft {
     title: readString(draft.title),
     flag: readStringUnion(draft.flag, ["0", "1"] as const, "0"),
   };
+}
+
+function isBlankEnglishMaterialDraftExceptSequence(draft: EnglishMaterialDraft): boolean {
+  return (
+    !draft.category.trim() &&
+    !draft.base_expression.trim() &&
+    !draft.professional_sentence.trim() &&
+    !draft.chinese_translation.trim() &&
+    !draft.full_script.trim() &&
+    !draft.title.trim() &&
+    draft.flag === "0"
+  );
 }
 
 function englishMaterialItemToDraft(item: EnglishMaterialItem): EnglishMaterialDraft {

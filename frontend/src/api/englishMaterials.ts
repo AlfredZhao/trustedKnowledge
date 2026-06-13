@@ -63,6 +63,17 @@ export async function fetchEnglishMaterials(query: EnglishMaterialQuery): Promis
   return request<EnglishMaterialListResponse>(buildEnglishMaterialsPath(query));
 }
 
+export async function fetchNextEnglishMaterialSequence(): Promise<number> {
+  const data = await fetchEnglishMaterials({
+    sortBy: "sequence_no",
+    sortDir: "desc",
+    limit: 1,
+    offset: 0,
+  });
+  const maxSequence = data.items[0]?.sequence_no;
+  return (typeof maxSequence === "number" && Number.isFinite(maxSequence) ? maxSequence : 0) + 1;
+}
+
 export function readCachedEnglishMaterials(query: EnglishMaterialQuery): EnglishMaterialListResponse | null {
   return readCachedApiResponse<EnglishMaterialListResponse>(
     buildApiCacheKey(buildEnglishMaterialsPath(query), readStoredApiKey()),

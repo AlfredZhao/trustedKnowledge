@@ -28,6 +28,9 @@ The format follows the common GitHub changelog convention inspired by
 - Added an AI Coding GitHub sync action that runs `scripts/commit-to-github.sh` and preserves the latest sync log tail until manually cleared.
 - 为 AI 编程新增 GitHub 同步按钮，可调用 `scripts/commit-to-github.sh`，并保留最近一次同步日志尾部直到手动清理。
 
+- Added automatic default sequence numbers for new English Materials entries using the current maximum sequence plus one.
+- 为英语素材录入新增序号默认值，自动使用当前最大序号加一。
+
 #### Changed / 变更
 
 - Updated the Todo edit panel field wording from title/content to task goal/task content.
@@ -41,6 +44,9 @@ The format follows the common GitHub changelog convention inspired by
 
 - Changed the AI Coding workspace to show only the latest task result, and hide it after that latest task is archived.
 - 调整 AI 编程界面仅显示最近一次任务情况；最近一次任务归档后不再显示旧任务。
+
+- Changed English Materials flag displays from stored numeric values to user-facing status labels.
+- 将英语素材管理中的 flag 展示从表内数字值调整为用户可理解的发布状态文案。
 
 #### Fixed / 修复
 
