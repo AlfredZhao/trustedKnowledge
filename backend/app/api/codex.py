@@ -2,14 +2,17 @@ import asyncio
 import json
 import time
 from collections.abc import AsyncIterator
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 
 from app.core.config import settings
 from app.core.security import require_api_key
-from app.schemas.codex import CodexRunRequest, CodexRunResponse
+from app.schemas.codex import CodexJobSnapshot, CodexJobStatus, CodexRunRequest, CodexRunResponse
 
 
 router = APIRouter(prefix="/codex", tags=["codex"], dependencies=[Depends(require_api_key)])
@@ -17,6 +20,21 @@ router = APIRouter(prefix="/codex", tags=["codex"], dependencies=[Depends(requir
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 CODEX_TIMEOUT_SECONDS = 900
 _codex_lock = asyncio.Lock()
+_codex_jobs: dict[str, "CodexJobState"] = {}
+_latest_codex_job_id: str | None = None
+
+
+@dataclass
+class CodexJobState:
+    job_id: str
+    prompt: str
+    status: CodexJobStatus = "running"
+    output_parts: list[str] = field(default_factory=list)
+    error_parts: list[str] = field(default_factory=list)
+    response: CodexRunResponse | None = None
+    error_message: str | None = None
+    started_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    completed_at: datetime | None = None
 
 
 @router.post("/runs", response_model=CodexRunResponse)
@@ -27,7 +45,7 @@ async def run_codex(payload: CodexRunRequest) -> CodexRunResponse:
             detail="Web Codex is disabled. Set TRUSTED_KNOWLEDGE_ALLOW_WEB_CODEX=true to enable it.",
         )
 
-    if _codex_lock.locked():
+    if _codex_lock.locked() or _has_running_codex_job():
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="A Codex task is already running. Wait for it to finish before starting another.",
@@ -92,7 +110,7 @@ async def stream_codex(payload: CodexRunRequest) -> StreamingResponse:
             detail="Web Codex is disabled. Set TRUSTED_KNOWLEDGE_ALLOW_WEB_CODEX=true to enable it.",
         )
 
-    if _codex_lock.locked():
+    if _codex_lock.locked() or _has_running_codex_job():
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="A Codex task is already running. Wait for it to finish before starting another.",
@@ -103,6 +121,44 @@ async def stream_codex(payload: CodexRunRequest) -> StreamingResponse:
         media_type="application/x-ndjson",
         headers={"Cache-Control": "no-store"},
     )
+
+
+@router.post("/runs/jobs", response_model=CodexJobSnapshot, status_code=status.HTTP_202_ACCEPTED)
+async def start_codex_job(payload: CodexRunRequest) -> CodexJobSnapshot:
+    if not settings.allow_web_codex:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Web Codex is disabled. Set TRUSTED_KNOWLEDGE_ALLOW_WEB_CODEX=true to enable it.",
+        )
+
+    if _codex_lock.locked() or _has_running_codex_job():
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A Codex task is already running. Wait for it to finish before starting another.",
+        )
+
+    global _latest_codex_job_id
+    job = CodexJobState(job_id=uuid4().hex, prompt=payload.prompt.strip())
+    _codex_jobs[job.job_id] = job
+    _latest_codex_job_id = job.job_id
+    task = asyncio.create_task(_run_codex_job(job))
+    task.add_done_callback(lambda completed_task: _handle_codex_job_task_done(job, completed_task))
+    return _snapshot_codex_job(job)
+
+
+@router.get("/runs/jobs/latest", response_model=CodexJobSnapshot)
+async def get_latest_codex_job() -> CodexJobSnapshot:
+    if _latest_codex_job_id is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No Codex task has been started.")
+    return _snapshot_codex_job(_codex_jobs[_latest_codex_job_id])
+
+
+@router.get("/runs/jobs/{job_id}", response_model=CodexJobSnapshot)
+async def get_codex_job(job_id: str) -> CodexJobSnapshot:
+    job = _codex_jobs.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Codex task not found.")
+    return _snapshot_codex_job(job)
 
 
 def _build_prompt(user_prompt: str) -> str:
@@ -117,6 +173,76 @@ def _build_prompt(user_prompt: str) -> str:
             user_prompt,
         ]
     )
+
+
+async def _run_codex_job(job: CodexJobState) -> None:
+    async with _codex_lock:
+        started_at = time.monotonic()
+        prompt = _build_prompt(job.prompt)
+
+        try:
+            process = await asyncio.create_subprocess_exec(
+                settings.codex_bin,
+                "exec",
+                "--json",
+                "--cd",
+                str(PROJECT_ROOT),
+                "--sandbox",
+                "workspace-write",
+                "--color",
+                "never",
+                "-",
+                cwd=PROJECT_ROOT,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+        except OSError as exc:
+            job.status = "failed"
+            job.error_message = f"Failed to start Codex: {exc}"
+            job.completed_at = datetime.now(UTC)
+            return
+
+        assert process.stdin is not None
+        process.stdin.write(prompt.encode("utf-8"))
+        await process.stdin.drain()
+        process.stdin.close()
+
+        stdout_task = asyncio.create_task(_read_process_lines("stdout", process.stdout, None, job.output_parts))
+        stderr_task = asyncio.create_task(_read_process_lines("stderr", process.stderr, None, job.error_parts))
+        wait_task = asyncio.create_task(process.wait())
+        deadline = time.monotonic() + CODEX_TIMEOUT_SECONDS
+
+        while True:
+            if time.monotonic() > deadline:
+                process.kill()
+                await process.wait()
+                job.status = "failed"
+                job.error_message = "Codex task timed out before finishing."
+                break
+
+            if wait_task.done() and stdout_task.done() and stderr_task.done():
+                break
+
+            await asyncio.sleep(1)
+
+        await asyncio.gather(stdout_task, stderr_task, return_exceptions=True)
+        if not wait_task.done():
+            await wait_task
+
+        if job.status != "failed":
+            duration_seconds = round(time.monotonic() - started_at, 2)
+            git_status = await _read_git_status()
+            job.response = CodexRunResponse(
+                output="\n".join(job.output_parts).strip(),
+                error_output="\n".join(job.error_parts).strip(),
+                exit_code=process.returncode or 0,
+                duration_seconds=duration_seconds,
+                git_status=git_status,
+            )
+            job.status = "completed"
+
+        job.completed_at = datetime.now(UTC)
 
 
 async def _stream_codex_events(user_prompt: str) -> AsyncIterator[str]:
@@ -195,7 +321,7 @@ async def _stream_codex_events(user_prompt: str) -> AsyncIterator[str]:
 async def _read_process_lines(
     stream_name: str,
     stream: asyncio.StreamReader | None,
-    queue: asyncio.Queue[dict[str, str]],
+    queue: asyncio.Queue[dict[str, str]] | None,
     parts: list[str],
 ) -> None:
     if stream is None:
@@ -209,7 +335,41 @@ async def _read_process_lines(
         if not text:
             continue
         parts.append(text)
-        await queue.put({"type": stream_name, "message": text})
+        if queue is not None:
+            await queue.put({"type": stream_name, "message": text})
+
+
+def _snapshot_codex_job(job: CodexJobState) -> CodexJobSnapshot:
+    return CodexJobSnapshot(
+        job_id=job.job_id,
+        prompt=job.prompt,
+        status=job.status,
+        output="\n".join(job.output_parts).strip(),
+        error_output="\n".join(job.error_parts).strip(),
+        response=job.response,
+        error_message=job.error_message,
+        started_at=job.started_at.isoformat(),
+        completed_at=job.completed_at.isoformat() if job.completed_at else None,
+    )
+
+
+def _has_running_codex_job() -> bool:
+    return any(job.status == "running" for job in _codex_jobs.values())
+
+
+def _handle_codex_job_task_done(job: CodexJobState, task: asyncio.Task[None]) -> None:
+    if not task.cancelled():
+        exception = task.exception()
+        if exception is None:
+            return
+
+        job.error_message = f"Codex task failed unexpectedly: {exception}"
+    else:
+        job.error_message = "Codex task was cancelled before finishing."
+
+    if job.status == "running":
+        job.status = "failed"
+        job.completed_at = datetime.now(UTC)
 
 
 def _json_line(value: dict[str, object]) -> str:

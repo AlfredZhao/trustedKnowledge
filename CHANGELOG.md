@@ -13,7 +13,22 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Added / 新增
 
+- Added a copy button to the Todo edit panel for copying the current title and content with short success feedback.
+- 为待办事项编辑面板新增复制按钮，可复制当前标题和内容，并在成功后短暂显示已复制状态。
+
+- Added previous and next navigation controls to the Todo edit panel, including page-boundary switching within the current filters.
+- 为待办事项编辑面板新增上一条和下一条切换按钮，并支持在当前筛选条件下跨分页切换。
+
+- Added previous and next navigation controls to the Trusted Knowledge edit panel, including page-boundary switching within the current filters.
+- 为可信知识编辑面板新增上一条和下一条切换按钮，并支持在当前筛选条件下跨分页切换。
+
+- Added a global AI Coding task status indicator in the top bar so background Codex task progress and completion stay visible across workspaces.
+- 为 AI 编程新增顶部公共任务状态提示，使后台 Codex 任务执行中与完成状态可在各功能界面持续可见。
+
 #### Changed / 变更
+
+- Updated the Todo edit panel field wording from title/content to task goal/task content.
+- 将待办事项编辑面板字段文案从标题/内容调整为任务目标/任务内容。
 
 - Updated navigation labels: `录入工作台` is now `知识录入`, and `知识加工厂` is now `知识加工`.
 - 更新导航栏名称：`录入工作台` 改为 `知识录入`，`知识加工厂` 改为 `知识加工`。
@@ -40,6 +55,9 @@ The format follows the common GitHub changelog convention inspired by
 
 - Fixed the desktop function navigation expand/collapse interaction so labels and button widths animate more smoothly.
 - 优化电脑端功能导航展开与收起交互，使功能名称和按钮宽度过渡更丝滑。
+
+- Fixed the AI Coding workspace so Codex task results can be restored after navigating away or refreshing the page.
+- 修复 AI 编程任务完成结果在切换页面或刷新后丢失的问题，任务完成后返回界面仍可看到最终反馈。
 
 ## 历史版本更新
 

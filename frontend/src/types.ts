@@ -193,6 +193,20 @@ export interface CodexRunResponse {
   git_status: string;
 }
 
+export type CodexJobStatus = "running" | "completed" | "failed";
+
+export interface CodexJobSnapshot {
+  job_id: string;
+  prompt: string;
+  status: CodexJobStatus;
+  output: string;
+  error_output: string;
+  response: CodexRunResponse | null;
+  error_message: string | null;
+  started_at: string;
+  completed_at: string | null;
+}
+
 export type CodexStreamEvent =
   | { type: "status" | "stdout" | "stderr" | "heartbeat" | "error"; message: string }
   | { type: "complete"; response: CodexRunResponse };

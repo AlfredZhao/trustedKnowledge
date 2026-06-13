@@ -1,4 +1,4 @@
-import type { CodexRunResponse, CodexStreamEvent } from "../types";
+import type { CodexJobSnapshot, CodexRunResponse, CodexStreamEvent } from "../types";
 import { clearStoredApiKey, readStoredApiKey } from "./auth";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.trim() ?? "";
@@ -42,6 +42,17 @@ export async function runCodex(prompt: string): Promise<CodexRunResponse> {
     method: "POST",
     body: JSON.stringify({ prompt }),
   });
+}
+
+export async function startCodexJob(prompt: string): Promise<CodexJobSnapshot> {
+  return request<CodexJobSnapshot>("/api/codex/runs/jobs", {
+    method: "POST",
+    body: JSON.stringify({ prompt }),
+  });
+}
+
+export async function getCodexJob(jobId: string): Promise<CodexJobSnapshot> {
+  return request<CodexJobSnapshot>(`/api/codex/runs/jobs/${encodeURIComponent(jobId)}`);
 }
 
 export async function streamCodex(

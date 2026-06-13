@@ -68,7 +68,7 @@ import {
 } from "./api/knowledge";
 import { fetchHistory, readCachedHistory } from "./api/history";
 import { askHistory } from "./api/historyAsk";
-import { streamCodex } from "./api/codex";
+import { getCodexJob, startCodexJob } from "./api/codex";
 import {
   createCurrentRecord,
   fetchCurrentRecordOptions,
@@ -91,6 +91,7 @@ import type {
   AppView,
   BlogFactoryItem,
   BlogFactoryStatus,
+  CodexJobSnapshot,
   CodexRunResponse,
   CurrentDay,
   CurrentRecordItem,
@@ -193,6 +194,7 @@ type HistorySortBy = (typeof HISTORY_SORT_FIELDS)[number];
 type EnglishMaterialSortBy = (typeof ENGLISH_MATERIAL_SORT_FIELDS)[number];
 type SortDirection = (typeof SORT_DIRECTIONS)[number];
 type HistoryVectorStatus = "all" | "0" | "1";
+type AiCodingNoticeStatus = "running" | "completed" | "failed";
 
 interface StoredUiState {
   activeView: AppView;
@@ -269,6 +271,11 @@ interface StoredUiState {
     question: string;
     answer: HistoryAskResponse | null;
   };
+  aiCoding: {
+    prompt: string;
+    messages: AiCodingMessage[];
+    activeJobId: string | null;
+  };
 }
 
 interface UsageChangeItem extends LlmUsageSample {
@@ -279,6 +286,7 @@ interface UsageChangeItem extends LlmUsageSample {
 
 interface AiCodingMessage {
   id: number;
+  jobId?: string;
   prompt: string;
   response: CodexRunResponse | null;
   archivedKnowledgeId?: number;
@@ -345,6 +353,7 @@ function App() {
   const [deleteTarget, setDeleteTarget] = useState<KnowledgeItem | null>(null);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [lastCreatedId, setLastCreatedId] = useState<number | null>(null);
+  const pendingKnowledgeNavigationRef = useRef<"previous" | "next" | null>(null);
   const [factoryItems, setFactoryItems] = useState<KnowledgeItem[]>([]);
   const [factoryTotalItems, setFactoryTotalItems] = useState(0);
   const [factoryPage, setFactoryPage] = useState(restoredUiState.factory.page);
@@ -396,7 +405,10 @@ function App() {
   const [isConvertingTodoToKnowledge, setIsConvertingTodoToKnowledge] = useState(false);
   const [todoError, setTodoError] = useState<string | null>(null);
   const [todoSaveError, setTodoSaveError] = useState<string | null>(null);
+  const [todoCopyError, setTodoCopyError] = useState<string | null>(null);
+  const [hasCopiedTodoContent, setHasCopiedTodoContent] = useState(false);
   const [todoRefreshToken, setTodoRefreshToken] = useState(0);
+  const pendingTodoNavigationRef = useRef<"previous" | "next" | null>(null);
   const [conversionTarget, setConversionTarget] = useState<ConversionTarget | null>(null);
   const [currentRecordItems, setCurrentRecordItems] = useState<CurrentRecordItem[]>([]);
   const [currentRecordTotal, setCurrentRecordTotal] = useState(0);
@@ -485,12 +497,16 @@ function App() {
   const [isUsageRefreshing, setIsUsageRefreshing] = useState(false);
   const [usageError, setUsageError] = useState<string | null>(null);
   const [usageRefreshToken, setUsageRefreshToken] = useState(0);
-  const [aiCodingPrompt, setAiCodingPrompt] = useState("");
-  const [aiCodingMessages, setAiCodingMessages] = useState<AiCodingMessage[]>([]);
+  const [aiCodingPrompt, setAiCodingPrompt] = useState(restoredUiState.aiCoding.prompt);
+  const [aiCodingMessages, setAiCodingMessages] = useState<AiCodingMessage[]>(restoredUiState.aiCoding.messages);
+  const [activeCodexJobId, setActiveCodexJobId] = useState<string | null>(restoredUiState.aiCoding.activeJobId);
   const [liveCodexOutput, setLiveCodexOutput] = useState("");
   const [liveCodexErrorOutput, setLiveCodexErrorOutput] = useState("");
-  const [liveCodexStatus, setLiveCodexStatus] = useState("");
-  const [isCodexRunning, setIsCodexRunning] = useState(false);
+  const [liveCodexStatus, setLiveCodexStatus] = useState(restoredUiState.aiCoding.activeJobId ? "正在恢复 Codex 任务状态..." : "");
+  const [isCodexRunning, setIsCodexRunning] = useState(Boolean(restoredUiState.aiCoding.activeJobId));
+  const [aiCodingNoticeStatus, setAiCodingNoticeStatus] = useState<AiCodingNoticeStatus | null>(
+    restoredUiState.aiCoding.activeJobId ? "running" : null,
+  );
   const [codexError, setCodexError] = useState<string | null>(null);
   const [codexArchiveLoadingId, setCodexArchiveLoadingId] = useState<number | null>(null);
   const [codexArchiveError, setCodexArchiveError] = useState<string | null>(null);
@@ -543,6 +559,8 @@ function App() {
       setTodoItems([]);
       setTodoTotal(0);
       setSelectedTodoId(null);
+      setTodoCopyError(null);
+      setHasCopiedTodoContent(false);
       setIsConvertingTodoToKnowledge(false);
       setConversionTarget(null);
       setCurrentRecordItems([]);
@@ -559,9 +577,11 @@ function App() {
       setHistoryAskAnswer(null);
       setHasCopiedHistoryAskAnswer(false);
       setAiCodingMessages([]);
+      setActiveCodexJobId(null);
       setLiveCodexOutput("");
       setLiveCodexErrorOutput("");
       setLiveCodexStatus("");
+      setAiCodingNoticeStatus(null);
       setCodexError(null);
       setCodexArchiveLoadingId(null);
       setCodexArchiveError(null);
@@ -651,9 +671,17 @@ function App() {
         question: historyAskQuestion,
         answer: historyAskAnswer,
       },
+      aiCoding: {
+        prompt: aiCodingPrompt,
+        messages: aiCodingMessages,
+        activeJobId: activeCodexJobId,
+      },
     });
   }, [
     activeView,
+    activeCodexJobId,
+    aiCodingMessages,
+    aiCodingPrompt,
     apiKey,
     blogFactoryArticleDraft,
     blogFactoryArticlePathDraft,
@@ -715,6 +743,65 @@ function App() {
   ]);
 
   useEffect(() => {
+    if (!apiKey || !activeCodexJobId) return;
+
+    const jobId = activeCodexJobId;
+    let cancelled = false;
+    let timer: number | undefined;
+
+    async function pollCodexJob() {
+      try {
+        const job = await getCodexJob(jobId);
+        if (cancelled) return;
+
+        setLiveCodexOutput(job.output);
+        setLiveCodexErrorOutput(job.error_output);
+        setAiCodingMessages((current) => upsertCodexJobMessage(current, job));
+
+        if (job.status === "running") {
+          setIsCodexRunning(true);
+          setAiCodingNoticeStatus("running");
+          setLiveCodexStatus("Codex 正在运行，离开页面后仍可回来查看结果...");
+          timer = window.setTimeout(pollCodexJob, 1500);
+          return;
+        }
+
+        setIsCodexRunning(false);
+        setActiveCodexJobId(null);
+        setAiCodingNoticeStatus(job.status === "completed" ? "completed" : "failed");
+        setLiveCodexStatus(job.status === "completed" ? "Codex 执行完成。" : "Codex 执行出现错误。");
+        if (job.status === "failed") {
+          setCodexError(job.error_message ?? "Codex 执行失败，请稍后重试。");
+        }
+      } catch (error) {
+        if (cancelled) return;
+        setIsCodexRunning(false);
+        setActiveCodexJobId(null);
+        setAiCodingNoticeStatus("failed");
+        setCodexError(error instanceof Error ? error.message : "恢复 Codex 任务状态失败。");
+      }
+    }
+
+    pollCodexJob();
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [activeCodexJobId, apiKey]);
+
+  useEffect(() => {
+    if (activeView === "aiCoding" && aiCodingNoticeStatus !== "running") {
+      setAiCodingNoticeStatus(null);
+    }
+  }, [activeView, aiCodingNoticeStatus]);
+
+  useEffect(() => {
+    setTodoCopyError(null);
+    setHasCopiedTodoContent(false);
+  }, [selectedTodoId]);
+
+  useEffect(() => {
     if (selectedId !== null) return;
 
     if (isEmptyDraft(draft)) {
@@ -753,6 +840,14 @@ function App() {
       setItems(cached.items);
       setTotalItems(cached.total);
       setLoadError(null);
+
+      const pendingNavigation = pendingKnowledgeNavigationRef.current;
+      if (pendingNavigation) {
+        pendingKnowledgeNavigationRef.current = null;
+        const navigatedItem = pendingNavigation === "previous" ? cached.items[cached.items.length - 1] : cached.items[0];
+        setSelectedId(navigatedItem?.id ?? null);
+        setDraft(navigatedItem ? itemToDraft(navigatedItem) : emptyDraft);
+      }
     }
 
     setIsLoading(!cached);
@@ -762,6 +857,18 @@ function App() {
         setItems(data.items);
         setTotalItems(data.total);
         setLoadError(null);
+
+        setSelectedId((currentSelectedId) => {
+          const pendingNavigation = pendingKnowledgeNavigationRef.current;
+          if (pendingNavigation) {
+            pendingKnowledgeNavigationRef.current = null;
+            const navigatedItem = pendingNavigation === "previous" ? data.items[data.items.length - 1] : data.items[0];
+            setDraft(navigatedItem ? itemToDraft(navigatedItem) : emptyDraft);
+            return navigatedItem?.id ?? null;
+          }
+
+          return currentSelectedId;
+        });
       })
       .catch((error: Error) => {
         if (!mounted) return;
@@ -949,6 +1056,14 @@ function App() {
       setTodoItems(cached.items);
       setTodoTotal(cached.total);
       setTodoError(null);
+
+      const pendingNavigation = pendingTodoNavigationRef.current;
+      if (pendingNavigation) {
+        pendingTodoNavigationRef.current = null;
+        const navigatedItem = pendingNavigation === "previous" ? cached.items[cached.items.length - 1] : cached.items[0];
+        setSelectedTodoId(navigatedItem?.id ?? null);
+        setTodoDraft(navigatedItem ? todoItemToDraft(navigatedItem) : emptyTodoDraft);
+      }
     }
 
     setIsTodoLoading(!cached);
@@ -960,6 +1075,14 @@ function App() {
         setTodoError(null);
 
         setSelectedTodoId((currentSelectedId) => {
+          const pendingNavigation = pendingTodoNavigationRef.current;
+          if (pendingNavigation) {
+            pendingTodoNavigationRef.current = null;
+            const navigatedItem = pendingNavigation === "previous" ? data.items[data.items.length - 1] : data.items[0];
+            setTodoDraft(navigatedItem ? todoItemToDraft(navigatedItem) : emptyTodoDraft);
+            return navigatedItem?.id ?? null;
+          }
+
           if (currentSelectedId && data.items.some((item) => item.id === currentSelectedId)) return currentSelectedId;
           const nextItem = data.items[0] ?? null;
           setTodoDraft(nextItem ? todoItemToDraft(nextItem) : emptyTodoDraft);
@@ -1393,6 +1516,46 @@ function App() {
     }
   }
 
+  function handleSelectAdjacentKnowledge(direction: "previous" | "next") {
+    if (
+      selectedId === null ||
+      isDetailLoading ||
+      isSaving ||
+      isDeleting ||
+      isConvertingKnowledgeToTodo
+    ) {
+      return;
+    }
+
+    const selectedIndex = items.findIndex((item) => item.id === selectedId);
+    if (selectedIndex === -1) return;
+
+    if (direction === "previous") {
+      const previousItem = items[selectedIndex - 1];
+      if (previousItem) {
+        void handleSelectItem(previousItem);
+        return;
+      }
+
+      if (page > 1) {
+        pendingKnowledgeNavigationRef.current = "previous";
+        setPage((current) => Math.max(1, current - 1));
+      }
+      return;
+    }
+
+    const nextItem = items[selectedIndex + 1];
+    if (nextItem) {
+      void handleSelectItem(nextItem);
+      return;
+    }
+
+    if (page * PAGE_SIZE < totalItems) {
+      pendingKnowledgeNavigationRef.current = "next";
+      setPage((current) => current + 1);
+    }
+  }
+
   async function handleDeleteSelected() {
     if (deleteTarget === null) return;
 
@@ -1510,6 +1673,8 @@ function App() {
     setTodoTotal(0);
     setSelectedTodoId(null);
     setTodoDraft(emptyTodoDraft);
+    setTodoCopyError(null);
+    setHasCopiedTodoContent(false);
     setCurrentRecordItems([]);
     setCurrentRecordTotal(0);
     setSelectedCurrentRecord(null);
@@ -1648,6 +1813,8 @@ function App() {
     setSelectedTodoId(item.id);
     setTodoDraft(todoItemToDraft(item));
     setTodoSaveError(null);
+    setTodoCopyError(null);
+    setHasCopiedTodoContent(false);
     setIsTodoDetailLoading(true);
 
     try {
@@ -1662,12 +1829,52 @@ function App() {
     }
   }
 
+  function handleSelectAdjacentTodo(direction: "previous" | "next") {
+    if (
+      selectedTodoId === null ||
+      isTodoDetailLoading ||
+      isTodoSaving ||
+      isConvertingTodoToKnowledge
+    ) {
+      return;
+    }
+
+    const selectedIndex = todoItems.findIndex((item) => item.id === selectedTodoId);
+    if (selectedIndex === -1) return;
+
+    if (direction === "previous") {
+      const previousItem = todoItems[selectedIndex - 1];
+      if (previousItem) {
+        void handleSelectTodo(previousItem);
+        return;
+      }
+
+      if (todoPage > 1) {
+        pendingTodoNavigationRef.current = "previous";
+        setTodoPage((current) => Math.max(1, current - 1));
+      }
+      return;
+    }
+
+    const nextItem = todoItems[selectedIndex + 1];
+    if (nextItem) {
+      void handleSelectTodo(nextItem);
+      return;
+    }
+
+    if (todoPage * TODO_PAGE_SIZE < todoTotal) {
+      pendingTodoNavigationRef.current = "next";
+      setTodoPage((current) => current + 1);
+    }
+  }
+
   async function handleUpdateTodo(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (selectedTodoId === null || isTodoSaving || !todoDraft.title.trim() || !todoDraft.content.trim()) return;
 
     setIsTodoSaving(true);
     setTodoSaveError(null);
+    setTodoCopyError(null);
     try {
       const updated = await updateTodo(selectedTodoId, todoDraft);
       setTodoDraft(todoItemToDraft(updated));
@@ -1677,6 +1884,22 @@ function App() {
       setTodoSaveError(error instanceof Error ? error.message : "待办事项保存失败，请稍后重试。");
     } finally {
       setIsTodoSaving(false);
+    }
+  }
+
+  async function handleCopyTodoContent() {
+    const title = todoDraft.title.trim();
+    const content = todoDraft.content.trim();
+    if (selectedTodoId === null || (!title && !content)) return;
+
+    try {
+      await copyText(`任务目标：${title || "未填写"}\n\n任务内容：\n${content || "未填写"}`);
+      setTodoCopyError(null);
+      setHasCopiedTodoContent(true);
+      window.setTimeout(() => setHasCopiedTodoContent(false), 1600);
+    } catch {
+      setHasCopiedTodoContent(false);
+      setTodoCopyError("复制失败。请选中文本后手动复制。");
     }
   }
 
@@ -1698,6 +1921,8 @@ function App() {
       setTodoTotal((current) => Math.max(0, current - 1));
       setSelectedTodoId(null);
       setTodoDraft(emptyTodoDraft);
+      setTodoCopyError(null);
+      setHasCopiedTodoContent(false);
       setDraft(itemToDraft(converted));
       setSelectedId(converted.id);
       setPage(1);
@@ -1930,37 +2155,27 @@ function App() {
     setLiveCodexOutput("");
     setLiveCodexErrorOutput("");
     setLiveCodexStatus("正在启动 Codex...");
+    setAiCodingNoticeStatus("running");
     try {
-      const response = await streamCodex(prompt, (event) => {
-        if (event.type === "stdout") {
-          setLiveCodexOutput((current) => appendLogLine(current, event.message));
-          setLiveCodexStatus("Codex 正在输出结果...");
-        } else if (event.type === "stderr") {
-          setLiveCodexErrorOutput((current) => appendLogLine(current, event.message));
-          setLiveCodexStatus("Codex 正在输出诊断信息...");
-        } else if (event.type === "status" || event.type === "heartbeat") {
-          setLiveCodexStatus(event.message);
-        } else if (event.type === "error") {
-          setLiveCodexErrorOutput((current) => appendLogLine(current, event.message));
-          setLiveCodexStatus("Codex 执行出现错误。");
-        } else if (event.type === "complete") {
-          setLiveCodexStatus("Codex 执行完成。");
-        }
-      });
+      const job = await startCodexJob(prompt);
       setAiCodingMessages((current) => [
         {
           id: Date.now(),
+          jobId: job.job_id,
           prompt,
-          response,
+          response: job.response,
         },
         ...current,
       ]);
+      setActiveCodexJobId(job.job_id);
+      setLiveCodexOutput(job.output);
+      setLiveCodexErrorOutput(job.error_output);
+      setLiveCodexStatus("Codex 任务已提交，正在运行...");
       setAiCodingPrompt("");
     } catch (error) {
       setCodexError(error instanceof Error ? error.message : "Codex 执行失败，请稍后重试。");
-    } finally {
       setIsCodexRunning(false);
-      setLiveCodexStatus("");
+      setAiCodingNoticeStatus(null);
     }
   }
 
@@ -2042,7 +2257,23 @@ function App() {
                 ? "Ask History"
                 : activeView === "aiCoding"
                   ? "Codex Workspace"
-                : "AI Usage";
+              : "AI Usage";
+  const selectedKnowledgeIndex = selectedId === null ? -1 : items.findIndex((item) => item.id === selectedId);
+  const isKnowledgeNavigationBlocked = isDetailLoading || isSaving || isDeleting || isConvertingKnowledgeToTodo;
+  const canSelectPreviousKnowledge =
+    (selectedKnowledgeIndex > 0 || (selectedKnowledgeIndex === 0 && page > 1)) && !isKnowledgeNavigationBlocked;
+  const canSelectNextKnowledge =
+    selectedKnowledgeIndex >= 0 &&
+    (selectedKnowledgeIndex < items.length - 1 || page * PAGE_SIZE < totalItems) &&
+    !isKnowledgeNavigationBlocked;
+  const selectedTodoIndex = selectedTodoId === null ? -1 : todoItems.findIndex((item) => item.id === selectedTodoId);
+  const isTodoNavigationBlocked = isTodoDetailLoading || isTodoSaving || isConvertingTodoToKnowledge;
+  const canSelectPreviousTodo =
+    (selectedTodoIndex > 0 || (selectedTodoIndex === 0 && todoPage > 1)) && !isTodoNavigationBlocked;
+  const canSelectNextTodo =
+    selectedTodoIndex >= 0 &&
+    (selectedTodoIndex < todoItems.length - 1 || todoPage * TODO_PAGE_SIZE < todoTotal) &&
+    !isTodoNavigationBlocked;
 
   return (
     <main className="min-h-screen bg-ink-950 text-slate-100">
@@ -2082,6 +2313,7 @@ function App() {
             statusFilter={activeView === "workbench" ? statusFilter : undefined}
             title={viewTitle}
             subtitle={viewSubtitle}
+            aiCodingNotice={activeView === "aiCoding" ? null : aiCodingNoticeStatus}
             onLogout={handleLogout}
             onQueryChange={
               activeView === "factory"
@@ -2200,7 +2432,10 @@ function App() {
               isSaving={isTodoSaving}
               isConvertingToKnowledge={isConvertingTodoToKnowledge}
               loadError={todoError}
-              saveError={todoSaveError}
+              saveError={todoSaveError || todoCopyError}
+              hasCopiedContent={hasCopiedTodoContent}
+              canSelectPrevious={canSelectPreviousTodo}
+              canSelectNext={canSelectNextTodo}
               onClearFilters={() => {
                 setTodoPage(1);
                 setTodoQuery("");
@@ -2210,6 +2445,8 @@ function App() {
               onDraftChange={setTodoDraft}
               onPageChange={setTodoPage}
               onSelect={handleSelectTodo}
+              onSelectAdjacent={handleSelectAdjacentTodo}
+              onCopyContent={handleCopyTodoContent}
               onConvertToKnowledge={handleConvertSelectedTodoToKnowledge}
               onStatusFilterChange={(nextStatus) => {
                 setTodoPage(1);
@@ -2393,11 +2630,14 @@ function App() {
                 trustScore={trustScore}
                 hasSensitiveSignal={hasSensitiveSignal}
                 isTodoEntry={isTodoEntry}
+                canSelectPrevious={canSelectPreviousKnowledge}
+                canSelectNext={canSelectNextKnowledge}
                 onDraftChange={setDraft}
                 onDelete={handleRequestDelete}
                 onConvertToTodo={handleConvertSelectedKnowledgeToTodo}
                 onTodoEntryChange={setIsTodoEntry}
                 onNewEntry={handleNewEntry}
+                onSelectAdjacent={handleSelectAdjacentKnowledge}
                 onSubmit={handleSubmit}
               />
 
@@ -2636,6 +2876,7 @@ function Sidebar({
 
 function Topbar({
   activeView,
+  aiCodingNotice,
   query,
   statusFilter,
   title,
@@ -2646,6 +2887,7 @@ function Topbar({
   onStatusFilterChange,
 }: {
   activeView: AppView;
+  aiCodingNotice: AiCodingNoticeStatus | null;
   query: string;
   statusFilter?: KnowledgeStatus | "all";
   title: string;
@@ -2663,6 +2905,29 @@ function Topbar({
     { label: "跳过", value: "跳过" },
   ];
   const activeLabel = statusOptions.find((option) => option.value === statusFilter)?.label ?? "全部状态";
+  const aiCodingNoticeMeta =
+    aiCodingNotice === "running"
+      ? {
+          icon: <Loader2 className="animate-spin" size={16} />,
+          label: "AI 编程任务执行中",
+          shortLabel: "执行中",
+          className: "border-mint-300/25 bg-mint-300/10 text-mint-200 hover:border-mint-300/40 hover:bg-mint-300/15",
+        }
+      : aiCodingNotice === "completed"
+        ? {
+            icon: <CheckCircle2 size={16} />,
+            label: "AI 编程任务已完成",
+            shortLabel: "已完成",
+            className: "border-mint-300/25 bg-mint-300/10 text-mint-200 hover:border-mint-300/40 hover:bg-mint-300/15",
+          }
+        : aiCodingNotice === "failed"
+          ? {
+              icon: <TriangleAlert size={16} />,
+              label: "AI 编程任务执行失败",
+              shortLabel: "失败",
+              className: "border-red-400/25 bg-red-400/10 text-red-100 hover:border-red-300/40 hover:bg-red-400/15",
+            }
+          : null;
 
   return (
     <header className="relative z-40 flex flex-col gap-4 border-b border-white/8 bg-ink-900/72 px-4 py-4 backdrop-blur-xl lg:flex-row lg:items-center lg:justify-between">
@@ -2694,9 +2959,9 @@ function Topbar({
           );
         })}
       </nav>
-      <div className="flex min-w-0 items-center gap-2">
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
         {activeView !== "usage" && activeView !== "historyAsk" && activeView !== "aiCoding" ? (
-          <label className="flex h-11 min-w-0 flex-1 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-slate-400 md:w-80">
+          <label className="flex h-11 min-w-[180px] flex-1 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-slate-400 md:w-80">
             <Search size={17} />
             <input
               value={query}
@@ -2717,6 +2982,18 @@ function Topbar({
               }
             />
           </label>
+        ) : null}
+        {aiCodingNoticeMeta ? (
+          <button
+            className={`flex h-11 max-w-full shrink-0 items-center gap-2 rounded-lg border px-3 text-sm font-medium transition ${aiCodingNoticeMeta.className}`}
+            title="返回 AI 编程查看任务"
+            type="button"
+            onClick={() => onViewChange("aiCoding")}
+          >
+            {aiCodingNoticeMeta.icon}
+            <span className="hidden sm:inline">{aiCodingNoticeMeta.label}</span>
+            <span className="sm:hidden">AI 编程{aiCodingNoticeMeta.shortLabel}</span>
+          </button>
         ) : null}
         {statusFilter !== undefined && onStatusFilterChange ? (
         <div className="relative">
@@ -3148,11 +3425,14 @@ function KnowledgeForm({
   trustScore,
   hasSensitiveSignal,
   isTodoEntry,
+  canSelectPrevious,
+  canSelectNext,
   onDraftChange,
   onDelete,
   onConvertToTodo,
   onTodoEntryChange,
   onNewEntry,
+  onSelectAdjacent,
   onSubmit,
 }: {
   draft: KnowledgeDraft;
@@ -3166,11 +3446,14 @@ function KnowledgeForm({
   trustScore: number;
   hasSensitiveSignal: boolean;
   isTodoEntry: boolean;
+  canSelectPrevious: boolean;
+  canSelectNext: boolean;
   onDraftChange: (draft: KnowledgeDraft) => void;
   onDelete: () => void;
   onConvertToTodo: () => void;
   onTodoEntryChange: (isTodoEntry: boolean) => void;
   onNewEntry: () => void;
+  onSelectAdjacent: (direction: "previous" | "next") => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
 }) {
   const canSubmit = draft.question.trim().length > 0 && draft.answer.trim().length > 0 && !isSaving;
@@ -3187,7 +3470,7 @@ function KnowledgeForm({
 
   return (
     <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/74 p-4 shadow-soft-glow backdrop-blur-xl">
-      <div className="mb-4 flex items-start justify-between gap-4">
+      <div className="mb-4 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div>
           <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
             {isEditing ? <Pencil size={17} /> : <FilePlus2 size={17} />}
@@ -3197,7 +3480,31 @@ function KnowledgeForm({
             {formTitle}
           </h2>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 md:justify-end">
+          {isEditing ? (
+            <>
+              <button
+                className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-sm font-medium text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600 sm:flex-none"
+                disabled={!canSelectPrevious}
+                title="上一条可信知识"
+                type="button"
+                onClick={() => onSelectAdjacent("previous")}
+              >
+                <ChevronLeft size={16} />
+                上一条
+              </button>
+              <button
+                className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-sm font-medium text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600 sm:flex-none"
+                disabled={!canSelectNext}
+                title="下一条可信知识"
+                type="button"
+                onClick={() => onSelectAdjacent("next")}
+              >
+                下一条
+                <ChevronRight size={16} />
+              </button>
+            </>
+          ) : null}
           {isEditing ? (
             <button
               className="grid h-10 w-10 place-items-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-400 transition hover:border-mint-300/30 hover:text-mint-300"
@@ -4577,10 +4884,15 @@ function TodoWorkspace({
   isConvertingToKnowledge,
   loadError,
   saveError,
+  hasCopiedContent,
+  canSelectPrevious,
+  canSelectNext,
   onDraftChange,
   onClearFilters,
   onPageChange,
   onSelect,
+  onSelectAdjacent,
+  onCopyContent,
   onConvertToKnowledge,
   onStatusFilterChange,
   onSubmit,
@@ -4597,10 +4909,15 @@ function TodoWorkspace({
   isConvertingToKnowledge: boolean;
   loadError: string | null;
   saveError: string | null;
+  hasCopiedContent: boolean;
+  canSelectPrevious: boolean;
+  canSelectNext: boolean;
   onDraftChange: (draft: TodoDraft) => void;
   onClearFilters: () => void;
   onPageChange: (page: number) => void;
   onSelect: (item: TodoItem) => void;
+  onSelectAdjacent: (direction: "previous" | "next") => void;
+  onCopyContent: () => void;
   onConvertToKnowledge: () => void;
   onStatusFilterChange: (status: TodoStatus | "all") => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
@@ -4620,6 +4937,7 @@ function TodoWorkspace({
     draft.content.trim().length > 0 &&
     !isSaving &&
     !isConvertingToKnowledge;
+  const canCopyContent = selectedId !== null && (draft.title.trim().length > 0 || draft.content.trim().length > 0);
 
   return (
     <div className="grid flex-1 gap-4 px-4 pb-4 pt-2 xl:grid-cols-[minmax(420px,1fr)_minmax(360px,0.78fr)]">
@@ -4758,7 +5076,7 @@ function TodoWorkspace({
       </section>
 
       <aside className="min-w-0 rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
-        <div className="mb-5 flex items-start justify-between gap-4">
+        <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
               <Pencil size={17} />
@@ -4766,22 +5084,44 @@ function TodoWorkspace({
             </div>
             <h2 className="text-lg font-semibold text-slate-50">编辑待办事项</h2>
           </div>
-          {isDetailLoading ? <Loader2 className="mt-1 animate-spin text-mint-300" size={17} /> : null}
+          <div className="flex items-center gap-2 self-stretch sm:self-start">
+            <button
+              className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-sm font-medium text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600 sm:flex-none"
+              disabled={!canSelectPrevious}
+              title="上一条待办事项"
+              type="button"
+              onClick={() => onSelectAdjacent("previous")}
+            >
+              <ChevronLeft size={16} />
+              上一条
+            </button>
+            <button
+              className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-sm font-medium text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600 sm:flex-none"
+              disabled={!canSelectNext}
+              title="下一条待办事项"
+              type="button"
+              onClick={() => onSelectAdjacent("next")}
+            >
+              下一条
+              <ChevronRight size={16} />
+            </button>
+            {isDetailLoading ? <Loader2 className="shrink-0 animate-spin text-mint-300" size={17} /> : null}
+          </div>
         </div>
 
         {selectedId !== null ? (
           <form className="space-y-4" onSubmit={onSubmit}>
-            <Field label="标题" icon={<Sparkles size={16} />}>
+            <Field label="任务目标" icon={<Sparkles size={16} />}>
               <input
                 className="control"
                 maxLength={4000}
                 value={draft.title}
                 onChange={(event) => onDraftChange({ ...draft, title: event.target.value })}
-                placeholder="待办事项标题"
+                placeholder="任务目标"
               />
             </Field>
 
-            <Field label="内容" icon={<FileText size={16} />}>
+            <Field label="任务内容" icon={<FileText size={16} />}>
               <textarea
                 className="control min-h-[260px] resize-none leading-7"
                 value={draft.content}
@@ -4840,7 +5180,7 @@ function TodoWorkspace({
               </div>
             ) : null}
 
-            <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+            <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto]">
               <button
                 className="flex h-12 w-full items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
                 disabled={!canSave}
@@ -4848,6 +5188,16 @@ function TodoWorkspace({
               >
                 {isSaving ? <Loader2 className="animate-spin" size={18} /> : <Pencil size={18} />}
                 {isSaving ? "保存中" : "保存待办事项"}
+              </button>
+              <button
+                className="flex h-12 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-4 font-medium text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-500"
+                disabled={!canCopyContent}
+                title={hasCopiedContent ? "已复制" : "复制当前待办内容"}
+                type="button"
+                onClick={onCopyContent}
+              >
+                {hasCopiedContent ? <CheckCircle2 size={18} /> : <Copy size={18} />}
+                {hasCopiedContent ? "已复制" : "复制内容"}
               </button>
               <button
                 className="flex h-12 items-center justify-center gap-2 rounded-lg border border-amberline/25 bg-amberline/10 px-4 font-medium text-amber-100 transition hover:bg-amberline/15 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
@@ -7733,6 +8083,7 @@ function readStoredUiState(): StoredUiState {
     const englishMaterials = readRecord(stored.englishMaterials);
     const history = readRecord(stored.history);
     const historyAsk = readRecord(stored.historyAsk);
+    const aiCoding = readRecord(stored.aiCoding);
     const workbenchDraft = readKnowledgeDraft(workbench.draft);
     const todoDraft = readTodoDraft(todos.draft);
     const currentRecordDraft = readRecord(currentRecords.draft);
@@ -7816,6 +8167,11 @@ function readStoredUiState(): StoredUiState {
       historyAsk: {
         question: readString(historyAsk.question),
         answer: readHistoryAskResponse(historyAsk.answer),
+      },
+      aiCoding: {
+        prompt: readString(aiCoding.prompt),
+        messages: readAiCodingMessages(aiCoding.messages),
+        activeJobId: readNullableString(aiCoding.activeJobId),
       },
     };
   } catch {
@@ -7912,6 +8268,11 @@ function buildDefaultUiState(): StoredUiState {
       question: "",
       answer: null,
     },
+    aiCoding: {
+      prompt: "",
+      messages: [],
+      activeJobId: null,
+    },
   };
 }
 
@@ -7973,6 +8334,38 @@ function readHistoryAskResponse(value: unknown): HistoryAskResponse | null {
   return value as unknown as HistoryAskResponse;
 }
 
+function readAiCodingMessages(value: unknown): AiCodingMessage[] {
+  if (!Array.isArray(value)) return [];
+
+  return value.flatMap((item) => {
+    if (!isPlainRecord(item)) return [];
+    const response = readCodexRunResponse(item.response);
+    const prompt = readString(item.prompt);
+    if (!prompt && !response) return [];
+
+    return [
+      {
+        id: readPositiveInteger(item.id, Date.now()),
+        jobId: readNullableString(item.jobId) ?? undefined,
+        prompt,
+        response,
+        archivedKnowledgeId: readNullablePositiveInteger(item.archivedKnowledgeId) ?? undefined,
+      },
+    ];
+  });
+}
+
+function readCodexRunResponse(value: unknown): CodexRunResponse | null {
+  if (!isPlainRecord(value)) return null;
+  return {
+    output: readString(value.output),
+    error_output: readString(value.error_output),
+    exit_code: typeof value.exit_code === "number" ? value.exit_code : 0,
+    duration_seconds: typeof value.duration_seconds === "number" ? value.duration_seconds : 0,
+    git_status: readString(value.git_status),
+  };
+}
+
 function readAppView(value: unknown, fallback: AppView): AppView {
   return APP_VIEWS.includes(value as AppView) ? (value as AppView) : fallback;
 }
@@ -7999,6 +8392,10 @@ function readPositiveInteger(value: unknown, fallback: number) {
 
 function readNullablePositiveInteger(value: unknown) {
   return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null;
+}
+
+function readNullableString(value: unknown) {
+  return typeof value === "string" && value.trim() ? value : null;
 }
 
 function readString(value: unknown) {
@@ -8057,6 +8454,27 @@ function sleep(ms: number) {
 
 function appendLogLine(current: string, line: string) {
   return current ? `${current}\n${line}` : line;
+}
+
+function upsertCodexJobMessage(messages: AiCodingMessage[], job: CodexJobSnapshot): AiCodingMessage[] {
+  const nextMessage: AiCodingMessage = {
+    id: Date.parse(job.started_at) || Date.now(),
+    jobId: job.job_id,
+    prompt: job.prompt,
+    response: job.response,
+  };
+  const index = messages.findIndex((message) => message.jobId === job.job_id);
+  if (index === -1) return [nextMessage, ...messages];
+
+  return messages.map((message, messageIndex) =>
+    messageIndex === index
+      ? {
+          ...message,
+          prompt: job.prompt,
+          response: job.response,
+        }
+      : message,
+  );
 }
 
 function buildCodexKnowledgeDraft(message: AiCodingMessage): KnowledgeDraft {
