@@ -1,5 +1,5 @@
 import re
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 import oracledb
@@ -131,8 +131,30 @@ def _month_end(year: int, month: int) -> date:
     return date(year, month + 1, 1) - timedelta(days=1)
 
 
-def _extract_date_range(question: str) -> tuple[date | None, date | None]:
+CHINESE_NUMBER_ALIASES = {
+    "一": 1,
+    "两": 2,
+    "二": 2,
+    "三": 3,
+    "四": 4,
+    "五": 5,
+    "六": 6,
+    "七": 7,
+    "八": 8,
+    "九": 9,
+    "十": 10,
+}
+
+
+def _parse_small_count(value: str) -> int | None:
+    if value.isdigit():
+        return int(value)
+    return CHINESE_NUMBER_ALIASES.get(value)
+
+
+def _extract_date_range(question: str, *, anchor_date: date | None = None) -> tuple[date | None, date | None]:
     today = date.today()
+    relative_anchor = anchor_date or today
 
     range_match = re.search(
         r"(\d{4})[-年/](\d{1,2})[-月/](\d{1,2})日?\s*(?:到|至|-|~|—)\s*(\d{4})[-年/](\d{1,2})[-月/](\d{1,2})日?",
@@ -158,7 +180,21 @@ def _extract_date_range(question: str) -> tuple[date | None, date | None]:
     recent_match = re.search(r"(?:最近|近)(\d{1,3})(?:天|日)", question)
     if recent_match:
         days = max(1, min(365, int(recent_match.group(1))))
-        return today - timedelta(days=days - 1), today
+        return relative_anchor - timedelta(days=days - 1), relative_anchor
+
+    recent_week_match = re.search(r"(?:最近|近)\s*([一两二三四五六七八九十]|\d{1,2})\s*(?:个)?(?:周|星期|礼拜)", question)
+    if recent_week_match:
+        weeks = _parse_small_count(recent_week_match.group(1))
+        if weeks is not None:
+            days = max(1, min(52, weeks)) * 7
+            return relative_anchor - timedelta(days=days - 1), relative_anchor
+
+    recent_month_match = re.search(r"(?:最近|近)\s*([一两二三四五六七八九十]|\d{1,2})\s*(?:个)?月", question)
+    if recent_month_match:
+        months = _parse_small_count(recent_month_match.group(1))
+        if months is not None:
+            days = max(1, min(12, months)) * 30
+            return relative_anchor - timedelta(days=days - 1), relative_anchor
 
     if "今天" in question:
         return today, today
@@ -179,6 +215,87 @@ def _extract_date_range(question: str) -> tuple[date | None, date | None]:
         return date(year, previous_month, 1), _month_end(year, previous_month)
 
     return None, None
+
+
+def _normalize_date(value: Any) -> date | None:
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    return None
+
+
+def _append_filter_clauses(
+    clauses: list[str],
+    params: dict[str, Any],
+    *,
+    keyword: str | None,
+    username: str | None,
+    history_type: str | None,
+    week: str | None,
+    day: str | None,
+    learn_level: int | None,
+    vector_status: int | None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+) -> None:
+    if keyword:
+        clauses.append("lower(content) like '%' || lower(:keyword) || '%'")
+        params["keyword"] = keyword
+    if username:
+        clauses.append("lower(username) = lower(:username)")
+        params["username"] = username
+    if history_type:
+        clauses.append("lower(type) = lower(:history_type)")
+        params["history_type"] = history_type
+    if week:
+        clauses.append("lower(week) = lower(:week)")
+        params["week"] = week
+    if day:
+        clauses.append("lower(day) = lower(:day)")
+        params["day"] = day
+    if learn_level is not None:
+        clauses.append("learn_level = :learn_level")
+        params["learn_level"] = learn_level
+    if vector_status is not None:
+        clauses.append("v_needs_update = :vector_status")
+        params["vector_status"] = vector_status
+    if date_from is not None:
+        clauses.append("history_date >= :date_from")
+        params["date_from"] = date_from
+    if date_to is not None:
+        clauses.append("history_date < :date_to + 1")
+        params["date_to"] = date_to
+
+
+async def _fetch_latest_history_date(
+    cursor: Any,
+    *,
+    keyword: str | None,
+    username: str | None,
+    history_type: str | None,
+    week: str | None,
+    day: str | None,
+    learn_level: int | None,
+    vector_status: int | None,
+) -> date | None:
+    clauses: list[str] = []
+    params: dict[str, Any] = {}
+    _append_filter_clauses(
+        clauses,
+        params,
+        keyword=keyword,
+        username=username,
+        history_type=history_type,
+        week=week,
+        day=day,
+        learn_level=learn_level,
+        vector_status=vector_status,
+    )
+    where_sql = " where " + " and ".join(clauses) if clauses else ""
+    await cursor.execute(f"select max(trunc(history_date)) from t_history{where_sql}", params)
+    row = await cursor.fetchone()
+    return _normalize_date(row[0]) if row else None
 
 
 def _count_rows_to_dict(rows: list[Any]) -> dict[str, int]:
@@ -288,37 +405,33 @@ async def ask_history(question: str) -> dict[str, Any]:
         day = _extract_day(question)
         learn_level = _extract_learn_level(question)
         vector_status = _extract_vector_status(question)
-        date_from, date_to = _extract_date_range(question)
+        anchor_date = await _fetch_latest_history_date(
+            cursor,
+            keyword=keyword,
+            username=username,
+            history_type=history_type,
+            week=week,
+            day=day,
+            learn_level=learn_level,
+            vector_status=vector_status,
+        )
+        date_from, date_to = _extract_date_range(question, anchor_date=anchor_date)
 
         clauses: list[str] = []
         params: dict[str, Any] = {}
-        if keyword:
-            clauses.append("lower(content) like '%' || lower(:keyword) || '%'")
-            params["keyword"] = keyword
-        if username:
-            clauses.append("lower(username) = lower(:username)")
-            params["username"] = username
-        if history_type:
-            clauses.append("lower(type) = lower(:history_type)")
-            params["history_type"] = history_type
-        if week:
-            clauses.append("lower(week) = lower(:week)")
-            params["week"] = week
-        if day:
-            clauses.append("lower(day) = lower(:day)")
-            params["day"] = day
-        if learn_level is not None:
-            clauses.append("learn_level = :learn_level")
-            params["learn_level"] = learn_level
-        if vector_status is not None:
-            clauses.append("v_needs_update = :vector_status")
-            params["vector_status"] = vector_status
-        if date_from is not None:
-            clauses.append("history_date >= :date_from")
-            params["date_from"] = date_from
-        if date_to is not None:
-            clauses.append("history_date < :date_to + 1")
-            params["date_to"] = date_to
+        _append_filter_clauses(
+            clauses,
+            params,
+            keyword=keyword,
+            username=username,
+            history_type=history_type,
+            week=week,
+            day=day,
+            learn_level=learn_level,
+            vector_status=vector_status,
+            date_from=date_from,
+            date_to=date_to,
+        )
 
         where_sql = " where " + " and ".join(clauses) if clauses else ""
         filters = {
