@@ -6805,7 +6805,7 @@ function HistoryAskPanel({
         Boolean(llmConfig?.has_api_key)));
   const examples = [
     "总结最近30天关于“中信泰富”的工作记录。",
-    "针对 alfred 的 W01 工作记录，统计 Level 3 的工作量。",
+    "针对 alfred 最近一周的工作记录，总结一份周报。",
     "向量待更新的历史记录里哪类工作最多？",
   ];
 
