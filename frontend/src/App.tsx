@@ -7908,8 +7908,6 @@ function OverviewDashboard({
 }) {
   const latestUsage = data.usageItems.length > 0 ? data.usageItems[data.usageItems.length - 1] : null;
   const usagePercent = latestUsage ? getUsagePercent(latestUsage) : 0;
-  const resetAt = latestUsage ? parseUtcDate(latestUsage.next_reset_at) : null;
-  const readyAt = getResetReadyAt(resetAt);
   const latestEnglish = data.latestEnglishMaterial;
   const hasOverviewData =
     latestUsage ||
@@ -7981,6 +7979,8 @@ function OverviewDashboard({
           label="LLM 用量"
           value={latestUsage ? formatPercent(usagePercent) : "暂无"}
           detail={latestUsage ? `${formatAmount(latestUsage.remaining_budget)} left` : "暂无采样"}
+          actionLabel="查看用量"
+          onAction={() => onOpenView("usage")}
         />
         <MetricTile
           icon={<ClipboardCheck size={17} />}
@@ -8002,49 +8002,7 @@ function OverviewDashboard({
         />
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.72fr)_minmax(300px,0.58fr)]">
-        <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/72 p-4 shadow-soft-glow backdrop-blur-xl">
-          <OverviewSectionHeader
-            icon={<Bot size={17} />}
-            title="LLM Usage"
-            actionLabel="查看用量"
-            onAction={() => onOpenView("usage")}
-          />
-          {latestUsage ? (
-            <>
-              <div className="mb-4 grid gap-3 sm:grid-cols-3">
-                <div className="rounded-lg border border-white/10 bg-white/[0.028] p-3">
-                  <div className="mb-1 text-xs text-slate-500">已使用</div>
-                  <div className="text-lg font-semibold text-slate-50">{formatAmount(latestUsage.used_amount)}</div>
-                </div>
-                <div className="rounded-lg border border-white/10 bg-white/[0.028] p-3">
-                  <div className="mb-1 text-xs text-slate-500">剩余额度</div>
-                  <div className="text-lg font-semibold text-mint-300">{formatAmount(latestUsage.remaining_budget)}</div>
-                </div>
-                <div className="rounded-lg border border-white/10 bg-white/[0.028] p-3">
-                  <div className="mb-1 text-xs text-slate-500">下次可用</div>
-                  <div className="truncate text-lg font-semibold text-slate-50">{formatResetDate(readyAt)}</div>
-                </div>
-              </div>
-              <div className="rounded-lg border border-white/10 bg-white/[0.028] p-4">
-                <div className="mb-3 flex items-center justify-between gap-3 text-sm">
-                  <span className="font-medium text-slate-200">当前周期</span>
-                  <span className="text-slate-400">{formatPercent(usagePercent)}</span>
-                </div>
-                <div className="h-3 overflow-hidden rounded-full bg-white/8">
-                  <div className="h-full rounded-full bg-mint-300 transition-all duration-500" style={{ width: `${usagePercent}%` }} />
-                </div>
-                <div className="mt-3 flex flex-col gap-1 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
-                  <span>采样：{formatDateTime(latestUsage.sample_time)}</span>
-                  <span>{formatResetDistance(readyAt, "可用")}</span>
-                </div>
-              </div>
-            </>
-          ) : (
-            <OverviewEmpty icon={<Bot size={28} />} title="暂无 LLM 用量采样" />
-          )}
-        </section>
-
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(300px,0.58fr)]">
         <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
           <OverviewSectionHeader
             icon={<ClipboardCheck size={17} />}
@@ -8472,20 +8430,50 @@ function MetricTile({
   label,
   value,
   detail,
+  actionLabel,
+  onAction,
 }: {
   icon: React.ReactNode;
   label: string;
   value: string;
   detail: string;
+  actionLabel?: string;
+  onAction?: () => void;
 }) {
-  return (
-    <div className="rounded-lg border border-white/10 bg-white/[0.028] p-4">
-      <div className="mb-3 flex items-center gap-2 text-sm text-slate-400">
-        <span className="text-mint-300">{icon}</span>
-        {label}
+  const content = (
+    <>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2 text-sm text-slate-400">
+          <span className="text-mint-300">{icon}</span>
+          <span className="truncate">{label}</span>
+        </div>
+        {actionLabel ? (
+          <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-mint-300">
+            {actionLabel}
+            <ChevronRight size={14} />
+          </span>
+        ) : null}
       </div>
       <div className="text-2xl font-semibold text-slate-50">{value}</div>
       <div className="mt-1 text-sm text-slate-500">{detail}</div>
+    </>
+  );
+
+  if (onAction) {
+    return (
+      <button
+        className="block w-full rounded-lg border border-white/10 bg-white/[0.028] p-4 text-left transition hover:border-mint-300/25 hover:bg-white/[0.045]"
+        type="button"
+        onClick={onAction}
+      >
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-white/10 bg-white/[0.028] p-4">
+      {content}
     </div>
   );
 }
