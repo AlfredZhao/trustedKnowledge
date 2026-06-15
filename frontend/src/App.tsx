@@ -393,6 +393,7 @@ function App() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<number | null>(restoredUiState.workbench.selectedId);
+  const [isMobileKnowledgeEditorOpen, setIsMobileKnowledgeEditorOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<KnowledgeItem | null>(null);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [lastCreatedId, setLastCreatedId] = useState<number | null>(null);
@@ -441,6 +442,7 @@ function App() {
   const [debouncedTodoQuery, setDebouncedTodoQuery] = useState(restoredUiState.todos.query.trim());
   const [todoStatus, setTodoStatus] = useState<TodoStatus | "all">(restoredUiState.todos.status);
   const [selectedTodoId, setSelectedTodoId] = useState<number | null>(restoredUiState.todos.selectedId);
+  const [isMobileTodoEditorOpen, setIsMobileTodoEditorOpen] = useState(false);
   const [todoDraft, setTodoDraft] = useState<TodoDraft>(restoredUiState.todos.draft ?? emptyTodoDraft);
   const [isTodoLoading, setIsTodoLoading] = useState(false);
   const [isTodoDetailLoading, setIsTodoDetailLoading] = useState(false);
@@ -623,6 +625,7 @@ function App() {
       setApiKey(null);
       setItems([]);
       setSelectedId(null);
+      setIsMobileKnowledgeEditorOpen(false);
       setIsConvertingKnowledgeToTodo(false);
       setBlogFactoryItems([]);
       setBlogFactoryTotal(0);
@@ -630,6 +633,7 @@ function App() {
       setTodoItems([]);
       setTodoTotal(0);
       setSelectedTodoId(null);
+      setIsMobileTodoEditorOpen(false);
       setTodoCopyError(null);
       setHasCopiedTodoContent(false);
       setIsConvertingTodoToKnowledge(false);
@@ -677,6 +681,15 @@ function App() {
     window.addEventListener("trusted-knowledge:unauthorized", handleUnauthorized);
     return () => window.removeEventListener("trusted-knowledge:unauthorized", handleUnauthorized);
   }, []);
+
+  useEffect(() => {
+    if (activeView !== "workbench") {
+      setIsMobileKnowledgeEditorOpen(false);
+    }
+    if (activeView !== "todos") {
+      setIsMobileTodoEditorOpen(false);
+    }
+  }, [activeView]);
 
   useEffect(() => {
     if (!apiKey) return;
@@ -1746,6 +1759,7 @@ function App() {
     setSelectedId(item.id);
     setDraft(itemToDraft(item));
     setSaveError(null);
+    setIsMobileKnowledgeEditorOpen(true);
     setIsDetailLoading(true);
 
     try {
@@ -1810,6 +1824,7 @@ function App() {
       await deleteKnowledge(deleteTarget.id);
       clearApiResponseCache();
       setSelectedId(null);
+      setIsMobileKnowledgeEditorOpen(false);
       setDeleteTarget(null);
       setDraft(emptyDraft);
       setLastCreatedId(null);
@@ -1863,6 +1878,7 @@ function App() {
       setItems((current) => current.filter((item) => item.id !== selectedId));
       setTotalItems((current) => Math.max(0, current - 1));
       setSelectedId(null);
+      setIsMobileKnowledgeEditorOpen(false);
       setDraft(emptyDraft);
       setLastCreatedId(null);
       setTodoDraft(todoItemToDraft(converted));
@@ -1881,6 +1897,7 @@ function App() {
 
   function handleNewEntry() {
     setSelectedId(null);
+    setIsMobileKnowledgeEditorOpen(false);
     setDraft(readStoredNewDraft() ?? emptyDraft);
     setIsTodoEntry(false);
     setSaveError(null);
@@ -1894,6 +1911,7 @@ function App() {
     setDebouncedQuery("");
     setQuery("");
     setSelectedId(null);
+    setIsMobileKnowledgeEditorOpen(false);
     setDraft(readStoredNewDraft() ?? emptyDraft);
     setIsTodoEntry(false);
   }
@@ -1906,6 +1924,7 @@ function App() {
     setApiKey(null);
     setItems([]);
     setSelectedId(null);
+    setIsMobileKnowledgeEditorOpen(false);
     setDraft(emptyDraft);
     setFactoryItems([]);
     setFactorySelectedId(null);
@@ -1916,6 +1935,7 @@ function App() {
     setTodoItems([]);
     setTodoTotal(0);
     setSelectedTodoId(null);
+    setIsMobileTodoEditorOpen(false);
     setTodoDraft(emptyTodoDraft);
     setTodoCopyError(null);
     setHasCopiedTodoContent(false);
@@ -2059,6 +2079,7 @@ function App() {
 
   async function handleSelectTodo(item: TodoItem) {
     setSelectedTodoId(item.id);
+    setIsMobileTodoEditorOpen(true);
     setTodoDraft(todoItemToDraft(item));
     setTodoSaveError(null);
     setTodoCopyError(null);
@@ -2168,6 +2189,7 @@ function App() {
       setTodoItems((current) => current.filter((item) => item.id !== selectedTodoId));
       setTodoTotal((current) => Math.max(0, current - 1));
       setSelectedTodoId(null);
+      setIsMobileTodoEditorOpen(false);
       setTodoDraft(emptyTodoDraft);
       setTodoCopyError(null);
       setHasCopiedTodoContent(false);
@@ -2790,6 +2812,7 @@ function App() {
               total={todoTotal}
               page={todoPage}
               selectedId={selectedTodoId}
+              isMobileEditorOpen={isMobileTodoEditorOpen}
               draft={todoDraft}
               status={todoStatus}
               isLoading={isTodoLoading}
@@ -2807,6 +2830,7 @@ function App() {
                 setDebouncedTodoQuery("");
                 setTodoStatus("all");
               }}
+              onCloseMobileEditor={() => setIsMobileTodoEditorOpen(false)}
               onDraftChange={setTodoDraft}
               onPageChange={setTodoPage}
               onSelect={handleSelectTodo}
@@ -3060,6 +3084,38 @@ function App() {
           )}
         </section>
       </div>
+
+      <MobileEditorSheet
+        icon={<Pencil size={17} />}
+        isBusy={isDetailLoading || isSaving || isDeleting || isConvertingKnowledgeToTodo}
+        isOpen={activeView === "workbench" && isMobileKnowledgeEditorOpen && selectedId !== null}
+        label="Knowledge Detail"
+        title="编辑可信知识"
+        onClose={() => setIsMobileKnowledgeEditorOpen(false)}
+      >
+        <KnowledgeForm
+          draft={draft}
+          mode={isEditing ? "edit" : "create"}
+          selectedId={selectedId}
+          isSaving={isSaving}
+          isDeleting={isDeleting}
+          isConvertingToTodo={isConvertingKnowledgeToTodo}
+          isDetailLoading={isDetailLoading}
+          saveError={saveError}
+          trustScore={trustScore}
+          hasSensitiveSignal={hasSensitiveSignal}
+          isTodoEntry={isTodoEntry}
+          canSelectPrevious={canSelectPreviousKnowledge}
+          canSelectNext={canSelectNextKnowledge}
+          onDraftChange={setDraft}
+          onDelete={handleRequestDelete}
+          onConvertToTodo={handleConvertSelectedKnowledgeToTodo}
+          onTodoEntryChange={setIsTodoEntry}
+          onNewEntry={handleNewEntry}
+          onSelectAdjacent={handleSelectAdjacentKnowledge}
+          onSubmit={handleSubmit}
+        />
+      </MobileEditorSheet>
 
       <DeleteConfirmDialog
         isDeleting={isDeleting}
@@ -3773,6 +3829,79 @@ function AppConfirmDialog({
             {confirmLabel}
           </button>
         </div>
+      </section>
+    </div>
+  );
+}
+
+function MobileEditorSheet({
+  children,
+  icon,
+  isBusy,
+  isOpen,
+  label,
+  title,
+  onClose,
+}: {
+  children: React.ReactNode;
+  icon: React.ReactNode;
+  isBusy: boolean;
+  isOpen: boolean;
+  label: string;
+  title: string;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    if (!isOpen) return;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape" && !isBusy) {
+        onClose();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isBusy, isOpen, onClose]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end bg-black/62 px-0 backdrop-blur-sm lg:hidden"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !isBusy) {
+          onClose();
+        }
+      }}
+    >
+      <section
+        aria-modal="true"
+        className="flex max-h-[100dvh] w-full flex-col overflow-hidden rounded-t-lg border border-white/10 bg-ink-950 shadow-soft-glow"
+        role="dialog"
+      >
+        <div className="shrink-0 border-b border-white/10 p-4">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
+                {icon}
+                {label}
+              </div>
+              <h2 className="line-clamp-2 text-lg font-semibold text-slate-50">{title}</h2>
+            </div>
+            <button
+              className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600"
+              disabled={isBusy}
+              title="关闭"
+              type="button"
+              onClick={onClose}
+            >
+              <X size={17} />
+            </button>
+          </div>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-3">{children}</div>
       </section>
     </div>
   );
@@ -5241,6 +5370,7 @@ function TodoWorkspace({
   total,
   page,
   selectedId,
+  isMobileEditorOpen,
   draft,
   status,
   isLoading,
@@ -5259,6 +5389,7 @@ function TodoWorkspace({
   onSelectAdjacent,
   onCopyContent,
   onConvertToKnowledge,
+  onCloseMobileEditor,
   onStatusFilterChange,
   onSubmit,
 }: {
@@ -5266,6 +5397,7 @@ function TodoWorkspace({
   total: number;
   page: number;
   selectedId: number | null;
+  isMobileEditorOpen: boolean;
   draft: TodoDraft;
   status: TodoStatus | "all";
   isLoading: boolean;
@@ -5284,6 +5416,7 @@ function TodoWorkspace({
   onSelectAdjacent: (direction: "previous" | "next") => void;
   onCopyContent: () => void;
   onConvertToKnowledge: () => void;
+  onCloseMobileEditor: () => void;
   onStatusFilterChange: (status: TodoStatus | "all") => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
 }) {
@@ -5303,6 +5436,153 @@ function TodoWorkspace({
     !isSaving &&
     !isConvertingToKnowledge;
   const canCopyContent = selectedId !== null && (draft.title.trim().length > 0 || draft.content.trim().length > 0);
+  const todoDetailPanel = (
+    <>
+      <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
+            <Pencil size={17} />
+            Todo Detail
+          </div>
+          <h2 className="text-lg font-semibold text-slate-50">编辑待办事项</h2>
+        </div>
+        <div className="flex items-center gap-2 self-stretch sm:self-start">
+          <button
+            className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-sm font-medium text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600 sm:flex-none"
+            disabled={!canSelectPrevious}
+            title="上一条待办事项"
+            type="button"
+            onClick={() => onSelectAdjacent("previous")}
+          >
+            <ChevronLeft size={16} />
+            上一条
+          </button>
+          <button
+            className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-sm font-medium text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600 sm:flex-none"
+            disabled={!canSelectNext}
+            title="下一条待办事项"
+            type="button"
+            onClick={() => onSelectAdjacent("next")}
+          >
+            下一条
+            <ChevronRight size={16} />
+          </button>
+          {isDetailLoading ? <Loader2 className="shrink-0 animate-spin text-mint-300" size={17} /> : null}
+        </div>
+      </div>
+
+      {selectedId !== null ? (
+        <form className="space-y-4" onSubmit={onSubmit}>
+          <Field label="任务目标" icon={<Sparkles size={16} />}>
+            <input
+              className="control"
+              maxLength={4000}
+              value={draft.title}
+              onChange={(event) => onDraftChange({ ...draft, title: event.target.value })}
+              placeholder="任务目标"
+            />
+          </Field>
+
+          <Field label="任务内容" icon={<FileText size={16} />}>
+            <textarea
+              className="control min-h-[260px] resize-none leading-7"
+              value={draft.content}
+              onChange={(event) => onDraftChange({ ...draft, content: event.target.value })}
+              placeholder="补充待办事项背景、验收标准或下一步动作。"
+            />
+          </Field>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <Field label="来源" icon={<Database size={16} />}>
+              <input
+                className="control"
+                maxLength={200}
+                value={draft.source}
+                onChange={(event) => onDraftChange({ ...draft, source: event.target.value })}
+                placeholder="manual / internal"
+              />
+            </Field>
+            <Field label="标签" icon={<Tags size={16} />}>
+              <input
+                className="control"
+                maxLength={100}
+                value={draft.topic_tag}
+                onChange={(event) => onDraftChange({ ...draft, topic_tag: event.target.value })}
+                placeholder="APEX,TODO"
+              />
+            </Field>
+          </div>
+
+          <Field label="状态" icon={<CheckCircle2 size={16} />}>
+            <div className="grid h-[46px] grid-cols-3 gap-1 rounded-lg border border-white/10 bg-white/[0.035] p-1">
+              {(["待处理", "处理中", "已完成"] as TodoStatus[]).map((nextStatus) => {
+                const active = draft.todo_status === nextStatus;
+                return (
+                  <button
+                    key={nextStatus}
+                    className={`min-w-0 rounded-md border px-2 text-sm font-medium transition ${
+                      active
+                        ? todoStatusStyles[nextStatus]
+                        : "border-transparent text-slate-500 hover:border-white/10 hover:bg-white/[0.035] hover:text-slate-200"
+                    }`}
+                    type="button"
+                    onClick={() => onDraftChange({ ...draft, todo_status: nextStatus })}
+                  >
+                    {nextStatus}
+                  </button>
+                );
+              })}
+            </div>
+          </Field>
+
+          {saveError ? (
+            <div className="flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100">
+              <TriangleAlert className="mt-0.5 shrink-0 text-red-300" size={17} />
+              <span>{saveError}</span>
+            </div>
+          ) : null}
+
+          <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto]">
+            <button
+              className="flex h-12 w-full items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
+              disabled={!canSave}
+              type="submit"
+            >
+              {isSaving ? <Loader2 className="animate-spin" size={18} /> : <Pencil size={18} />}
+              {isSaving ? "保存中" : "保存待办事项"}
+            </button>
+            <button
+              className="flex h-12 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-4 font-medium text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-500"
+              disabled={!canCopyContent}
+              title={hasCopiedContent ? "已复制" : "复制当前待办内容"}
+              type="button"
+              onClick={onCopyContent}
+            >
+              {hasCopiedContent ? <CheckCircle2 size={18} /> : <Copy size={18} />}
+              {hasCopiedContent ? "已复制" : "复制内容"}
+            </button>
+            <button
+              className="flex h-12 items-center justify-center gap-2 rounded-lg border border-amberline/25 bg-amberline/10 px-4 font-medium text-amber-100 transition hover:bg-amberline/15 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
+              disabled={isSaving || isConvertingToKnowledge}
+              type="button"
+              onClick={onConvertToKnowledge}
+            >
+              {isConvertingToKnowledge ? <Loader2 className="animate-spin" size={18} /> : <BookOpenCheck size={18} />}
+              {isConvertingToKnowledge ? "转换中" : "转为知识"}
+            </button>
+          </div>
+        </form>
+      ) : (
+        <div className="grid min-h-[420px] place-items-center rounded-lg border border-white/10 bg-white/[0.025] p-6 text-center">
+          <div>
+            <ClipboardCheck className="mx-auto mb-3 text-slate-600" size={36} />
+            <div className="mb-1 font-medium text-slate-300">选择一条待办事项</div>
+            <p className="text-sm leading-6 text-slate-500">右侧会显示完整内容，并允许编辑内容和状态。</p>
+          </div>
+        </div>
+      )}
+    </>
+  );
 
   return (
     <div className="grid flex-1 gap-4 px-4 pb-4 pt-2 xl:grid-cols-[minmax(420px,1fr)_minmax(360px,0.78fr)]">
@@ -5441,150 +5721,21 @@ function TodoWorkspace({
       </section>
 
       <aside className="min-w-0 rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
-        <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
-              <Pencil size={17} />
-              Todo Detail
-            </div>
-            <h2 className="text-lg font-semibold text-slate-50">编辑待办事项</h2>
-          </div>
-          <div className="flex items-center gap-2 self-stretch sm:self-start">
-            <button
-              className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-sm font-medium text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600 sm:flex-none"
-              disabled={!canSelectPrevious}
-              title="上一条待办事项"
-              type="button"
-              onClick={() => onSelectAdjacent("previous")}
-            >
-              <ChevronLeft size={16} />
-              上一条
-            </button>
-            <button
-              className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-sm font-medium text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600 sm:flex-none"
-              disabled={!canSelectNext}
-              title="下一条待办事项"
-              type="button"
-              onClick={() => onSelectAdjacent("next")}
-            >
-              下一条
-              <ChevronRight size={16} />
-            </button>
-            {isDetailLoading ? <Loader2 className="shrink-0 animate-spin text-mint-300" size={17} /> : null}
-          </div>
-        </div>
-
-        {selectedId !== null ? (
-          <form className="space-y-4" onSubmit={onSubmit}>
-            <Field label="任务目标" icon={<Sparkles size={16} />}>
-              <input
-                className="control"
-                maxLength={4000}
-                value={draft.title}
-                onChange={(event) => onDraftChange({ ...draft, title: event.target.value })}
-                placeholder="任务目标"
-              />
-            </Field>
-
-            <Field label="任务内容" icon={<FileText size={16} />}>
-              <textarea
-                className="control min-h-[260px] resize-none leading-7"
-                value={draft.content}
-                onChange={(event) => onDraftChange({ ...draft, content: event.target.value })}
-                placeholder="补充待办事项背景、验收标准或下一步动作。"
-              />
-            </Field>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <Field label="来源" icon={<Database size={16} />}>
-                <input
-                  className="control"
-                  maxLength={200}
-                  value={draft.source}
-                  onChange={(event) => onDraftChange({ ...draft, source: event.target.value })}
-                  placeholder="manual / internal"
-                />
-              </Field>
-              <Field label="标签" icon={<Tags size={16} />}>
-                <input
-                  className="control"
-                  maxLength={100}
-                  value={draft.topic_tag}
-                  onChange={(event) => onDraftChange({ ...draft, topic_tag: event.target.value })}
-                  placeholder="APEX,TODO"
-                />
-              </Field>
-            </div>
-
-            <Field label="状态" icon={<CheckCircle2 size={16} />}>
-              <div className="grid h-[46px] grid-cols-3 gap-1 rounded-lg border border-white/10 bg-white/[0.035] p-1">
-                {(["待处理", "处理中", "已完成"] as TodoStatus[]).map((nextStatus) => {
-                  const active = draft.todo_status === nextStatus;
-                  return (
-                    <button
-                      key={nextStatus}
-                      className={`min-w-0 rounded-md border px-2 text-sm font-medium transition ${
-                        active
-                          ? todoStatusStyles[nextStatus]
-                          : "border-transparent text-slate-500 hover:border-white/10 hover:bg-white/[0.035] hover:text-slate-200"
-                      }`}
-                      type="button"
-                      onClick={() => onDraftChange({ ...draft, todo_status: nextStatus })}
-                    >
-                      {nextStatus}
-                    </button>
-                  );
-                })}
-              </div>
-            </Field>
-
-            {saveError ? (
-              <div className="flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100">
-                <TriangleAlert className="mt-0.5 shrink-0 text-red-300" size={17} />
-                <span>{saveError}</span>
-              </div>
-            ) : null}
-
-            <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto]">
-              <button
-                className="flex h-12 w-full items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
-                disabled={!canSave}
-                type="submit"
-              >
-                {isSaving ? <Loader2 className="animate-spin" size={18} /> : <Pencil size={18} />}
-                {isSaving ? "保存中" : "保存待办事项"}
-              </button>
-              <button
-                className="flex h-12 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-4 font-medium text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-500"
-                disabled={!canCopyContent}
-                title={hasCopiedContent ? "已复制" : "复制当前待办内容"}
-                type="button"
-                onClick={onCopyContent}
-              >
-                {hasCopiedContent ? <CheckCircle2 size={18} /> : <Copy size={18} />}
-                {hasCopiedContent ? "已复制" : "复制内容"}
-              </button>
-              <button
-                className="flex h-12 items-center justify-center gap-2 rounded-lg border border-amberline/25 bg-amberline/10 px-4 font-medium text-amber-100 transition hover:bg-amberline/15 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
-                disabled={isSaving || isConvertingToKnowledge}
-                type="button"
-                onClick={onConvertToKnowledge}
-              >
-                {isConvertingToKnowledge ? <Loader2 className="animate-spin" size={18} /> : <BookOpenCheck size={18} />}
-                {isConvertingToKnowledge ? "转换中" : "转为知识"}
-              </button>
-            </div>
-          </form>
-        ) : (
-          <div className="grid min-h-[420px] place-items-center rounded-lg border border-white/10 bg-white/[0.025] p-6 text-center">
-            <div>
-              <ClipboardCheck className="mx-auto mb-3 text-slate-600" size={36} />
-              <div className="mb-1 font-medium text-slate-300">选择一条待办事项</div>
-              <p className="text-sm leading-6 text-slate-500">右侧会显示完整内容，并允许编辑内容和状态。</p>
-            </div>
-          </div>
-        )}
+        {todoDetailPanel}
       </aside>
+
+      <MobileEditorSheet
+        icon={<Pencil size={17} />}
+        isBusy={isDetailLoading || isSaving || isConvertingToKnowledge}
+        isOpen={isMobileEditorOpen && selectedId !== null}
+        label="Todo Detail"
+        title="编辑待办事项"
+        onClose={onCloseMobileEditor}
+      >
+        <div className="rounded-lg border border-white/10 bg-ink-900/64 p-4">
+          {todoDetailPanel}
+        </div>
+      </MobileEditorSheet>
     </div>
   );
 }

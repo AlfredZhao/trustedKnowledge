@@ -29,6 +29,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Fixed / 修复
 
+- Added mobile editor sheets for Information Entry and Todo items so tapping a list item in the PWA opens the edit view directly.
+- 为信息录入和待办事项新增手机端编辑弹层，PWA 中点击列表条目会直接打开编辑界面。
+
 ## 历史版本更新
 
 ### [0.2.4] - 2026-06-15
