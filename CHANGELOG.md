@@ -31,6 +31,9 @@ The format follows the common GitHub changelog convention inspired by
 - Added automatic default sequence numbers for new English Materials entries using the current maximum sequence plus one.
 - 为英语素材录入新增序号默认值，自动使用当前最大序号加一。
 
+- Added database-backed OpenAI-compatible LLM configuration for AI Ask, including Base URL, model, API key, and enablement controls.
+- 为 AI 问数新增数据库持久化的 OpenAI 兼容模型配置，支持 Base URL、模型、API Key 和启用开关。
+
 #### Changed / 变更
 
 - Updated the Todo edit panel field wording from title/content to task goal/task content.
@@ -47,6 +50,12 @@ The format follows the common GitHub changelog convention inspired by
 
 - Changed English Materials flag displays from stored numeric values to user-facing status labels.
 - 将英语素材管理中的 flag 展示从表内数字值调整为用户可理解的发布状态文案。
+
+- Changed AI Ask LLM summaries to call the configured OpenAI-compatible endpoint from the backend instead of the fixed database `chat_llm` function.
+- 将 AI 问数的 LLM 总结改为后端读取配置后调用 OpenAI 兼容接口，不再固定依赖数据库 `chat_llm` 函数。
+
+- Changed AI Ask LLM secrets so API keys are read from backend environment configuration and the old database key column is removed when LLM config is opened.
+- 调整 AI 问数 LLM 密钥管理，API Key 改为读取后端环境变量，并在打开模型配置时移除数据库中遗留的密钥列。
 
 #### Fixed / 修复
 

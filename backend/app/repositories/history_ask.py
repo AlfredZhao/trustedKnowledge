@@ -1,10 +1,16 @@
+import asyncio
+import json
 import re
 from datetime import date, datetime, timedelta
 from typing import Any
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 import oracledb
 
+from app.core.config import settings
 from app.db.oracle import acquire_connection
+from app.repositories.llm_config import get_history_ask_llm_config
 
 
 COMMON_WORDS = {
@@ -21,6 +27,8 @@ COMMON_WORDS = {
     "一下",
     "工作量",
 }
+
+LLM_ERROR_PREFIXES = ("HTTP异常", "API错误", "系统错误", "错误:")
 
 DAY_ALIASES = {
     "D1": ["d1", "monday", "mon", "周一", "星期一", "礼拜一"],
@@ -367,6 +375,82 @@ def _build_fallback_answer(
     return "\n".join(lines)
 
 
+def _normalize_chat_completions_url(base_url: str) -> str:
+    normalized = base_url.strip().rstrip("/")
+    if normalized.endswith("/chat/completions"):
+        return normalized
+    return f"{normalized}/chat/completions"
+
+
+def _call_openai_compatible_llm_sync(
+    *,
+    base_url: str,
+    api_key: str,
+    model_name: str,
+    prompt: str,
+    system: str,
+) -> str:
+    payload = {
+        "model": model_name,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": prompt},
+        ],
+        "temperature": 0.2,
+        "max_tokens": 1200,
+    }
+    request = Request(
+        _normalize_chat_completions_url(base_url),
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+
+    try:
+        with urlopen(request, timeout=45) as response:
+            response_payload = json.loads(response.read().decode("utf-8"))
+    except HTTPError as error:
+        body = error.read().decode("utf-8", errors="replace")[:500]
+        raise RuntimeError(f"HTTP {error.code}: {body}") from error
+    except (URLError, TimeoutError, json.JSONDecodeError) as error:
+        raise RuntimeError(str(error)) from error
+
+    choices = response_payload.get("choices")
+    if not isinstance(choices, list) or not choices:
+        raise RuntimeError("LLM 响应缺少 choices")
+
+    message = choices[0].get("message") if isinstance(choices[0], dict) else None
+    content = message.get("content") if isinstance(message, dict) else None
+    if not isinstance(content, str) or not content.strip():
+        raise RuntimeError("LLM 响应缺少回答内容")
+    return content.strip()
+
+
+async def _call_history_ask_llm(
+    *,
+    config: dict[str, Any],
+    prompt: str,
+    system: str,
+) -> str:
+    base_url = str(config.get("base_url") or "").strip()
+    api_key = settings.history_ask_llm_api_key.strip()
+    model_name = str(config.get("model_name") or "").strip()
+    if not base_url or not api_key or not model_name:
+        raise RuntimeError("LLM 配置未完整填写，需要 Base URL、模型名和后端环境变量 TRUSTED_KNOWLEDGE_HISTORY_ASK_LLM_API_KEY。")
+
+    return await asyncio.to_thread(
+        _call_openai_compatible_llm_sync,
+        base_url=base_url,
+        api_key=api_key,
+        model_name=model_name,
+        prompt=prompt,
+        system=system,
+    )
+
+
 def _format_filter_summary(filters: dict[str, Any]) -> str:
     labels = {
         "keyword": "关键词",
@@ -515,18 +599,17 @@ async def ask_history(question: str) -> dict[str, Any]:
                 "不要编造工时；如果没有工时字段，明确说明工作量按记录数、活跃日期和类型分布衡量。"
                 "回答使用中文，结构清晰，先给结论，再给统计依据和代表性记录。"
             )
-            try:
-                await cursor.execute("select chat_llm(:prompt, :system) from dual", {"prompt": prompt, "system": system})
-                llm_row = await cursor.fetchone()
-                llm_answer = llm_row[0] if llm_row else None
-                if llm_answer and not str(llm_answer).startswith(("HTTP异常", "API错误", "系统错误", "错误:")):
-                    answer = str(llm_answer)
-                    llm_used = True
-                elif llm_answer:
-                    warning = str(llm_answer)[:500]
-            except oracledb.Error as exc:
-                error = exc.args[0] if exc.args else exc
-                warning = getattr(error, "message", str(exc))
+            llm_config = await get_history_ask_llm_config(connection)
+            if llm_config.get("enabled"):
+                try:
+                    llm_answer = await _call_history_ask_llm(config=llm_config, prompt=prompt, system=system)
+                    if llm_answer and not llm_answer.startswith(LLM_ERROR_PREFIXES):
+                        answer = llm_answer
+                        llm_used = True
+                    elif llm_answer:
+                        warning = llm_answer[:500]
+                except RuntimeError as exc:
+                    warning = str(exc)[:500]
 
     return {
         "answer": answer,

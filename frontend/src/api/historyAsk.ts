@@ -1,4 +1,4 @@
-import type { HistoryAskResponse } from "../types";
+import type { HistoryAskResponse, LlmConfig, LlmConfigDraft } from "../types";
 import { clearStoredApiKey, readStoredApiKey } from "./auth";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.trim() ?? "";
@@ -41,5 +41,21 @@ export async function askHistory(question: string): Promise<HistoryAskResponse> 
   return request<HistoryAskResponse>("/api/history-ask", {
     method: "POST",
     body: JSON.stringify({ question }),
+  });
+}
+
+export async function fetchHistoryAskLlmConfig(): Promise<LlmConfig> {
+  return request<LlmConfig>("/api/history-ask/llm-config");
+}
+
+export async function updateHistoryAskLlmConfig(draft: LlmConfigDraft): Promise<LlmConfig> {
+  return request<LlmConfig>("/api/history-ask/llm-config", {
+    method: "PUT",
+    body: JSON.stringify({
+      provider_name: draft.provider_name,
+      base_url: draft.base_url,
+      model_name: draft.model_name,
+      enabled: draft.enabled,
+    }),
   });
 }

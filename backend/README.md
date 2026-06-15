@@ -22,9 +22,12 @@ TRUSTED_KNOWLEDGE_DB_POOL_MAX_LIFETIME_SESSION=3600
 TRUSTED_KNOWLEDGE_ADMIN_USERNAME=admin
 TRUSTED_KNOWLEDGE_ADMIN_PASSWORD=...
 TRUSTED_KNOWLEDGE_API_KEY=...
+TRUSTED_KNOWLEDGE_HISTORY_ASK_LLM_API_KEY=...
 ```
 
 The pool ping/lifetime settings keep idle Oracle sessions from being reused too long after mobile PWA resumes or network interruptions.
+
+AI Ask keeps Base URL, model name, and enablement in Oracle, but reads the LLM API key only from `TRUSTED_KNOWLEDGE_HISTORY_ASK_LLM_API_KEY`.
 
 All `/api/knowledge` routes require:
 

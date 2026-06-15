@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     allow_web_restart: bool = Field(False, validation_alias="TRUSTED_KNOWLEDGE_ALLOW_WEB_RESTART")
     allow_web_codex: bool = Field(False, validation_alias="TRUSTED_KNOWLEDGE_ALLOW_WEB_CODEX")
     codex_bin: str = Field("codex", validation_alias="TRUSTED_KNOWLEDGE_CODEX_BIN")
+    history_ask_llm_api_key: str = Field("", validation_alias="TRUSTED_KNOWLEDGE_HISTORY_ASK_LLM_API_KEY")
 
     model_config = SettingsConfigDict(
         env_file=".env",

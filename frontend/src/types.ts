@@ -185,6 +185,21 @@ export interface HistoryAskResponse {
   warning: string | null;
 }
 
+export interface LlmConfig {
+  provider_name: string;
+  base_url: string;
+  model_name: string;
+  enabled: boolean;
+  has_api_key: boolean;
+}
+
+export interface LlmConfigDraft {
+  provider_name: string;
+  base_url: string;
+  model_name: string;
+  enabled: boolean;
+}
+
 export interface CodexRunResponse {
   output: string;
   error_output: string;

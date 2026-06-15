@@ -27,6 +27,7 @@ import {
   Plus,
   QrCode,
   RefreshCw,
+  Save,
   Search,
   ShieldCheck,
   Sparkles,
@@ -68,7 +69,7 @@ import {
   updateTodo,
 } from "./api/knowledge";
 import { fetchHistory, readCachedHistory } from "./api/history";
-import { askHistory } from "./api/historyAsk";
+import { askHistory, fetchHistoryAskLlmConfig, updateHistoryAskLlmConfig } from "./api/historyAsk";
 import { getCodexJob, startCodexJob } from "./api/codex";
 import {
   createCurrentRecord,
@@ -108,6 +109,8 @@ import type {
   KnowledgeDraft,
   KnowledgeItem,
   KnowledgeStatus,
+  LlmConfig,
+  LlmConfigDraft,
   LlmUsageSample,
   SystemRestartResponse,
   TodoDraft,
@@ -140,6 +143,13 @@ const emptyEnglishMaterialDraft: EnglishMaterialDraft = {
   full_script: "",
   title: "",
   flag: "0",
+};
+
+const emptyLlmConfigDraft: LlmConfigDraft = {
+  provider_name: "OpenAI Compatible",
+  base_url: "",
+  model_name: "",
+  enabled: false,
 };
 
 const PAGE_SIZE = 5;
@@ -509,6 +519,12 @@ function App() {
   const [historyAskError, setHistoryAskError] = useState<string | null>(null);
   const [hasCopiedHistoryAskAnswer, setHasCopiedHistoryAskAnswer] = useState(false);
   const [isHistoryAsking, setIsHistoryAsking] = useState(false);
+  const [historyAskLlmConfig, setHistoryAskLlmConfig] = useState<LlmConfig | null>(null);
+  const [historyAskLlmConfigDraft, setHistoryAskLlmConfigDraft] = useState<LlmConfigDraft>(emptyLlmConfigDraft);
+  const [isHistoryAskLlmConfigLoading, setIsHistoryAskLlmConfigLoading] = useState(false);
+  const [isHistoryAskLlmConfigSaving, setIsHistoryAskLlmConfigSaving] = useState(false);
+  const [historyAskLlmConfigError, setHistoryAskLlmConfigError] = useState<string | null>(null);
+  const [historyAskLlmConfigSaved, setHistoryAskLlmConfigSaved] = useState(false);
   const [usageItems, setUsageItems] = useState<LlmUsageSample[]>([]);
   const [usageTotal, setUsageTotal] = useState(0);
   const [isUsageLoading, setIsUsageLoading] = useState(false);
@@ -597,6 +613,9 @@ function App() {
       setHistoryTotal(0);
       setHistoryAskAnswer(null);
       setHasCopiedHistoryAskAnswer(false);
+      setHistoryAskLlmConfig(null);
+      setHistoryAskLlmConfigDraft(emptyLlmConfigDraft);
+      setHistoryAskLlmConfigSaved(false);
       setAiCodingMessages([]);
       setActiveCodexJobId(null);
       setLiveCodexOutput("");
@@ -818,6 +837,37 @@ function App() {
       setAiCodingNoticeStatus(null);
     }
   }, [activeView, aiCodingNoticeStatus]);
+
+  useEffect(() => {
+    if (!apiKey || activeView !== "historyAsk") return;
+
+    let mounted = true;
+    setIsHistoryAskLlmConfigLoading(true);
+    fetchHistoryAskLlmConfig()
+      .then((config) => {
+        if (!mounted) return;
+        setHistoryAskLlmConfig(config);
+        setHistoryAskLlmConfigDraft({
+          provider_name: config.provider_name,
+          base_url: config.base_url,
+          model_name: config.model_name,
+          enabled: config.enabled,
+        });
+        setHistoryAskLlmConfigError(null);
+      })
+      .catch((error: Error) => {
+        if (!mounted) return;
+        setHistoryAskLlmConfigError(error.message);
+      })
+      .finally(() => {
+        if (!mounted) return;
+        setIsHistoryAskLlmConfigLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [activeView, apiKey]);
 
   useEffect(() => {
     setTodoCopyError(null);
@@ -2183,6 +2233,31 @@ function App() {
     }
   }
 
+  async function handleSaveHistoryAskLlmConfig(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (isHistoryAskLlmConfigSaving) return;
+
+    setIsHistoryAskLlmConfigSaving(true);
+    setHistoryAskLlmConfigError(null);
+    setHistoryAskLlmConfigSaved(false);
+    try {
+      const config = await updateHistoryAskLlmConfig(historyAskLlmConfigDraft);
+      setHistoryAskLlmConfig(config);
+      setHistoryAskLlmConfigDraft({
+        provider_name: config.provider_name,
+        base_url: config.base_url,
+        model_name: config.model_name,
+        enabled: config.enabled,
+      });
+      setHistoryAskLlmConfigSaved(true);
+      window.setTimeout(() => setHistoryAskLlmConfigSaved(false), 1600);
+    } catch (error) {
+      setHistoryAskLlmConfigError(error instanceof Error ? error.message : "LLM 配置保存失败，请稍后重试。");
+    } finally {
+      setIsHistoryAskLlmConfigSaving(false);
+    }
+  }
+
   function handleOpenHistoryFromAsk() {
     if (!historyAskAnswer) return;
 
@@ -2426,8 +2501,16 @@ function App() {
               error={historyAskError}
               hasCopiedAnswer={hasCopiedHistoryAskAnswer}
               isLoading={isHistoryAsking}
+              isLlmConfigLoading={isHistoryAskLlmConfigLoading}
+              isLlmConfigSaving={isHistoryAskLlmConfigSaving}
+              llmConfig={historyAskLlmConfig}
+              llmConfigDraft={historyAskLlmConfigDraft}
+              llmConfigError={historyAskLlmConfigError}
+              llmConfigSaved={historyAskLlmConfigSaved}
               question={historyAskQuestion}
               onCopyAnswer={handleCopyHistoryAskAnswer}
+              onLlmConfigDraftChange={setHistoryAskLlmConfigDraft}
+              onLlmConfigSave={handleSaveHistoryAskLlmConfig}
               onOpenHistory={handleOpenHistoryFromAsk}
               onQuestionChange={setHistoryAskQuestion}
               onSubmit={handleAskHistory}
@@ -6486,8 +6569,16 @@ function HistoryAskPanel({
   error,
   hasCopiedAnswer,
   isLoading,
+  isLlmConfigLoading,
+  isLlmConfigSaving,
+  llmConfig,
+  llmConfigDraft,
+  llmConfigError,
+  llmConfigSaved,
   question,
   onCopyAnswer,
+  onLlmConfigDraftChange,
+  onLlmConfigSave,
   onOpenHistory,
   onQuestionChange,
   onSubmit,
@@ -6496,13 +6587,27 @@ function HistoryAskPanel({
   error: string | null;
   hasCopiedAnswer: boolean;
   isLoading: boolean;
+  isLlmConfigLoading: boolean;
+  isLlmConfigSaving: boolean;
+  llmConfig: LlmConfig | null;
+  llmConfigDraft: LlmConfigDraft;
+  llmConfigError: string | null;
+  llmConfigSaved: boolean;
   question: string;
   onCopyAnswer: () => void;
+  onLlmConfigDraftChange: (draft: LlmConfigDraft) => void;
+  onLlmConfigSave: (event: React.FormEvent<HTMLFormElement>) => void;
   onOpenHistory: () => void;
   onQuestionChange: (question: string) => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
 }) {
   const canSubmit = question.trim().length >= 2 && !isLoading;
+  const canSaveLlmConfig =
+    !isLlmConfigSaving &&
+    (!llmConfigDraft.enabled ||
+      (llmConfigDraft.base_url.trim().length > 0 &&
+        llmConfigDraft.model_name.trim().length > 0 &&
+        Boolean(llmConfig?.has_api_key)));
   const examples = [
     "总结最近30天关于“中信泰富”的工作记录。",
     "针对 alfred 的 W01 工作记录，统计 Level 3 的工作量。",
@@ -6624,6 +6729,96 @@ function HistoryAskPanel({
         </section>
 
         <aside className="min-w-0 rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
+          <div className="mb-5 rounded-lg border border-white/10 bg-white/[0.025] p-4">
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
+                  <ShieldCheck size={17} />
+                  LLM Config
+                </div>
+                <h2 className="text-lg font-semibold text-slate-50">模型配置</h2>
+              </div>
+              <span
+                className={`rounded-md border px-2 py-1 text-xs ${
+                  llmConfig?.enabled
+                    ? "border-mint-300/25 bg-mint-300/10 text-mint-200"
+                    : "border-white/10 bg-white/[0.035] text-slate-400"
+                }`}
+              >
+                {llmConfig?.enabled ? "已启用" : "未启用"}
+              </span>
+            </div>
+
+            {isLlmConfigLoading ? (
+              <LoadingStack />
+            ) : (
+              <form className="space-y-3" onSubmit={onLlmConfigSave}>
+                <label className="block text-xs font-medium text-slate-500">
+                  供应商
+                  <input
+                    className="control mt-2 h-10"
+                    value={llmConfigDraft.provider_name}
+                    onChange={(event) =>
+                      onLlmConfigDraftChange({ ...llmConfigDraft, provider_name: event.target.value })
+                    }
+                    placeholder="OpenAI Compatible"
+                  />
+                </label>
+                <label className="block text-xs font-medium text-slate-500">
+                  Base URL
+                  <input
+                    className="control mt-2 h-10"
+                    value={llmConfigDraft.base_url}
+                    onChange={(event) =>
+                      onLlmConfigDraftChange({ ...llmConfigDraft, base_url: event.target.value })
+                    }
+                    placeholder="https://api.example.com/v1"
+                  />
+                </label>
+                <label className="block text-xs font-medium text-slate-500">
+                  模型
+                  <input
+                    className="control mt-2 h-10"
+                    value={llmConfigDraft.model_name}
+                    onChange={(event) =>
+                      onLlmConfigDraftChange({ ...llmConfigDraft, model_name: event.target.value })
+                    }
+                    placeholder="deepseek-chat"
+                  />
+                </label>
+                <div className="rounded-lg border border-white/10 bg-white/[0.028] px-3 py-2 text-xs leading-5 text-slate-500">
+                  API Key 仅从后端环境变量读取：{llmConfig?.has_api_key ? "已配置" : "未配置"}
+                </div>
+                <label className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.028] px-3 py-2 text-sm text-slate-300">
+                  <span>启用 AI 总结</span>
+                  <input
+                    checked={llmConfigDraft.enabled}
+                    className="h-4 w-4 accent-mint-300"
+                    type="checkbox"
+                    onChange={(event) =>
+                      onLlmConfigDraftChange({ ...llmConfigDraft, enabled: event.target.checked })
+                    }
+                  />
+                </label>
+                <button
+                  className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-3 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
+                  disabled={!canSaveLlmConfig}
+                  type="submit"
+                >
+                  {isLlmConfigSaving ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
+                  {llmConfigSaved ? "已保存" : "保存配置"}
+                </button>
+              </form>
+            )}
+
+            {llmConfigError ? (
+              <div className="mt-3 flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-2 text-xs leading-5 text-red-100">
+                <TriangleAlert className="mt-0.5 shrink-0 text-red-300" size={15} />
+                <span>{llmConfigError}</span>
+              </div>
+            ) : null}
+          </div>
+
           <div className="mb-5">
             <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
               <CircleGauge size={17} />

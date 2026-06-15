@@ -70,9 +70,12 @@ TRUSTED_KNOWLEDGE_ADMIN_USERNAME=admin
 TRUSTED_KNOWLEDGE_ADMIN_PASSWORD=...
 TRUSTED_KNOWLEDGE_API_KEY=...
 TRUSTED_KNOWLEDGE_FRONTEND_BASE_URL=http://localhost:8021
+TRUSTED_KNOWLEDGE_HISTORY_ASK_LLM_API_KEY=...
 ```
 
 不要提交 `backend/.env`。
+
+AI 问数的 Base URL、模型名和启用状态在页面中配置并保存到 Oracle；LLM API Key 只从 `backend/.env` 的 `TRUSTED_KNOWLEDGE_HISTORY_ASK_LLM_API_KEY` 读取，不保存到数据库。
 
 ### 服务运行
 
@@ -284,9 +287,12 @@ TRUSTED_KNOWLEDGE_ADMIN_USERNAME=admin
 TRUSTED_KNOWLEDGE_ADMIN_PASSWORD=...
 TRUSTED_KNOWLEDGE_API_KEY=...
 TRUSTED_KNOWLEDGE_FRONTEND_BASE_URL=http://localhost:8021
+TRUSTED_KNOWLEDGE_HISTORY_ASK_LLM_API_KEY=...
 ```
 
 Do not commit `backend/.env`.
+
+AI Ask stores Base URL, model name, and enablement in Oracle from the UI. The LLM API key is read only from `TRUSTED_KNOWLEDGE_HISTORY_ASK_LLM_API_KEY` in `backend/.env` and is not stored in the database.
 
 ### Running Services
 
