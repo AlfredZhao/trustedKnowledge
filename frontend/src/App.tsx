@@ -162,6 +162,8 @@ const CURRENT_RECORDS_PAGE_SIZE = 10;
 const ENGLISH_MATERIALS_PAGE_SIZE = 10;
 const HISTORY_PAGE_SIZE = 10;
 const USAGE_SAMPLE_LIMIT = 72;
+const OVERVIEW_TODO_LIMIT = 5;
+const OVERVIEW_KNOWLEDGE_LIMIT = 5;
 const RESET_READY_DELAY_MS = 60 * 60 * 1000;
 const NEW_KNOWLEDGE_DRAFT_STORAGE_KEY = "trustedKnowledge.newDraft";
 const UI_STATE_STORAGE_KEY = "trustedKnowledge.uiState.v1";
@@ -169,6 +171,7 @@ const MOBILE_VIEWPORT_CONTENT = "width=device-width, initial-scale=1.0, viewport
 const MOBILE_VIEWPORT_RESET_CONTENT =
   "width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, viewport-fit=cover";
 const APP_VIEWS: AppView[] = [
+  "overview",
   "workbench",
   "factory",
   "blogFactory",
@@ -186,6 +189,7 @@ type FunctionNavItem = {
   view: AppView;
 };
 const FUNCTION_NAV_ITEMS: FunctionNavItem[] = [
+  { icon: ChartLine, label: "总览", view: "overview" },
   { icon: BookOpenCheck, label: "知识录入", view: "workbench" },
   { icon: FlaskConical, label: "知识加工", view: "factory" },
   { icon: ClipboardList, label: "博客工厂", view: "blogFactory" },
@@ -299,6 +303,18 @@ interface UsageChangeItem extends LlmUsageSample {
   period_start: string;
   period_end: string;
   sample_count: number;
+}
+
+interface OverviewData {
+  usageItems: LlmUsageSample[];
+  usageTotal: number;
+  processingTodos: TodoItem[];
+  processingTodoTotal: number;
+  recentKnowledge: KnowledgeItem[];
+  knowledgeTotal: number;
+  unpublishedKnowledgeTotal: number;
+  latestEnglishMaterial: EnglishMaterialItem | null;
+  englishMaterialTotal: number;
 }
 
 interface AiCodingMessage {
@@ -534,6 +550,21 @@ function App() {
   const [isUsageRefreshing, setIsUsageRefreshing] = useState(false);
   const [usageError, setUsageError] = useState<string | null>(null);
   const [usageRefreshToken, setUsageRefreshToken] = useState(0);
+  const [overviewData, setOverviewData] = useState<OverviewData>({
+    usageItems: [],
+    usageTotal: 0,
+    processingTodos: [],
+    processingTodoTotal: 0,
+    recentKnowledge: [],
+    knowledgeTotal: 0,
+    unpublishedKnowledgeTotal: 0,
+    latestEnglishMaterial: null,
+    englishMaterialTotal: 0,
+  });
+  const [isOverviewLoading, setIsOverviewLoading] = useState(false);
+  const [isOverviewRefreshing, setIsOverviewRefreshing] = useState(false);
+  const [overviewError, setOverviewError] = useState<string | null>(null);
+  const [overviewRefreshToken, setOverviewRefreshToken] = useState(0);
   const [aiCodingPrompt, setAiCodingPrompt] = useState(restoredUiState.aiCoding.prompt);
   const [aiCodingMessages, setAiCodingMessages] = useState<AiCodingMessage[]>(restoredUiState.aiCoding.messages);
   const [activeCodexJobId, setActiveCodexJobId] = useState<string | null>(restoredUiState.aiCoding.activeJobId);
@@ -612,6 +643,17 @@ function App() {
       setSelectedEnglishMaterial(null);
       setUsageItems([]);
       setUsageTotal(0);
+      setOverviewData({
+        usageItems: [],
+        usageTotal: 0,
+        processingTodos: [],
+        processingTodoTotal: 0,
+        recentKnowledge: [],
+        knowledgeTotal: 0,
+        unpublishedKnowledgeTotal: 0,
+        latestEnglishMaterial: null,
+        englishMaterialTotal: 0,
+      });
       setHistoryItems([]);
       setHistoryTotal(0);
       setHistoryAskAnswer(null);
@@ -1470,6 +1512,106 @@ function App() {
   ]);
 
   useEffect(() => {
+    if (!apiKey || activeView !== "overview") return;
+
+    let mounted = true;
+    const usageLimit = USAGE_SAMPLE_LIMIT;
+    const todoQueryConfig = {
+      status: "处理中" as const,
+      limit: OVERVIEW_TODO_LIMIT,
+      offset: 0,
+    };
+    const recentKnowledgeQueryConfig = {
+      limit: OVERVIEW_KNOWLEDGE_LIMIT,
+      offset: 0,
+    };
+    const unpublishedKnowledgeQueryConfig = {
+      status: "未发布" as const,
+      limit: OVERVIEW_KNOWLEDGE_LIMIT,
+      offset: 0,
+    };
+    const latestEnglishMaterialQueryConfig = {
+      sortBy: "id" as const,
+      sortDir: "desc" as const,
+      limit: 1,
+      offset: 0,
+    };
+
+    const cachedUsage = readCachedLlmUsage(usageLimit);
+    const cachedTodos = readCachedTodos(todoQueryConfig);
+    const cachedRecentKnowledge = readCachedKnowledge(recentKnowledgeQueryConfig);
+    const cachedUnpublishedKnowledge = readCachedKnowledge(unpublishedKnowledgeQueryConfig);
+    const cachedEnglishMaterial = readCachedEnglishMaterials(latestEnglishMaterialQueryConfig);
+    const hasCompleteCache =
+      cachedUsage && cachedTodos && cachedRecentKnowledge && cachedUnpublishedKnowledge && cachedEnglishMaterial;
+    const hasExistingOverviewData =
+      overviewData.usageItems.length > 0 ||
+      overviewData.processingTodos.length > 0 ||
+      overviewData.recentKnowledge.length > 0 ||
+      overviewData.latestEnglishMaterial !== null;
+    const refreshOnly = overviewRefreshToken > 0 && hasExistingOverviewData;
+
+    if (hasCompleteCache) {
+      setOverviewData({
+        usageItems: cachedUsage.items,
+        usageTotal: cachedUsage.total,
+        processingTodos: cachedTodos.items,
+        processingTodoTotal: cachedTodos.total,
+        recentKnowledge: cachedRecentKnowledge.items,
+        knowledgeTotal: cachedRecentKnowledge.total,
+        unpublishedKnowledgeTotal: cachedUnpublishedKnowledge.total,
+        latestEnglishMaterial: cachedEnglishMaterial.items[0] ?? null,
+        englishMaterialTotal: cachedEnglishMaterial.total,
+      });
+      setOverviewError(null);
+      setIsOverviewLoading(false);
+    } else if (refreshOnly) {
+      setIsOverviewRefreshing(true);
+    } else {
+      setIsOverviewLoading(true);
+    }
+
+    Promise.all([
+      fetchLlmUsage(usageLimit),
+      fetchTodos(todoQueryConfig),
+      fetchKnowledge(recentKnowledgeQueryConfig),
+      fetchKnowledge(unpublishedKnowledgeQueryConfig),
+      fetchEnglishMaterials(latestEnglishMaterialQueryConfig),
+    ])
+      .then(([usageData, todoData, recentKnowledgeData, unpublishedKnowledgeData, englishMaterialData]) => {
+        if (!mounted) return;
+        setOverviewData({
+          usageItems: usageData.items,
+          usageTotal: usageData.total,
+          processingTodos: todoData.items,
+          processingTodoTotal: todoData.total,
+          recentKnowledge: recentKnowledgeData.items,
+          knowledgeTotal: recentKnowledgeData.total,
+          unpublishedKnowledgeTotal: unpublishedKnowledgeData.total,
+          latestEnglishMaterial: englishMaterialData.items[0] ?? null,
+          englishMaterialTotal: englishMaterialData.total,
+        });
+        setOverviewError(null);
+      })
+      .catch((error: Error) => {
+        if (!mounted) return;
+        setOverviewError(error.message);
+      })
+      .finally(() => {
+        if (!mounted) return;
+        if (refreshOnly) {
+          setIsOverviewRefreshing(false);
+        } else {
+          setIsOverviewLoading(false);
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [activeView, apiKey, overviewRefreshToken]);
+
+  useEffect(() => {
     if (!apiKey || activeView !== "usage") return;
 
     let mounted = true;
@@ -2206,6 +2348,33 @@ function App() {
     setUsageRefreshToken((current) => current + 1);
   }
 
+  function handleRefreshOverview() {
+    setOverviewRefreshToken((current) => current + 1);
+  }
+
+  function handleOpenOverviewView(view: AppView) {
+    setActiveView(view);
+  }
+
+  function handleOpenOverviewTodo(item: TodoItem) {
+    setSelectedTodoId(item.id);
+    setTodoDraft(todoItemToDraft(item));
+    setActiveView("todos");
+  }
+
+  function handleOpenOverviewKnowledge(item: KnowledgeItem) {
+    setSelectedId(item.id);
+    setDraft(itemToDraft(item));
+    setActiveView("workbench");
+  }
+
+  function handleOpenOverviewEnglishMaterial(item: EnglishMaterialItem) {
+    setSelectedEnglishMaterial(item);
+    setEnglishMaterialDetailDraft(englishMaterialItemToDraft(item));
+    setIsEnglishMaterialDetailOpen(true);
+    setActiveView("englishMaterials");
+  }
+
   async function handleAskHistory(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const question = historyAskQuestion.trim();
@@ -2384,7 +2553,9 @@ function App() {
   }
 
   const viewTitle =
-    activeView === "workbench"
+    activeView === "overview"
+      ? "总览"
+      : activeView === "workbench"
       ? "可信知识录入"
       : activeView === "factory"
         ? "可信知识加工"
@@ -2404,7 +2575,9 @@ function App() {
                   ? "AI 编程界面"
                 : "LLM 使用情况";
   const viewSubtitle =
-    activeView === "workbench"
+    activeView === "overview"
+      ? "Command Center"
+      : activeView === "workbench"
       ? "Trusted Knowledge"
       : activeView === "factory"
         ? "Blog Factory"
@@ -2459,7 +2632,9 @@ function App() {
           <Topbar
             activeView={activeView}
             query={
-              activeView === "workbench"
+              activeView === "overview"
+                ? ""
+                : activeView === "workbench"
                 ? query
                 : activeView === "factory"
                   ? factoryQuery
@@ -2502,7 +2677,19 @@ function App() {
             }}
           />
 
-          {activeView === "historyAsk" ? (
+          {activeView === "overview" ? (
+            <OverviewDashboard
+              data={overviewData}
+              isLoading={isOverviewLoading}
+              isRefreshing={isOverviewRefreshing}
+              loadError={overviewError}
+              onOpenEnglishMaterial={handleOpenOverviewEnglishMaterial}
+              onOpenKnowledge={handleOpenOverviewKnowledge}
+              onOpenTodo={handleOpenOverviewTodo}
+              onOpenView={handleOpenOverviewView}
+              onRefresh={handleRefreshOverview}
+            />
+          ) : activeView === "historyAsk" ? (
             <HistoryAskPanel
               answer={historyAskAnswer}
               error={historyAskError}
@@ -3138,7 +3325,7 @@ function Topbar({
         })}
       </nav>
       <div className="flex min-w-0 flex-wrap items-center gap-2">
-        {activeView !== "usage" && activeView !== "historyAsk" && activeView !== "aiCoding" ? (
+        {activeView !== "overview" && activeView !== "usage" && activeView !== "historyAsk" && activeView !== "aiCoding" ? (
           <label className="flex h-11 min-w-[180px] flex-1 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-slate-400 md:w-80">
             <Search size={17} />
             <input
@@ -7698,6 +7885,316 @@ function HistoryExplorer({
   );
 }
 
+function OverviewDashboard({
+  data,
+  isLoading,
+  isRefreshing,
+  loadError,
+  onOpenEnglishMaterial,
+  onOpenKnowledge,
+  onOpenTodo,
+  onOpenView,
+  onRefresh,
+}: {
+  data: OverviewData;
+  isLoading: boolean;
+  isRefreshing: boolean;
+  loadError: string | null;
+  onOpenEnglishMaterial: (item: EnglishMaterialItem) => void;
+  onOpenKnowledge: (item: KnowledgeItem) => void;
+  onOpenTodo: (item: TodoItem) => void;
+  onOpenView: (view: AppView) => void;
+  onRefresh: () => void;
+}) {
+  const latestUsage = data.usageItems.length > 0 ? data.usageItems[data.usageItems.length - 1] : null;
+  const usagePercent = latestUsage ? getUsagePercent(latestUsage) : 0;
+  const resetAt = latestUsage ? parseUtcDate(latestUsage.next_reset_at) : null;
+  const readyAt = getResetReadyAt(resetAt);
+  const latestEnglish = data.latestEnglishMaterial;
+  const hasOverviewData =
+    latestUsage ||
+    data.processingTodos.length > 0 ||
+    data.recentKnowledge.length > 0 ||
+    latestEnglish ||
+    data.knowledgeTotal > 0 ||
+    data.englishMaterialTotal > 0;
+
+  if (isLoading) {
+    return (
+      <div className="flex-1 px-4 pb-4 pt-2">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/72 p-4 shadow-soft-glow backdrop-blur-xl">
+            <LoadingStack />
+          </section>
+          <aside className="min-w-0 rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
+            <LoadingStack />
+          </aside>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError && !hasOverviewData) {
+    return (
+      <div className="flex-1 px-4 pb-4 pt-2">
+        <section className="rounded-lg border border-amberline/25 bg-amberline/10 p-4">
+          <div className="mb-2 flex items-center gap-2 text-sm font-medium text-amberline">
+            <TriangleAlert size={16} />
+            总览读取失败
+          </div>
+          <p className="text-sm leading-6 text-amber-100/80">{loadError}</p>
+        </section>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex-1 px-4 pb-4 pt-2">
+      <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
+            <ChartLine size={17} />
+            Overview
+          </div>
+          <h2 className="text-xl font-semibold text-slate-50">关键状态</h2>
+        </div>
+        <button
+          className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-sm text-slate-300 transition hover:border-mint-300/30 hover:bg-white/[0.055] hover:text-mint-300 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+          type="button"
+          disabled={isRefreshing}
+          onClick={onRefresh}
+        >
+          <RefreshCw className={isRefreshing ? "animate-spin" : ""} size={16} />
+          刷新总览
+        </button>
+      </div>
+
+      {loadError ? (
+        <div className="mb-4 rounded-lg border border-amberline/25 bg-amberline/10 p-3 text-sm text-amber-100/80">
+          {loadError}
+        </div>
+      ) : null}
+
+      <div className="mb-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <MetricTile
+          icon={<CircleGauge size={17} />}
+          label="LLM 用量"
+          value={latestUsage ? formatPercent(usagePercent) : "暂无"}
+          detail={latestUsage ? `${formatAmount(latestUsage.remaining_budget)} left` : "暂无采样"}
+        />
+        <MetricTile
+          icon={<ClipboardCheck size={17} />}
+          label="处理中 Todo"
+          value={formatAmount(data.processingTodoTotal)}
+          detail={`${data.processingTodos.length} 条已载入`}
+        />
+        <MetricTile
+          icon={<BookOpenCheck size={17} />}
+          label="未发布知识"
+          value={formatAmount(data.unpublishedKnowledgeTotal)}
+          detail={`${formatAmount(data.knowledgeTotal)} 条可信知识`}
+        />
+        <MetricTile
+          icon={<FileText size={17} />}
+          label="English 素材"
+          value={formatAmount(data.englishMaterialTotal)}
+          detail={latestEnglish?.sequence_no ? `最新 #${latestEnglish.sequence_no}` : "最近素材"}
+        />
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.72fr)_minmax(300px,0.58fr)]">
+        <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/72 p-4 shadow-soft-glow backdrop-blur-xl">
+          <OverviewSectionHeader
+            icon={<Bot size={17} />}
+            title="LLM Usage"
+            actionLabel="查看用量"
+            onAction={() => onOpenView("usage")}
+          />
+          {latestUsage ? (
+            <>
+              <div className="mb-4 grid gap-3 sm:grid-cols-3">
+                <div className="rounded-lg border border-white/10 bg-white/[0.028] p-3">
+                  <div className="mb-1 text-xs text-slate-500">已使用</div>
+                  <div className="text-lg font-semibold text-slate-50">{formatAmount(latestUsage.used_amount)}</div>
+                </div>
+                <div className="rounded-lg border border-white/10 bg-white/[0.028] p-3">
+                  <div className="mb-1 text-xs text-slate-500">剩余额度</div>
+                  <div className="text-lg font-semibold text-mint-300">{formatAmount(latestUsage.remaining_budget)}</div>
+                </div>
+                <div className="rounded-lg border border-white/10 bg-white/[0.028] p-3">
+                  <div className="mb-1 text-xs text-slate-500">下次可用</div>
+                  <div className="truncate text-lg font-semibold text-slate-50">{formatResetDate(readyAt)}</div>
+                </div>
+              </div>
+              <div className="rounded-lg border border-white/10 bg-white/[0.028] p-4">
+                <div className="mb-3 flex items-center justify-between gap-3 text-sm">
+                  <span className="font-medium text-slate-200">当前周期</span>
+                  <span className="text-slate-400">{formatPercent(usagePercent)}</span>
+                </div>
+                <div className="h-3 overflow-hidden rounded-full bg-white/8">
+                  <div className="h-full rounded-full bg-mint-300 transition-all duration-500" style={{ width: `${usagePercent}%` }} />
+                </div>
+                <div className="mt-3 flex flex-col gap-1 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+                  <span>采样：{formatDateTime(latestUsage.sample_time)}</span>
+                  <span>{formatResetDistance(readyAt, "可用")}</span>
+                </div>
+              </div>
+            </>
+          ) : (
+            <OverviewEmpty icon={<Bot size={28} />} title="暂无 LLM 用量采样" />
+          )}
+        </section>
+
+        <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
+          <OverviewSectionHeader
+            icon={<ClipboardCheck size={17} />}
+            title="处理中 Todo"
+            actionLabel="查看待办"
+            onAction={() => onOpenView("todos")}
+          />
+          {data.processingTodos.length > 0 ? (
+            <div className="space-y-3">
+              {data.processingTodos.map((item) => (
+                <button
+                  key={item.id}
+                  className="block w-full rounded-lg border border-white/10 bg-white/[0.028] p-3 text-left transition hover:border-mint-300/25 hover:bg-white/[0.045]"
+                  type="button"
+                  onClick={() => onOpenTodo(item)}
+                >
+                  <div className="mb-2 flex items-start justify-between gap-3">
+                    <div className="line-clamp-2 text-sm font-medium leading-6 text-slate-100">{item.title}</div>
+                    <span className={`shrink-0 rounded border px-2 py-1 text-xs ${todoStatusStyles[item.todo_status]}`}>
+                      {item.todo_status}
+                    </span>
+                  </div>
+                  <div className="line-clamp-2 text-sm leading-6 text-slate-500">{item.content}</div>
+                  <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-500">
+                    {item.topic_tag ? <span>#{item.topic_tag}</span> : null}
+                    <span>{formatDate(item.updated_at ?? item.created_at)}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <OverviewEmpty icon={<ClipboardCheck size={28} />} title="暂无处理中 Todo" />
+          )}
+        </section>
+
+        <aside className="min-w-0 rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
+          <OverviewSectionHeader
+            icon={<BookOpenCheck size={17} />}
+            title="最近 English"
+            actionLabel="查看素材"
+            onAction={() => onOpenView("englishMaterials")}
+          />
+          {latestEnglish ? (
+            <button
+              className="block w-full rounded-lg border border-mint-300/20 bg-mint-300/8 p-4 text-left transition hover:border-mint-300/35 hover:bg-mint-300/10"
+              type="button"
+              onClick={() => onOpenEnglishMaterial(latestEnglish)}
+            >
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <span className="rounded border border-white/10 bg-white/[0.05] px-2 py-1 text-xs text-mint-100">
+                  {latestEnglish.category ?? "未分类"}
+                </span>
+                <span className="text-xs text-mint-100/70">
+                  {latestEnglish.flag === 1 ? "已发表" : "草稿箱"}
+                </span>
+              </div>
+              <div className="mb-2 line-clamp-2 text-base font-semibold leading-6 text-slate-50">
+                {latestEnglish.title || latestEnglish.base_expression || "未命名素材"}
+              </div>
+              <div className="line-clamp-3 text-sm leading-6 text-mint-100/80">
+                {latestEnglish.professional_sentence || latestEnglish.base_expression || "暂无英文内容"}
+              </div>
+              <div className="mt-3 line-clamp-2 text-sm leading-6 text-slate-400">
+                {latestEnglish.chinese_translation || "暂无中文翻译"}
+              </div>
+            </button>
+          ) : (
+            <OverviewEmpty icon={<FileText size={28} />} title="暂无 English 素材" />
+          )}
+        </aside>
+      </div>
+
+      <section className="mt-4 rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
+        <OverviewSectionHeader
+          icon={<ShieldCheck size={17} />}
+          title="可信知识"
+          actionLabel="进入知识库"
+          onAction={() => onOpenView("workbench")}
+        />
+        {data.recentKnowledge.length > 0 ? (
+          <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
+            {data.recentKnowledge.map((item) => (
+              <button
+                key={item.id}
+                className="block min-w-0 rounded-lg border border-white/10 bg-white/[0.028] p-4 text-left transition hover:border-mint-300/25 hover:bg-white/[0.045]"
+                type="button"
+                onClick={() => onOpenKnowledge(item)}
+              >
+                <div className="mb-3 flex items-start justify-between gap-3">
+                  <div className="line-clamp-2 text-sm font-medium leading-6 text-slate-100">{item.question}</div>
+                  <span className={`shrink-0 rounded border px-2 py-1 text-xs ${statusStyles[item.blog_status]}`}>
+                    {item.blog_status}
+                  </span>
+                </div>
+                <div className="line-clamp-3 text-sm leading-6 text-slate-500">{item.answer}</div>
+                <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-500">
+                  {item.source ? <span>{item.source}</span> : null}
+                  {item.topic_tag ? <span>#{item.topic_tag}</span> : null}
+                  <span>{formatDate(item.created_date)}</span>
+                </div>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <OverviewEmpty icon={<ShieldCheck size={28} />} title="暂无可信知识" />
+        )}
+      </section>
+    </div>
+  );
+}
+
+function OverviewSectionHeader({
+  icon,
+  title,
+  actionLabel,
+  onAction,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  actionLabel: string;
+  onAction: () => void;
+}) {
+  return (
+    <div className="mb-4 flex items-center justify-between gap-3">
+      <div className="flex min-w-0 items-center gap-2 text-sm font-medium text-mint-300">
+        {icon}
+        <span className="truncate">{title}</span>
+      </div>
+      <button
+        className="shrink-0 rounded-lg border border-white/10 bg-white/[0.035] px-3 py-2 text-xs text-slate-300 transition hover:border-mint-300/30 hover:bg-white/[0.055] hover:text-mint-300"
+        type="button"
+        onClick={onAction}
+      >
+        {actionLabel}
+      </button>
+    </div>
+  );
+}
+
+function OverviewEmpty({ icon, title }: { icon: React.ReactNode; title: string }) {
+  return (
+    <div className="grid min-h-[160px] place-items-center rounded-lg border border-white/10 bg-white/[0.025] p-6 text-center">
+      <div>
+        <div className="mb-3 flex justify-center text-slate-600">{icon}</div>
+        <div className="text-sm font-medium text-slate-400">{title}</div>
+      </div>
+    </div>
+  );
+}
+
 function LlmUsageDashboard({
   items,
   total,
@@ -8616,7 +9113,7 @@ function clearStoredUiState() {
 
 function buildDefaultUiState(): StoredUiState {
   return {
-    activeView: "workbench",
+    activeView: "overview",
     sidebarExpanded: false,
     workbench: {
       query: "",

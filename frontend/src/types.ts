@@ -61,6 +61,7 @@ export interface BlogFactoryItem {
 }
 
 export type AppView =
+  | "overview"
   | "workbench"
   | "factory"
   | "blogFactory"
