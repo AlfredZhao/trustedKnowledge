@@ -190,7 +190,7 @@ type FunctionNavItem = {
 };
 const FUNCTION_NAV_ITEMS: FunctionNavItem[] = [
   { icon: ChartLine, label: "总览", view: "overview" },
-  { icon: BookOpenCheck, label: "知识录入", view: "workbench" },
+  { icon: BookOpenCheck, label: "信息录入", view: "workbench" },
   { icon: FlaskConical, label: "知识加工", view: "factory" },
   { icon: ClipboardList, label: "博客工厂", view: "blogFactory" },
   { icon: ClipboardCheck, label: "待办事项", view: "todos" },
@@ -2556,7 +2556,7 @@ function App() {
     activeView === "overview"
       ? "总览"
       : activeView === "workbench"
-      ? "可信知识录入"
+      ? "可信信息录入"
       : activeView === "factory"
         ? "可信知识加工"
       : activeView === "blogFactory"
@@ -4362,7 +4362,7 @@ function KnowledgeFactory({
                 </button>
               </div>
             ) : (
-              "暂无未发布知识。可以回到知识录入新增，或把状态切换为未发布。"
+              "暂无未发布知识。可以回到信息录入新增，或把状态切换为未发布。"
             )}
           </div>
         ) : (
@@ -5358,7 +5358,7 @@ function TodoWorkspace({
             <div>
               <ClipboardCheck className="mx-auto mb-3 text-slate-600" size={36} />
               <div className="mb-1 font-medium text-slate-300">没有匹配的待办事项</div>
-              <p className="text-sm text-slate-500">在知识录入勾选待办事项后，这里会显示记录。</p>
+              <p className="text-sm text-slate-500">在信息录入勾选待办事项后，这里会显示记录。</p>
             </div>
           </div>
         ) : (

@@ -24,6 +24,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Changed / 变更
 
+- Updated the navigation and related entry copy from `知识录入` to `信息录入`.
+- 将导航及相关录入提示文案从 `知识录入` 调整为 `信息录入`。
+
 #### Fixed / 修复
 
 ## 历史版本更新
