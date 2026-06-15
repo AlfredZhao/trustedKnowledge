@@ -9,7 +9,23 @@ The format follows the common GitHub changelog convention inspired by
 
 ## 本次版本更新
 
-### [0.2.4]
+### [0.2.5]
+
+#### Added / 新增
+
+- Added rendered Markdown viewing and mode-aware copying for AI Ask answers, with rich HTML clipboard output in rendered mode.
+- 为 AI 问数回答新增 Markdown 美化展示和按模式复制，美化模式下复制富文本 HTML。
+
+- Added shared Markdown preview and clipboard utilities so future Markdown surfaces can reuse the same rendered display and document-friendly rich-copy behavior.
+- 新增通用 Markdown 预览组件与复制工具，后续 Markdown 界面可复用同一套美化展示和文档友好的富文本复制行为。
+
+#### Changed / 变更
+
+#### Fixed / 修复
+
+## 历史版本更新
+
+### [0.2.4] - 2026-06-15
 
 #### Added / 新增
 
@@ -82,8 +98,6 @@ The format follows the common GitHub changelog convention inspired by
 
 - Fixed the AI Coding workspace so Codex task results can be restored after navigating away or refreshing the page.
 - 修复 AI 编程任务完成结果在切换页面或刷新后丢失的问题，任务完成后返回界面仍可看到最终反馈。
-
-## 历史版本更新
 
 ### [0.2.3] - 2026-06-10
 

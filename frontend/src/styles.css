@@ -102,4 +102,94 @@ button:disabled {
     flex-shrink: 0;
     margin-left: 0;
   }
+
+  .markdown-preview {
+    overflow-wrap: anywhere;
+  }
+
+  .markdown-preview > * + * {
+    margin-top: 0.85rem;
+  }
+
+  .markdown-preview h1,
+  .markdown-preview h2,
+  .markdown-preview h3 {
+    color: #f8fafc;
+    font-weight: 650;
+    line-height: 1.35;
+  }
+
+  .markdown-preview h1 {
+    font-size: 1.25rem;
+  }
+
+  .markdown-preview h2 {
+    font-size: 1.08rem;
+  }
+
+  .markdown-preview h3 {
+    font-size: 1rem;
+  }
+
+  .markdown-preview ul,
+  .markdown-preview ol {
+    padding-left: 1.25rem;
+  }
+
+  .markdown-preview ul {
+    list-style: disc;
+  }
+
+  .markdown-preview ol {
+    list-style: decimal;
+  }
+
+  .markdown-preview li + li {
+    margin-top: 0.3rem;
+  }
+
+  .markdown-preview blockquote {
+    border-left: 3px solid rgba(125, 211, 199, 0.42);
+    color: #cbd5e1;
+    padding-left: 0.85rem;
+  }
+
+  .markdown-preview code {
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 0.35rem;
+    background: rgba(255, 255, 255, 0.06);
+    color: #bae6fd;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    font-size: 0.86em;
+    padding: 0.08rem 0.28rem;
+  }
+
+  .markdown-preview pre {
+    overflow-x: auto;
+    border-radius: 0.5rem;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(2, 6, 23, 0.72);
+    padding: 0.85rem;
+  }
+
+  .markdown-preview pre code {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: #cbd5e1;
+    display: block;
+    padding: 0;
+    white-space: pre;
+  }
+
+  .markdown-preview strong {
+    color: #f1f5f9;
+    font-weight: 650;
+  }
+
+  .markdown-preview a {
+    color: #7dd3c7;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
 }

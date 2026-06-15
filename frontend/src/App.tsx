@@ -90,6 +90,8 @@ import {
 } from "./api/englishMaterials";
 import { clearApiResponseCache } from "./api/localCache";
 import { fetchLlmUsage, readCachedLlmUsage } from "./api/usage";
+import { MarkdownPreview } from "./components/MarkdownPreview";
+import { copyMarkdownAsRichText } from "./utils/markdown";
 import type {
   AppView,
   BlogFactoryItem,
@@ -208,6 +210,7 @@ type EnglishMaterialSortBy = (typeof ENGLISH_MATERIAL_SORT_FIELDS)[number];
 type SortDirection = (typeof SORT_DIRECTIONS)[number];
 type HistoryVectorStatus = "all" | "0" | "1";
 type AiCodingNoticeStatus = "running" | "completed" | "failed";
+type HistoryAskAnswerView = "rendered" | "raw";
 
 interface StoredUiState {
   activeView: AppView;
@@ -2221,11 +2224,15 @@ function App() {
     }
   }
 
-  async function handleCopyHistoryAskAnswer() {
+  async function handleCopyHistoryAskAnswer(view: HistoryAskAnswerView) {
     if (!historyAskAnswer?.answer.trim()) return;
 
     try {
-      await copyText(historyAskAnswer.answer);
+      if (view === "rendered") {
+        await copyMarkdownAsRichText(historyAskAnswer.answer);
+      } else {
+        await copyText(historyAskAnswer.answer);
+      }
       setHasCopiedHistoryAskAnswer(true);
       window.setTimeout(() => setHasCopiedHistoryAskAnswer(false), 1600);
     } catch {
@@ -6594,13 +6601,14 @@ function HistoryAskPanel({
   llmConfigError: string | null;
   llmConfigSaved: boolean;
   question: string;
-  onCopyAnswer: () => void;
+  onCopyAnswer: (view: HistoryAskAnswerView) => void;
   onLlmConfigDraftChange: (draft: LlmConfigDraft) => void;
   onLlmConfigSave: (event: React.FormEvent<HTMLFormElement>) => void;
   onOpenHistory: () => void;
   onQuestionChange: (question: string) => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
 }) {
+  const [answerView, setAnswerView] = useState<HistoryAskAnswerView>("rendered");
   const canSubmit = question.trim().length >= 2 && !isLoading;
   const canSaveLlmConfig =
     !isLlmConfigSaving &&
@@ -6691,13 +6699,33 @@ function HistoryAskPanel({
                     </span>
                   </div>
                   <div className="flex flex-wrap gap-2">
+                    <div className="flex h-9 overflow-hidden rounded-lg border border-white/10 bg-white/[0.035]">
+                      <button
+                        className={`px-3 text-xs transition ${
+                          answerView === "rendered" ? "bg-mint-300/14 text-mint-200" : "text-slate-400 hover:text-mint-200"
+                        }`}
+                        type="button"
+                        onClick={() => setAnswerView("rendered")}
+                      >
+                        美化
+                      </button>
+                      <button
+                        className={`border-l border-white/10 px-3 text-xs transition ${
+                          answerView === "raw" ? "bg-mint-300/14 text-mint-200" : "text-slate-400 hover:text-mint-200"
+                        }`}
+                        type="button"
+                        onClick={() => setAnswerView("raw")}
+                      >
+                        裸文本
+                      </button>
+                    </div>
                     <button
                       className="flex h-9 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-xs text-slate-300 transition hover:border-mint-300/30 hover:text-mint-200"
                       type="button"
-                      onClick={onCopyAnswer}
+                      onClick={() => onCopyAnswer(answerView)}
                     >
                       {hasCopiedAnswer ? <CheckCircle2 size={15} /> : <Copy size={15} />}
-                      {hasCopiedAnswer ? "已复制" : "复制回答"}
+                      {hasCopiedAnswer ? "已复制" : answerView === "rendered" ? "复制美化" : "复制裸文本"}
                     </button>
                     <button
                       className="flex h-9 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-xs text-slate-300 transition hover:border-mint-300/30 hover:text-mint-200"
@@ -6709,7 +6737,13 @@ function HistoryAskPanel({
                     </button>
                   </div>
                 </div>
-                <div className="whitespace-pre-wrap text-sm leading-7 text-slate-200">{answer.answer}</div>
+                {answerView === "rendered" ? (
+                  <MarkdownPreview markdown={answer.answer} />
+                ) : (
+                  <div className="whitespace-pre-wrap break-words rounded-lg border border-white/8 bg-black/15 p-4 font-mono text-xs leading-6 text-slate-300 [overflow-wrap:anywhere]">
+                    {answer.answer}
+                  </div>
+                )}
                 {answer.warning ? (
                   <div className="rounded-lg border border-amberline/25 bg-amberline/10 px-3 py-3 text-sm text-amber-100">
                     LLM 总结未完全可用，当前展示后端统计兜底结果：{answer.warning}
