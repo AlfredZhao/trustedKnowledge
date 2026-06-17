@@ -170,6 +170,12 @@ const UI_STATE_STORAGE_KEY = "trustedKnowledge.uiState.v1";
 const MOBILE_VIEWPORT_CONTENT = "width=device-width, initial-scale=1.0, viewport-fit=cover";
 const MOBILE_VIEWPORT_RESET_CONTENT =
   "width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, viewport-fit=cover";
+const emptyOverviewSectionErrors: OverviewSectionErrors = {
+  usage: null,
+  todos: null,
+  knowledge: null,
+  english: null,
+};
 const APP_VIEWS: AppView[] = [
   "overview",
   "workbench",
@@ -315,6 +321,13 @@ interface OverviewData {
   unpublishedKnowledgeTotal: number;
   latestEnglishMaterial: EnglishMaterialItem | null;
   englishMaterialTotal: number;
+}
+
+interface OverviewSectionErrors {
+  usage: string | null;
+  todos: string | null;
+  knowledge: string | null;
+  english: string | null;
 }
 
 interface AiCodingMessage {
@@ -566,6 +579,9 @@ function App() {
   const [isOverviewLoading, setIsOverviewLoading] = useState(false);
   const [isOverviewRefreshing, setIsOverviewRefreshing] = useState(false);
   const [overviewError, setOverviewError] = useState<string | null>(null);
+  const [overviewSectionErrors, setOverviewSectionErrors] =
+    useState<OverviewSectionErrors>(emptyOverviewSectionErrors);
+  const [overviewUpdatedAt, setOverviewUpdatedAt] = useState<string | null>(null);
   const [overviewRefreshToken, setOverviewRefreshToken] = useState(0);
   const [aiCodingPrompt, setAiCodingPrompt] = useState(restoredUiState.aiCoding.prompt);
   const [aiCodingMessages, setAiCodingMessages] = useState<AiCodingMessage[]>(restoredUiState.aiCoding.messages);
@@ -658,6 +674,8 @@ function App() {
         latestEnglishMaterial: null,
         englishMaterialTotal: 0,
       });
+      setOverviewSectionErrors(emptyOverviewSectionErrors);
+      setOverviewUpdatedAt(null);
       setHistoryItems([]);
       setHistoryTotal(0);
       setHistoryAskAnswer(null);
@@ -1528,6 +1546,7 @@ function App() {
     if (!apiKey || activeView !== "overview") return;
 
     let mounted = true;
+    const isManualRefresh = overviewRefreshToken > 0;
     const usageLimit = USAGE_SAMPLE_LIMIT;
     const todoQueryConfig = {
       status: "处理中" as const,
@@ -1557,14 +1576,11 @@ function App() {
     const cachedEnglishMaterial = readCachedEnglishMaterials(latestEnglishMaterialQueryConfig);
     const hasCompleteCache =
       cachedUsage && cachedTodos && cachedRecentKnowledge && cachedUnpublishedKnowledge && cachedEnglishMaterial;
-    const hasExistingOverviewData =
-      overviewData.usageItems.length > 0 ||
-      overviewData.processingTodos.length > 0 ||
-      overviewData.recentKnowledge.length > 0 ||
-      overviewData.latestEnglishMaterial !== null;
-    const refreshOnly = overviewRefreshToken > 0 && hasExistingOverviewData;
 
-    if (hasCompleteCache) {
+    if (isManualRefresh) {
+      setIsOverviewRefreshing(true);
+      setOverviewError(null);
+    } else if (hasCompleteCache) {
       setOverviewData({
         usageItems: cachedUsage.items,
         usageTotal: cachedUsage.total,
@@ -1576,43 +1592,104 @@ function App() {
         latestEnglishMaterial: cachedEnglishMaterial.items[0] ?? null,
         englishMaterialTotal: cachedEnglishMaterial.total,
       });
+      setOverviewSectionErrors(emptyOverviewSectionErrors);
       setOverviewError(null);
       setIsOverviewLoading(false);
-    } else if (refreshOnly) {
-      setIsOverviewRefreshing(true);
     } else {
       setIsOverviewLoading(true);
+      setOverviewError(null);
     }
 
-    Promise.all([
+    Promise.allSettled([
       fetchLlmUsage(usageLimit),
       fetchTodos(todoQueryConfig),
       fetchKnowledge(recentKnowledgeQueryConfig),
       fetchKnowledge(unpublishedKnowledgeQueryConfig),
       fetchEnglishMaterials(latestEnglishMaterialQueryConfig),
     ])
-      .then(([usageData, todoData, recentKnowledgeData, unpublishedKnowledgeData, englishMaterialData]) => {
+      .then(([usageResult, todoResult, recentKnowledgeResult, unpublishedKnowledgeResult, englishMaterialResult]) => {
         if (!mounted) return;
-        setOverviewData({
-          usageItems: usageData.items,
-          usageTotal: usageData.total,
-          processingTodos: todoData.items,
-          processingTodoTotal: todoData.total,
-          recentKnowledge: recentKnowledgeData.items,
-          knowledgeTotal: recentKnowledgeData.total,
-          unpublishedKnowledgeTotal: unpublishedKnowledgeData.total,
-          latestEnglishMaterial: englishMaterialData.items[0] ?? null,
-          englishMaterialTotal: englishMaterialData.total,
+
+        const nextErrors: OverviewSectionErrors = { ...emptyOverviewSectionErrors };
+        const successCount = [
+          usageResult,
+          todoResult,
+          recentKnowledgeResult,
+          unpublishedKnowledgeResult,
+          englishMaterialResult,
+        ].filter((result) => result.status === "fulfilled").length;
+
+        if (usageResult.status === "rejected") {
+          nextErrors.usage = readOverviewRefreshError(usageResult.reason);
+        }
+        if (todoResult.status === "rejected") {
+          nextErrors.todos = readOverviewRefreshError(todoResult.reason);
+        }
+        if (recentKnowledgeResult.status === "rejected") {
+          nextErrors.knowledge = readOverviewRefreshError(recentKnowledgeResult.reason);
+        }
+        if (unpublishedKnowledgeResult.status === "rejected") {
+          const unpublishedError = readOverviewRefreshError(unpublishedKnowledgeResult.reason);
+          nextErrors.knowledge = nextErrors.knowledge
+            ? `${nextErrors.knowledge}; ${unpublishedError}`
+            : unpublishedError;
+        }
+        if (englishMaterialResult.status === "rejected") {
+          nextErrors.english = readOverviewRefreshError(englishMaterialResult.reason);
+        }
+
+        setOverviewData((current) => {
+          let next = current;
+
+          if (usageResult.status === "fulfilled") {
+            next = {
+              ...next,
+              usageItems: usageResult.value.items,
+              usageTotal: usageResult.value.total,
+            };
+          }
+
+          if (todoResult.status === "fulfilled") {
+            next = {
+              ...next,
+              processingTodos: todoResult.value.items,
+              processingTodoTotal: todoResult.value.total,
+            };
+          }
+
+          if (recentKnowledgeResult.status === "fulfilled") {
+            next = {
+              ...next,
+              recentKnowledge: recentKnowledgeResult.value.items,
+              knowledgeTotal: recentKnowledgeResult.value.total,
+            };
+          }
+
+          if (unpublishedKnowledgeResult.status === "fulfilled") {
+            next = {
+              ...next,
+              unpublishedKnowledgeTotal: unpublishedKnowledgeResult.value.total,
+            };
+          }
+
+          if (englishMaterialResult.status === "fulfilled") {
+            next = {
+              ...next,
+              latestEnglishMaterial: englishMaterialResult.value.items[0] ?? null,
+              englishMaterialTotal: englishMaterialResult.value.total,
+            };
+          }
+
+          return next;
         });
-        setOverviewError(null);
-      })
-      .catch((error: Error) => {
-        if (!mounted) return;
-        setOverviewError(error.message);
+
+        setOverviewSectionErrors(nextErrors);
+        setOverviewUpdatedAt(new Date().toISOString());
+        setOverviewError(successCount > 0 ? null : "总览所有数据源都读取失败，请稍后重试。");
       })
       .finally(() => {
         if (!mounted) return;
-        if (refreshOnly) {
+        if (isManualRefresh) {
           setIsOverviewRefreshing(false);
         } else {
           setIsOverviewLoading(false);
@@ -2704,7 +2781,9 @@ function App() {
               data={overviewData}
               isLoading={isOverviewLoading}
               isRefreshing={isOverviewRefreshing}
+              lastUpdatedAt={overviewUpdatedAt}
               loadError={overviewError}
+              sectionErrors={overviewSectionErrors}
               onOpenEnglishMaterial={handleOpenOverviewEnglishMaterial}
               onOpenKnowledge={handleOpenOverviewKnowledge}
               onOpenTodo={handleOpenOverviewTodo}
@@ -8040,7 +8119,9 @@ function OverviewDashboard({
   data,
   isLoading,
   isRefreshing,
+  lastUpdatedAt,
   loadError,
+  sectionErrors,
   onOpenEnglishMaterial,
   onOpenKnowledge,
   onOpenTodo,
@@ -8050,7 +8131,9 @@ function OverviewDashboard({
   data: OverviewData;
   isLoading: boolean;
   isRefreshing: boolean;
+  lastUpdatedAt: string | null;
   loadError: string | null;
+  sectionErrors: OverviewSectionErrors;
   onOpenEnglishMaterial: (item: EnglishMaterialItem) => void;
   onOpenKnowledge: (item: KnowledgeItem) => void;
   onOpenTodo: (item: TodoItem) => void;
@@ -8092,6 +8175,15 @@ function OverviewDashboard({
             总览读取失败
           </div>
           <p className="text-sm leading-6 text-amber-100/80">{loadError}</p>
+          <button
+            className="mt-4 flex h-9 items-center gap-2 rounded-lg border border-amberline/30 bg-amberline/10 px-3 text-sm text-amber-100 transition hover:bg-amberline/15 disabled:cursor-not-allowed disabled:opacity-60"
+            type="button"
+            disabled={isRefreshing}
+            onClick={onRefresh}
+          >
+            <RefreshCw className={isRefreshing ? "animate-spin" : ""} size={15} />
+            {isRefreshing ? "重试中" : "重试"}
+          </button>
         </section>
       </div>
     );
@@ -8105,7 +8197,16 @@ function OverviewDashboard({
             <ChartLine size={17} />
             Overview
           </div>
-          <h2 className="text-xl font-semibold text-slate-50">关键状态</h2>
+          <div className="flex flex-wrap items-end gap-x-3 gap-y-1">
+            <h2 className="text-xl font-semibold text-slate-50">关键状态</h2>
+            <span className="text-xs text-slate-500">
+              {isRefreshing
+                ? "正在读取最新数据"
+                : lastUpdatedAt
+                  ? `最后更新 ${formatDateTime(lastUpdatedAt)}`
+                  : "尚未完成在线更新"}
+            </span>
+          </div>
         </div>
         <button
           className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-sm text-slate-300 transition hover:border-mint-300/30 hover:bg-white/[0.055] hover:text-mint-300 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
@@ -8114,7 +8215,7 @@ function OverviewDashboard({
           onClick={onRefresh}
         >
           <RefreshCw className={isRefreshing ? "animate-spin" : ""} size={16} />
-          刷新总览
+          {isRefreshing ? "刷新中" : "刷新总览"}
         </button>
       </div>
 
@@ -8153,6 +8254,8 @@ function OverviewDashboard({
         />
       </div>
 
+      {sectionErrors.usage ? <OverviewInlineError message={`LLM 用量读取失败：${sectionErrors.usage}`} /> : null}
+
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(300px,0.58fr)]">
         <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
           <OverviewSectionHeader
@@ -8161,6 +8264,9 @@ function OverviewDashboard({
             actionLabel="查看待办"
             onAction={() => onOpenView("todos")}
           />
+          {sectionErrors.todos ? (
+            <OverviewInlineError message={`处理中 Todo 读取失败：${sectionErrors.todos}`} />
+          ) : null}
           {data.processingTodos.length > 0 ? (
             <div className="space-y-3">
               {data.processingTodos.map((item) => (
@@ -8196,6 +8302,9 @@ function OverviewDashboard({
             actionLabel="查看素材"
             onAction={() => onOpenView("englishMaterials")}
           />
+          {sectionErrors.english ? (
+            <OverviewInlineError message={`English 素材读取失败：${sectionErrors.english}`} />
+          ) : null}
           {latestEnglish ? (
             <button
               className="block w-full rounded-lg border border-mint-300/20 bg-mint-300/8 p-4 text-left transition hover:border-mint-300/35 hover:bg-mint-300/10"
@@ -8233,6 +8342,9 @@ function OverviewDashboard({
           actionLabel="进入知识库"
           onAction={() => onOpenView("workbench")}
         />
+        {sectionErrors.knowledge ? (
+          <OverviewInlineError message={`可信知识读取失败：${sectionErrors.knowledge}`} />
+        ) : null}
         {data.recentKnowledge.length > 0 ? (
           <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
             {data.recentKnowledge.map((item) => (
@@ -8300,6 +8412,15 @@ function OverviewEmpty({ icon, title }: { icon: React.ReactNode; title: string }
         <div className="mb-3 flex justify-center text-slate-600">{icon}</div>
         <div className="text-sm font-medium text-slate-400">{title}</div>
       </div>
+    </div>
+  );
+}
+
+function OverviewInlineError({ message }: { message: string }) {
+  return (
+    <div className="mb-4 flex items-start gap-2 rounded-lg border border-amberline/25 bg-amberline/10 p-3 text-sm leading-6 text-amber-100/80">
+      <TriangleAlert className="mt-0.5 shrink-0 text-amberline" size={15} />
+      <span>{message}</span>
     </div>
   );
 }
@@ -8727,6 +8848,12 @@ function formatDate(value: string | null) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+function readOverviewRefreshError(reason: unknown) {
+  if (reason instanceof Error && reason.message) return reason.message;
+  if (typeof reason === "string" && reason.trim()) return reason;
+  return "未知错误";
 }
 
 function formatDateOnly(value: string | null) {
