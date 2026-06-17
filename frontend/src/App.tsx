@@ -8080,6 +8080,7 @@ function HistoryExplorer({
   onClearFilters: () => void;
   onPageChange: (page: number) => void;
 }) {
+  const [selectedItem, setSelectedItem] = useState<HistoryItem | null>(null);
   const totalPages = Math.max(1, Math.ceil(total / HISTORY_PAGE_SIZE));
   const rangeStart = total === 0 ? 0 : (page - 1) * HISTORY_PAGE_SIZE + 1;
   const rangeEnd = Math.min(page * HISTORY_PAGE_SIZE, total);
@@ -8246,7 +8247,7 @@ function HistoryExplorer({
             </div>
           </div>
 
-          <div className="mb-4 grid gap-3 md:grid-cols-4">
+          <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
             <MetricTile icon={<Database size={17} />} label="总量" value={formatAmount(summary.total)} detail="当前查询结果" />
             <MetricTile icon={<Layers3 size={17} />} label="类型" value={formatAmount(summary.types.length)} detail="可筛选类型" />
             <MetricTile icon={<ShieldCheck size={17} />} label="用户" value={formatAmount(summary.users.length)} detail="可筛选用户" />
@@ -8279,15 +8280,33 @@ function HistoryExplorer({
           ) : (
             <div className="space-y-3">
               {items.map((item) => (
-                <article key={item.id} className="rounded-lg border border-white/10 bg-white/[0.028] p-4">
+                <article
+                  key={item.id}
+                  className="cursor-pointer rounded-lg border border-white/10 bg-white/[0.028] p-4 transition hover:border-mint-300/30 hover:bg-white/[0.045] focus:outline-none focus:ring-2 focus:ring-mint-300/35"
+                  role="button"
+                  tabIndex={0}
+                  title="查看详情"
+                  onClick={() => setSelectedItem(item)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      setSelectedItem(item);
+                    }
+                  }}
+                >
                   <div className="mb-3 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                     <div className="min-w-0">
-                      <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                        <span>#{item.id}</span>
-                        <span>{formatHistoryDate(item.history_date)}</span>
-                        <span>{item.username || "unknown user"}</span>
-                        <span>{item.week || "week -"}</span>
-                        <span>{item.day || "day -"}</span>
+                      <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
+                        <span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-slate-500">#{item.id}</span>
+                        <span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-slate-400">
+                          {formatHistoryDate(item.history_date)}
+                        </span>
+                        <span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-slate-400">
+                          {item.username || "unknown user"}
+                        </span>
+                        <span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-slate-400">
+                          {item.week || "week -"} / {item.day || "day -"}
+                        </span>
                       </div>
                       <p className="line-clamp-3 text-sm leading-6 text-slate-300">{item.content || "无内容"}</p>
                     </div>
@@ -8343,6 +8362,137 @@ function HistoryExplorer({
             </div>
           )}
         </section>
+      </div>
+
+      <HistoryDetailDialog item={selectedItem} onClose={() => setSelectedItem(null)} />
+    </div>
+  );
+}
+
+function HistoryDetailDialog({ item, onClose }: { item: HistoryItem | null; onClose: () => void }) {
+  useEffect(() => {
+    if (!item) return;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [item, onClose]);
+
+  if (!item) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end bg-black/62 px-0 backdrop-blur-sm sm:items-center sm:justify-center sm:px-4"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <section
+        aria-modal="true"
+        className="flex max-h-[100dvh] w-full flex-col overflow-hidden rounded-t-lg border border-white/10 bg-ink-900 shadow-soft-glow sm:max-h-[88vh] sm:max-w-3xl sm:rounded-lg"
+        role="dialog"
+      >
+        <div className="shrink-0 border-b border-white/10 p-4 sm:p-5">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
+                <History size={17} />
+                History Detail
+              </div>
+              <h2 className="line-clamp-2 text-xl font-semibold text-slate-50">{item.type || "未分类历史记录"}</h2>
+            </div>
+            <button
+              className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300"
+              title="关闭"
+              type="button"
+              onClick={onClose}
+            >
+              <X size={17} />
+            </button>
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2 text-xs">
+            <span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-slate-400">#{item.id}</span>
+            <span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-slate-400">
+              {formatHistoryDate(item.history_date)}
+            </span>
+            <span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-slate-400">
+              Level {item.learn_level ?? "-"}
+            </span>
+            <span
+              className={`rounded-md border px-2 py-1 ${
+                item.v_needs_update === 1
+                  ? "border-amberline/30 bg-amberline/10 text-amberline"
+                  : "border-mint-300/20 bg-mint-300/8 text-mint-200"
+              }`}
+            >
+              {item.v_needs_update === 1 ? "向量待更新" : "向量就绪"}
+            </span>
+          </div>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
+          <div className="mb-4 grid grid-cols-2 gap-3">
+            <HistoryDetailMetaTile icon={<CalendarClock size={17} />} label="Week" value={item.week || "-"} detail="历史周期" />
+            <HistoryDetailMetaTile icon={<CalendarClock size={17} />} label="Day" value={item.day || "-"} detail="历史日期" />
+            <HistoryDetailMetaTile icon={<ShieldCheck size={17} />} label="用户" value={item.username || "unknown"} detail={`#${item.id}`} />
+            <HistoryDetailMetaTile icon={<Layers3 size={17} />} label="类型" value={item.type || "未分类"} detail={`Level ${item.learn_level ?? "-"}`} />
+          </div>
+
+          <div className="rounded-lg border border-white/10 bg-white/[0.028] p-4">
+            <div className="mb-3 flex items-center gap-2 text-sm font-medium text-slate-300">
+              <FileText size={16} />
+              详细内容
+            </div>
+            <div className="whitespace-pre-wrap break-words text-sm leading-7 text-slate-300">{item.content || "无内容"}</div>
+          </div>
+        </div>
+
+        <div className="shrink-0 border-t border-white/10 bg-ink-900/96 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-4">
+          <button
+            className="flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20"
+            type="button"
+            onClick={onClose}
+          >
+            <X size={17} />
+            关闭
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function HistoryDetailMetaTile({
+  icon,
+  label,
+  value,
+  detail,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  detail: string;
+}) {
+  return (
+    <div className="min-w-0 rounded-lg border border-white/10 bg-white/[0.028] p-3 sm:p-4">
+      <div className="mb-2 flex min-w-0 items-center gap-2 text-xs text-slate-400 sm:text-sm">
+        <span className="shrink-0 text-mint-300">{icon}</span>
+        <span className="truncate">{label}</span>
+      </div>
+      <div className="min-w-0 truncate text-lg font-semibold text-slate-50 sm:text-xl" title={value}>
+        {value}
+      </div>
+      <div className="mt-1 truncate text-xs text-slate-500" title={detail}>
+        {detail}
       </div>
     </div>
   );

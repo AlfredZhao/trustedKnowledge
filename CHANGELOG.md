@@ -25,10 +25,16 @@ The format follows the common GitHub changelog convention inspired by
 - Added a Todo completion prompt that can prepend completed task details to a selected Current Record by user and type.
 - 为待办事项完成保存新增追加提示，可按用户和类型选择当前记录，并将任务详情前置追加到 CONTENT。
 
+- Added a History query detail dialog so selecting a result opens the full record content and metadata.
+- 为历史查询结果新增详情弹窗，点击记录可查看完整内容和元数据。
+
 #### Changed / 变更
 
 - Updated the navigation and related entry copy from `知识录入` to `信息录入`.
 - 将导航及相关录入提示文案从 `知识录入` 调整为 `信息录入`。
+
+- Refined History query mobile layouts so detail metadata and summary metrics use denser two-column rows.
+- 优化历史查询模块手机端布局，详情元信息和汇总指标改为更紧凑的双列展示。
 
 #### Fixed / 修复
 
