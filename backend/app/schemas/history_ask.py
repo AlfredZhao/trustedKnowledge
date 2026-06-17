@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class HistoryAskRequest(BaseModel):
     question: str = Field(..., min_length=2, max_length=1000)
+    skill_ids: list[str] = Field(default_factory=list, max_length=8)
 
 
 class HistoryAskFilters(BaseModel):
@@ -48,3 +49,4 @@ class HistoryAskResponse(BaseModel):
     evidence: list[HistoryAskEvidence]
     llm_used: bool
     warning: str | None = None
+    selected_skills: list[dict[str, str]] = Field(default_factory=list)

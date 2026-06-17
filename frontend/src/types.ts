@@ -69,6 +69,7 @@ export type AppView =
   | "currentRecords"
   | "history"
   | "englishMaterials"
+  | "skills"
   | "historyAsk"
   | "aiCoding"
   | "usage";
@@ -184,6 +185,47 @@ export interface HistoryAskResponse {
   evidence: HistoryAskEvidence[];
   llm_used: boolean;
   warning: string | null;
+  selected_skills: SkillPromptSummary[];
+}
+
+export interface SkillPromptSummary {
+  id: string;
+  name: string;
+  description: string;
+}
+
+export interface SkillSummary {
+  id: string;
+  name: string;
+  description: string;
+  enabled: boolean;
+  source: string;
+  file_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SkillFile {
+  path: string;
+  size: number;
+  editable: boolean;
+}
+
+export interface SkillDetail extends SkillSummary {
+  files: SkillFile[];
+  skill_markdown: string;
+}
+
+export interface SkillDraft {
+  name: string;
+  description: string;
+  content: string;
+  enabled: boolean;
+}
+
+export interface SkillListResponse {
+  items: SkillSummary[];
+  total: number;
 }
 
 export interface LlmConfig {

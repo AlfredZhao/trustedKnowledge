@@ -28,6 +28,9 @@ The format follows the common GitHub changelog convention inspired by
 - Added a History query detail dialog so selecting a result opens the full record content and metadata.
 - 为历史查询结果新增详情弹窗，点击记录可查看完整内容和元数据。
 
+- Added a Skill management workspace for creating custom skills, uploading standard skill zip packages, editing skill files, and selecting enabled skills in AI Ask.
+- 新增 Skill 管理界面，支持自定义 skill、上传标准 skill zip 包、编辑 skill 文件，并可在 AI 问数中选择启用的 skill 调用。
+
 #### Changed / 变更
 
 - Updated the navigation and related entry copy from `知识录入` to `信息录入`.
@@ -40,6 +43,9 @@ The format follows the common GitHub changelog convention inspired by
 
 - Fixed Overview refresh feedback and partial-load handling so the refresh action shows progress and one failed data source no longer blocks the whole dashboard.
 - 修复总览刷新反馈与局部加载处理，点击刷新会显示进度，单个数据源失败不再阻断整个 Dashboard。
+
+- Fixed AI Coding refresh recovery so the workspace reloads the latest Codex task when the page refreshes after completion.
+- 修复 AI 编程完成后页面刷新时未恢复最后一次任务详情的问题，刷新后会回填最近一次 Codex 任务。
 
 - Added mobile editor sheets for Information Entry and Todo items so tapping a list item in the PWA opens the edit view directly.
 - 为信息录入和待办事项新增手机端编辑弹层，PWA 中点击列表条目会直接打开编辑界面。

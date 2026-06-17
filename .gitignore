@@ -5,6 +5,7 @@
 .run/
 logs/
 *.log
+backend/data/
 
 # Local environment files
 .env

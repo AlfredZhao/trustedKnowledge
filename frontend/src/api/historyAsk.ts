@@ -37,10 +37,10 @@ async function readErrorDetail(response: Response): Promise<string | null> {
   }
 }
 
-export async function askHistory(question: string): Promise<HistoryAskResponse> {
+export async function askHistory(question: string, skillIds: string[] = []): Promise<HistoryAskResponse> {
   return request<HistoryAskResponse>("/api/history-ask", {
     method: "POST",
-    body: JSON.stringify({ question }),
+    body: JSON.stringify({ question, skill_ids: skillIds }),
   });
 }
 

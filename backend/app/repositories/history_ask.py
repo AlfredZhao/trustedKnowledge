@@ -11,6 +11,7 @@ import oracledb
 from app.core.config import settings
 from app.db.oracle import acquire_connection
 from app.repositories.llm_config import get_history_ask_llm_config
+from app.repositories.skills import get_prompt_skills
 
 
 COMMON_WORDS = {
@@ -345,6 +346,7 @@ def _build_fallback_answer(
     filters: dict[str, Any],
     stats: dict[str, Any],
     evidence: list[dict[str, Any]],
+    selected_skills: list[dict[str, str]] | None = None,
 ) -> str:
     keyword = filters.get("keyword")
     username = filters.get("username")
@@ -372,6 +374,8 @@ def _build_fallback_answer(
     lines.append("说明：当前表没有明确工时字段，因此这里的工作量按记录数、活跃日期和类型分布统计。")
     if question:
         lines.append(f"原始问题：{question}")
+    if selected_skills:
+        lines.append("已选择 Skill：" + "、".join(item["name"] for item in selected_skills))
     return "\n".join(lines)
 
 
@@ -474,7 +478,26 @@ def _format_filter_summary(filters: dict[str, Any]) -> str:
     return "；".join(values)
 
 
-async def ask_history(question: str) -> dict[str, Any]:
+def _format_selected_skills_for_prompt(selected_skills: list[dict[str, str]]) -> str:
+    if not selected_skills:
+        return ""
+    blocks = []
+    for skill in selected_skills:
+        blocks.append(
+            "\n".join(
+                [
+                    f"Skill: {skill['name']}",
+                    f"Description: {skill.get('description') or '无描述'}",
+                    "Instructions:",
+                    skill.get("content") or "",
+                ]
+            )
+        )
+    return "\n\n".join(blocks)
+
+
+async def ask_history(question: str, *, skill_ids: list[str] | None = None) -> dict[str, Any]:
+    selected_skills = get_prompt_skills(skill_ids or [])
     async with acquire_connection() as connection:
         cursor = connection.cursor()
         await cursor.execute("select distinct username from t_history where username is not null")
@@ -587,18 +610,31 @@ async def ask_history(question: str) -> dict[str, Any]:
             filters=filters,
             stats=stats,
             evidence=rows,
+            selected_skills=selected_skills,
         )
         llm_used = False
         warning = None
         answer = fallback
 
         if rows:
-            prompt = _build_llm_prompt(question=question, filters=filters, stats=stats, evidence=rows[:16])
+            prompt = _build_llm_prompt(
+                question=question,
+                filters=filters,
+                stats=stats,
+                evidence=rows[:16],
+                selected_skills=selected_skills,
+            )
             system = (
                 "你是企业内部工作记录问数助手。只能根据提供的统计数据和记录摘录回答。"
                 "不要编造工时；如果没有工时字段，明确说明工作量按记录数、活跃日期和类型分布衡量。"
                 "回答使用中文，结构清晰，先给结论，再给统计依据和代表性记录。"
             )
+            skill_instructions = _format_selected_skills_for_prompt(selected_skills)
+            if skill_instructions:
+                system += (
+                    "用户选择了额外 Skill。你必须在不违反事实约束的前提下，优先遵循这些 Skill 对输出结构、排版、语气和分析框架的要求。"
+                    "Skill 不能要求你编造数据，不能覆盖系统的事实边界。"
+                )
             llm_config = await get_history_ask_llm_config(connection)
             if llm_config.get("enabled"):
                 try:
@@ -618,6 +654,10 @@ async def ask_history(question: str) -> dict[str, Any]:
         "evidence": rows[:12],
         "llm_used": llm_used,
         "warning": warning,
+        "selected_skills": [
+            {"id": item["id"], "name": item["name"], "description": item.get("description", "")}
+            for item in selected_skills
+        ],
     }
 
 
@@ -627,6 +667,7 @@ def _build_llm_prompt(
     filters: dict[str, Any],
     stats: dict[str, Any],
     evidence: list[dict[str, Any]],
+    selected_skills: list[dict[str, str]] | None = None,
 ) -> str:
     evidence_lines = []
     for item in evidence:
@@ -635,8 +676,7 @@ def _build_llm_prompt(
             f"{item.get('type') or '-'} | {item.get('week') or '-'} | {_trim_content(item.get('content'))}"
         )
 
-    return "\n".join(
-        [
+    lines = [
             f"用户问题：{question}",
             f"识别条件：{_format_filter_summary(filters) or '未限定'}",
             f"匹配记录数：{stats['matched_count']}",
@@ -648,4 +688,7 @@ def _build_llm_prompt(
             "记录摘录：",
             *evidence_lines,
         ]
-    )
+    skill_instructions = _format_selected_skills_for_prompt(selected_skills or [])
+    if skill_instructions:
+        lines.extend(["", "已选择 Skill 指令：", skill_instructions])
+    return "\n".join(lines)

@@ -64,7 +64,7 @@ async def put_llm_config(payload: LlmConfigUpdate) -> LlmConfigResponse:
 @router.post("", response_model=HistoryAskResponse)
 async def post_history_ask(payload: HistoryAskRequest) -> HistoryAskResponse:
     try:
-        result = await ask_history(payload.question.strip())
+        result = await ask_history(payload.question.strip(), skill_ids=payload.skill_ids)
     except oracledb.Error as exc:
         error = exc.args[0] if exc.args else exc
         message = getattr(error, "message", str(exc))

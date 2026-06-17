@@ -55,6 +55,10 @@ export async function getCodexJob(jobId: string): Promise<CodexJobSnapshot> {
   return request<CodexJobSnapshot>(`/api/codex/runs/jobs/${encodeURIComponent(jobId)}`);
 }
 
+export async function getLatestCodexJob(): Promise<CodexJobSnapshot> {
+  return request<CodexJobSnapshot>("/api/codex/runs/jobs/latest");
+}
+
 export async function streamCodex(
   prompt: string,
   onEvent: (event: CodexStreamEvent) => void,

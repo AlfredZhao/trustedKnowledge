@@ -71,7 +71,7 @@ import {
 } from "./api/knowledge";
 import { fetchHistory, readCachedHistory } from "./api/history";
 import { askHistory, fetchHistoryAskLlmConfig, updateHistoryAskLlmConfig } from "./api/historyAsk";
-import { getCodexJob, startCodexJob } from "./api/codex";
+import { getCodexJob, getLatestCodexJob, startCodexJob } from "./api/codex";
 import {
   createCurrentRecord,
   fetchCurrentRecordOptions,
@@ -89,6 +89,16 @@ import {
   readCachedEnglishMaterials,
   updateEnglishMaterial,
 } from "./api/englishMaterials";
+import {
+  createSkill,
+  deleteSkill,
+  fetchSkill,
+  fetchSkillFile,
+  fetchSkills,
+  updateSkill,
+  updateSkillFile,
+  uploadSkillZip,
+} from "./api/skills";
 import { clearApiResponseCache } from "./api/localCache";
 import { fetchLlmUsage, readCachedLlmUsage } from "./api/usage";
 import { MarkdownPreview } from "./components/MarkdownPreview";
@@ -115,6 +125,10 @@ import type {
   LlmConfig,
   LlmConfigDraft,
   LlmUsageSample,
+  SkillDetail,
+  SkillDraft,
+  SkillFile,
+  SkillSummary,
   SystemRestartResponse,
   TodoDraft,
   TodoItem,
@@ -155,6 +169,13 @@ const emptyLlmConfigDraft: LlmConfigDraft = {
   enabled: false,
 };
 
+const emptySkillDraft: SkillDraft = {
+  name: "",
+  description: "",
+  content: "",
+  enabled: true,
+};
+
 const PAGE_SIZE = 5;
 const FACTORY_PAGE_SIZE = 6;
 const BLOG_FACTORY_PAGE_SIZE = 8;
@@ -186,6 +207,7 @@ const APP_VIEWS: AppView[] = [
   "currentRecords",
   "history",
   "englishMaterials",
+  "skills",
   "historyAsk",
   "aiCoding",
   "usage",
@@ -204,6 +226,7 @@ const FUNCTION_NAV_ITEMS: FunctionNavItem[] = [
   { icon: FilePlus2, label: "当前记录", view: "currentRecords" },
   { icon: History, label: "历史查询", view: "history" },
   { icon: BookOpenCheck, label: "英语素材", view: "englishMaterials" },
+  { icon: Layers3, label: "Skill 管理", view: "skills" },
   { icon: Bot, label: "AI 问数", view: "historyAsk" },
   { icon: WandSparkles, label: "AI 编程", view: "aiCoding" },
   { icon: Bot, label: "AI 用量", view: "usage" },
@@ -297,6 +320,7 @@ interface StoredUiState {
   historyAsk: {
     question: string;
     answer: HistoryAskResponse | null;
+    skillIds: string[];
   };
   aiCoding: {
     prompt: string;
@@ -384,6 +408,7 @@ function App() {
   const [restoredUiState] = useState<StoredUiState>(() => readStoredUiState());
   const restoredBlogFactoryArticleDraftRef = useRef(Boolean(restoredUiState.blogFactory.articleDraft));
   const restoredBlogFactorySelectionRef = useRef(restoredUiState.blogFactory.selectedItemId);
+  const hasRestoredLatestCodexJobRef = useRef(false);
   const [apiKey, setApiKey] = useState(() => {
     const wechatApiKey = readWeChatApiKeyFromHash();
     if (wechatApiKey) {
@@ -570,6 +595,24 @@ function App() {
   const [isHistoryAskLlmConfigSaving, setIsHistoryAskLlmConfigSaving] = useState(false);
   const [historyAskLlmConfigError, setHistoryAskLlmConfigError] = useState<string | null>(null);
   const [historyAskLlmConfigSaved, setHistoryAskLlmConfigSaved] = useState(false);
+  const [historyAskSkillIds, setHistoryAskSkillIds] = useState<string[]>(restoredUiState.historyAsk.skillIds);
+  const [skillItems, setSkillItems] = useState<SkillSummary[]>([]);
+  const [skillTotal, setSkillTotal] = useState(0);
+  const [skillQuery, setSkillQuery] = useState("");
+  const [debouncedSkillQuery, setDebouncedSkillQuery] = useState("");
+  const [selectedSkill, setSelectedSkill] = useState<SkillDetail | null>(null);
+  const [newSkillDraft, setNewSkillDraft] = useState<SkillDraft>(emptySkillDraft);
+  const [skillDraft, setSkillDraft] = useState<SkillDraft>(emptySkillDraft);
+  const [selectedSkillFile, setSelectedSkillFile] = useState<SkillFile | null>(null);
+  const [skillFileContent, setSkillFileContent] = useState("");
+  const [isSkillLoading, setIsSkillLoading] = useState(false);
+  const [isSkillDetailLoading, setIsSkillDetailLoading] = useState(false);
+  const [isSkillSaving, setIsSkillSaving] = useState(false);
+  const [isSkillFileSaving, setIsSkillFileSaving] = useState(false);
+  const [isSkillUploading, setIsSkillUploading] = useState(false);
+  const [skillError, setSkillError] = useState<string | null>(null);
+  const [skillSaveError, setSkillSaveError] = useState<string | null>(null);
+  const [skillSavedLabel, setSkillSavedLabel] = useState<string | null>(null);
   const [usageItems, setUsageItems] = useState<LlmUsageSample[]>([]);
   const [usageTotal, setUsageTotal] = useState(0);
   const [isUsageLoading, setIsUsageLoading] = useState(false);
@@ -698,6 +741,14 @@ function App() {
       setHistoryAskLlmConfig(null);
       setHistoryAskLlmConfigDraft(emptyLlmConfigDraft);
       setHistoryAskLlmConfigSaved(false);
+      setHistoryAskSkillIds([]);
+      setSkillItems([]);
+      setSkillTotal(0);
+      setSelectedSkill(null);
+      setSelectedSkillFile(null);
+      setSkillFileContent("");
+      setSkillError(null);
+      setSkillSaveError(null);
       setAiCodingMessages([]);
       setActiveCodexJobId(null);
       setLiveCodexOutput("");
@@ -801,6 +852,7 @@ function App() {
       historyAsk: {
         question: historyAskQuestion,
         answer: historyAskAnswer,
+        skillIds: historyAskSkillIds,
       },
       aiCoding: {
         prompt: aiCodingPrompt,
@@ -849,6 +901,7 @@ function App() {
     githubSyncStatus,
     historyAskAnswer,
     historyAskQuestion,
+    historyAskSkillIds,
     historyDateFrom,
     historyDateTo,
     historyDay,
@@ -924,6 +977,49 @@ function App() {
   }, [activeCodexJobId, apiKey]);
 
   useEffect(() => {
+    if (!apiKey || activeCodexJobId || hasRestoredLatestCodexJobRef.current) return;
+
+    hasRestoredLatestCodexJobRef.current = true;
+    let cancelled = false;
+
+    async function restoreLatestCodexJob() {
+      try {
+        const job = await getLatestCodexJob();
+        if (cancelled) return;
+
+        setLiveCodexOutput(job.output);
+        setLiveCodexErrorOutput(job.error_output);
+        setAiCodingMessages((current) => upsertCodexJobMessage(current, job));
+
+        if (job.status === "running") {
+          setActiveCodexJobId(job.job_id);
+          setIsCodexRunning(true);
+          setAiCodingNoticeStatus("running");
+          setLiveCodexStatus("Codex 正在运行，离开页面后仍可回来查看结果...");
+          return;
+        }
+
+        setIsCodexRunning(false);
+        setAiCodingNoticeStatus(job.status === "completed" ? "completed" : "failed");
+        setLiveCodexStatus(job.status === "completed" ? "Codex 执行完成。" : "Codex 执行出现错误。");
+        if (job.status === "failed") {
+          setCodexError(job.error_message ?? "Codex 执行失败，请稍后重试。");
+        }
+      } catch (error) {
+        if (cancelled) return;
+        if (error instanceof Error && error.message.includes("No Codex task has been started")) return;
+        setCodexError(error instanceof Error ? error.message : "恢复最近一次 Codex 任务失败。");
+      }
+    }
+
+    restoreLatestCodexJob();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeCodexJobId, apiKey]);
+
+  useEffect(() => {
     if (activeView === "aiCoding" && aiCodingNoticeStatus !== "running") {
       setAiCodingNoticeStatus(null);
     }
@@ -959,6 +1055,40 @@ function App() {
       mounted = false;
     };
   }, [activeView, apiKey]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSkillQuery(skillQuery.trim()), 260);
+    return () => window.clearTimeout(timer);
+  }, [skillQuery]);
+
+  useEffect(() => {
+    if (!apiKey || (activeView !== "skills" && activeView !== "historyAsk")) return;
+
+    let cancelled = false;
+    setIsSkillLoading(true);
+    setSkillError(null);
+    fetchSkills({
+      q: activeView === "skills" ? debouncedSkillQuery : undefined,
+      enabled: activeView === "historyAsk" ? true : undefined,
+    })
+      .then((response) => {
+        if (cancelled) return;
+        setSkillItems(response.items);
+        setSkillTotal(response.total);
+        setHistoryAskSkillIds((current) => current.filter((skillId) => response.items.some((item) => item.id === skillId)));
+      })
+      .catch((error: Error) => {
+        if (cancelled) return;
+        setSkillError(error.message);
+      })
+      .finally(() => {
+        if (!cancelled) setIsSkillLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeView, apiKey, debouncedSkillQuery]);
 
   useEffect(() => {
     setTodoCopyError(null);
@@ -2566,12 +2696,165 @@ function App() {
     setHistoryAskError(null);
     setHasCopiedHistoryAskAnswer(false);
     try {
-      const answer = await askHistory(question);
+      const answer = await askHistory(question, historyAskSkillIds);
       setHistoryAskAnswer(answer);
     } catch (error) {
       setHistoryAskError(error instanceof Error ? error.message : "AI 问数失败，请稍后重试。");
     } finally {
       setIsHistoryAsking(false);
+    }
+  }
+
+  function handleToggleHistoryAskSkill(skillId: string) {
+    setHistoryAskSkillIds((current) =>
+      current.includes(skillId) ? current.filter((item) => item !== skillId) : [...current, skillId].slice(0, 8),
+    );
+  }
+
+  async function handleCreateSkill(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!newSkillDraft.name.trim() || isSkillSaving) return;
+
+    setIsSkillSaving(true);
+    setSkillSaveError(null);
+    try {
+      const created = await createSkill(newSkillDraft);
+      setSelectedSkill(created);
+      setSkillDraft({ name: created.name, description: created.description, content: "", enabled: created.enabled });
+      const editableFile = created.files.find((file) => file.path.endsWith("SKILL.md") && file.editable) ?? created.files.find((file) => file.editable) ?? null;
+      setSelectedSkillFile(editableFile);
+      setSkillFileContent(editableFile ? created.skill_markdown : "");
+      setSkillItems((current) => [created, ...current.filter((item) => item.id !== created.id)]);
+      setSkillTotal((current) => current + 1);
+      setSkillSavedLabel("已新建");
+      setNewSkillDraft(emptySkillDraft);
+      window.setTimeout(() => setSkillSavedLabel(null), 1600);
+    } catch (error) {
+      setSkillSaveError(error instanceof Error ? error.message : "Skill 新建失败，请稍后重试。");
+    } finally {
+      setIsSkillSaving(false);
+    }
+  }
+
+  async function handleSelectSkill(skillId: string) {
+    if (isSkillDetailLoading) return;
+
+    setIsSkillDetailLoading(true);
+    setSkillSaveError(null);
+    try {
+      const detail = await fetchSkill(skillId);
+      setSelectedSkill(detail);
+      setSkillDraft({ name: detail.name, description: detail.description, content: "", enabled: detail.enabled });
+      const editableFile = detail.files.find((file) => file.path.endsWith("SKILL.md") && file.editable) ?? detail.files.find((file) => file.editable) ?? null;
+      setSelectedSkillFile(editableFile);
+      setSkillFileContent(editableFile ? detail.skill_markdown : "");
+    } catch (error) {
+      setSkillSaveError(error instanceof Error ? error.message : "Skill 详情加载失败。");
+    } finally {
+      setIsSkillDetailLoading(false);
+    }
+  }
+
+  async function handleSelectSkillFile(file: SkillFile) {
+    if (!selectedSkill || !file.editable) return;
+
+    setSelectedSkillFile(file);
+    setIsSkillDetailLoading(true);
+    setSkillSaveError(null);
+    try {
+      const response = await fetchSkillFile(selectedSkill.id, file.path);
+      setSkillFileContent(response.content);
+    } catch (error) {
+      setSkillSaveError(error instanceof Error ? error.message : "Skill 文件读取失败。");
+    } finally {
+      setIsSkillDetailLoading(false);
+    }
+  }
+
+  async function handleSaveSelectedSkill(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedSkill || !skillDraft.name.trim() || isSkillSaving) return;
+
+    setIsSkillSaving(true);
+    setSkillSaveError(null);
+    try {
+      const updated = await updateSkill(selectedSkill.id, {
+        name: skillDraft.name,
+        description: skillDraft.description,
+        enabled: skillDraft.enabled,
+      });
+      setSelectedSkill(updated);
+      setSkillItems((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+      setSkillSavedLabel("已保存");
+      window.setTimeout(() => setSkillSavedLabel(null), 1600);
+    } catch (error) {
+      setSkillSaveError(error instanceof Error ? error.message : "Skill 保存失败。");
+    } finally {
+      setIsSkillSaving(false);
+    }
+  }
+
+  async function handleSaveSelectedSkillFile() {
+    if (!selectedSkill || !selectedSkillFile || isSkillFileSaving) return;
+
+    setIsSkillFileSaving(true);
+    setSkillSaveError(null);
+    try {
+      await updateSkillFile(selectedSkill.id, selectedSkillFile.path, skillFileContent);
+      const detail = await fetchSkill(selectedSkill.id);
+      setSelectedSkill(detail);
+      setSkillItems((current) => current.map((item) => (item.id === detail.id ? detail : item)));
+      setSkillSavedLabel("文件已保存");
+      window.setTimeout(() => setSkillSavedLabel(null), 1600);
+    } catch (error) {
+      setSkillSaveError(error instanceof Error ? error.message : "Skill 文件保存失败。");
+    } finally {
+      setIsSkillFileSaving(false);
+    }
+  }
+
+  async function handleUploadSkillZip(file: File | null) {
+    if (!file || isSkillUploading) return;
+
+    setIsSkillUploading(true);
+    setSkillSaveError(null);
+    try {
+      const uploaded = await uploadSkillZip(file);
+      setSelectedSkill(uploaded);
+      setSkillDraft({ name: uploaded.name, description: uploaded.description, content: "", enabled: uploaded.enabled });
+      const editableFile = uploaded.files.find((item) => item.path.endsWith("SKILL.md") && item.editable) ?? uploaded.files.find((item) => item.editable) ?? null;
+      setSelectedSkillFile(editableFile);
+      setSkillFileContent(editableFile ? uploaded.skill_markdown : "");
+      setSkillItems((current) => [uploaded, ...current.filter((item) => item.id !== uploaded.id)]);
+      setSkillTotal((current) => current + 1);
+      setSkillSavedLabel("已上传");
+      window.setTimeout(() => setSkillSavedLabel(null), 1600);
+    } catch (error) {
+      setSkillSaveError(error instanceof Error ? error.message : "Skill zip 上传失败。");
+    } finally {
+      setIsSkillUploading(false);
+    }
+  }
+
+  async function handleDeleteSelectedSkill() {
+    if (!selectedSkill || isSkillSaving) return;
+    const confirmed = window.confirm(`确定删除 Skill「${selectedSkill.name}」吗？`);
+    if (!confirmed) return;
+
+    setIsSkillSaving(true);
+    setSkillSaveError(null);
+    try {
+      await deleteSkill(selectedSkill.id);
+      setSkillItems((current) => current.filter((item) => item.id !== selectedSkill.id));
+      setSkillTotal((current) => Math.max(0, current - 1));
+      setHistoryAskSkillIds((current) => current.filter((skillId) => skillId !== selectedSkill.id));
+      setSelectedSkill(null);
+      setSelectedSkillFile(null);
+      setSkillFileContent("");
+    } catch (error) {
+      setSkillSaveError(error instanceof Error ? error.message : "Skill 删除失败。");
+    } finally {
+      setIsSkillSaving(false);
     }
   }
 
@@ -2652,6 +2935,7 @@ function App() {
     setLiveCodexErrorOutput("");
     setLiveCodexStatus("正在启动 Codex...");
     setAiCodingNoticeStatus("running");
+    hasRestoredLatestCodexJobRef.current = false;
     try {
       const job = await startCodexJob(prompt);
       setAiCodingMessages((current) => [
@@ -2751,6 +3035,8 @@ function App() {
               ? "历史记录查询"
               : activeView === "englishMaterials"
                 ? "英语素材管理"
+              : activeView === "skills"
+                ? "Skill 管理"
               : activeView === "historyAsk"
                 ? "AI 问数"
                 : activeView === "aiCoding"
@@ -2773,6 +3059,8 @@ function App() {
               ? "History Explorer"
               : activeView === "englishMaterials"
                 ? "English Materials"
+              : activeView === "skills"
+                ? "Skill Registry"
               : activeView === "historyAsk"
                 ? "Ask History"
                 : activeView === "aiCoding"
@@ -2828,6 +3116,8 @@ function App() {
                       ? currentRecordQuery
                       : activeView === "englishMaterials"
                         ? englishMaterialQuery
+                      : activeView === "skills"
+                        ? skillQuery
                       : activeView === "history"
                         ? historyQuery
                         : ""
@@ -2846,8 +3136,10 @@ function App() {
                     ? setTodoQuery
                     : activeView === "currentRecords"
                       ? setCurrentRecordQuery
-                      : activeView === "englishMaterials"
-                        ? setEnglishMaterialQuery
+                    : activeView === "englishMaterials"
+                      ? setEnglishMaterialQuery
+                    : activeView === "skills"
+                      ? setSkillQuery
                     : activeView === "history"
                       ? setHistoryQuery
                       : setQuery
@@ -2873,6 +3165,34 @@ function App() {
               onOpenView={handleOpenOverviewView}
               onRefresh={handleRefreshOverview}
             />
+          ) : activeView === "skills" ? (
+            <SkillManager
+              detail={selectedSkill}
+              draft={skillDraft}
+              error={skillError}
+              fileContent={skillFileContent}
+              isDetailLoading={isSkillDetailLoading}
+              isFileSaving={isSkillFileSaving}
+              isLoading={isSkillLoading}
+              isSaving={isSkillSaving}
+              isUploading={isSkillUploading}
+              items={skillItems}
+              newDraft={newSkillDraft}
+              saveError={skillSaveError}
+              savedLabel={skillSavedLabel}
+              selectedFile={selectedSkillFile}
+              total={skillTotal}
+              onCreate={handleCreateSkill}
+              onDelete={handleDeleteSelectedSkill}
+              onDraftChange={setSkillDraft}
+              onFileChange={setSkillFileContent}
+              onFileSelect={handleSelectSkillFile}
+              onNewDraftChange={setNewSkillDraft}
+              onSave={handleSaveSelectedSkill}
+              onSaveFile={handleSaveSelectedSkillFile}
+              onSelect={handleSelectSkill}
+              onUpload={handleUploadSkillZip}
+            />
           ) : activeView === "historyAsk" ? (
             <HistoryAskPanel
               answer={historyAskAnswer}
@@ -2886,12 +3206,17 @@ function App() {
               llmConfigError={historyAskLlmConfigError}
               llmConfigSaved={historyAskLlmConfigSaved}
               question={historyAskQuestion}
+              selectedSkillIds={historyAskSkillIds}
+              skills={skillItems}
+              skillsError={skillError}
+              skillsLoading={isSkillLoading}
               onCopyAnswer={handleCopyHistoryAskAnswer}
               onLlmConfigDraftChange={setHistoryAskLlmConfigDraft}
               onLlmConfigSave={handleSaveHistoryAskLlmConfig}
               onOpenHistory={handleOpenHistoryFromAsk}
               onQuestionChange={setHistoryAskQuestion}
               onSubmit={handleAskHistory}
+              onToggleSkill={handleToggleHistoryAskSkill}
             />
           ) : activeView === "aiCoding" ? (
             <AiCodingWorkspace
@@ -7221,6 +7546,328 @@ function CurrentRecordEditDialog({
   );
 }
 
+function SkillManager({
+  detail,
+  draft,
+  error,
+  fileContent,
+  isDetailLoading,
+  isFileSaving,
+  isLoading,
+  isSaving,
+  isUploading,
+  items,
+  newDraft,
+  saveError,
+  savedLabel,
+  selectedFile,
+  total,
+  onCreate,
+  onDelete,
+  onDraftChange,
+  onFileChange,
+  onFileSelect,
+  onNewDraftChange,
+  onSave,
+  onSaveFile,
+  onSelect,
+  onUpload,
+}: {
+  detail: SkillDetail | null;
+  draft: SkillDraft;
+  error: string | null;
+  fileContent: string;
+  isDetailLoading: boolean;
+  isFileSaving: boolean;
+  isLoading: boolean;
+  isSaving: boolean;
+  isUploading: boolean;
+  items: SkillSummary[];
+  newDraft: SkillDraft;
+  saveError: string | null;
+  savedLabel: string | null;
+  selectedFile: SkillFile | null;
+  total: number;
+  onCreate: (event: React.FormEvent<HTMLFormElement>) => void;
+  onDelete: () => void;
+  onDraftChange: (draft: SkillDraft) => void;
+  onFileChange: (content: string) => void;
+  onFileSelect: (file: SkillFile) => void;
+  onNewDraftChange: (draft: SkillDraft) => void;
+  onSave: (event: React.FormEvent<HTMLFormElement>) => void;
+  onSaveFile: () => void;
+  onSelect: (skillId: string) => void;
+  onUpload: (file: File | null) => void;
+}) {
+  const canCreate = newDraft.name.trim().length > 0 && !isSaving;
+  const canSave = Boolean(detail) && draft.name.trim().length > 0 && !isSaving;
+  const canSaveFile = Boolean(detail && selectedFile?.editable) && !isFileSaving;
+
+  return (
+    <div className="grid flex-1 gap-4 px-4 pb-4 pt-2 xl:grid-cols-[360px_minmax(0,1fr)]">
+      <aside className="min-w-0 space-y-4">
+        <section className="rounded-lg border border-white/10 bg-ink-900/72 p-4 shadow-soft-glow backdrop-blur-xl">
+          <div className="mb-4 flex items-start justify-between gap-3">
+            <div>
+              <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
+                <Layers3 size={17} />
+                Skill Registry
+              </div>
+              <h2 className="text-lg font-semibold text-slate-50">已安装 Skill</h2>
+            </div>
+            <span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-xs text-slate-400">
+              {formatAmount(total)}
+            </span>
+          </div>
+
+          {isLoading ? (
+            <LoadingStack />
+          ) : error ? (
+            <div className="rounded-lg border border-red-400/25 bg-red-400/10 p-3 text-sm text-red-100">{error}</div>
+          ) : items.length > 0 ? (
+            <div className="space-y-2">
+              {items.map((skill) => {
+                const selected = detail?.id === skill.id;
+                return (
+                  <button
+                    key={skill.id}
+                    className={`block w-full rounded-lg border p-3 text-left transition ${
+                      selected
+                        ? "border-mint-300/30 bg-mint-300/10"
+                        : "border-white/10 bg-white/[0.028] hover:border-mint-300/25 hover:bg-white/[0.045]"
+                    }`}
+                    type="button"
+                    onClick={() => onSelect(skill.id)}
+                  >
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <span className="truncate text-sm font-medium text-slate-100">{skill.name}</span>
+                      <span
+                        className={`shrink-0 rounded-md border px-2 py-0.5 text-[11px] ${
+                          skill.enabled
+                            ? "border-mint-300/25 bg-mint-300/10 text-mint-200"
+                            : "border-white/10 bg-white/[0.035] text-slate-500"
+                        }`}
+                      >
+                        {skill.enabled ? "启用" : "停用"}
+                      </span>
+                    </div>
+                    <p className="line-clamp-2 text-xs leading-5 text-slate-500">{skill.description || "无描述"}</p>
+                    <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-600">
+                      <span>{skill.source}</span>
+                      <span>{formatAmount(skill.file_count)} files</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="rounded-lg border border-white/10 bg-white/[0.025] p-4 text-sm leading-6 text-slate-500">
+              暂无 skill。可以新建自定义 skill，或上传标准 skill zip 包。
+            </div>
+          )}
+        </section>
+
+        <section className="rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
+          <div className="mb-4 flex items-center gap-2 text-sm font-medium text-slate-200">
+            <FilePlus2 className="text-mint-300" size={17} />
+            新建自定义 Skill
+          </div>
+          <form className="space-y-3" onSubmit={onCreate}>
+            <input
+              className="control h-10"
+              value={newDraft.name}
+              onChange={(event) => onNewDraftChange({ ...newDraft, name: event.target.value })}
+              placeholder="Skill 名称"
+            />
+            <textarea
+              className="control min-h-20 resize-none"
+              value={newDraft.description}
+              onChange={(event) => onNewDraftChange({ ...newDraft, description: event.target.value })}
+              placeholder="描述这个 skill 会如何影响输出结构、语气或排版。"
+            />
+            <textarea
+              className="control min-h-32 resize-y font-mono text-xs leading-6"
+              value={newDraft.content}
+              onChange={(event) => onNewDraftChange({ ...newDraft, content: event.target.value })}
+              placeholder={"# Skill 名称\n\n描述：...\n\n## 使用规则\n- ..."}
+            />
+            <button
+              className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-3 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
+              disabled={!canCreate}
+              type="submit"
+            >
+              {isSaving ? <Loader2 className="animate-spin" size={16} /> : <Plus size={16} />}
+              新建 Skill
+            </button>
+          </form>
+        </section>
+
+        <section className="rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
+          <label className="block">
+            <span className="mb-3 flex items-center gap-2 text-sm font-medium text-slate-200">
+              <Archive className="text-mint-300" size={17} />
+              上传标准 Skill Zip
+            </span>
+            <input
+              className="control"
+              accept=".zip,application/zip"
+              disabled={isUploading}
+              type="file"
+              onChange={(event) => {
+                onUpload(event.target.files?.[0] ?? null);
+                event.target.value = "";
+              }}
+            />
+          </label>
+          {isUploading ? (
+            <div className="mt-3 flex items-center gap-2 text-sm text-slate-500">
+              <Loader2 className="animate-spin" size={15} />
+              正在上传并解析...
+            </div>
+          ) : null}
+        </section>
+      </aside>
+
+      <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/72 p-4 shadow-soft-glow backdrop-blur-xl">
+        {detail ? (
+          <div className="space-y-5">
+            <form className="rounded-lg border border-white/10 bg-white/[0.025] p-4" onSubmit={onSave}>
+              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
+                    <ShieldCheck size={17} />
+                    Metadata
+                  </div>
+                  <h2 className="text-lg font-semibold text-slate-50">Skill 元信息</h2>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    className="flex h-9 items-center gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 text-xs font-medium text-red-100 transition hover:bg-red-400/15 disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={isSaving}
+                    type="button"
+                    onClick={onDelete}
+                  >
+                    <Trash2 size={15} />
+                    删除
+                  </button>
+                  <button
+                    className="flex h-9 items-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-3 text-xs font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
+                    disabled={!canSave}
+                    type="submit"
+                  >
+                    {isSaving ? <Loader2 className="animate-spin" size={15} /> : <Save size={15} />}
+                    {savedLabel ?? "保存"}
+                  </button>
+                </div>
+              </div>
+              <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_150px]">
+                <label className="block text-xs font-medium text-slate-500">
+                  名称
+                  <input
+                    className="control mt-2 h-10"
+                    value={draft.name}
+                    onChange={(event) => onDraftChange({ ...draft, name: event.target.value })}
+                  />
+                </label>
+                <label className="flex items-center justify-between gap-3 self-end rounded-lg border border-white/10 bg-white/[0.028] px-3 py-2 text-sm text-slate-300">
+                  <span>启用</span>
+                  <input
+                    checked={draft.enabled}
+                    className="h-4 w-4 accent-mint-300"
+                    type="checkbox"
+                    onChange={(event) => onDraftChange({ ...draft, enabled: event.target.checked })}
+                  />
+                </label>
+              </div>
+              <label className="mt-3 block text-xs font-medium text-slate-500">
+                描述
+                <textarea
+                  className="control mt-2 min-h-24 resize-y"
+                  value={draft.description}
+                  onChange={(event) => onDraftChange({ ...draft, description: event.target.value })}
+                />
+              </label>
+            </form>
+
+            <div className="grid gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
+              <aside className="rounded-lg border border-white/10 bg-white/[0.025] p-3">
+                <div className="mb-3 flex items-center gap-2 text-sm font-medium text-slate-200">
+                  <FileText className="text-mint-300" size={16} />
+                  文件
+                </div>
+                <div className="space-y-2">
+                  {detail.files.map((file) => (
+                    <button
+                      key={file.path}
+                      className={`block w-full rounded-md border px-3 py-2 text-left text-xs transition ${
+                        selectedFile?.path === file.path
+                          ? "border-mint-300/30 bg-mint-300/10 text-mint-100"
+                          : "border-white/10 bg-white/[0.028] text-slate-400 hover:border-mint-300/25"
+                      } ${file.editable ? "" : "opacity-55"}`}
+                      disabled={!file.editable}
+                      type="button"
+                      onClick={() => onFileSelect(file)}
+                    >
+                      <span className="block truncate">{file.path}</span>
+                      <span className="mt-1 block text-[11px] text-slate-600">{formatAmount(file.size)} bytes</span>
+                    </button>
+                  ))}
+                </div>
+              </aside>
+
+              <div className="min-w-0 rounded-lg border border-white/10 bg-white/[0.025] p-3">
+                <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium text-slate-200">{selectedFile?.path ?? "未选择文件"}</div>
+                    <div className="text-xs text-slate-600">支持编辑 Markdown、JSON、YAML、代码和文本文件。</div>
+                  </div>
+                  <button
+                    className="flex h-9 items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-3 text-xs font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
+                    disabled={!canSaveFile}
+                    type="button"
+                    onClick={onSaveFile}
+                  >
+                    {isFileSaving ? <Loader2 className="animate-spin" size={15} /> : <Save size={15} />}
+                    保存文件
+                  </button>
+                </div>
+                {isDetailLoading ? (
+                  <LoadingStack />
+                ) : selectedFile ? (
+                  <textarea
+                    className="control min-h-[520px] resize-y font-mono text-xs leading-6"
+                    value={fileContent}
+                    onChange={(event) => onFileChange(event.target.value)}
+                  />
+                ) : (
+                  <div className="grid min-h-[420px] place-items-center rounded-lg border border-white/10 bg-black/10 text-center text-sm text-slate-500">
+                    选择一个可编辑文件后在这里修改内容。
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="grid min-h-[620px] place-items-center text-center">
+            <div>
+              <Layers3 className="mx-auto mb-3 text-slate-600" size={40} />
+              <div className="mb-1 font-medium text-slate-300">选择或创建 Skill</div>
+              <p className="text-sm text-slate-500">Skill 的描述和 SKILL.md 内容可被 AI 问数等模块调用，用于影响输出结构和排版。</p>
+            </div>
+          </div>
+        )}
+
+        {saveError ? (
+          <div className="mt-4 flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100">
+            <TriangleAlert className="mt-0.5 shrink-0 text-red-300" size={17} />
+            <span>{saveError}</span>
+          </div>
+        ) : null}
+      </section>
+    </div>
+  );
+}
+
 function HistoryAskPanel({
   answer,
   error,
@@ -7233,12 +7880,17 @@ function HistoryAskPanel({
   llmConfigError,
   llmConfigSaved,
   question,
+  selectedSkillIds,
+  skills,
+  skillsError,
+  skillsLoading,
   onCopyAnswer,
   onLlmConfigDraftChange,
   onLlmConfigSave,
   onOpenHistory,
   onQuestionChange,
   onSubmit,
+  onToggleSkill,
 }: {
   answer: HistoryAskResponse | null;
   error: string | null;
@@ -7251,12 +7903,17 @@ function HistoryAskPanel({
   llmConfigError: string | null;
   llmConfigSaved: boolean;
   question: string;
+  selectedSkillIds: string[];
+  skills: SkillSummary[];
+  skillsError: string | null;
+  skillsLoading: boolean;
   onCopyAnswer: (view: HistoryAskAnswerView) => void;
   onLlmConfigDraftChange: (draft: LlmConfigDraft) => void;
   onLlmConfigSave: (event: React.FormEvent<HTMLFormElement>) => void;
   onOpenHistory: () => void;
   onQuestionChange: (question: string) => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+  onToggleSkill: (skillId: string) => void;
 }) {
   const [answerView, setAnswerView] = useState<HistoryAskAnswerView>("rendered");
   const canSubmit = question.trim().length >= 2 && !isLoading;
@@ -7303,6 +7960,49 @@ function HistoryAskPanel({
                 </button>
               ))}
             </div>
+            <div className="rounded-lg border border-white/10 bg-white/[0.025] p-3">
+              <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-2 text-sm font-medium text-slate-200">
+                  <Layers3 className="text-mint-300" size={16} />
+                  调用 Skill
+                </div>
+                <span className="text-xs text-slate-500">已选择 {formatAmount(selectedSkillIds.length)} 个</span>
+              </div>
+              {skillsLoading ? (
+                <div className="flex items-center gap-2 text-sm text-slate-500">
+                  <Loader2 className="animate-spin" size={15} />
+                  正在加载可用 skill...
+                </div>
+              ) : skillsError ? (
+                <div className="text-sm text-red-200">{skillsError}</div>
+              ) : skills.length > 0 ? (
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {skills.map((skill) => {
+                    const selected = selectedSkillIds.includes(skill.id);
+                    return (
+                      <button
+                        key={skill.id}
+                        className={`min-h-16 rounded-lg border px-3 py-2 text-left transition ${
+                          selected
+                            ? "border-mint-300/30 bg-mint-300/10 text-mint-100"
+                            : "border-white/10 bg-white/[0.028] text-slate-300 hover:border-mint-300/25"
+                        }`}
+                        type="button"
+                        onClick={() => onToggleSkill(skill.id)}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="truncate text-sm font-medium">{skill.name}</span>
+                          {selected ? <CheckCircle2 className="shrink-0 text-mint-300" size={15} /> : null}
+                        </div>
+                        <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{skill.description || "无描述"}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="text-sm text-slate-500">暂无启用的 skill，可在 Skill 管理中新增或上传。</div>
+              )}
+            </div>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="text-xs leading-5 text-slate-500">
                 当前按记录数、活跃日期、类型分布和代表性记录统计；不会直接让 AI 执行任意 SQL。
@@ -7347,6 +8047,14 @@ function HistoryAskPanel({
                     <span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-slate-400">
                       {formatAmount(answer.stats.active_days)} 个活跃日期
                     </span>
+                    {(answer.selected_skills ?? []).map((skill) => (
+                      <span
+                        key={skill.id}
+                        className="rounded-md border border-sky-300/25 bg-sky-300/10 px-2 py-1 text-sky-100"
+                      >
+                        {skill.name}
+                      </span>
+                    ))}
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <div className="flex h-9 overflow-hidden rounded-lg border border-white/10 bg-white/[0.035]">
@@ -9762,6 +10470,7 @@ function readStoredUiState(): StoredUiState {
       historyAsk: {
         question: readString(historyAsk.question),
         answer: readHistoryAskResponse(historyAsk.answer),
+        skillIds: readStringArray(historyAsk.skillIds),
       },
       aiCoding: {
         prompt: readString(aiCoding.prompt),
@@ -9863,6 +10572,7 @@ function buildDefaultUiState(): StoredUiState {
     historyAsk: {
       question: "",
       answer: null,
+      skillIds: [],
     },
     aiCoding: {
       prompt: "",
@@ -9940,7 +10650,10 @@ function englishMaterialItemToDraft(item: EnglishMaterialItem): EnglishMaterialD
 
 function readHistoryAskResponse(value: unknown): HistoryAskResponse | null {
   if (!isPlainRecord(value) || typeof value.answer !== "string") return null;
-  return value as unknown as HistoryAskResponse;
+  return {
+    ...(value as unknown as HistoryAskResponse),
+    selected_skills: Array.isArray(value.selected_skills) ? (value.selected_skills as HistoryAskResponse["selected_skills"]) : [],
+  };
 }
 
 function readAiCodingMessages(value: unknown): AiCodingMessage[] {
@@ -10021,6 +10734,10 @@ function readNullableString(value: unknown) {
 
 function readString(value: unknown) {
   return typeof value === "string" ? value : "";
+}
+
+function readStringArray(value: unknown) {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0) : [];
 }
 
 function readRecord(value: unknown): Record<string, unknown> {

@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -35,6 +36,7 @@ class Settings(BaseSettings):
     allow_web_codex: bool = Field(False, validation_alias="TRUSTED_KNOWLEDGE_ALLOW_WEB_CODEX")
     codex_bin: str = Field("codex", validation_alias="TRUSTED_KNOWLEDGE_CODEX_BIN")
     history_ask_llm_api_key: str = Field("", validation_alias="TRUSTED_KNOWLEDGE_HISTORY_ASK_LLM_API_KEY")
+    skill_storage_dir: str = Field("data/skills", validation_alias="TRUSTED_KNOWLEDGE_SKILL_STORAGE_DIR")
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -57,6 +59,13 @@ class Settings(BaseSettings):
     @property
     def wechat_allowed_unionid_set(self) -> set[str]:
         return {item.strip() for item in self.wechat_allowed_unionids.split(",") if item.strip()}
+
+    @property
+    def skill_storage_path(self) -> Path:
+        path = Path(self.skill_storage_dir).expanduser()
+        if path.is_absolute():
+            return path
+        return Path(__file__).resolve().parents[2] / path
 
     @field_validator("db_pool_max")
     @classmethod
