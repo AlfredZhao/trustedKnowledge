@@ -22,6 +22,9 @@ The format follows the common GitHub changelog convention inspired by
 - Added shared Markdown preview and clipboard utilities so future Markdown surfaces can reuse the same rendered display and document-friendly rich-copy behavior.
 - 新增通用 Markdown 预览组件与复制工具，后续 Markdown 界面可复用同一套美化展示和文档友好的富文本复制行为。
 
+- Added a Todo completion prompt that can prepend completed task details to a selected Current Record by user and type.
+- 为待办事项完成保存新增追加提示，可按用户和类型选择当前记录，并将任务详情前置追加到 CONTENT。
+
 #### Changed / 变更
 
 - Updated the navigation and related entry copy from `知识录入` to `信息录入`.

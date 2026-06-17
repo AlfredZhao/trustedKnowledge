@@ -61,6 +61,19 @@ class TodoUpdate(BaseModel):
         return stripped or None
 
 
+class TodoCurrentAppendTarget(BaseModel):
+    username: str = Field(..., min_length=1, max_length=30)
+    type: str = Field(..., min_length=1, max_length=40)
+
+    @field_validator("username", "type")
+    @classmethod
+    def strip_required_text(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("Field cannot be blank")
+        return stripped
+
+
 class TodoItem(TodoBase):
     id: int
     created_at: datetime | None = None

@@ -1,6 +1,7 @@
 import type {
   BlogFactoryItem,
   BlogFactoryStatus,
+  CurrentRecordItem,
   KnowledgeDraft,
   KnowledgeItem,
   KnowledgeStatus,
@@ -273,6 +274,21 @@ export async function updateTodo(id: number, draft: TodoDraft): Promise<TodoItem
       topic_tag: draft.topic_tag || null,
       todo_status: draft.todo_status,
     }),
+  });
+}
+
+export async function appendTodoToCurrent({
+  id,
+  username,
+  type,
+}: {
+  id: number;
+  username: string;
+  type: string;
+}): Promise<CurrentRecordItem> {
+  return request<CurrentRecordItem>(`/api/todos/${id}/append-to-current`, {
+    method: "POST",
+    body: JSON.stringify({ username, type }),
   });
 }
 

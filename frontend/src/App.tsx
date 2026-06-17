@@ -47,6 +47,7 @@ import {
   startWeChatLogin,
 } from "./api/auth";
 import {
+  appendTodoToCurrent,
   convertKnowledgeToTodo,
   convertTodoToKnowledge,
   createBlogFactoryItem,
@@ -345,6 +346,11 @@ interface PendingCurrentRecordUpdate {
   next: { week: CurrentWeek; day: CurrentDay; content: string };
 }
 
+interface CurrentAppendTarget {
+  username: string;
+  type: string;
+}
+
 const statusStyles: Record<KnowledgeStatus, string> = {
   未发布: "border-slate-500/30 bg-slate-400/10 text-slate-200",
   已发布: "border-mint-300/30 bg-mint-300/10 text-mint-300",
@@ -466,7 +472,12 @@ function App() {
   const [todoCopyError, setTodoCopyError] = useState<string | null>(null);
   const [hasCopiedTodoContent, setHasCopiedTodoContent] = useState(false);
   const [todoRefreshToken, setTodoRefreshToken] = useState(0);
+  const [pendingTodoCurrentAppend, setPendingTodoCurrentAppend] = useState<TodoItem | null>(null);
+  const [todoCurrentAppendTarget, setTodoCurrentAppendTarget] = useState<CurrentAppendTarget>({ username: "", type: "" });
+  const [isTodoCurrentAppendOptionsLoading, setIsTodoCurrentAppendOptionsLoading] = useState(false);
+  const [isAppendingTodoToCurrent, setIsAppendingTodoToCurrent] = useState(false);
   const pendingTodoNavigationRef = useRef<"previous" | "next" | null>(null);
+  const selectedTodoSavedStatusRef = useRef<TodoStatus | null>(restoredUiState.todos.draft?.todo_status ?? null);
   const [conversionTarget, setConversionTarget] = useState<ConversionTarget | null>(null);
   const [currentRecordItems, setCurrentRecordItems] = useState<CurrentRecordItem[]>([]);
   const [currentRecordTotal, setCurrentRecordTotal] = useState(0);
@@ -649,10 +660,14 @@ function App() {
       setTodoItems([]);
       setTodoTotal(0);
       setSelectedTodoId(null);
+      selectedTodoSavedStatusRef.current = null;
       setIsMobileTodoEditorOpen(false);
       setTodoCopyError(null);
       setHasCopiedTodoContent(false);
       setIsConvertingTodoToKnowledge(false);
+      setPendingTodoCurrentAppend(null);
+      setTodoCurrentAppendTarget({ username: "", type: "" });
+      setIsAppendingTodoToCurrent(false);
       setConversionTarget(null);
       setCurrentRecordItems([]);
       setCurrentRecordTotal(0);
@@ -2012,10 +2027,14 @@ function App() {
     setTodoItems([]);
     setTodoTotal(0);
     setSelectedTodoId(null);
+    selectedTodoSavedStatusRef.current = null;
     setIsMobileTodoEditorOpen(false);
     setTodoDraft(emptyTodoDraft);
     setTodoCopyError(null);
     setHasCopiedTodoContent(false);
+    setPendingTodoCurrentAppend(null);
+    setTodoCurrentAppendTarget({ username: "", type: "" });
+    setIsAppendingTodoToCurrent(false);
     setCurrentRecordItems([]);
     setCurrentRecordTotal(0);
     setSelectedCurrentRecord(null);
@@ -2156,6 +2175,7 @@ function App() {
 
   async function handleSelectTodo(item: TodoItem) {
     setSelectedTodoId(item.id);
+    selectedTodoSavedStatusRef.current = item.todo_status;
     setIsMobileTodoEditorOpen(true);
     setTodoDraft(todoItemToDraft(item));
     setTodoSaveError(null);
@@ -2165,6 +2185,7 @@ function App() {
 
     try {
       const detail = await getTodo(item.id);
+      selectedTodoSavedStatusRef.current = detail.todo_status;
       setTodoDraft(todoItemToDraft(detail));
       setTodoItems((current) => current.map((entry) => (entry.id === detail.id ? detail : entry)));
       setTodoError(null);
@@ -2218,18 +2239,78 @@ function App() {
     event.preventDefault();
     if (selectedTodoId === null || isTodoSaving || !todoDraft.title.trim() || !todoDraft.content.trim()) return;
 
+    const previousTodoStatus =
+      selectedTodoSavedStatusRef.current ?? todoItems.find((item) => item.id === selectedTodoId)?.todo_status ?? null;
     setIsTodoSaving(true);
     setTodoSaveError(null);
     setTodoCopyError(null);
     try {
       const updated = await updateTodo(selectedTodoId, todoDraft);
+      selectedTodoSavedStatusRef.current = updated.todo_status;
       setTodoDraft(todoItemToDraft(updated));
       setTodoItems((current) => current.map((item) => (item.id === updated.id ? updated : item)));
       setTodoRefreshToken((current) => current + 1);
+      if (previousTodoStatus !== "已完成" && updated.todo_status === "已完成") {
+        void prepareTodoCurrentAppend(updated);
+      }
     } catch (error) {
       setTodoSaveError(error instanceof Error ? error.message : "待办事项保存失败，请稍后重试。");
     } finally {
       setIsTodoSaving(false);
+    }
+  }
+
+  async function prepareTodoCurrentAppend(todo: TodoItem) {
+    setPendingTodoCurrentAppend(todo);
+    setTodoSaveError(null);
+
+    const cached = readCachedCurrentRecordOptions();
+    if (cached) {
+      const nextOptions = normalizeCurrentRecordOptions(cached);
+      setCurrentRecordOptions(nextOptions);
+      setTodoCurrentAppendTarget((current) => resolveCurrentAppendTarget(nextOptions, current));
+    } else {
+      setTodoCurrentAppendTarget((current) => resolveCurrentAppendTarget(currentRecordOptions, current));
+    }
+
+    setIsTodoCurrentAppendOptionsLoading(!cached);
+    try {
+      const options = normalizeCurrentRecordOptions(await fetchCurrentRecordOptions());
+      setCurrentRecordOptions(options);
+      setTodoCurrentAppendTarget((current) => resolveCurrentAppendTarget(options, current));
+    } catch (error) {
+      setTodoSaveError(error instanceof Error ? error.message : "当前记录选项读取失败，请稍后重试。");
+    } finally {
+      setIsTodoCurrentAppendOptionsLoading(false);
+    }
+  }
+
+  async function confirmTodoCurrentAppend() {
+    if (
+      pendingTodoCurrentAppend === null ||
+      isAppendingTodoToCurrent ||
+      !todoCurrentAppendTarget.username ||
+      !todoCurrentAppendTarget.type
+    ) {
+      return;
+    }
+
+    setIsAppendingTodoToCurrent(true);
+    setTodoSaveError(null);
+    try {
+      const updated = await appendTodoToCurrent({
+        id: pendingTodoCurrentAppend.id,
+        username: todoCurrentAppendTarget.username,
+        type: todoCurrentAppendTarget.type,
+      });
+      clearApiResponseCache();
+      setCurrentRecordItems((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+      setCurrentRecordRefreshToken((current) => current + 1);
+      setPendingTodoCurrentAppend(null);
+    } catch (error) {
+      setTodoSaveError(error instanceof Error ? error.message : "追加到当前记录失败，请稍后重试。");
+    } finally {
+      setIsAppendingTodoToCurrent(false);
     }
   }
 
@@ -2266,6 +2347,7 @@ function App() {
       setTodoItems((current) => current.filter((item) => item.id !== selectedTodoId));
       setTodoTotal((current) => Math.max(0, current - 1));
       setSelectedTodoId(null);
+      selectedTodoSavedStatusRef.current = null;
       setIsMobileTodoEditorOpen(false);
       setTodoDraft(emptyTodoDraft);
       setTodoCopyError(null);
@@ -2457,6 +2539,7 @@ function App() {
 
   function handleOpenOverviewTodo(item: TodoItem) {
     setSelectedTodoId(item.id);
+    selectedTodoSavedStatusRef.current = item.todo_status;
     setTodoDraft(todoItemToDraft(item));
     setActiveView("todos");
   }
@@ -3244,6 +3327,21 @@ function App() {
           }
         }}
       />
+      <TodoCurrentAppendDialog
+        isLoadingOptions={isTodoCurrentAppendOptionsLoading}
+        isOpen={pendingTodoCurrentAppend !== null}
+        isPending={isAppendingTodoToCurrent}
+        options={currentRecordOptions}
+        target={todoCurrentAppendTarget}
+        todo={pendingTodoCurrentAppend}
+        onCancel={() => {
+          if (!isAppendingTodoToCurrent) setPendingTodoCurrentAppend(null);
+        }}
+        onConfirm={() => {
+          void confirmTodoCurrentAppend();
+        }}
+        onTargetChange={setTodoCurrentAppendTarget}
+      />
       <AppConfirmDialog
         confirmLabel={isCurrentRecordUpdating ? "保存中" : "确认保存"}
         description="当前类型已经到达 Level 10 且即将从 W48 回到 W1。确认后会保持 Level 10 并继续保存本次推进。"
@@ -3906,6 +4004,141 @@ function AppConfirmDialog({
           >
             {isPending ? <Loader2 className="animate-spin" size={17} /> : icon}
             {confirmLabel}
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function TodoCurrentAppendDialog({
+  isOpen,
+  isLoadingOptions,
+  isPending,
+  options,
+  target,
+  todo,
+  onCancel,
+  onConfirm,
+  onTargetChange,
+}: {
+  isOpen: boolean;
+  isLoadingOptions: boolean;
+  isPending: boolean;
+  options: CurrentRecordOptions;
+  target: CurrentAppendTarget;
+  todo: TodoItem | null;
+  onCancel: () => void;
+  onConfirm: () => void;
+  onTargetChange: (target: CurrentAppendTarget) => void;
+}) {
+  useEffect(() => {
+    if (!isOpen) return;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape" && !isPending) {
+        onCancel();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, isPending, onCancel]);
+
+  if (!isOpen) return null;
+
+  const userOptions = options.users.filter((user) => (options.user_types[user] ?? []).length > 0);
+  const typeOptions = target.username ? options.user_types[target.username] ?? [] : [];
+  const canConfirm = Boolean(target.username && target.type) && !isLoadingOptions && !isPending;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/62 px-4 backdrop-blur-sm"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !isPending) {
+          onCancel();
+        }
+      }}
+    >
+      <section
+        aria-modal="true"
+        className="w-full max-w-md rounded-lg border border-white/10 bg-ink-900 p-5 shadow-soft-glow"
+        role="dialog"
+      >
+        <div className="mb-4 flex items-start gap-3">
+          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-mint-300/25 bg-mint-300/10 text-mint-300">
+            <ClipboardList size={19} />
+          </div>
+          <div className="min-w-0">
+            <div className="mb-1 text-sm font-medium text-mint-300">当前记录</div>
+            <h2 className="line-clamp-2 text-lg font-semibold text-slate-50">追加已完成待办</h2>
+          </div>
+        </div>
+
+        <div className="mb-4 rounded-lg border border-white/10 bg-white/[0.035] px-3 py-3 text-sm leading-6 text-slate-400">
+          <div className="mb-1 text-xs uppercase tracking-[0.18em] text-slate-600">Todo</div>
+          <div className="line-clamp-2 text-slate-300">{todo?.title ?? "待办事项"}</div>
+        </div>
+
+        <div className="mb-5 grid gap-4 sm:grid-cols-2">
+          <Field label="用户" icon={<ShieldCheck size={16} />}>
+            <select
+              className="control"
+              disabled={isLoadingOptions || isPending}
+              value={target.username}
+              onChange={(event) => {
+                const username = event.target.value;
+                onTargetChange(resolveCurrentAppendTarget(options, { username, type: target.type }));
+              }}
+            >
+              {userOptions.length === 0 ? <option value="">暂无用户</option> : null}
+              {userOptions.map((user) => (
+                <option key={user} value={user}>
+                  {user}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="类型" icon={<Tags size={16} />}>
+            <select
+              className="control"
+              disabled={isLoadingOptions || isPending || typeOptions.length === 0}
+              value={target.type}
+              onChange={(event) => onTargetChange({ ...target, type: event.target.value })}
+            >
+              {typeOptions.length === 0 ? <option value="">暂无类型</option> : null}
+              {typeOptions.map((type) => (
+                <option key={type} value={type}>
+                  {type}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </div>
+
+        <div className="mb-5 flex items-start gap-2 rounded-lg border border-mint-300/25 bg-mint-300/10 px-3 py-3 text-sm text-mint-100">
+          {isLoadingOptions ? <Loader2 className="mt-0.5 shrink-0 animate-spin" size={17} /> : <FilePlus2 className="mt-0.5 shrink-0" size={17} />}
+          <span>确认后会把任务目标和任务内容追加到所选当前记录的 CONTENT 最前面，原内容保持不变。</span>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <button
+            className="h-11 rounded-lg border border-white/10 bg-white/[0.035] px-4 font-medium text-slate-300 transition hover:border-white/20 hover:text-slate-100 disabled:cursor-not-allowed disabled:text-slate-600"
+            disabled={isPending}
+            type="button"
+            onClick={onCancel}
+          >
+            取消
+          </button>
+          <button
+            className="flex h-11 items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
+            disabled={!canConfirm}
+            type="button"
+            onClick={onConfirm}
+          >
+            {isPending ? <Loader2 className="animate-spin" size={17} /> : <FilePlus2 size={17} />}
+            {isPending ? "追加中" : "确认追加"}
           </button>
         </div>
       </section>
@@ -9146,6 +9379,34 @@ function buildWeekOptions(): CurrentWeek[] {
 
 function buildDayOptions(): CurrentDay[] {
   return Array.from({ length: 7 }, (_, index) => `D${index + 1}` as CurrentDay);
+}
+
+function normalizeCurrentRecordOptions(options: CurrentRecordOptions): CurrentRecordOptions {
+  return {
+    ...options,
+    user_types: options.user_types ?? {},
+    weeks: options.weeks.length > 0 ? options.weeks : buildWeekOptions(),
+    days: options.days.length > 0 ? options.days : buildDayOptions(),
+    learn_levels: options.learn_levels.length > 0 ? options.learn_levels : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+  };
+}
+
+function resolveCurrentAppendTarget(options: CurrentRecordOptions, preferred?: CurrentAppendTarget): CurrentAppendTarget {
+  const usersWithTypes = options.users.filter((user) => (options.user_types[user] ?? []).length > 0);
+  const preferredTypes = preferred?.username ? options.user_types[preferred.username] ?? [] : [];
+  const defaultUser = usersWithTypes.includes("Alfred") ? "Alfred" : usersWithTypes[0] || "";
+  const username = preferred?.username && preferredTypes.length > 0 ? preferred.username : defaultUser;
+  const typeOptions = username ? options.user_types[username] ?? [] : [];
+
+  if (preferred?.type && typeOptions.includes(preferred.type)) {
+    return { username, type: preferred.type };
+  }
+
+  if (username === "Alfred" && typeOptions.includes("Work")) {
+    return { username, type: "Work" };
+  }
+
+  return { username, type: typeOptions[0] || "" };
 }
 
 function getNextWeek(value: CurrentWeek): CurrentWeek {

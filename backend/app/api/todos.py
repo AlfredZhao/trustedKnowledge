@@ -5,9 +5,11 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 
 from app.core.security import require_api_key
 from app.repositories.conversions import convert_todo_to_knowledge
+from app.repositories.current_records import prepend_todo_to_current_content
 from app.repositories.todos import create_todo, get_todo_by_id, list_todos, update_todo
+from app.schemas.current_records import CurrentRecordItem
 from app.schemas.knowledge import KnowledgeItem
-from app.schemas.todos import TodoCreate, TodoItem, TodoListResponse, TodoUpdate
+from app.schemas.todos import TodoCreate, TodoCurrentAppendTarget, TodoItem, TodoListResponse, TodoUpdate
 
 
 router = APIRouter(prefix="/todos", tags=["todos"], dependencies=[Depends(require_api_key)])
@@ -72,6 +74,38 @@ async def post_todo_convert_to_knowledge(todo_id: Annotated[int, Path(ge=1)]) ->
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Todo item not found")
 
     return KnowledgeItem.model_validate(converted)
+
+
+@router.post("/{todo_id}/append-to-current", response_model=CurrentRecordItem)
+async def post_todo_append_to_current(
+    todo_id: Annotated[int, Path(ge=1)],
+    payload: TodoCurrentAppendTarget,
+) -> CurrentRecordItem:
+    try:
+        todo = await get_todo_by_id(todo_id)
+        if todo is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Todo item not found")
+
+        updated = await prepend_todo_to_current_content(
+            username=payload.username,
+            current_type=payload.type,
+            todo_title=todo["title"],
+            todo_content=todo["content"],
+        )
+    except HTTPException:
+        raise
+    except oracledb.Error as exc:
+        error = exc.args[0] if exc.args else exc
+        message = getattr(error, "message", str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Oracle rejected the current record append: {message}",
+        ) from exc
+
+    if updated is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Current record not found")
+
+    return CurrentRecordItem.model_validate(updated)
 
 
 @router.get("/{todo_id}", response_model=TodoItem)

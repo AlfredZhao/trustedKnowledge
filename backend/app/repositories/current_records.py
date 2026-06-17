@@ -1,3 +1,4 @@
+import re
 from typing import Any
 
 import oracledb
@@ -274,6 +275,55 @@ async def update_current_record(record_id: int, payload: CurrentRecordUpdate) ->
         await connection.commit()
 
     return await get_current_record(record_id)
+
+
+async def prepend_todo_to_current_content(
+    *,
+    username: str,
+    current_type: str,
+    todo_title: str,
+    todo_content: str,
+) -> dict[str, Any] | None:
+    select_sql = f"""
+        select {LIST_COLUMNS}
+        from t_current
+        where lower(username) = lower(:username)
+          and lower(type) = lower(:current_type)
+        for update
+    """
+    update_sql = """
+        update t_current
+        set content = :content
+        where id = :record_id
+    """
+
+    async with acquire_connection() as connection:
+        cursor = connection.cursor()
+        await cursor.execute(select_sql, {"username": username, "current_type": current_type})
+        row = await cursor.fetchone()
+        if row is None:
+            await connection.rollback()
+            return None
+
+        current = _row_to_dict(row)
+        prepended = _format_todo_current_entry(todo_title, todo_content)
+        existing_content = current["content"] or ""
+        next_content = prepended if not existing_content.strip() else f"{prepended}\n\n{existing_content}"
+
+        await cursor.execute(update_sql, {"record_id": current["id"], "content": next_content})
+        await connection.commit()
+
+    return await get_current_record(current["id"])
+
+
+def _format_todo_current_entry(todo_title: str, todo_content: str) -> str:
+    title = todo_title.strip()
+    content_lines = [line.strip() for line in todo_content.splitlines() if line.strip()]
+    if len(content_lines) == 1:
+        content_lines = [item.strip() for item in re.split(r"[，,]", content_lines[0]) if item.strip()]
+
+    bullet_lines = [f"- {line}" for line in content_lines]
+    return "\n".join([f"“{title}”", *bullet_lines])
 
 
 def _resolve_next_level(current: dict[str, Any], payload: CurrentRecordUpdate) -> int:
