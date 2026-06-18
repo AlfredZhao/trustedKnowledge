@@ -4,6 +4,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 BlogFactoryStatus = Literal["待处理", "已处理", "已发布", "跳过"]
+KnowledgeStatus = Literal["未发布", "已发布", "跳过"]
 
 
 class BlogFactoryCreate(BaseModel):
@@ -49,6 +50,36 @@ class BlogFactoryListResponse(BaseModel):
 
 class BlogFactoryStatusUpdate(BaseModel):
     factory_status: BlogFactoryStatus
+
+
+class BlogFactoryContentStatusUpdate(BaseModel):
+    blog_status: KnowledgeStatus
+
+
+class BlogFactoryUpdate(BaseModel):
+    task_content: str | None = Field(default=None, min_length=1)
+    question_snapshot: str | None = Field(default=None, min_length=1, max_length=4000)
+    answer_snapshot: str | None = Field(default=None, min_length=1)
+    source_snapshot: str | None = Field(default=None, max_length=200)
+    topic_tag_snapshot: str | None = Field(default=None, max_length=100, pattern=r"^[a-zA-Z0-9_,\s]+$")
+
+    @field_validator("task_content", "question_snapshot", "answer_snapshot")
+    @classmethod
+    def strip_required_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("Field cannot be blank")
+        return stripped
+
+    @field_validator("source_snapshot", "topic_tag_snapshot", mode="before")
+    @classmethod
+    def empty_string_to_none(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        return stripped or None
 
 
 class BlogFactoryArticleUpdate(BaseModel):

@@ -57,6 +57,7 @@ import {
   createBlogFactoryItem,
   createKnowledge,
   createTodo,
+  deleteBlogFactoryItem,
   deleteKnowledge,
   fetchBlogFactoryItems,
   fetchKnowledge,
@@ -69,6 +70,8 @@ import {
   readCachedKnowledge,
   readCachedTodos,
   updateBlogFactoryArticle,
+  updateBlogFactoryContentStatus,
+  updateBlogFactoryItem,
   updateBlogFactoryStatus,
   updateKnowledge,
   updateTodo,
@@ -483,7 +486,18 @@ function App() {
   const [isBlogFactoryLoading, setIsBlogFactoryLoading] = useState(false);
   const [isBlogFactoryDetailLoading, setIsBlogFactoryDetailLoading] = useState(false);
   const [isBlogFactoryStatusSaving, setIsBlogFactoryStatusSaving] = useState(false);
+  const [isBlogFactoryContentStatusSaving, setIsBlogFactoryContentStatusSaving] = useState(false);
+  const [isBlogFactoryItemSaving, setIsBlogFactoryItemSaving] = useState(false);
   const [isBlogFactoryArticleSaving, setIsBlogFactoryArticleSaving] = useState(false);
+  const [isBlogFactoryDeleting, setIsBlogFactoryDeleting] = useState(false);
+  const [isMobileBlogFactoryDetailOpen, setIsMobileBlogFactoryDetailOpen] = useState(false);
+  const [blogFactoryEditDraft, setBlogFactoryEditDraft] = useState<BlogFactoryEditDraft>({
+    taskContent: "",
+    questionSnapshot: "",
+    answerSnapshot: "",
+    sourceSnapshot: "",
+    topicTagSnapshot: "",
+  });
   const [blogFactoryArticleDraft, setBlogFactoryArticleDraft] = useState(restoredUiState.blogFactory.articleDraft);
   const [blogFactoryArticlePathDraft, setBlogFactoryArticlePathDraft] = useState(restoredUiState.blogFactory.articlePathDraft);
   const [blogFactoryArticleError, setBlogFactoryArticleError] = useState<string | null>(null);
@@ -492,6 +506,8 @@ function App() {
   const [hasCopiedBlogFactoryTask, setHasCopiedBlogFactoryTask] = useState(false);
   const [blogFactoryError, setBlogFactoryError] = useState<string | null>(null);
   const [blogFactoryStatusError, setBlogFactoryStatusError] = useState<string | null>(null);
+  const [blogFactoryEditError, setBlogFactoryEditError] = useState<string | null>(null);
+  const [blogFactoryDeleteTarget, setBlogFactoryDeleteTarget] = useState<BlogFactoryItem | null>(null);
   const [blogFactoryRefreshToken, setBlogFactoryRefreshToken] = useState(0);
   const [todoItems, setTodoItems] = useState<TodoItem[]>([]);
   const [todoTotal, setTodoTotal] = useState(0);
@@ -1964,6 +1980,12 @@ function App() {
   useEffect(() => {
     if (restoredBlogFactoryArticleDraftRef.current && !selectedBlogFactoryItem) return;
 
+    setBlogFactoryEditDraft(blogFactoryItemToEditDraft(selectedBlogFactoryItem));
+    setBlogFactoryEditError(null);
+    setBlogFactoryStatusError(null);
+    setBlogFactoryTaskCopyError(null);
+    setHasCopiedBlogFactoryTask(false);
+
     if (
       restoredBlogFactoryArticleDraftRef.current &&
       selectedBlogFactoryItem?.id === restoredUiState.blogFactory.selectedItemId
@@ -2350,7 +2372,9 @@ function App() {
 
   async function handleSelectBlogFactoryItem(item: BlogFactoryItem) {
     setSelectedBlogFactoryItem(item);
+    setIsMobileBlogFactoryDetailOpen(true);
     setBlogFactoryStatusError(null);
+    setBlogFactoryEditError(null);
     setBlogFactoryTaskCopyError(null);
     setHasCopiedBlogFactoryTask(false);
     setIsBlogFactoryDetailLoading(true);
@@ -2381,6 +2405,85 @@ function App() {
       setBlogFactoryStatusError(error instanceof Error ? error.message : "状态更新失败，请稍后重试。");
     } finally {
       setIsBlogFactoryStatusSaving(false);
+    }
+  }
+
+  async function handleSaveBlogFactoryItem() {
+    if (!selectedBlogFactoryItem || isBlogFactoryItemSaving) return;
+    if (!blogFactoryEditDraft.taskContent.trim() || !blogFactoryEditDraft.questionSnapshot.trim() || !blogFactoryEditDraft.answerSnapshot.trim()) {
+      setBlogFactoryEditError("任务内容、问题快照和答案快照不能为空。");
+      return;
+    }
+
+    setIsBlogFactoryItemSaving(true);
+    setBlogFactoryEditError(null);
+    try {
+      const updated = await updateBlogFactoryItem({
+        id: selectedBlogFactoryItem.id,
+        taskContent: blogFactoryEditDraft.taskContent,
+        questionSnapshot: blogFactoryEditDraft.questionSnapshot,
+        answerSnapshot: blogFactoryEditDraft.answerSnapshot,
+        sourceSnapshot: blogFactoryEditDraft.sourceSnapshot,
+        topicTagSnapshot: blogFactoryEditDraft.topicTagSnapshot,
+      });
+      clearApiResponseCache();
+      setSelectedBlogFactoryItem(updated);
+      setBlogFactoryItems((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+      setBlogFactoryRefreshToken((current) => current + 1);
+    } catch (error) {
+      setBlogFactoryEditError(error instanceof Error ? error.message : "任务编辑保存失败，请稍后重试。");
+    } finally {
+      setIsBlogFactoryItemSaving(false);
+    }
+  }
+
+  async function handleUpdateBlogFactoryContentStatus(status: KnowledgeStatus) {
+    if (!selectedBlogFactoryItem || isBlogFactoryContentStatusSaving) return;
+
+    setIsBlogFactoryContentStatusSaving(true);
+    setBlogFactoryStatusError(null);
+    try {
+      const updated = await updateBlogFactoryContentStatus(selectedBlogFactoryItem.id, status);
+      clearApiResponseCache();
+      setSelectedBlogFactoryItem(updated);
+      setBlogFactoryItems((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+      setBlogFactoryRefreshToken((current) => current + 1);
+    } catch (error) {
+      setBlogFactoryStatusError(error instanceof Error ? error.message : "内容状态更新失败，请稍后重试。");
+    } finally {
+      setIsBlogFactoryContentStatusSaving(false);
+    }
+  }
+
+  function handleRequestDeleteBlogFactoryItem() {
+    if (!selectedBlogFactoryItem || isBlogFactoryDeleting) return;
+    setBlogFactoryDeleteTarget(selectedBlogFactoryItem);
+  }
+
+  async function handleConfirmDeleteBlogFactoryItem() {
+    if (!blogFactoryDeleteTarget || isBlogFactoryDeleting) return;
+
+    setIsBlogFactoryDeleting(true);
+    setBlogFactoryEditError(null);
+    try {
+      await deleteBlogFactoryItem(blogFactoryDeleteTarget.id);
+      clearApiResponseCache();
+      setBlogFactoryItems((current) => current.filter((item) => item.id !== blogFactoryDeleteTarget.id));
+      setBlogFactoryTotal((current) => Math.max(0, current - 1));
+      setSelectedBlogFactoryItem(null);
+      setIsMobileBlogFactoryDetailOpen(false);
+      setBlogFactoryDeleteTarget(null);
+
+      const remainingOnPage = blogFactoryItems.filter((item) => item.id !== blogFactoryDeleteTarget.id).length;
+      if (remainingOnPage === 0 && blogFactoryPage > 1) {
+        setBlogFactoryPage((current) => Math.max(1, current - 1));
+      } else {
+        setBlogFactoryRefreshToken((current) => current + 1);
+      }
+    } catch (error) {
+      setBlogFactoryEditError(error instanceof Error ? error.message : "博客工厂任务删除失败，请稍后重试。");
+    } finally {
+      setIsBlogFactoryDeleting(false);
     }
   }
 
@@ -3381,14 +3484,20 @@ function App() {
               total={blogFactoryTotal}
               page={blogFactoryPage}
               selectedItem={selectedBlogFactoryItem}
+              isMobileDetailOpen={isMobileBlogFactoryDetailOpen}
               isLoading={isBlogFactoryLoading}
               isDetailLoading={isBlogFactoryDetailLoading}
               isStatusSaving={isBlogFactoryStatusSaving}
+              isContentStatusSaving={isBlogFactoryContentStatusSaving}
+              isItemSaving={isBlogFactoryItemSaving}
               isArticleSaving={isBlogFactoryArticleSaving}
+              isDeleting={isBlogFactoryDeleting}
               loadError={blogFactoryError}
               statusError={blogFactoryStatusError}
+              editError={blogFactoryEditError}
               articleError={blogFactoryArticleError}
               taskCopyError={blogFactoryTaskCopyError}
+              editDraft={blogFactoryEditDraft}
               articleDraft={blogFactoryArticleDraft}
               articlePathDraft={blogFactoryArticlePathDraft}
               hasCopiedArticle={hasCopiedBlogFactoryArticle}
@@ -3419,11 +3528,16 @@ function App() {
                 if (nextFilters.sortDir !== undefined) setBlogFactorySortDir(nextFilters.sortDir);
               }}
               onPageChange={setBlogFactoryPage}
+              onEditDraftChange={setBlogFactoryEditDraft}
               onArticleChange={setBlogFactoryArticleDraft}
               onArticlePathChange={setBlogFactoryArticlePathDraft}
               onCopyArticle={handleCopyBlogFactoryArticle}
               onCopyTask={handleCopyBlogFactoryTaskContent}
+              onDelete={handleRequestDeleteBlogFactoryItem}
+              onCloseMobileDetail={() => setIsMobileBlogFactoryDetailOpen(false)}
+              onSaveItem={handleSaveBlogFactoryItem}
               onSaveArticle={handleSaveBlogFactoryArticle}
+              onContentStatusChange={handleUpdateBlogFactoryContentStatus}
               onSelect={handleSelectBlogFactoryItem}
               onStatusChange={handleUpdateBlogFactoryStatus}
             />
@@ -3809,6 +3923,26 @@ function App() {
           void confirmTodoCurrentAppend();
         }}
         onTargetChange={setTodoCurrentAppendTarget}
+      />
+      <AppConfirmDialog
+        confirmLabel={isBlogFactoryDeleting ? "删除中" : "确认删除"}
+        description="此操作只删除博客工厂任务记录，不会删除原可信知识内容。删除后无法从界面撤销。"
+        icon={<Trash2 size={19} />}
+        isOpen={blogFactoryDeleteTarget !== null}
+        isPending={isBlogFactoryDeleting}
+        target={
+          blogFactoryDeleteTarget
+            ? `博客工厂任务 #${blogFactoryDeleteTarget.id} / 知识 #${blogFactoryDeleteTarget.knowledge_id}`
+            : ""
+        }
+        title="确认删除博客工厂任务"
+        tone="danger"
+        onCancel={() => {
+          if (!isBlogFactoryDeleting) setBlogFactoryDeleteTarget(null);
+        }}
+        onConfirm={() => {
+          void handleConfirmDeleteBlogFactoryItem();
+        }}
       />
       <AppConfirmDialog
         confirmLabel={isCurrentRecordUpdating ? "保存中" : "确认保存"}
@@ -5810,6 +5944,14 @@ type BlogFactoryFilters = {
   sortDir: "asc" | "desc";
 };
 
+type BlogFactoryEditDraft = {
+  taskContent: string;
+  questionSnapshot: string;
+  answerSnapshot: string;
+  sourceSnapshot: string;
+  topicTagSnapshot: string;
+};
+
 type CurrentRecordFilters = {
   username: string;
   type: string;
@@ -5832,14 +5974,20 @@ function BlogFactoryRecords({
   total,
   page,
   selectedItem,
+  isMobileDetailOpen,
   isLoading,
   isDetailLoading,
   isStatusSaving,
+  isContentStatusSaving,
+  isItemSaving,
   isArticleSaving,
+  isDeleting,
   loadError,
   statusError,
+  editError,
   articleError,
   taskCopyError,
+  editDraft,
   articleDraft,
   articlePathDraft,
   hasCopiedArticle,
@@ -5848,11 +5996,16 @@ function BlogFactoryRecords({
   onFilterChange,
   onClearFilters,
   onPageChange,
+  onEditDraftChange,
   onArticleChange,
   onArticlePathChange,
   onCopyArticle,
   onCopyTask,
+  onDelete,
+  onCloseMobileDetail,
+  onSaveItem,
   onSaveArticle,
+  onContentStatusChange,
   onSelect,
   onStatusChange,
 }: {
@@ -5860,14 +6013,20 @@ function BlogFactoryRecords({
   total: number;
   page: number;
   selectedItem: BlogFactoryItem | null;
+  isMobileDetailOpen: boolean;
   isLoading: boolean;
   isDetailLoading: boolean;
   isStatusSaving: boolean;
+  isContentStatusSaving: boolean;
+  isItemSaving: boolean;
   isArticleSaving: boolean;
+  isDeleting: boolean;
   loadError: string | null;
   statusError: string | null;
+  editError: string | null;
   articleError: string | null;
   taskCopyError: string | null;
+  editDraft: BlogFactoryEditDraft;
   articleDraft: string;
   articlePathDraft: string;
   hasCopiedArticle: boolean;
@@ -5876,11 +6035,16 @@ function BlogFactoryRecords({
   onFilterChange: (filters: Partial<BlogFactoryFilters>) => void;
   onClearFilters: () => void;
   onPageChange: (page: number) => void;
+  onEditDraftChange: (draft: BlogFactoryEditDraft) => void;
   onArticleChange: (value: string) => void;
   onArticlePathChange: (value: string) => void;
   onCopyArticle: () => void;
   onCopyTask: (view: MarkdownContentView) => void;
+  onDelete: () => void;
+  onCloseMobileDetail: () => void;
+  onSaveItem: () => void;
   onSaveArticle: () => void;
+  onContentStatusChange: (status: KnowledgeStatus) => void;
   onSelect: (item: BlogFactoryItem) => void;
   onStatusChange: (status: BlogFactoryStatus) => void;
 }) {
@@ -5896,6 +6060,310 @@ function BlogFactoryRecords({
     { label: "跳过", value: "跳过" },
   ];
   const nextStatusOptions: BlogFactoryStatus[] = ["待处理", "已处理", "已发布", "跳过"];
+  const contentStatusOptions: KnowledgeStatus[] = ["未发布", "已发布", "跳过"];
+  const canSaveItem =
+    selectedItem !== null &&
+    editDraft.taskContent.trim().length > 0 &&
+    editDraft.questionSnapshot.trim().length > 0 &&
+    editDraft.answerSnapshot.trim().length > 0 &&
+    !isItemSaving &&
+    !isDeleting;
+  const renderDetailPanel = () => (
+    <>
+      <div className="mb-5 flex items-start justify-between gap-4">
+        <div>
+          <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
+            <FileText size={17} />
+            Record Detail
+          </div>
+          <h2 className="text-lg font-semibold text-slate-50">任务详情</h2>
+        </div>
+        <div className="flex items-center gap-2">
+          {isDetailLoading ? <Loader2 className="animate-spin text-mint-300" size={17} /> : null}
+          <button
+            className="grid h-9 w-9 place-items-center rounded-lg border border-red-300/20 bg-red-400/10 text-red-200 transition hover:bg-red-400/16 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-600"
+            disabled={!selectedItem || isDeleting || isItemSaving || isArticleSaving}
+            title="删除任务"
+            type="button"
+            onClick={onDelete}
+          >
+            {isDeleting ? <Loader2 className="animate-spin" size={16} /> : <Trash2 size={16} />}
+          </button>
+        </div>
+      </div>
+
+      {selectedItem ? (
+        <div className="space-y-4">
+          <div className="rounded-lg border border-white/10 bg-white/[0.028] p-4">
+            <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+              <span>#{selectedItem.id}</span>
+              <span>知识 #{selectedItem.knowledge_id}</span>
+              <span>{formatHistoryDate(selectedItem.copied_at)}</span>
+            </div>
+            <div className="mb-4 flex flex-wrap gap-2">
+              <span className={`rounded-full border px-2.5 py-1 text-xs ${blogFactoryStatusStyles[selectedItem.factory_status]}`}>
+                工厂 {selectedItem.factory_status}
+              </span>
+              <span className={`rounded-full border px-2.5 py-1 text-xs ${statusStyles[selectedItem.blog_status_snapshot || "未发布"]}`}>
+                内容 {selectedItem.blog_status_snapshot || "未记录"}
+              </span>
+            </div>
+
+            <div className="mb-4">
+              <div className="mb-2 text-sm font-medium text-slate-300">工厂状态</div>
+              <div className="grid grid-cols-2 gap-2">
+                {nextStatusOptions.map((status) => (
+                  <button
+                    key={status}
+                    className={`flex h-10 items-center justify-center gap-2 rounded-lg border px-3 text-sm font-medium transition disabled:cursor-not-allowed ${
+                      selectedItem.factory_status === status
+                        ? blogFactoryStatusStyles[status]
+                        : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-mint-300/30 hover:text-mint-300 disabled:text-slate-600"
+                    }`}
+                    disabled={isStatusSaving || selectedItem.factory_status === status}
+                    type="button"
+                    onClick={() => onStatusChange(status)}
+                  >
+                    {isStatusSaving && selectedItem.factory_status !== status ? <Loader2 className="animate-spin" size={15} /> : null}
+                    {status}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <div className="mb-2 text-sm font-medium text-slate-300">内容状态</div>
+              <div className="grid grid-cols-3 gap-2">
+                {contentStatusOptions.map((status) => (
+                  <button
+                    key={status}
+                    className={`flex h-10 items-center justify-center gap-2 rounded-lg border px-2 text-sm font-medium transition disabled:cursor-not-allowed ${
+                      selectedItem.blog_status_snapshot === status
+                        ? statusStyles[status]
+                        : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-mint-300/30 hover:text-mint-300 disabled:text-slate-600"
+                    }`}
+                    disabled={isContentStatusSaving || selectedItem.blog_status_snapshot === status}
+                    type="button"
+                    onClick={() => onContentStatusChange(status)}
+                  >
+                    {isContentStatusSaving && selectedItem.blog_status_snapshot !== status ? (
+                      <Loader2 className="animate-spin" size={15} />
+                    ) : null}
+                    {status}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {statusError ? (
+            <div className="flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100">
+              <TriangleAlert className="mt-0.5 shrink-0 text-red-300" size={17} />
+              <span>{statusError}</span>
+            </div>
+          ) : null}
+
+          <div className="rounded-lg border border-white/10 bg-white/[0.025] p-4">
+            <div className="mb-4 flex items-center gap-2 text-sm font-medium text-slate-300">
+              <Pencil size={16} />
+              编辑任务记录
+            </div>
+            <div className="space-y-4">
+              <Field label="任务内容" icon={<FileText size={16} />}>
+                <textarea
+                  className="control min-h-[180px] resize-none font-mono text-xs leading-6 text-slate-200"
+                  value={editDraft.taskContent}
+                  onChange={(event) => onEditDraftChange({ ...editDraft, taskContent: event.target.value })}
+                />
+              </Field>
+              <Field label="问题快照" icon={<Sparkles size={16} />}>
+                <textarea
+                  className="control min-h-[92px] resize-none leading-7"
+                  maxLength={4000}
+                  value={editDraft.questionSnapshot}
+                  onChange={(event) => onEditDraftChange({ ...editDraft, questionSnapshot: event.target.value })}
+                />
+              </Field>
+              <Field label="答案快照" icon={<FileText size={16} />}>
+                <textarea
+                  className="control min-h-[160px] resize-none leading-7"
+                  value={editDraft.answerSnapshot}
+                  onChange={(event) => onEditDraftChange({ ...editDraft, answerSnapshot: event.target.value })}
+                />
+              </Field>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="来源" icon={<Database size={16} />}>
+                  <input
+                    className="control"
+                    maxLength={200}
+                    value={editDraft.sourceSnapshot}
+                    onChange={(event) => onEditDraftChange({ ...editDraft, sourceSnapshot: event.target.value })}
+                  />
+                </Field>
+                <Field label="标签" icon={<Tags size={16} />}>
+                  <input
+                    className="control"
+                    maxLength={100}
+                    value={editDraft.topicTagSnapshot}
+                    onChange={(event) => onEditDraftChange({ ...editDraft, topicTagSnapshot: event.target.value })}
+                  />
+                </Field>
+              </div>
+            </div>
+
+            {editError ? (
+              <div className="mt-4 flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100">
+                <TriangleAlert className="mt-0.5 shrink-0 text-red-300" size={17} />
+                <span>{editError}</span>
+              </div>
+            ) : null}
+
+            <button
+              className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
+              disabled={!canSaveItem}
+              type="button"
+              onClick={onSaveItem}
+            >
+              {isItemSaving ? <Loader2 className="animate-spin" size={17} /> : <Save size={17} />}
+              {isItemSaving ? "保存中" : "保存任务记录"}
+            </button>
+          </div>
+
+          <div className="rounded-lg border border-white/10 bg-white/[0.025] p-4">
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-300">
+                  <FileText size={16} />
+                  Markdown 文章
+                </div>
+                <div className="flex flex-wrap gap-2 text-xs text-slate-500">
+                  <span>{selectedItem.article_title || "标题待写入"}</span>
+                  <span>{selectedItem.article_saved_at ? formatHistoryDate(selectedItem.article_saved_at) : "未保存"}</span>
+                </div>
+              </div>
+              <button
+                className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg border transition disabled:cursor-not-allowed disabled:text-slate-600 ${
+                  hasCopiedArticle
+                    ? "border-mint-300/30 bg-mint-300/14 text-mint-300"
+                    : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-mint-300/30 hover:text-mint-300"
+                }`}
+                disabled={!articleDraft.trim()}
+                title={hasCopiedArticle ? "已复制" : "复制 Markdown"}
+                type="button"
+                onClick={onCopyArticle}
+              >
+                {hasCopiedArticle ? <ClipboardCheck size={16} /> : <Copy size={16} />}
+              </button>
+            </div>
+
+            <Field label="文件路径" icon={<Database size={16} />}>
+              <input
+                className="control"
+                value={articlePathDraft}
+                onChange={(event) => onArticlePathChange(event.target.value)}
+                placeholder="/home/alfred/projects/blogs/文章标题.md"
+              />
+            </Field>
+
+            <label className="mt-4 block">
+              <span className="mb-2 flex items-center gap-2 text-sm text-slate-300">
+                <span className="text-slate-500">
+                  <FileText size={16} />
+                </span>
+                Markdown 正文
+              </span>
+              <textarea
+                className="control min-h-[260px] resize-none font-mono text-xs leading-6 text-slate-200"
+                value={articleDraft}
+                onChange={(event) => onArticleChange(event.target.value)}
+                placeholder="# 文章标题&#10;&#10;把 blog skill 生成的 Markdown 粘贴到这里。"
+              />
+            </label>
+
+            {selectedItem.article_checksum ? (
+              <div className="mt-3 truncate text-xs text-slate-600" title={selectedItem.article_checksum}>
+                SHA-256 {selectedItem.article_checksum}
+              </div>
+            ) : null}
+
+            {articleError ? (
+              <div className="mt-4 flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100">
+                <TriangleAlert className="mt-0.5 shrink-0 text-red-300" size={17} />
+                <span>{articleError}</span>
+              </div>
+            ) : null}
+
+            <button
+              className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
+              disabled={isArticleSaving || !articleDraft.trim()}
+              type="button"
+              onClick={onSaveArticle}
+            >
+              {isArticleSaving ? <Loader2 className="animate-spin" size={17} /> : <ClipboardCheck size={17} />}
+              {isArticleSaving ? "保存中" : "保存 Markdown"}
+            </button>
+          </div>
+
+          <DetailBlock
+            title="任务内容"
+            value={selectedItem.task_content}
+            action={
+              <div className="flex flex-wrap justify-end gap-2">
+                <div className="flex h-9 overflow-hidden rounded-lg border border-white/10 bg-white/[0.035]">
+                  <button
+                    className={`px-3 text-xs transition ${
+                      taskCopyView === "rendered" ? "bg-mint-300/14 text-mint-200" : "text-slate-400 hover:text-mint-200"
+                    }`}
+                    type="button"
+                    onClick={() => setTaskCopyView("rendered")}
+                  >
+                    美化
+                  </button>
+                  <button
+                    className={`border-l border-white/10 px-3 text-xs transition ${
+                      taskCopyView === "raw" ? "bg-mint-300/14 text-mint-200" : "text-slate-400 hover:text-mint-200"
+                    }`}
+                    type="button"
+                    onClick={() => setTaskCopyView("raw")}
+                  >
+                    裸文本
+                  </button>
+                </div>
+                <button
+                  className={`flex h-9 items-center gap-2 rounded-lg border px-3 text-xs transition disabled:cursor-not-allowed disabled:text-slate-600 ${
+                    hasCopiedTask
+                      ? "border-mint-300/30 bg-mint-300/14 text-mint-300"
+                      : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-mint-300/30 hover:text-mint-300"
+                  }`}
+                  disabled={!selectedItem.task_content.trim()}
+                  title={hasCopiedTask ? "已复制" : taskCopyView === "rendered" ? "复制美化任务内容" : "复制裸文本任务内容"}
+                  type="button"
+                  onClick={() => onCopyTask(taskCopyView)}
+                >
+                  {hasCopiedTask ? <ClipboardCheck size={15} /> : <Copy size={15} />}
+                  {hasCopiedTask ? "已复制" : taskCopyView === "rendered" ? "复制美化" : "复制裸文本"}
+                </button>
+              </div>
+            }
+          />
+          {taskCopyError ? (
+            <div className="flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100">
+              <TriangleAlert className="mt-0.5 shrink-0 text-red-300" size={17} />
+              <span>{taskCopyError}</span>
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <div className="grid min-h-[420px] place-items-center rounded-lg border border-white/10 bg-white/[0.025] p-6 text-center">
+          <div>
+            <ClipboardList className="mx-auto mb-3 text-slate-600" size={36} />
+            <div className="mb-1 font-medium text-slate-300">选择一条任务</div>
+            <p className="text-sm leading-6 text-slate-500">详情中可编辑任务内容、更新状态、保存文章或删除任务。</p>
+          </div>
+        </div>
+      )}
+    </>
+  );
 
   return (
     <div className="grid flex-1 gap-4 px-4 pb-4 pt-2 xl:grid-cols-[300px_minmax(420px,1fr)_minmax(360px,0.86fr)]">
@@ -6097,201 +6565,20 @@ function BlogFactoryRecords({
         )}
       </section>
 
-      <aside className="min-w-0 rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
-        <div className="mb-5 flex items-start justify-between gap-4">
-          <div>
-            <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
-              <FileText size={17} />
-              Record Detail
-            </div>
-            <h2 className="text-lg font-semibold text-slate-50">任务详情</h2>
-          </div>
-          {isDetailLoading ? <Loader2 className="mt-1 animate-spin text-mint-300" size={17} /> : null}
-        </div>
-
-        {selectedItem ? (
-          <div className="space-y-4">
-            <div className="rounded-lg border border-white/10 bg-white/[0.028] p-4">
-              <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                <span>#{selectedItem.id}</span>
-                <span>知识 #{selectedItem.knowledge_id}</span>
-                <span>{formatHistoryDate(selectedItem.copied_at)}</span>
-              </div>
-              <div className="mb-4 flex flex-wrap gap-2">
-                <span className={`rounded-full border px-2.5 py-1 text-xs ${blogFactoryStatusStyles[selectedItem.factory_status]}`}>
-                  {selectedItem.factory_status}
-                </span>
-                <span className="rounded-full border border-white/10 bg-white/[0.035] px-2.5 py-1 text-xs text-slate-400">
-                  原状态 {selectedItem.blog_status_snapshot || "未记录"}
-                </span>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                {nextStatusOptions.map((status) => (
-                  <button
-                    key={status}
-                    className={`flex h-10 items-center justify-center gap-2 rounded-lg border px-3 text-sm font-medium transition disabled:cursor-not-allowed ${
-                      selectedItem.factory_status === status
-                        ? blogFactoryStatusStyles[status]
-                        : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-mint-300/30 hover:text-mint-300 disabled:text-slate-600"
-                    }`}
-                    disabled={isStatusSaving || selectedItem.factory_status === status}
-                    type="button"
-                    onClick={() => onStatusChange(status)}
-                  >
-                    {isStatusSaving && selectedItem.factory_status !== status ? <Loader2 className="animate-spin" size={15} /> : null}
-                    {status}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {statusError ? (
-              <div className="flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100">
-                <TriangleAlert className="mt-0.5 shrink-0 text-red-300" size={17} />
-                <span>{statusError}</span>
-              </div>
-            ) : null}
-
-            <div className="rounded-lg border border-white/10 bg-white/[0.025] p-4">
-              <div className="mb-4 flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-300">
-                    <FileText size={16} />
-                    Markdown 文章
-                  </div>
-                  <div className="flex flex-wrap gap-2 text-xs text-slate-500">
-                    <span>{selectedItem.article_title || "标题待写入"}</span>
-                    <span>{selectedItem.article_saved_at ? formatHistoryDate(selectedItem.article_saved_at) : "未保存"}</span>
-                  </div>
-                </div>
-                <button
-                  className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg border transition disabled:cursor-not-allowed disabled:text-slate-600 ${
-                    hasCopiedArticle
-                      ? "border-mint-300/30 bg-mint-300/14 text-mint-300"
-                      : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-mint-300/30 hover:text-mint-300"
-                  }`}
-                  disabled={!articleDraft.trim()}
-                  title={hasCopiedArticle ? "已复制" : "复制 Markdown"}
-                  type="button"
-                  onClick={onCopyArticle}
-                >
-                  {hasCopiedArticle ? <ClipboardCheck size={16} /> : <Copy size={16} />}
-                </button>
-              </div>
-
-              <Field label="文件路径" icon={<Database size={16} />}>
-                <input
-                  className="control"
-                  value={articlePathDraft}
-                  onChange={(event) => onArticlePathChange(event.target.value)}
-                  placeholder="/home/alfred/projects/blogs/文章标题.md"
-                />
-              </Field>
-
-              <label className="mt-4 block">
-                <span className="mb-2 flex items-center gap-2 text-sm text-slate-300">
-                  <span className="text-slate-500">
-                    <FileText size={16} />
-                  </span>
-                  Markdown 正文
-                </span>
-                <textarea
-                  className="control min-h-[260px] resize-none font-mono text-xs leading-6 text-slate-200"
-                  value={articleDraft}
-                  onChange={(event) => onArticleChange(event.target.value)}
-                  placeholder="# 文章标题&#10;&#10;把 blog skill 生成的 Markdown 粘贴到这里。"
-                />
-              </label>
-
-              {selectedItem.article_checksum ? (
-                <div className="mt-3 truncate text-xs text-slate-600" title={selectedItem.article_checksum}>
-                  SHA-256 {selectedItem.article_checksum}
-                </div>
-              ) : null}
-
-              {articleError ? (
-                <div className="mt-4 flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100">
-                  <TriangleAlert className="mt-0.5 shrink-0 text-red-300" size={17} />
-                  <span>{articleError}</span>
-                </div>
-              ) : null}
-
-              <button
-                className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
-                disabled={isArticleSaving || !articleDraft.trim()}
-                type="button"
-                onClick={onSaveArticle}
-              >
-                {isArticleSaving ? <Loader2 className="animate-spin" size={17} /> : <ClipboardCheck size={17} />}
-                {isArticleSaving ? "保存中" : "保存 Markdown"}
-              </button>
-            </div>
-
-            <DetailBlock
-              title="任务内容"
-              value={selectedItem.task_content}
-              action={
-                <div className="flex flex-wrap justify-end gap-2">
-                  <div className="flex h-9 overflow-hidden rounded-lg border border-white/10 bg-white/[0.035]">
-                    <button
-                      className={`px-3 text-xs transition ${
-                        taskCopyView === "rendered" ? "bg-mint-300/14 text-mint-200" : "text-slate-400 hover:text-mint-200"
-                      }`}
-                      type="button"
-                      onClick={() => setTaskCopyView("rendered")}
-                    >
-                      美化
-                    </button>
-                    <button
-                      className={`border-l border-white/10 px-3 text-xs transition ${
-                        taskCopyView === "raw" ? "bg-mint-300/14 text-mint-200" : "text-slate-400 hover:text-mint-200"
-                      }`}
-                      type="button"
-                      onClick={() => setTaskCopyView("raw")}
-                    >
-                      裸文本
-                    </button>
-                  </div>
-                  <button
-                    className={`flex h-9 items-center gap-2 rounded-lg border px-3 text-xs transition disabled:cursor-not-allowed disabled:text-slate-600 ${
-                      hasCopiedTask
-                        ? "border-mint-300/30 bg-mint-300/14 text-mint-300"
-                        : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-mint-300/30 hover:text-mint-300"
-                    }`}
-                    disabled={!selectedItem.task_content.trim()}
-                    title={hasCopiedTask ? "已复制" : taskCopyView === "rendered" ? "复制美化任务内容" : "复制裸文本任务内容"}
-                    type="button"
-                    onClick={() => onCopyTask(taskCopyView)}
-                  >
-                    {hasCopiedTask ? <ClipboardCheck size={15} /> : <Copy size={15} />}
-                    {hasCopiedTask ? "已复制" : taskCopyView === "rendered" ? "复制美化" : "复制裸文本"}
-                  </button>
-                </div>
-              }
-            />
-            {taskCopyError ? (
-              <div className="flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100">
-                <TriangleAlert className="mt-0.5 shrink-0 text-red-300" size={17} />
-                <span>{taskCopyError}</span>
-              </div>
-            ) : null}
-            <DetailBlock title="问题快照" value={selectedItem.question_snapshot} />
-            <DetailBlock title="答案快照" value={maskSensitive(selectedItem.answer_snapshot)} />
-            <div className="grid gap-3 sm:grid-cols-2">
-              <DetailBlock title="来源" value={selectedItem.source_snapshot || "未记录"} compact />
-              <DetailBlock title="标签" value={selectedItem.topic_tag_snapshot || "未记录"} compact />
-            </div>
-          </div>
-        ) : (
-          <div className="grid min-h-[420px] place-items-center rounded-lg border border-white/10 bg-white/[0.025] p-6 text-center">
-            <div>
-              <ClipboardList className="mx-auto mb-3 text-slate-600" size={36} />
-              <div className="mb-1 font-medium text-slate-300">选择一条任务</div>
-              <p className="text-sm leading-6 text-slate-500">右侧会显示快照内容，并允许人工更新工厂状态。</p>
-            </div>
-          </div>
-        )}
+      <aside className="hidden min-w-0 rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl lg:block">
+        {renderDetailPanel()}
       </aside>
+
+      <MobileEditorSheet
+        icon={<FileText size={17} />}
+        isBusy={isDetailLoading || isStatusSaving || isContentStatusSaving || isItemSaving || isArticleSaving || isDeleting}
+        isOpen={isMobileDetailOpen && selectedItem !== null}
+        label="Record Detail"
+        title="博客工厂任务详情"
+        onClose={onCloseMobileDetail}
+      >
+        <div className="rounded-lg border border-white/10 bg-ink-900/64 p-4">{renderDetailPanel()}</div>
+      </MobileEditorSheet>
     </div>
   );
 }
@@ -10706,6 +10993,16 @@ function todoItemToDraft(item: TodoItem): TodoDraft {
     source: item.source ?? "",
     topic_tag: item.topic_tag ?? "",
     todo_status: item.todo_status,
+  };
+}
+
+function blogFactoryItemToEditDraft(item: BlogFactoryItem | null): BlogFactoryEditDraft {
+  return {
+    taskContent: item?.task_content ?? "",
+    questionSnapshot: item?.question_snapshot ?? "",
+    answerSnapshot: item?.answer_snapshot ?? "",
+    sourceSnapshot: item?.source_snapshot ?? "",
+    topicTagSnapshot: item?.topic_tag_snapshot ?? "",
   };
 }
 

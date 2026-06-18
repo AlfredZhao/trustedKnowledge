@@ -5,7 +5,13 @@ from typing import Any
 import oracledb
 
 from app.db.oracle import acquire_connection
-from app.schemas.blog_factory import BlogFactoryArticleUpdate, BlogFactoryCreate, BlogFactoryStatusUpdate
+from app.schemas.blog_factory import (
+    BlogFactoryArticleUpdate,
+    BlogFactoryContentStatusUpdate,
+    BlogFactoryCreate,
+    BlogFactoryStatusUpdate,
+    BlogFactoryUpdate,
+)
 
 
 COMMON_COLUMNS = """
@@ -313,6 +319,79 @@ async def update_blog_factory_status(item_id: int, payload: BlogFactoryStatusUpd
     return await get_blog_factory_item(item_id)
 
 
+async def update_blog_factory_item(item_id: int, payload: BlogFactoryUpdate) -> dict[str, Any] | None:
+    values = payload.model_dump(exclude_unset=True)
+    if not values:
+        return await get_blog_factory_item(item_id)
+
+    assignments = [f"{column} = :{column}" for column in values]
+    params = {**values, "item_id": item_id}
+    sql = f"""
+        update ai_blog_factory
+        set {", ".join(assignments)}
+        where id = :item_id
+    """
+
+    async with acquire_connection() as connection:
+        await _ensure_blog_factory_table(connection)
+        cursor = connection.cursor()
+        await cursor.execute(sql, params)
+        if cursor.rowcount == 0:
+            await connection.rollback()
+            return None
+        await connection.commit()
+
+    return await get_blog_factory_item(item_id)
+
+
+async def update_blog_factory_content_status(
+    item_id: int,
+    payload: BlogFactoryContentStatusUpdate,
+) -> dict[str, Any] | None:
+    select_sql = """
+        select knowledge_id
+        from ai_blog_factory
+        where id = :item_id
+        for update
+    """
+    update_knowledge_sql = """
+        update ai_qa_lib
+        set blog_status = :blog_status
+        where id = :knowledge_id
+    """
+    update_factory_sql = """
+        update ai_blog_factory
+        set blog_status_snapshot = :blog_status
+        where knowledge_id = :knowledge_id
+    """
+
+    async with acquire_connection() as connection:
+        await _ensure_blog_factory_table(connection)
+        cursor = connection.cursor()
+        await cursor.execute(select_sql, {"item_id": item_id})
+        row = await cursor.fetchone()
+        if row is None:
+            await connection.rollback()
+            return None
+
+        knowledge_id = row[0]
+        await cursor.execute(
+            update_knowledge_sql,
+            {"knowledge_id": knowledge_id, "blog_status": payload.blog_status},
+        )
+        if cursor.rowcount == 0:
+            await connection.rollback()
+            return None
+
+        await cursor.execute(
+            update_factory_sql,
+            {"knowledge_id": knowledge_id, "blog_status": payload.blog_status},
+        )
+        await connection.commit()
+
+    return await get_blog_factory_item(item_id)
+
+
 async def update_blog_factory_article(item_id: int, payload: BlogFactoryArticleUpdate) -> dict[str, Any] | None:
     title = _extract_article_title(payload.article_markdown)
     checksum = hashlib.sha256(payload.article_markdown.encode("utf-8")).hexdigest()
@@ -349,6 +428,21 @@ async def update_blog_factory_article(item_id: int, payload: BlogFactoryArticleU
         await connection.commit()
 
     return await get_blog_factory_item(item_id)
+
+
+async def delete_blog_factory_item(item_id: int) -> bool:
+    sql = "delete from ai_blog_factory where id = :item_id"
+
+    async with acquire_connection() as connection:
+        await _ensure_blog_factory_table(connection)
+        cursor = connection.cursor()
+        await cursor.execute(sql, {"item_id": item_id})
+        if cursor.rowcount == 0:
+            await connection.rollback()
+            return False
+        await connection.commit()
+
+    return True
 
 
 def _extract_article_title(markdown: str) -> str | None:

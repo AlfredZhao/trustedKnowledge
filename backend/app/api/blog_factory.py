@@ -6,17 +6,22 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from app.core.security import require_api_key
 from app.repositories.blog_factory import (
     create_blog_factory_item,
+    delete_blog_factory_item,
     get_blog_factory_item,
     list_blog_factory_items,
     update_blog_factory_article,
+    update_blog_factory_content_status,
+    update_blog_factory_item,
     update_blog_factory_status,
 )
 from app.schemas.blog_factory import (
     BlogFactoryArticleUpdate,
+    BlogFactoryContentStatusUpdate,
     BlogFactoryCreate,
     BlogFactoryItem,
     BlogFactoryListResponse,
     BlogFactoryStatusUpdate,
+    BlogFactoryUpdate,
 )
 
 
@@ -92,6 +97,24 @@ async def get_blog_factory_item_detail(item_id: int) -> BlogFactoryItem:
     return BlogFactoryItem.model_validate(item)
 
 
+@router.patch("/{item_id}", response_model=BlogFactoryItem)
+async def patch_blog_factory_item(item_id: int, payload: BlogFactoryUpdate) -> BlogFactoryItem:
+    try:
+        item = await update_blog_factory_item(item_id, payload)
+    except oracledb.Error as exc:
+        error = exc.args[0] if exc.args else exc
+        message = getattr(error, "message", str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Oracle rejected the blog factory item update: {message}",
+        ) from exc
+
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blog factory item not found")
+
+    return BlogFactoryItem.model_validate(item)
+
+
 @router.patch("/{item_id}/status", response_model=BlogFactoryItem)
 async def patch_blog_factory_status(item_id: int, payload: BlogFactoryStatusUpdate) -> BlogFactoryItem:
     try:
@@ -102,6 +125,24 @@ async def patch_blog_factory_status(item_id: int, payload: BlogFactoryStatusUpda
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Oracle rejected the blog factory status update: {message}",
+        ) from exc
+
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blog factory item not found")
+
+    return BlogFactoryItem.model_validate(item)
+
+
+@router.patch("/{item_id}/content-status", response_model=BlogFactoryItem)
+async def patch_blog_factory_content_status(item_id: int, payload: BlogFactoryContentStatusUpdate) -> BlogFactoryItem:
+    try:
+        item = await update_blog_factory_content_status(item_id, payload)
+    except oracledb.Error as exc:
+        error = exc.args[0] if exc.args else exc
+        message = getattr(error, "message", str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Oracle rejected the blog factory content status update: {message}",
         ) from exc
 
     if item is None:
@@ -126,3 +167,19 @@ async def patch_blog_factory_article(item_id: int, payload: BlogFactoryArticleUp
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blog factory item not found")
 
     return BlogFactoryItem.model_validate(item)
+
+
+@router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_blog_factory_item_detail(item_id: int) -> None:
+    try:
+        deleted = await delete_blog_factory_item(item_id)
+    except oracledb.Error as exc:
+        error = exc.args[0] if exc.args else exc
+        message = getattr(error, "message", str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Oracle rejected the blog factory deletion: {message}",
+        ) from exc
+
+    if not deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blog factory item not found")

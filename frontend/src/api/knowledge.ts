@@ -406,6 +406,42 @@ export async function updateBlogFactoryStatus(id: number, factoryStatus: BlogFac
   });
 }
 
+export async function updateBlogFactoryContentStatus(id: number, blogStatus: KnowledgeStatus): Promise<BlogFactoryItem> {
+  return request<BlogFactoryItem>(`/api/blog-factory/${id}/content-status`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      blog_status: blogStatus,
+    }),
+  });
+}
+
+export async function updateBlogFactoryItem({
+  id,
+  taskContent,
+  questionSnapshot,
+  answerSnapshot,
+  sourceSnapshot,
+  topicTagSnapshot,
+}: {
+  id: number;
+  taskContent: string;
+  questionSnapshot: string;
+  answerSnapshot: string;
+  sourceSnapshot: string;
+  topicTagSnapshot: string;
+}): Promise<BlogFactoryItem> {
+  return request<BlogFactoryItem>(`/api/blog-factory/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      task_content: taskContent,
+      question_snapshot: questionSnapshot,
+      answer_snapshot: answerSnapshot,
+      source_snapshot: sourceSnapshot || null,
+      topic_tag_snapshot: topicTagSnapshot || null,
+    }),
+  });
+}
+
 export async function updateBlogFactoryArticle({
   id,
   articleMarkdown,
@@ -421,5 +457,11 @@ export async function updateBlogFactoryArticle({
       article_markdown: articleMarkdown,
       article_file_path: articleFilePath || null,
     }),
+  });
+}
+
+export async function deleteBlogFactoryItem(id: number): Promise<void> {
+  await request<void>(`/api/blog-factory/${id}`, {
+    method: "DELETE",
   });
 }

@@ -13,6 +13,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Added / 新增
 
+- Added selected Blog Factory task editing, content status updates, deletion, and a mobile PWA detail sheet.
+- 为博客工厂选中任务新增编辑、内容状态更新、删除能力，并在手机端 PWA 中改为弹窗操作。
+
 - Added a Blog Factory task detail copy button for copying saved task content directly.
 - 为博客工厂任务详情新增任务内容复制按钮，可直接复制已保存的任务内容。
 
