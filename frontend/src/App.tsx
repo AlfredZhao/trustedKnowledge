@@ -106,7 +106,7 @@ import {
 import { clearApiResponseCache } from "./api/localCache";
 import { fetchLlmUsage, readCachedLlmUsage } from "./api/usage";
 import { MarkdownPreview } from "./components/MarkdownPreview";
-import { copyMarkdownAsRichText, removeLeakedMarkdownCodePlaceholders } from "./utils/markdown";
+import { copyMarkdownAsPlainText, copyMarkdownAsRichText, removeLeakedMarkdownCodePlaceholders } from "./utils/markdown";
 import type {
   AppView,
   BlogFactoryItem,
@@ -488,6 +488,8 @@ function App() {
   const [blogFactoryArticlePathDraft, setBlogFactoryArticlePathDraft] = useState(restoredUiState.blogFactory.articlePathDraft);
   const [blogFactoryArticleError, setBlogFactoryArticleError] = useState<string | null>(null);
   const [hasCopiedBlogFactoryArticle, setHasCopiedBlogFactoryArticle] = useState(false);
+  const [blogFactoryTaskCopyError, setBlogFactoryTaskCopyError] = useState<string | null>(null);
+  const [hasCopiedBlogFactoryTask, setHasCopiedBlogFactoryTask] = useState(false);
   const [blogFactoryError, setBlogFactoryError] = useState<string | null>(null);
   const [blogFactoryStatusError, setBlogFactoryStatusError] = useState<string | null>(null);
   const [blogFactoryRefreshToken, setBlogFactoryRefreshToken] = useState(0);
@@ -2349,6 +2351,8 @@ function App() {
   async function handleSelectBlogFactoryItem(item: BlogFactoryItem) {
     setSelectedBlogFactoryItem(item);
     setBlogFactoryStatusError(null);
+    setBlogFactoryTaskCopyError(null);
+    setHasCopiedBlogFactoryTask(false);
     setIsBlogFactoryDetailLoading(true);
 
     try {
@@ -2604,6 +2608,24 @@ function App() {
       window.setTimeout(() => setHasCopiedBlogFactoryArticle(false), 1600);
     } catch {
       setBlogFactoryArticleError("复制失败。请选中文本框内容后手动复制。");
+    }
+  }
+
+  async function handleCopyBlogFactoryTaskContent(view: MarkdownContentView) {
+    const taskContent = removeLeakedMarkdownCodePlaceholders(selectedBlogFactoryItem?.task_content ?? "");
+    if (!taskContent.trim()) return;
+
+    try {
+      if (view === "rendered") {
+        await copyMarkdownAsRichText(taskContent);
+      } else {
+        await copyMarkdownAsPlainText(taskContent);
+      }
+      setBlogFactoryTaskCopyError(null);
+      setHasCopiedBlogFactoryTask(true);
+      window.setTimeout(() => setHasCopiedBlogFactoryTask(false), 1600);
+    } catch {
+      setBlogFactoryTaskCopyError("复制失败。请选中任务内容后手动复制。");
     }
   }
 
@@ -3366,9 +3388,11 @@ function App() {
               loadError={blogFactoryError}
               statusError={blogFactoryStatusError}
               articleError={blogFactoryArticleError}
+              taskCopyError={blogFactoryTaskCopyError}
               articleDraft={blogFactoryArticleDraft}
               articlePathDraft={blogFactoryArticlePathDraft}
               hasCopiedArticle={hasCopiedBlogFactoryArticle}
+              hasCopiedTask={hasCopiedBlogFactoryTask}
               filters={{
                 factoryStatus: blogFactoryStatus,
                 topic: blogFactoryTopic,
@@ -3398,6 +3422,7 @@ function App() {
               onArticleChange={setBlogFactoryArticleDraft}
               onArticlePathChange={setBlogFactoryArticlePathDraft}
               onCopyArticle={handleCopyBlogFactoryArticle}
+              onCopyTask={handleCopyBlogFactoryTaskContent}
               onSaveArticle={handleSaveBlogFactoryArticle}
               onSelect={handleSelectBlogFactoryItem}
               onStatusChange={handleUpdateBlogFactoryStatus}
@@ -5814,9 +5839,11 @@ function BlogFactoryRecords({
   loadError,
   statusError,
   articleError,
+  taskCopyError,
   articleDraft,
   articlePathDraft,
   hasCopiedArticle,
+  hasCopiedTask,
   filters,
   onFilterChange,
   onClearFilters,
@@ -5824,6 +5851,7 @@ function BlogFactoryRecords({
   onArticleChange,
   onArticlePathChange,
   onCopyArticle,
+  onCopyTask,
   onSaveArticle,
   onSelect,
   onStatusChange,
@@ -5839,9 +5867,11 @@ function BlogFactoryRecords({
   loadError: string | null;
   statusError: string | null;
   articleError: string | null;
+  taskCopyError: string | null;
   articleDraft: string;
   articlePathDraft: string;
   hasCopiedArticle: boolean;
+  hasCopiedTask: boolean;
   filters: BlogFactoryFilters;
   onFilterChange: (filters: Partial<BlogFactoryFilters>) => void;
   onClearFilters: () => void;
@@ -5849,6 +5879,7 @@ function BlogFactoryRecords({
   onArticleChange: (value: string) => void;
   onArticlePathChange: (value: string) => void;
   onCopyArticle: () => void;
+  onCopyTask: (view: MarkdownContentView) => void;
   onSaveArticle: () => void;
   onSelect: (item: BlogFactoryItem) => void;
   onStatusChange: (status: BlogFactoryStatus) => void;
@@ -5856,6 +5887,7 @@ function BlogFactoryRecords({
   const totalPages = Math.max(1, Math.ceil(total / BLOG_FACTORY_PAGE_SIZE));
   const rangeStart = total === 0 ? 0 : (page - 1) * BLOG_FACTORY_PAGE_SIZE + 1;
   const rangeEnd = Math.min(page * BLOG_FACTORY_PAGE_SIZE, total);
+  const [taskCopyView, setTaskCopyView] = useState<MarkdownContentView>("rendered");
   const statusOptions: Array<{ label: string; value: BlogFactoryStatus | "all" }> = [
     { label: "全部状态", value: "all" },
     { label: "待处理", value: "待处理" },
@@ -6195,7 +6227,54 @@ function BlogFactoryRecords({
               </button>
             </div>
 
-            <DetailBlock title="任务内容" value={selectedItem.task_content} />
+            <DetailBlock
+              title="任务内容"
+              value={selectedItem.task_content}
+              action={
+                <div className="flex flex-wrap justify-end gap-2">
+                  <div className="flex h-9 overflow-hidden rounded-lg border border-white/10 bg-white/[0.035]">
+                    <button
+                      className={`px-3 text-xs transition ${
+                        taskCopyView === "rendered" ? "bg-mint-300/14 text-mint-200" : "text-slate-400 hover:text-mint-200"
+                      }`}
+                      type="button"
+                      onClick={() => setTaskCopyView("rendered")}
+                    >
+                      美化
+                    </button>
+                    <button
+                      className={`border-l border-white/10 px-3 text-xs transition ${
+                        taskCopyView === "raw" ? "bg-mint-300/14 text-mint-200" : "text-slate-400 hover:text-mint-200"
+                      }`}
+                      type="button"
+                      onClick={() => setTaskCopyView("raw")}
+                    >
+                      裸文本
+                    </button>
+                  </div>
+                  <button
+                    className={`flex h-9 items-center gap-2 rounded-lg border px-3 text-xs transition disabled:cursor-not-allowed disabled:text-slate-600 ${
+                      hasCopiedTask
+                        ? "border-mint-300/30 bg-mint-300/14 text-mint-300"
+                        : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-mint-300/30 hover:text-mint-300"
+                    }`}
+                    disabled={!selectedItem.task_content.trim()}
+                    title={hasCopiedTask ? "已复制" : taskCopyView === "rendered" ? "复制美化任务内容" : "复制裸文本任务内容"}
+                    type="button"
+                    onClick={() => onCopyTask(taskCopyView)}
+                  >
+                    {hasCopiedTask ? <ClipboardCheck size={15} /> : <Copy size={15} />}
+                    {hasCopiedTask ? "已复制" : taskCopyView === "rendered" ? "复制美化" : "复制裸文本"}
+                  </button>
+                </div>
+              }
+            />
+            {taskCopyError ? (
+              <div className="flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100">
+                <TriangleAlert className="mt-0.5 shrink-0 text-red-300" size={17} />
+                <span>{taskCopyError}</span>
+              </div>
+            ) : null}
             <DetailBlock title="问题快照" value={selectedItem.question_snapshot} />
             <DetailBlock title="答案快照" value={maskSensitive(selectedItem.answer_snapshot)} />
             <div className="grid gap-3 sm:grid-cols-2">
@@ -6217,10 +6296,23 @@ function BlogFactoryRecords({
   );
 }
 
-function DetailBlock({ title, value, compact = false }: { title: string; value: string; compact?: boolean }) {
+function DetailBlock({
+  title,
+  value,
+  compact = false,
+  action,
+}: {
+  title: string;
+  value: string;
+  compact?: boolean;
+  action?: React.ReactNode;
+}) {
   return (
     <div className="rounded-lg border border-white/10 bg-white/[0.025] p-4">
-      <div className="mb-2 text-sm font-medium text-slate-300">{title}</div>
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <div className="text-sm font-medium text-slate-300">{title}</div>
+        {action}
+      </div>
       <p className={`whitespace-pre-wrap break-words text-sm leading-7 text-slate-400 [overflow-wrap:anywhere] ${compact ? "line-clamp-4" : ""}`}>
         {value || "未记录"}
       </p>

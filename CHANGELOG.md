@@ -13,6 +13,12 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Added / 新增
 
+- Added a Blog Factory task detail copy button for copying saved task content directly.
+- 为博客工厂任务详情新增任务内容复制按钮，可直接复制已保存的任务内容。
+
+- Added rendered Markdown and plain-text copy mode selection for Blog Factory task content.
+- 为博客工厂任务内容复制新增 Markdown 美化富文本和裸文本两种模式。
+
 #### Changed / 变更
 
 #### Fixed / 修复
