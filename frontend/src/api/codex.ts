@@ -2,6 +2,7 @@ import type { CodexJobSnapshot, CodexRunResponse, CodexStreamEvent } from "../ty
 import { clearStoredApiKey, readStoredApiKey } from "./auth";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.trim() ?? "";
+type CodexSandboxMode = "read-only" | "workspace-write";
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const apiKey = readStoredApiKey();
@@ -44,10 +45,14 @@ export async function runCodex(prompt: string): Promise<CodexRunResponse> {
   });
 }
 
-export async function startCodexJob(prompt: string): Promise<CodexJobSnapshot> {
+export async function startCodexJob(
+  prompt: string,
+  skillIds: string[] = [],
+  sandboxMode: CodexSandboxMode = "workspace-write",
+): Promise<CodexJobSnapshot> {
   return request<CodexJobSnapshot>("/api/codex/runs/jobs", {
     method: "POST",
-    body: JSON.stringify({ prompt }),
+    body: JSON.stringify({ prompt, skill_ids: skillIds, sandbox_mode: sandboxMode }),
   });
 }
 
@@ -62,6 +67,8 @@ export async function getLatestCodexJob(): Promise<CodexJobSnapshot> {
 export async function streamCodex(
   prompt: string,
   onEvent: (event: CodexStreamEvent) => void,
+  skillIds: string[] = [],
+  sandboxMode: CodexSandboxMode = "workspace-write",
 ): Promise<CodexRunResponse> {
   const apiKey = readStoredApiKey();
   const response = await fetch(`${API_BASE_URL}/api/codex/runs/stream`, {
@@ -70,7 +77,7 @@ export async function streamCodex(
       "Content-Type": "application/json",
       ...(apiKey ? { "X-API-Key": apiKey } : {}),
     },
-    body: JSON.stringify({ prompt }),
+    body: JSON.stringify({ prompt, skill_ids: skillIds, sandbox_mode: sandboxMode }),
   });
 
   if (!response.ok) {

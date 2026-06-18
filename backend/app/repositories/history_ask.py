@@ -486,8 +486,6 @@ def _format_selected_skills_for_prompt(selected_skills: list[dict[str, str]]) ->
         blocks.append(
             "\n".join(
                 [
-                    f"Skill: {skill['name']}",
-                    f"Description: {skill.get('description') or '无描述'}",
                     "Instructions:",
                     skill.get("content") or "",
                 ]

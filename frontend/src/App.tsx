@@ -4,8 +4,10 @@ import {
   Bot,
   CalendarClock,
   ChartLine,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   BookOpenCheck,
   CheckCircle2,
   CircleGauge,
@@ -17,6 +19,8 @@ import {
   Filter,
   FileText,
   FlaskConical,
+  Folder,
+  FolderOpen,
   Github,
   History,
   Layers3,
@@ -244,7 +248,7 @@ type EnglishMaterialSortBy = (typeof ENGLISH_MATERIAL_SORT_FIELDS)[number];
 type SortDirection = (typeof SORT_DIRECTIONS)[number];
 type HistoryVectorStatus = "all" | "0" | "1";
 type AiCodingNoticeStatus = "running" | "completed" | "failed";
-type HistoryAskAnswerView = "rendered" | "raw";
+type MarkdownContentView = "rendered" | "raw";
 
 interface StoredUiState {
   activeView: AppView;
@@ -261,6 +265,8 @@ interface StoredUiState {
     page: number;
     selectedId: number | null;
     task: string;
+    skillIds: string[];
+    codexJobId: string | null;
   };
   blogFactory: {
     query: string;
@@ -449,13 +455,19 @@ function App() {
   const [debouncedFactoryQuery, setDebouncedFactoryQuery] = useState(restoredUiState.factory.query.trim());
   const [factorySelectedId, setFactorySelectedId] = useState<number | null>(restoredUiState.factory.selectedId);
   const [factoryTask, setFactoryTask] = useState(restoredUiState.factory.task);
+  const [factorySkillIds, setFactorySkillIds] = useState<string[]>(restoredUiState.factory.skillIds);
   const [factoryError, setFactoryError] = useState<string | null>(null);
   const [isFactoryLoading, setIsFactoryLoading] = useState(false);
-  const [isFactoryGenerating, setIsFactoryGenerating] = useState(false);
+  const [isFactoryGenerating, setIsFactoryGenerating] = useState(Boolean(restoredUiState.factory.codexJobId));
   const [hasCopiedFactoryTask, setHasCopiedFactoryTask] = useState(false);
   const [factoryCopyError, setFactoryCopyError] = useState<string | null>(null);
   const [isFactoryCopySaving, setIsFactoryCopySaving] = useState(false);
   const [isFactoryMerging, setIsFactoryMerging] = useState(false);
+  const [factoryCodexJobId, setFactoryCodexJobId] = useState<string | null>(restoredUiState.factory.codexJobId);
+  const [factoryCodexStatus, setFactoryCodexStatus] = useState(
+    restoredUiState.factory.codexJobId ? "正在恢复 Codex 加工状态..." : "",
+  );
+  const [factoryCodexErrorOutput, setFactoryCodexErrorOutput] = useState("");
   const [factoryRefreshToken, setFactoryRefreshToken] = useState(0);
   const [blogFactoryItems, setBlogFactoryItems] = useState<BlogFactoryItem[]>([]);
   const [blogFactoryTotal, setBlogFactoryTotal] = useState(0);
@@ -793,6 +805,8 @@ function App() {
         page: factoryPage,
         selectedId: factorySelectedId,
         task: factoryTask,
+        skillIds: factorySkillIds,
+        codexJobId: factoryCodexJobId,
       },
       blogFactory: {
         query: blogFactoryQuery,
@@ -894,9 +908,11 @@ function App() {
     englishMaterialSortBy,
     englishMaterialSortDir,
     draft,
+    factoryCodexJobId,
     factoryPage,
     factoryQuery,
     factorySelectedId,
+    factorySkillIds,
     factoryTask,
     githubSyncStatus,
     historyAskAnswer,
@@ -975,6 +991,59 @@ function App() {
       window.clearTimeout(timer);
     };
   }, [activeCodexJobId, apiKey]);
+
+  useEffect(() => {
+    if (!apiKey || !factoryCodexJobId) return;
+
+    const jobId = factoryCodexJobId;
+    let cancelled = false;
+    let timer: number | undefined;
+
+    async function pollFactoryCodexJob() {
+      try {
+        const job = await getCodexJob(jobId);
+        if (cancelled) return;
+
+        setFactoryTask(job.output);
+        setFactoryCodexErrorOutput(job.error_output);
+
+        if (job.status === "running") {
+          setIsFactoryGenerating(true);
+          setFactoryCodexStatus("Codex 正在按所选 skill 加工...");
+          timer = window.setTimeout(pollFactoryCodexJob, 1500);
+          return;
+        }
+
+        setIsFactoryGenerating(false);
+        setFactoryCodexJobId(null);
+
+        if (job.status === "failed") {
+          setFactoryCodexStatus("Codex 加工失败。");
+          setFactoryCopyError(job.error_message ?? "Codex 加工失败，请稍后重试。");
+          return;
+        }
+
+        const result = job.response
+          ? extractCodexResultText(job.response) || job.response.output || job.output
+          : job.output;
+        setFactoryTask(result);
+        setFactoryCodexStatus("Codex 加工完成。");
+      } catch (error) {
+        if (cancelled) return;
+        setIsFactoryGenerating(false);
+        setFactoryCodexJobId(null);
+        setFactoryCodexStatus("Codex 加工失败。");
+        setFactoryCopyError(error instanceof Error ? error.message : "恢复 Codex 加工状态失败。");
+      }
+    }
+
+    pollFactoryCodexJob();
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [apiKey, factoryCodexJobId]);
 
   useEffect(() => {
     if (!apiKey || activeCodexJobId || hasRestoredLatestCodexJobRef.current) return;
@@ -1062,20 +1131,21 @@ function App() {
   }, [skillQuery]);
 
   useEffect(() => {
-    if (!apiKey || (activeView !== "skills" && activeView !== "historyAsk")) return;
+    if (!apiKey || (activeView !== "skills" && activeView !== "historyAsk" && activeView !== "factory")) return;
 
     let cancelled = false;
     setIsSkillLoading(true);
     setSkillError(null);
     fetchSkills({
       q: activeView === "skills" ? debouncedSkillQuery : undefined,
-      enabled: activeView === "historyAsk" ? true : undefined,
+      enabled: activeView === "historyAsk" || activeView === "factory" ? true : undefined,
     })
       .then((response) => {
         if (cancelled) return;
         setSkillItems(response.items);
         setSkillTotal(response.total);
         setHistoryAskSkillIds((current) => current.filter((skillId) => response.items.some((item) => item.id === skillId)));
+        setFactorySkillIds((current) => current.filter((skillId) => response.items.some((item) => item.id === skillId)));
       })
       .catch((error: Error) => {
         if (cancelled) return;
@@ -2151,6 +2221,10 @@ function App() {
     setFactoryItems([]);
     setFactorySelectedId(null);
     setFactoryTask("");
+    setFactorySkillIds([]);
+    setFactoryCodexJobId(null);
+    setFactoryCodexStatus("");
+    setFactoryCodexErrorOutput("");
     setBlogFactoryItems([]);
     setBlogFactoryTotal(0);
     setSelectedBlogFactoryItem(null);
@@ -2189,23 +2263,46 @@ function App() {
   }
 
   async function handleGenerateFactoryTask(item: KnowledgeItem) {
+    if (isFactoryGenerating) return;
+    if (factorySkillIds.length === 0) {
+      setFactoryCopyError("请先选择 skill，再生成加工结果。");
+      setFactoryCodexStatus("");
+      return;
+    }
+
     setIsFactoryGenerating(true);
     setFactorySelectedId(item.id);
+    setFactoryTask("");
+    setFactoryCodexStatus("正在提交 Codex 加工任务...");
+    setFactoryCodexErrorOutput("");
     setHasCopiedFactoryTask(false);
     setFactoryCopyError(null);
 
-    window.setTimeout(() => {
-      setFactoryTask(buildBlogSkillTask(item));
+    try {
+      const prompt = buildFactorySkillPrompt(item);
+      const job = await startCodexJob(prompt, factorySkillIds, "read-only");
+      setFactoryCodexJobId(job.job_id);
+      setFactoryTask(job.output);
+      setFactoryCodexErrorOutput(job.error_output);
+      setFactoryCodexStatus("Codex 任务已提交，正在加工...");
+    } catch (error) {
       setIsFactoryGenerating(false);
-    }, 520);
+      setFactoryCodexJobId(null);
+      setFactoryCodexStatus("Codex 加工失败。");
+      setFactoryCopyError(error instanceof Error ? error.message : "Codex 加工失败，请稍后重试。");
+    }
   }
 
-  async function handleCopyFactoryTask() {
+  async function handleCopyFactoryTask(view: MarkdownContentView) {
     if (!factoryTask || factorySelectedId === null || isFactoryCopySaving) return;
 
     setIsFactoryCopySaving(true);
     try {
-      await copyText(factoryTask);
+      if (view === "rendered") {
+        await copyMarkdownAsRichText(factoryTask);
+      } else {
+        await copyText(factoryTask);
+      }
     } catch {
       setHasCopiedFactoryTask(false);
       setFactoryCopyError("复制失败。请选中文本框内容后手动复制。");
@@ -2711,6 +2808,12 @@ function App() {
     );
   }
 
+  function handleToggleFactorySkill(skillId: string) {
+    setFactorySkillIds((current) =>
+      current.includes(skillId) ? current.filter((item) => item !== skillId) : [...current, skillId].slice(0, 8),
+    );
+  }
+
   async function handleCreateSkill(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!newSkillDraft.name.trim() || isSkillSaving) return;
@@ -2785,6 +2888,10 @@ function App() {
       });
       setSelectedSkill(updated);
       setSkillItems((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+      if (!updated.enabled) {
+        setHistoryAskSkillIds((current) => current.filter((skillId) => skillId !== updated.id));
+        setFactorySkillIds((current) => current.filter((skillId) => skillId !== updated.id));
+      }
       setSkillSavedLabel("已保存");
       window.setTimeout(() => setSkillSavedLabel(null), 1600);
     } catch (error) {
@@ -2848,6 +2955,7 @@ function App() {
       setSkillItems((current) => current.filter((item) => item.id !== selectedSkill.id));
       setSkillTotal((current) => Math.max(0, current - 1));
       setHistoryAskSkillIds((current) => current.filter((skillId) => skillId !== selectedSkill.id));
+      setFactorySkillIds((current) => current.filter((skillId) => skillId !== selectedSkill.id));
       setSelectedSkill(null);
       setSelectedSkillFile(null);
       setSkillFileContent("");
@@ -2858,7 +2966,7 @@ function App() {
     }
   }
 
-  async function handleCopyHistoryAskAnswer(view: HistoryAskAnswerView) {
+  async function handleCopyHistoryAskAnswer(view: MarkdownContentView) {
     if (!historyAskAnswer?.answer.trim()) return;
 
     try {
@@ -3547,10 +3655,16 @@ function App() {
               loadError={factoryError}
               selectedId={factorySelectedId}
               task={factoryTask}
+              selectedSkillIds={factorySkillIds}
+              skills={skillItems}
+              skillsError={skillError}
+              skillsLoading={isSkillLoading}
               hasCopied={hasCopiedFactoryTask}
               isCopySaving={isFactoryCopySaving}
               isMerging={isFactoryMerging}
               copyError={factoryCopyError}
+              codexErrorOutput={factoryCodexErrorOutput}
+              codexStatus={factoryCodexStatus}
               searchQuery={factoryQuery}
               onClearSearch={() => {
                 setFactoryQuery("");
@@ -3564,9 +3678,12 @@ function App() {
               onSelect={(item) => {
                 setFactorySelectedId(item.id);
                 setFactoryTask("");
+                setFactoryCodexStatus("");
+                setFactoryCodexErrorOutput("");
                 setHasCopiedFactoryTask(false);
                 setFactoryCopyError(null);
               }}
+              onToggleSkill={handleToggleFactorySkill}
             />
           )}
         </section>
@@ -4998,10 +5115,16 @@ function KnowledgeFactory({
   loadError,
   selectedId,
   task,
+  selectedSkillIds,
+  skills,
+  skillsError,
+  skillsLoading,
   hasCopied,
   isCopySaving,
   isMerging,
   copyError,
+  codexErrorOutput,
+  codexStatus,
   searchQuery,
   onClearSearch,
   onCopyTask,
@@ -5009,6 +5132,7 @@ function KnowledgeFactory({
   onMergeKnowledge,
   onPageChange,
   onSelect,
+  onToggleSkill,
 }: {
   items: KnowledgeItem[];
   totalItems: number;
@@ -5019,22 +5143,30 @@ function KnowledgeFactory({
   loadError: string | null;
   selectedId: number | null;
   task: string;
+  selectedSkillIds: string[];
+  skills: SkillSummary[];
+  skillsError: string | null;
+  skillsLoading: boolean;
   hasCopied: boolean;
   isCopySaving: boolean;
   isMerging: boolean;
   copyError: string | null;
+  codexErrorOutput: string;
+  codexStatus: string;
   searchQuery: string;
   onClearSearch: () => void;
-  onCopyTask: () => void;
+  onCopyTask: (view: MarkdownContentView) => void;
   onGenerateTask: (item: KnowledgeItem) => void;
   onMergeKnowledge: (knowledgeIds: number[], mergeDraft: KnowledgeDraft) => Promise<KnowledgeItem>;
   onPageChange: (page: number) => void;
   onSelect: (item: KnowledgeItem) => void;
+  onToggleSkill: (skillId: string) => void;
 }) {
   const selectedItem = items.find((item) => item.id === selectedId) ?? null;
   const [selectedMergeItems, setSelectedMergeItems] = useState<KnowledgeItem[]>([]);
   const [mergeDraft, setMergeDraft] = useState<KnowledgeDraft | null>(null);
   const [mergeError, setMergeError] = useState<string | null>(null);
+  const [taskView, setTaskView] = useState<MarkdownContentView>("rendered");
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
   const rangeStart = totalItems === 0 ? 0 : (page - 1) * pageSize + 1;
   const rangeEnd = Math.min(page * pageSize, totalItems);
@@ -5237,12 +5369,13 @@ function KnowledgeFactory({
           {selectedItem ? (
             <button
               className="flex h-10 items-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-3 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
-              disabled={isGenerating}
+              disabled={isGenerating || selectedSkillIds.length === 0}
+              title={selectedSkillIds.length === 0 ? "请先选择 skill" : "使用所选 skill 直接生成结果"}
               type="button"
               onClick={() => onGenerateTask(selectedItem)}
             >
-              {isGenerating ? <Loader2 className="animate-spin" size={17} /> : <WandSparkles size={17} />}
-              {isGenerating ? "生成中" : "生成加工任务"}
+              {isGenerating ? <Loader2 className="animate-spin" size={17} /> : <Sparkles size={17} />}
+              {isGenerating ? "生成中" : "生成结果"}
             </button>
           ) : null}
         </div>
@@ -5286,7 +5419,7 @@ function KnowledgeFactory({
             <div>
               <Bot className="mx-auto mb-3 text-slate-600" size={36} />
               <div className="mb-1 font-medium text-slate-300">选择一条未发布知识</div>
-              <p className="text-sm text-slate-500">加工厂会把它整理成 Blog skill 可直接消费的任务包。</p>
+              <p className="text-sm text-slate-500">选择 skill 后会直接生成加工结果。</p>
             </div>
           </div>
         )}
@@ -5297,39 +5430,119 @@ function KnowledgeFactory({
           <div>
             <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
               <Bot size={17} />
-              Codex Skill
+              Skill 加工
             </div>
-            <h2 className="text-lg font-semibold text-slate-50">Blog 加工包</h2>
+            <h2 className="text-lg font-semibold text-slate-50">加工结果</h2>
           </div>
-          <button
-            className={`grid h-10 w-10 place-items-center rounded-lg border transition disabled:cursor-not-allowed disabled:text-slate-600 ${
-              hasCopied
-                ? "border-mint-300/30 bg-mint-300/14 text-mint-300"
-                : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-mint-300/30 hover:text-mint-300"
-            }`}
-            disabled={!task || isCopySaving}
-            title={isCopySaving ? "正在保存" : hasCopied ? "已复制并保存" : "复制并保存加工任务"}
-            type="button"
-            onClick={onCopyTask}
-          >
-            {isCopySaving ? (
-              <Loader2 className="animate-spin" size={17} />
-            ) : hasCopied ? (
-              <ClipboardCheck size={17} />
-            ) : (
-              <Copy size={17} />
-            )}
-          </button>
+          <div className="flex flex-wrap justify-end gap-2">
+            <div className="flex h-10 overflow-hidden rounded-lg border border-white/10 bg-white/[0.035]">
+              <button
+                className={`px-3 text-xs transition ${
+                  taskView === "rendered" ? "bg-mint-300/14 text-mint-200" : "text-slate-400 hover:text-mint-200"
+                }`}
+                type="button"
+                onClick={() => setTaskView("rendered")}
+              >
+                美化
+              </button>
+              <button
+                className={`border-l border-white/10 px-3 text-xs transition ${
+                  taskView === "raw" ? "bg-mint-300/14 text-mint-200" : "text-slate-400 hover:text-mint-200"
+                }`}
+                type="button"
+                onClick={() => setTaskView("raw")}
+              >
+                裸文本
+              </button>
+            </div>
+            <button
+              className={`flex h-10 items-center gap-2 rounded-lg border px-3 text-xs transition disabled:cursor-not-allowed disabled:text-slate-600 ${
+                hasCopied
+                  ? "border-mint-300/30 bg-mint-300/14 text-mint-300"
+                  : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-mint-300/30 hover:text-mint-300"
+              }`}
+              disabled={!task || isCopySaving}
+              title={isCopySaving ? "正在保存" : hasCopied ? "已复制并保存" : "复制并保存加工结果"}
+              type="button"
+              onClick={() => onCopyTask(taskView)}
+            >
+              {isCopySaving ? (
+                <Loader2 className="animate-spin" size={15} />
+              ) : hasCopied ? (
+                <ClipboardCheck size={15} />
+              ) : (
+                <Copy size={15} />
+              )}
+              {hasCopied ? "已复制" : taskView === "rendered" ? "复制美化" : "复制裸文本"}
+            </button>
+          </div>
+        </div>
+
+        <div className="mb-4 rounded-lg border border-white/10 bg-white/[0.025] p-3">
+          <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2 text-sm font-medium text-slate-200">
+              <Layers3 className="text-mint-300" size={16} />
+              选择 Skill
+            </div>
+            <span className="text-xs text-slate-500">已选择 {formatAmount(selectedSkillIds.length)} 个</span>
+          </div>
+          {skillsLoading ? (
+            <div className="flex items-center gap-2 text-sm text-slate-500">
+              <Loader2 className="animate-spin" size={15} />
+              正在加载可用 skill...
+            </div>
+          ) : skillsError ? (
+            <div className="text-sm text-red-200">{skillsError}</div>
+          ) : skills.length > 0 ? (
+            <div className="grid gap-2">
+              {skills.map((skill) => {
+                const selected = selectedSkillIds.includes(skill.id);
+                return (
+                  <button
+                    key={skill.id}
+                    className={`min-h-16 rounded-lg border px-3 py-2 text-left transition ${
+                      selected
+                        ? "border-mint-300/30 bg-mint-300/10 text-mint-100"
+                        : "border-white/10 bg-white/[0.028] text-slate-300 hover:border-mint-300/25"
+                    }`}
+                    type="button"
+                    onClick={() => onToggleSkill(skill.id)}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate text-sm font-medium">{skill.name}</span>
+                      {selected ? <CheckCircle2 className="shrink-0 text-mint-300" size={15} /> : null}
+                    </div>
+                    <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{skill.description || "无描述"}</p>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="text-sm text-slate-500">暂无启用的 skill，可在 Skill 管理中新增或上传。</div>
+          )}
         </div>
 
         <div className="mb-4 rounded-lg border border-mint-300/20 bg-mint-300/8 p-3 text-sm leading-6 text-mint-100/85">
-          这里生成的是 Codex Blog skill 的标准输入。复制后交给 Codex 执行，skill 会按规则生成 Markdown 并写入博客目录。
+          选择知识和 skill 后会以只读模式提交 Codex，加工结果会显示在下方。
         </div>
 
         {copyError ? (
           <div className="mb-4 flex items-start gap-2 rounded-lg border border-amberline/25 bg-amberline/10 px-3 py-3 text-sm text-amber-100">
             <TriangleAlert className="mt-0.5 shrink-0 text-amberline" size={17} />
             <span>{copyError}</span>
+          </div>
+        ) : null}
+
+        {codexStatus ? (
+          <div className="mb-4 flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.025] px-3 py-2 text-sm text-slate-400">
+            {isGenerating ? (
+              <Loader2 className="animate-spin text-mint-300" size={15} />
+            ) : copyError ? (
+              <TriangleAlert className="text-amberline" size={15} />
+            ) : (
+              <CheckCircle2 className="text-mint-300" size={15} />
+            )}
+            <span>{codexStatus}</span>
           </div>
         ) : null}
 
@@ -5342,20 +5555,32 @@ function KnowledgeFactory({
             <div className="h-3 w-1/2 rounded bg-white/7" />
           </div>
         ) : task ? (
-          <textarea
-            className="control min-h-[520px] resize-none font-mono text-xs leading-6 text-slate-200"
-            readOnly
-            value={task}
-          />
+          taskView === "rendered" ? (
+            <MarkdownPreview markdown={task} />
+          ) : (
+            <textarea
+              className="control min-h-[420px] resize-none font-mono text-xs leading-6 text-slate-200"
+              readOnly
+              value={task}
+            />
+          )
         ) : (
-          <div className="grid min-h-[520px] place-items-center rounded-lg border border-white/10 bg-white/[0.025] p-6 text-center">
+          <div className="grid min-h-[420px] place-items-center rounded-lg border border-white/10 bg-white/[0.025] p-6 text-center">
             <div>
               <WandSparkles className="mx-auto mb-3 text-slate-600" size={34} />
               <div className="mb-1 font-medium text-slate-300">等待生成</div>
-              <p className="text-sm leading-6 text-slate-500">选择知识后点击“生成加工任务”。</p>
+              <p className="text-sm leading-6 text-slate-500">选择 skill 后点击“生成结果”。</p>
             </div>
           </div>
         )}
+        {codexErrorOutput ? (
+          <details className="mt-4 rounded-lg border border-amberline/20 bg-amberline/8 p-3">
+            <summary className="cursor-pointer text-sm font-medium text-amber-100">Error Output</summary>
+            <pre className="mt-3 max-h-48 overflow-auto whitespace-pre-wrap break-words text-xs leading-5 text-amber-100/80">
+              {codexErrorOutput}
+            </pre>
+          </details>
+        ) : null}
       </aside>
       <MergeKnowledgeDialog
         draft={mergeDraft}
@@ -7602,6 +7827,66 @@ function SkillManager({
   const canCreate = newDraft.name.trim().length > 0 && !isSaving;
   const canSave = Boolean(detail) && draft.name.trim().length > 0 && !isSaving;
   const canSaveFile = Boolean(detail && selectedFile?.editable) && !isFileSaving;
+  const [expandedSkillDirectories, setExpandedSkillDirectories] = useState<Set<string>>(() => new Set());
+  const skillFileGroups = useMemo(() => {
+    const rootFiles: SkillFile[] = [];
+    const directoryMap = new Map<string, SkillFile[]>();
+
+    for (const file of detail?.files ?? []) {
+      const separatorIndex = file.path.indexOf("/");
+      if (separatorIndex === -1) {
+        rootFiles.push(file);
+        continue;
+      }
+
+      const directoryName = file.path.slice(0, separatorIndex);
+      const directoryFiles = directoryMap.get(directoryName) ?? [];
+      directoryFiles.push(file);
+      directoryMap.set(directoryName, directoryFiles);
+    }
+
+    return {
+      rootFiles,
+      directories: Array.from(directoryMap, ([name, files]) => ({ name, files })),
+    };
+  }, [detail?.files]);
+
+  useEffect(() => {
+    setExpandedSkillDirectories(new Set());
+  }, [detail?.id]);
+
+  function handleToggleSkillDirectory(directoryName: string) {
+    setExpandedSkillDirectories((current) => {
+      const next = new Set(current);
+      if (next.has(directoryName)) {
+        next.delete(directoryName);
+      } else {
+        next.add(directoryName);
+      }
+      return next;
+    });
+  }
+
+  function renderSkillFileButton(file: SkillFile, nested = false) {
+    const fileName = nested ? file.path.split("/").slice(1).join("/") : file.path;
+
+    return (
+      <button
+        key={file.path}
+        className={`block w-full rounded-md border px-3 py-2 text-left text-xs transition ${
+          selectedFile?.path === file.path
+            ? "border-mint-300/30 bg-mint-300/10 text-mint-100"
+            : "border-white/10 bg-white/[0.028] text-slate-400 hover:border-mint-300/25"
+        } ${file.editable ? "" : "opacity-55"} ${nested ? "ml-5 w-[calc(100%-1.25rem)]" : ""}`}
+        disabled={!file.editable}
+        type="button"
+        onClick={() => onFileSelect(file)}
+      >
+        <span className="block truncate">{fileName}</span>
+        <span className="mt-1 block text-[11px] text-slate-600">{formatAmount(file.size)} bytes</span>
+      </button>
+    );
+  }
 
   return (
     <div className="grid flex-1 gap-4 px-4 pb-4 pt-2 xl:grid-cols-[360px_minmax(0,1fr)]">
@@ -7796,22 +8081,37 @@ function SkillManager({
                   文件
                 </div>
                 <div className="space-y-2">
-                  {detail.files.map((file) => (
-                    <button
-                      key={file.path}
-                      className={`block w-full rounded-md border px-3 py-2 text-left text-xs transition ${
-                        selectedFile?.path === file.path
-                          ? "border-mint-300/30 bg-mint-300/10 text-mint-100"
-                          : "border-white/10 bg-white/[0.028] text-slate-400 hover:border-mint-300/25"
-                      } ${file.editable ? "" : "opacity-55"}`}
-                      disabled={!file.editable}
-                      type="button"
-                      onClick={() => onFileSelect(file)}
-                    >
-                      <span className="block truncate">{file.path}</span>
-                      <span className="mt-1 block text-[11px] text-slate-600">{formatAmount(file.size)} bytes</span>
-                    </button>
-                  ))}
+                  {skillFileGroups.rootFiles.map((file) => renderSkillFileButton(file))}
+                  {skillFileGroups.directories.map((directory) => {
+                    const expanded = expandedSkillDirectories.has(directory.name);
+
+                    return (
+                      <div key={directory.name} className="space-y-2">
+                        <button
+                          className="flex w-full items-center gap-2 rounded-md border border-white/10 bg-white/[0.028] px-3 py-2 text-left text-xs text-slate-300 transition hover:border-mint-300/25 hover:bg-white/[0.045]"
+                          type="button"
+                          aria-expanded={expanded}
+                          onClick={() => handleToggleSkillDirectory(directory.name)}
+                        >
+                          {expanded ? (
+                            <FolderOpen className="shrink-0 text-mint-300" size={15} />
+                          ) : (
+                            <Folder className="shrink-0 text-slate-500" size={15} />
+                          )}
+                          <span className="min-w-0 flex-1 truncate">{directory.name}</span>
+                          <span className="shrink-0 text-[11px] text-slate-600">
+                            {formatAmount(directory.files.length)} files
+                          </span>
+                          {expanded ? (
+                            <ChevronUp className="shrink-0 text-slate-500" size={14} />
+                          ) : (
+                            <ChevronDown className="shrink-0 text-slate-500" size={14} />
+                          )}
+                        </button>
+                        {expanded ? directory.files.map((file) => renderSkillFileButton(file, true)) : null}
+                      </div>
+                    );
+                  })}
                 </div>
               </aside>
 
@@ -7907,7 +8207,7 @@ function HistoryAskPanel({
   skills: SkillSummary[];
   skillsError: string | null;
   skillsLoading: boolean;
-  onCopyAnswer: (view: HistoryAskAnswerView) => void;
+  onCopyAnswer: (view: MarkdownContentView) => void;
   onLlmConfigDraftChange: (draft: LlmConfigDraft) => void;
   onLlmConfigSave: (event: React.FormEvent<HTMLFormElement>) => void;
   onOpenHistory: () => void;
@@ -7915,7 +8215,7 @@ function HistoryAskPanel({
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
   onToggleSkill: (skillId: string) => void;
 }) {
-  const [answerView, setAnswerView] = useState<HistoryAskAnswerView>("rendered");
+  const [answerView, setAnswerView] = useState<MarkdownContentView>("rendered");
   const canSubmit = question.trim().length >= 2 && !isLoading;
   const canSaveLlmConfig =
     !isLlmConfigSaving &&
@@ -10183,19 +10483,19 @@ async function copyText(value: string) {
   }
 }
 
-function buildBlogSkillTask(item: KnowledgeItem) {
+function buildFactorySkillPrompt(item: KnowledgeItem) {
   const tags = item.topic_tag?.trim() || "未标注";
   const source = item.source?.trim() || "未填写";
   const createdDate = item.created_date ? new Date(item.created_date).toISOString() : "未记录";
 
-  return `请使用 blog skill，把下面这条可信知识加工成一篇适合技术初学者阅读的中文技术博客。
+  return `请使用本次请求中选择的 trustedKnowledge skill，加工下面这条可信知识，并直接输出最终结果。
 
 硬性要求：
-- 只允许基于 Context 中给出的事实写作，不要补充未提供的版本、案例、数字或结论。
-- 输出纯 Markdown，全文不超过 1500 个中文字符。
-- 使用“笔者”作为第一人称，不要使用“我”“我们”“本人”。
-- 标题使用一级标题；二级标题使用“## 01 | 标题内容”的格式。
-- 结尾必须单独一段写：关注我，和AI一起成长~
+- 这是内容加工任务，不是代码修改任务；不要编辑、创建或删除工作区文件。
+- 必须优先遵循所选 skill 对输出结构、语气、长度和格式的要求。
+- 只允许基于 Context 中给出的事实输出，不要补充未提供的版本、案例、数字或结论。
+- 如果所选 skill 与 Context 信息不足冲突，请在结果中保守处理，不要编造。
+- 只输出最终加工结果，不要输出执行过程、任务说明或额外解释。
 
 Context：
 - 知识 ID：${item.id}
@@ -10407,6 +10707,8 @@ function readStoredUiState(): StoredUiState {
         page: readPositiveInteger(factory.page, defaults.factory.page),
         selectedId: readNullablePositiveInteger(factory.selectedId),
         task: readString(factory.task),
+        skillIds: readStringArray(factory.skillIds),
+        codexJobId: readNullableString(factory.codexJobId),
       },
       blogFactory: {
         query: readString(blogFactory.query),
@@ -10513,6 +10815,8 @@ function buildDefaultUiState(): StoredUiState {
       page: 1,
       selectedId: null,
       task: "",
+      skillIds: [],
+      codexJobId: null,
     },
     blogFactory: {
       query: "",

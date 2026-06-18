@@ -14,7 +14,6 @@ from app.schemas.skills import SkillCreate, SkillUpdate
 
 METADATA_FILE = ".trusted-skill.json"
 SKILL_MARKDOWN = "SKILL.md"
-MAX_ZIP_SIZE = 8 * 1024 * 1024
 MAX_FILE_SIZE = 300_000
 TEXT_SUFFIXES = {
     ".md",
@@ -249,8 +248,8 @@ def import_skill_zip(filename: str, payload: bytes) -> dict[str, Any]:
     if not filename or not filename.lower().endswith(".zip"):
         raise SkillValidationError("请上传 .zip 格式的标准 skill 包")
 
-    if len(payload) > MAX_ZIP_SIZE:
-        raise SkillValidationError("Skill zip 包不能超过 8MB")
+    if len(payload) > settings.skill_max_zip_size:
+        raise SkillValidationError(f"Skill zip 包不能超过 {settings.skill_max_zip_mb}MB")
 
     with TemporaryDirectory() as temp_name:
         temp_dir = Path(temp_name)
@@ -327,6 +326,7 @@ def get_prompt_skills(skill_ids: list[str]) -> list[dict[str, str]]:
     selected = []
     for skill_id in skill_ids[:8]:
         try:
+            skill_dir = _skill_dir(skill_id)
             detail = get_skill(skill_id)
         except SkillNotFoundError:
             continue
@@ -337,6 +337,7 @@ def get_prompt_skills(skill_ids: list[str]) -> list[dict[str, str]]:
                 "id": detail["id"],
                 "name": detail["name"],
                 "description": detail["description"],
+                "path": str(skill_dir),
                 "content": detail["skill_markdown"][:6000],
             }
         )

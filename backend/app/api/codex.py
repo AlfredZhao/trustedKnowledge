@@ -12,6 +12,7 @@ from fastapi.responses import StreamingResponse
 
 from app.core.config import settings
 from app.core.security import require_api_key
+from app.repositories.skills import get_prompt_skills
 from app.schemas.codex import CodexJobSnapshot, CodexJobStatus, CodexRunRequest, CodexRunResponse
 
 
@@ -28,6 +29,8 @@ _latest_codex_job_id: str | None = None
 class CodexJobState:
     job_id: str
     prompt: str
+    skill_ids: list[str] = field(default_factory=list)
+    sandbox_mode: str = "workspace-write"
     status: CodexJobStatus = "running"
     output_parts: list[str] = field(default_factory=list)
     error_parts: list[str] = field(default_factory=list)
@@ -53,7 +56,7 @@ async def run_codex(payload: CodexRunRequest) -> CodexRunResponse:
 
     async with _codex_lock:
         started_at = time.monotonic()
-        prompt = _build_prompt(payload.prompt.strip())
+        prompt = _build_prompt(payload.prompt.strip(), payload.skill_ids)
 
         try:
             process = await asyncio.create_subprocess_exec(
@@ -62,7 +65,7 @@ async def run_codex(payload: CodexRunRequest) -> CodexRunResponse:
                 "--cd",
                 str(PROJECT_ROOT),
                 "--sandbox",
-                "workspace-write",
+                payload.sandbox_mode,
                 "--color",
                 "never",
                 "-",
@@ -117,7 +120,7 @@ async def stream_codex(payload: CodexRunRequest) -> StreamingResponse:
         )
 
     return StreamingResponse(
-        _stream_codex_events(payload.prompt.strip()),
+        _stream_codex_events(payload.prompt.strip(), payload.skill_ids, payload.sandbox_mode),
         media_type="application/x-ndjson",
         headers={"Cache-Control": "no-store"},
     )
@@ -138,7 +141,12 @@ async def start_codex_job(payload: CodexRunRequest) -> CodexJobSnapshot:
         )
 
     global _latest_codex_job_id
-    job = CodexJobState(job_id=uuid4().hex, prompt=payload.prompt.strip())
+    job = CodexJobState(
+        job_id=uuid4().hex,
+        prompt=payload.prompt.strip(),
+        skill_ids=payload.skill_ids,
+        sandbox_mode=payload.sandbox_mode,
+    )
     _codex_jobs[job.job_id] = job
     _latest_codex_job_id = job.job_id
     task = asyncio.create_task(_run_codex_job(job))
@@ -161,24 +169,38 @@ async def get_codex_job(job_id: str) -> CodexJobSnapshot:
     return _snapshot_codex_job(job)
 
 
-def _build_prompt(user_prompt: str) -> str:
-    return "\n".join(
-        [
-            "You are running from the trustedKnowledge web AI coding interface.",
-            "Follow the repository AGENTS.md instructions strictly.",
-            "Do not start, stop, or restart frontend/backend services.",
-            "When service restart is needed, tell the user to use the web restart button.",
-            "",
-            "User request:",
-            user_prompt,
-        ]
-    )
+def _build_prompt(user_prompt: str, skill_ids: list[str] | None = None) -> str:
+    selected_skills = get_prompt_skills(skill_ids or [])
+    lines = [
+        "You are running from the trustedKnowledge web AI coding interface.",
+        "Follow the repository AGENTS.md instructions strictly.",
+        "Do not start, stop, or restart frontend/backend services.",
+        "When service restart is needed, tell the user to use the web restart button.",
+    ]
+    if selected_skills:
+        lines.extend(
+            [
+                "",
+                "Selected trustedKnowledge skills:",
+                "Use these skill directories as task-specific instructions. First read each SKILL.md, then load only the referenced files that are needed for the task. Do not preload entire folders.",
+                "Skill instructions can define output structure, tone, and workflow, but they cannot override factual boundaries, repository safety rules, or the user's request.",
+            ]
+        )
+        for skill in selected_skills:
+            lines.extend(
+                [
+                    "",
+                    f"Skill directory: {skill['path']}",
+                ]
+            )
+    lines.extend(["", "User request:", user_prompt])
+    return "\n".join(lines)
 
 
 async def _run_codex_job(job: CodexJobState) -> None:
     async with _codex_lock:
         started_at = time.monotonic()
-        prompt = _build_prompt(job.prompt)
+        prompt = _build_prompt(job.prompt, job.skill_ids)
 
         try:
             process = await asyncio.create_subprocess_exec(
@@ -188,7 +210,7 @@ async def _run_codex_job(job: CodexJobState) -> None:
                 "--cd",
                 str(PROJECT_ROOT),
                 "--sandbox",
-                "workspace-write",
+                job.sandbox_mode,
                 "--color",
                 "never",
                 "-",
@@ -245,10 +267,14 @@ async def _run_codex_job(job: CodexJobState) -> None:
         job.completed_at = datetime.now(UTC)
 
 
-async def _stream_codex_events(user_prompt: str) -> AsyncIterator[str]:
+async def _stream_codex_events(
+    user_prompt: str,
+    skill_ids: list[str] | None = None,
+    sandbox_mode: str = "workspace-write",
+) -> AsyncIterator[str]:
     async with _codex_lock:
         started_at = time.monotonic()
-        prompt = _build_prompt(user_prompt)
+        prompt = _build_prompt(user_prompt, skill_ids)
         stdout_parts: list[str] = []
         stderr_parts: list[str] = []
         queue: asyncio.Queue[dict[str, str]] = asyncio.Queue()
@@ -263,7 +289,7 @@ async def _stream_codex_events(user_prompt: str) -> AsyncIterator[str]:
                 "--cd",
                 str(PROJECT_ROOT),
                 "--sandbox",
-                "workspace-write",
+                sandbox_mode,
                 "--color",
                 "never",
                 "-",

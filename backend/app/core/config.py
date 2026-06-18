@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     codex_bin: str = Field("codex", validation_alias="TRUSTED_KNOWLEDGE_CODEX_BIN")
     history_ask_llm_api_key: str = Field("", validation_alias="TRUSTED_KNOWLEDGE_HISTORY_ASK_LLM_API_KEY")
     skill_storage_dir: str = Field("data/skills", validation_alias="TRUSTED_KNOWLEDGE_SKILL_STORAGE_DIR")
+    skill_max_zip_mb: int = Field(20, validation_alias="TRUSTED_KNOWLEDGE_SKILL_MAX_ZIP_MB", ge=1)
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -66,6 +67,10 @@ class Settings(BaseSettings):
         if path.is_absolute():
             return path
         return Path(__file__).resolve().parents[2] / path
+
+    @property
+    def skill_max_zip_size(self) -> int:
+        return self.skill_max_zip_mb * 1024 * 1024
 
     @field_validator("db_pool_max")
     @classmethod

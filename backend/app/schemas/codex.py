@@ -5,6 +5,8 @@ from pydantic import BaseModel, Field
 
 class CodexRunRequest(BaseModel):
     prompt: str = Field(..., min_length=2, max_length=12000)
+    skill_ids: list[str] = Field(default_factory=list, max_length=8)
+    sandbox_mode: Literal["read-only", "workspace-write"] = "workspace-write"
 
 
 class CodexRunResponse(BaseModel):

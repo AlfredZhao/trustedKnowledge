@@ -13,6 +13,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Added / 新增
 
+- Added a frontend-selectable Chinese technical blog skill based on the Codex blog skill, adapted for read-only Knowledge Processing output.
+- 新增前台可选择的中文技术博客 Skill，基于 Codex blog skill 改造，并适配知识加工只读输出场景。
+
 - Added an Overview dashboard that brings together LLM usage, processing Todo items, recent English material, and trusted knowledge signals.
 - 新增总览 Dashboard，集中展示 LLM 用量、处理中待办、最近 English 素材和可信知识状态。
 
@@ -31,7 +34,19 @@ The format follows the common GitHub changelog convention inspired by
 - Added a Skill management workspace for creating custom skills, uploading standard skill zip packages, editing skill files, and selecting enabled skills in AI Ask.
 - 新增 Skill 管理界面，支持自定义 skill、上传标准 skill zip 包、编辑 skill 文件，并可在 AI 问数中选择启用的 skill 调用。
 
+- Added skill selection and direct Codex result generation to Knowledge Processing, replacing the old copy-only skill task package flow.
+- 为知识加工新增 Skill 选择和 Codex 直接生成结果能力，替代原先只生成并复制 skill 任务包的流程。
+
 #### Changed / 变更
+
+- Changed Skill zip upload size validation to use configurable `TRUSTED_KNOWLEDGE_SKILL_MAX_ZIP_MB`, defaulting to 20MB.
+- 将 Skill zip 上传大小限制改为可配置的 `TRUSTED_KNOWLEDGE_SKILL_MAX_ZIP_MB`，默认 20MB。
+
+- Standardized the existing weekly report cleaner skill with YAML frontmatter and clearer input/output boundaries.
+- 将现有周报清洗 Skill 标准化为带 YAML frontmatter 的格式，并明确输入输出边界。
+
+- Added rendered Markdown viewing and rich-copy/plain-copy mode selection to Knowledge Processing Skill results.
+- 为知识加工 Skill 加工结果新增 Markdown 美化展示，并支持复制美化富文本或裸文本。
 
 - Updated the navigation and related entry copy from `知识录入` to `信息录入`.
 - 将导航及相关录入提示文案从 `知识录入` 调整为 `信息录入`。
@@ -40,6 +55,15 @@ The format follows the common GitHub changelog convention inspired by
 - 优化历史查询模块手机端布局，详情元信息和汇总指标改为更紧凑的双列展示。
 
 #### Fixed / 修复
+
+- Changed Skill management file lists to collapse folders by default and expand their files on demand.
+- 修复 Skill 管理文件列表默认展开所有目录内容的问题，文件夹现在默认折叠，点击后再显示目录内文件。
+
+- Stopped injecting frontend Skill metadata into prompts and changed Codex skill use to load selected skill directories progressively.
+- 调整 Skill 调用方式：前端 Skill 元信息不再注入 prompt，Codex 改为按所选 skill 目录渐进式读取指令和引用文件。
+
+- Hardened Knowledge Processing skill generation so it requires an explicit skill selection and runs Codex in read-only mode.
+- 加固知识加工 Skill 生成流程，要求显式选择 skill，并以只读模式运行 Codex。
 
 - Fixed Overview refresh feedback and partial-load handling so the refresh action shows progress and one failed data source no longer blocks the whole dashboard.
 - 修复总览刷新反馈与局部加载处理，点击刷新会显示进度，单个数据源失败不再阻断整个 Dashboard。
