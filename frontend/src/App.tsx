@@ -106,7 +106,7 @@ import {
 import { clearApiResponseCache } from "./api/localCache";
 import { fetchLlmUsage, readCachedLlmUsage } from "./api/usage";
 import { MarkdownPreview } from "./components/MarkdownPreview";
-import { copyMarkdownAsRichText } from "./utils/markdown";
+import { copyMarkdownAsRichText, removeLeakedMarkdownCodePlaceholders } from "./utils/markdown";
 import type {
   AppView,
   BlogFactoryItem,
@@ -1026,7 +1026,7 @@ function App() {
         const result = job.response
           ? extractCodexResultText(job.response) || job.response.output || job.output
           : job.output;
-        setFactoryTask(result);
+        setFactoryTask(normalizeFactoryTaskResult(result));
         setFactoryCodexStatus("Codex 加工完成。");
       } catch (error) {
         if (cancelled) return;
@@ -2294,14 +2294,15 @@ function App() {
   }
 
   async function handleCopyFactoryTask(view: MarkdownContentView) {
-    if (!factoryTask || factorySelectedId === null || isFactoryCopySaving) return;
+    const taskContent = normalizeFactoryTaskResult(factoryTask);
+    if (!taskContent || factorySelectedId === null || isFactoryCopySaving) return;
 
     setIsFactoryCopySaving(true);
     try {
       if (view === "rendered") {
-        await copyMarkdownAsRichText(factoryTask);
+        await copyMarkdownAsRichText(taskContent);
       } else {
-        await copyText(factoryTask);
+        await copyText(taskContent);
       }
     } catch {
       setHasCopiedFactoryTask(false);
@@ -2313,7 +2314,7 @@ function App() {
     try {
       await createBlogFactoryItem({
         knowledgeId: factorySelectedId,
-        taskContent: factoryTask,
+        taskContent,
       });
       setFactoryCopyError(null);
       setHasCopiedFactoryTask(true);
@@ -10496,6 +10497,7 @@ function buildFactorySkillPrompt(item: KnowledgeItem) {
 - 只允许基于 Context 中给出的事实输出，不要补充未提供的版本、案例、数字或结论。
 - 如果所选 skill 与 Context 信息不足冲突，请在结果中保守处理，不要编造。
 - 只输出最终加工结果，不要输出执行过程、任务说明或额外解释。
+- 不要输出 @@CODE0@@、@@CODE_0@@ 或私有 Unicode 包裹的 CODE0 这类内部占位符；如需保留命令、路径或代码片段，直接使用 Markdown 反引号。
 
 Context：
 - 知识 ID：${item.id}
@@ -10509,6 +10511,10 @@ ${item.question}
 
 可信答案 / 原始素材：
 ${item.answer}`;
+}
+
+function normalizeFactoryTaskResult(value: string) {
+  return removeLeakedMarkdownCodePlaceholders(value);
 }
 
 function buildMergedKnowledgeDraft(items: KnowledgeItem[]): KnowledgeDraft {
@@ -10706,7 +10712,7 @@ function readStoredUiState(): StoredUiState {
         query: readString(factory.query),
         page: readPositiveInteger(factory.page, defaults.factory.page),
         selectedId: readNullablePositiveInteger(factory.selectedId),
-        task: readString(factory.task),
+        task: normalizeFactoryTaskResult(readString(factory.task)),
         skillIds: readStringArray(factory.skillIds),
         codexJobId: readNullableString(factory.codexJobId),
       },

@@ -1,5 +1,5 @@
 export function markdownToHtml(markdown: string) {
-  const lines = markdown.replace(/\r\n/g, "\n").split("\n");
+  const lines = removeLeakedMarkdownCodePlaceholders(markdown).replace(/\r\n/g, "\n").split("\n");
   const html: string[] = [];
   let paragraph: string[] = [];
   let listType: "ul" | "ol" | null = null;
@@ -152,6 +152,16 @@ export async function copyMarkdownAsPlainText(markdown: string) {
   }
 }
 
+export function removeLeakedMarkdownCodePlaceholders(markdown: string) {
+  return markdown
+    .replace(/[ \t]*(?:@@CODE_?\d+@@|\uE000CODE_?\d+\uE001)[ \t]*/g, (match: string, offset: number, source: string) => {
+      const before = offset > 0 ? source[offset - 1] : "";
+      const after = source[offset + match.length] ?? "";
+      return shouldKeepPlaceholderGap(before, after) ? " " : "";
+    })
+    .replace(/[ \t]{2,}/g, " ");
+}
+
 function buildRichClipboardHtml(innerHtml: string) {
   return [
     '<article style="font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Microsoft YaHei, Arial, sans-serif; color: #000000; line-height: 1.65; font-size: 14px;">',
@@ -196,7 +206,7 @@ function formatInlineMarkdown(value: string) {
   const codeSegments: string[] = [];
   let html = escapeHtml(value).replace(/`([^`]+)`/g, (_match, code: string) => {
     const index = codeSegments.push(`<code>${code}</code>`) - 1;
-    return `@@CODE_${index}@@`;
+    return `${INLINE_CODE_MARKER_PREFIX}${index}${INLINE_CODE_MARKER_SUFFIX}`;
   });
 
   html = html
@@ -209,7 +219,15 @@ function formatInlineMarkdown(value: string) {
     .replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>")
     .replace(/(^|[^_])_([^_]+)_/g, "$1<em>$2</em>");
 
-  return html.replace(/@@CODE_(\d+)@@/g, (_match, index: string) => codeSegments[Number(index)] ?? "");
+  return html.replace(INLINE_CODE_MARKER_PATTERN, (_match, index: string) => codeSegments[Number(index)] ?? "");
+}
+
+const INLINE_CODE_MARKER_PREFIX = "TKMDINLINECODE";
+const INLINE_CODE_MARKER_SUFFIX = "ENDTK";
+const INLINE_CODE_MARKER_PATTERN = new RegExp(`${INLINE_CODE_MARKER_PREFIX}(\\d+)${INLINE_CODE_MARKER_SUFFIX}`, "g");
+
+function shouldKeepPlaceholderGap(before: string, after: string) {
+  return /[A-Za-z0-9)\]]/.test(before) && /[A-Za-z0-9([]/.test(after);
 }
 
 function sanitizeMarkdownUrl(value: string) {

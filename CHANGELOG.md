@@ -9,7 +9,20 @@ The format follows the common GitHub changelog convention inspired by
 
 ## 本次版本更新
 
-### [0.2.5]
+### [0.2.6]
+
+#### Added / 新增
+
+#### Changed / 变更
+
+#### Fixed / 修复
+
+- Cleaned leaked Markdown code placeholders from Knowledge Processing Skill results and Markdown previews before display, copy, and save.
+- 修复知识加工 Skill 结果和 Markdown 预览中偶发残留 `@@CODE0@@`、`@@CODE_0@@` 或私有 Unicode `CODE0` 占位符的问题，展示、复制和保存前会统一清理。
+
+## 历史版本更新
+
+### [0.2.5] - 2026-06-18
 
 #### Added / 新增
 
@@ -76,8 +89,6 @@ The format follows the common GitHub changelog convention inspired by
 
 - Added mobile editor sheets for Information Entry and Todo items so tapping a list item in the PWA opens the edit view directly.
 - 为信息录入和待办事项新增手机端编辑弹层，PWA 中点击列表条目会直接打开编辑界面。
-
-## 历史版本更新
 
 ### [0.2.4] - 2026-06-15
 
