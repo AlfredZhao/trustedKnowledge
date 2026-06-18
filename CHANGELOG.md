@@ -13,6 +13,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Added / 新增
 
+- Added a maintained frontend UI overview documenting current layouts, feature surfaces, and display-only tuning knobs such as dashboard limits and list page sizes.
+- 新增前端界面概览维护文档，记录当前布局、功能界面，以及总览展示数量、列表分页条数等纯前端展示配置点。
+
 - Added a frontend-selectable Chinese technical blog skill based on the Codex blog skill, adapted for read-only Knowledge Processing output.
 - 新增前台可选择的中文技术博客 Skill，基于 Codex blog skill 改造，并适配知识加工只读输出场景。
 

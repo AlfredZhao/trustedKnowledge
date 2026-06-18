@@ -23,6 +23,7 @@
 - Mobile views must keep core navigation and actions reachable.
 - After frontend changes, run `cd frontend && npm run build` when feasible.
 - For important feature changes or bug fixes, update `CHANGELOG.md` under `Unreleased` using `Added`, `Changed`, or `Fixed` entries.
+- For frontend layout, navigation, display count, pagination, or pure presentation behavior changes, update `docs/frontend-overview.md` in the same change.
 - Do not change API fields, database structure, or authentication behavior unless explicitly requested.
 - Do not delete user data, logs, or existing business code unless explicitly requested.
 - If a service command fails because of sandbox or port permissions, report the exact command and error before changing process state.
