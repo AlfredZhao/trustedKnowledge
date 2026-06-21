@@ -24,6 +24,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Changed / 变更
 
+- Increased the Codex prompt limit from 12,000 to 50,000 characters so Knowledge Processing can handle longer source material.
+- 将 Codex prompt 限制从 12,000 字提升到 50,000 字，知识加工可处理更长的原始素材。
+
 #### Fixed / 修复
 
 - Cleaned leaked Markdown code placeholders from Knowledge Processing Skill results and Markdown previews before display, copy, and save.

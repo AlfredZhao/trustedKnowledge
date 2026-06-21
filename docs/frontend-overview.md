@@ -137,7 +137,7 @@
 - 支持搜索。
 - 支持多选和合并所选知识。
 - 生成前必须显式选择 Skill。
-- 生成时以 read-only 模式运行 Codex。
+- 生成时以 read-only 模式运行 Codex，提交给 Codex 的 prompt 最多 50,000 字符。
 - 生成结果支持 Markdown 美化展示和裸文本展示。
 - 生成结果会清理泄漏的 Markdown 内部代码占位符，避免 `@@CODE0@@` 或私有 Unicode 包裹的 `CODE0` 这类标记进入展示、复制或保存内容。
 - 复制动作可复制富文本 Markdown 或裸文本，并保存博客工厂任务。

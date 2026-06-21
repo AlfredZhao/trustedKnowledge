@@ -9074,7 +9074,7 @@ function AiCodingWorkspace({
             <textarea
               className="control min-h-[170px] resize-none leading-7"
               disabled={isCodexRunning}
-              maxLength={12000}
+              maxLength={50000}
               value={prompt}
               onChange={(event) => onPromptChange(event.target.value)}
               placeholder="例如：请调整 AI 编程界面的移动端布局，并运行前端构建验证。"
