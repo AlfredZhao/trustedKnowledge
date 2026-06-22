@@ -9,7 +9,17 @@ The format follows the common GitHub changelog convention inspired by
 
 ## 本次版本更新
 
-### [0.2.6]
+### [0.2.7]
+
+#### Added / 新增
+
+#### Changed / 变更
+
+#### Fixed / 修复
+
+## 历史版本更新
+
+### [0.2.6] - 2026-06-22
 
 #### Added / 新增
 
@@ -52,8 +62,6 @@ The format follows the common GitHub changelog convention inspired by
 
 - Cleaned leaked Markdown code placeholders from Knowledge Processing Skill results and Markdown previews before display, copy, and save.
 - 修复知识加工 Skill 结果和 Markdown 预览中偶发残留 `@@CODE0@@`、`@@CODE_0@@` 或私有 Unicode `CODE0` 占位符的问题，展示、复制和保存前会统一清理。
-
-## 历史版本更新
 
 ### [0.2.5] - 2026-06-18
 
