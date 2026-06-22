@@ -15,13 +15,16 @@ from app.api.skills import router as skills_router
 from app.api.system import router as system_router
 from app.api.todos import router as todos_router
 from app.api.usage import router as usage_router
+from app.api.users import router as users_router
 from app.core.config import settings
 from app.db.oracle import close_pool, init_pool
+from app.repositories.users import ensure_user_schema
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_pool()
+    await ensure_user_schema()
     try:
         yield
     finally:
@@ -55,6 +58,7 @@ app.include_router(skills_router, prefix="/api")
 app.include_router(system_router, prefix="/api")
 app.include_router(todos_router, prefix="/api")
 app.include_router(usage_router, prefix="/api")
+app.include_router(users_router, prefix="/api")
 
 
 @app.get("/health", tags=["system"])

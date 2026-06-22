@@ -3,7 +3,7 @@ from typing import Annotated, Literal
 import oracledb
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from app.core.security import require_api_key
+from app.core.security import require_current_user
 from app.repositories.blog_factory import (
     create_blog_factory_item,
     delete_blog_factory_item,
@@ -14,6 +14,7 @@ from app.repositories.blog_factory import (
     update_blog_factory_item,
     update_blog_factory_status,
 )
+from app.repositories.users import AuthContext
 from app.schemas.blog_factory import (
     BlogFactoryArticleUpdate,
     BlogFactoryContentStatusUpdate,
@@ -25,7 +26,7 @@ from app.schemas.blog_factory import (
 )
 
 
-router = APIRouter(prefix="/blog-factory", tags=["blog-factory"], dependencies=[Depends(require_api_key)])
+router = APIRouter(prefix="/blog-factory", tags=["blog-factory"])
 
 
 @router.get("", response_model=BlogFactoryListResponse)
@@ -38,6 +39,7 @@ async def get_blog_factory_items(
     knowledge_id: Annotated[int | None, Query(ge=1)] = None,
     sort_by: Literal["copied_at", "id", "knowledge_id", "factory_status"] = "copied_at",
     sort_dir: Literal["asc", "desc"] = "desc",
+    auth_context: AuthContext = Depends(require_current_user),
 ) -> BlogFactoryListResponse:
     try:
         items, total = await list_blog_factory_items(
@@ -49,6 +51,7 @@ async def get_blog_factory_items(
             knowledge_id=knowledge_id,
             sort_by=sort_by,
             sort_dir=sort_dir,
+            auth_context=auth_context,
         )
     except oracledb.Error as exc:
         error = exc.args[0] if exc.args else exc
@@ -62,9 +65,12 @@ async def get_blog_factory_items(
 
 
 @router.post("", response_model=BlogFactoryItem, status_code=status.HTTP_201_CREATED)
-async def post_blog_factory_item(payload: BlogFactoryCreate) -> BlogFactoryItem:
+async def post_blog_factory_item(
+    payload: BlogFactoryCreate,
+    auth_context: AuthContext = Depends(require_current_user),
+) -> BlogFactoryItem:
     try:
-        created = await create_blog_factory_item(payload)
+        created = await create_blog_factory_item(payload, auth_context)
     except oracledb.Error as exc:
         error = exc.args[0] if exc.args else exc
         message = getattr(error, "message", str(exc))
@@ -80,9 +86,12 @@ async def post_blog_factory_item(payload: BlogFactoryCreate) -> BlogFactoryItem:
 
 
 @router.get("/{item_id}", response_model=BlogFactoryItem)
-async def get_blog_factory_item_detail(item_id: int) -> BlogFactoryItem:
+async def get_blog_factory_item_detail(
+    item_id: int,
+    auth_context: AuthContext = Depends(require_current_user),
+) -> BlogFactoryItem:
     try:
-        item = await get_blog_factory_item(item_id)
+        item = await get_blog_factory_item(item_id, auth_context)
     except oracledb.Error as exc:
         error = exc.args[0] if exc.args else exc
         message = getattr(error, "message", str(exc))
@@ -98,9 +107,13 @@ async def get_blog_factory_item_detail(item_id: int) -> BlogFactoryItem:
 
 
 @router.patch("/{item_id}", response_model=BlogFactoryItem)
-async def patch_blog_factory_item(item_id: int, payload: BlogFactoryUpdate) -> BlogFactoryItem:
+async def patch_blog_factory_item(
+    item_id: int,
+    payload: BlogFactoryUpdate,
+    auth_context: AuthContext = Depends(require_current_user),
+) -> BlogFactoryItem:
     try:
-        item = await update_blog_factory_item(item_id, payload)
+        item = await update_blog_factory_item(item_id, payload, auth_context)
     except oracledb.Error as exc:
         error = exc.args[0] if exc.args else exc
         message = getattr(error, "message", str(exc))
@@ -116,9 +129,13 @@ async def patch_blog_factory_item(item_id: int, payload: BlogFactoryUpdate) -> B
 
 
 @router.patch("/{item_id}/status", response_model=BlogFactoryItem)
-async def patch_blog_factory_status(item_id: int, payload: BlogFactoryStatusUpdate) -> BlogFactoryItem:
+async def patch_blog_factory_status(
+    item_id: int,
+    payload: BlogFactoryStatusUpdate,
+    auth_context: AuthContext = Depends(require_current_user),
+) -> BlogFactoryItem:
     try:
-        item = await update_blog_factory_status(item_id, payload)
+        item = await update_blog_factory_status(item_id, payload, auth_context)
     except oracledb.Error as exc:
         error = exc.args[0] if exc.args else exc
         message = getattr(error, "message", str(exc))
@@ -134,9 +151,13 @@ async def patch_blog_factory_status(item_id: int, payload: BlogFactoryStatusUpda
 
 
 @router.patch("/{item_id}/content-status", response_model=BlogFactoryItem)
-async def patch_blog_factory_content_status(item_id: int, payload: BlogFactoryContentStatusUpdate) -> BlogFactoryItem:
+async def patch_blog_factory_content_status(
+    item_id: int,
+    payload: BlogFactoryContentStatusUpdate,
+    auth_context: AuthContext = Depends(require_current_user),
+) -> BlogFactoryItem:
     try:
-        item = await update_blog_factory_content_status(item_id, payload)
+        item = await update_blog_factory_content_status(item_id, payload, auth_context)
     except oracledb.Error as exc:
         error = exc.args[0] if exc.args else exc
         message = getattr(error, "message", str(exc))
@@ -152,9 +173,13 @@ async def patch_blog_factory_content_status(item_id: int, payload: BlogFactoryCo
 
 
 @router.patch("/{item_id}/article", response_model=BlogFactoryItem)
-async def patch_blog_factory_article(item_id: int, payload: BlogFactoryArticleUpdate) -> BlogFactoryItem:
+async def patch_blog_factory_article(
+    item_id: int,
+    payload: BlogFactoryArticleUpdate,
+    auth_context: AuthContext = Depends(require_current_user),
+) -> BlogFactoryItem:
     try:
-        item = await update_blog_factory_article(item_id, payload)
+        item = await update_blog_factory_article(item_id, payload, auth_context)
     except oracledb.Error as exc:
         error = exc.args[0] if exc.args else exc
         message = getattr(error, "message", str(exc))
@@ -170,9 +195,12 @@ async def patch_blog_factory_article(item_id: int, payload: BlogFactoryArticleUp
 
 
 @router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_blog_factory_item_detail(item_id: int) -> None:
+async def delete_blog_factory_item_detail(
+    item_id: int,
+    auth_context: AuthContext = Depends(require_current_user),
+) -> None:
     try:
-        deleted = await delete_blog_factory_item(item_id)
+        deleted = await delete_blog_factory_item(item_id, auth_context)
     except oracledb.Error as exc:
         error = exc.args[0] if exc.args else exc
         message = getattr(error, "message", str(exc))

@@ -8,18 +8,42 @@ from typing import Annotated
 from fastapi import Header, HTTPException, status
 
 from app.core.config import settings
+from app.repositories.users import AuthContext, authenticate_token
 
 
 ApiKeyHeader = Annotated[str | None, Header(alias="X-API-Key")]
 
 
 async def require_api_key(x_api_key: ApiKeyHeader = None) -> None:
-    if x_api_key and compare_digest(x_api_key, settings.api_key):
+    if x_api_key and await authenticate_token(x_api_key):
         return
 
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid or missing API key",
+    )
+
+
+async def require_current_user(x_api_key: ApiKeyHeader = None) -> AuthContext:
+    if x_api_key:
+        context = await authenticate_token(x_api_key)
+        if context:
+            return context
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid or missing API key",
+    )
+
+
+async def require_admin_user(x_api_key: ApiKeyHeader = None) -> AuthContext:
+    context = await require_current_user(x_api_key)
+    if context.is_admin:
+        return context
+
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Admin privileges are required",
     )
 
 

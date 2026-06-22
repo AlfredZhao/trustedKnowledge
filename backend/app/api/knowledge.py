@@ -3,7 +3,7 @@ from typing import Annotated, Literal
 import oracledb
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 
-from app.core.security import require_api_key
+from app.core.security import require_current_user
 from app.repositories.conversions import convert_knowledge_to_todo
 from app.repositories.knowledge import (
     create_knowledge,
@@ -13,6 +13,7 @@ from app.repositories.knowledge import (
     merge_knowledge,
     update_knowledge,
 )
+from app.repositories.users import AuthContext
 from app.schemas.knowledge import (
     KnowledgeCreate,
     KnowledgeItem,
@@ -23,7 +24,7 @@ from app.schemas.knowledge import (
 from app.schemas.todos import TodoItem
 
 
-router = APIRouter(prefix="/knowledge", tags=["knowledge"], dependencies=[Depends(require_api_key)])
+router = APIRouter(prefix="/knowledge", tags=["knowledge"])
 
 
 @router.get("", response_model=KnowledgeListResponse)
@@ -37,6 +38,7 @@ async def get_knowledge(
         Literal["未发布", "已发布", "跳过"] | None,
         Query(alias="status"),
     ] = None,
+    auth_context: AuthContext = Depends(require_current_user),
 ) -> KnowledgeListResponse:
     items, total = await list_knowledge(
         limit=limit,
@@ -45,14 +47,18 @@ async def get_knowledge(
         topic=topic,
         source=source,
         status=status_filter,
+        auth_context=auth_context,
     )
     return KnowledgeListResponse(items=items, total=total, limit=limit, offset=offset)
 
 
 @router.post("", response_model=KnowledgeItem, status_code=status.HTTP_201_CREATED)
-async def post_knowledge(payload: KnowledgeCreate) -> KnowledgeItem:
+async def post_knowledge(
+    payload: KnowledgeCreate,
+    auth_context: AuthContext = Depends(require_current_user),
+) -> KnowledgeItem:
     try:
-        created = await create_knowledge(payload)
+        created = await create_knowledge(payload, auth_context)
     except oracledb.Error as exc:
         error = exc.args[0] if exc.args else exc
         message = getattr(error, "message", str(exc))
@@ -65,9 +71,12 @@ async def post_knowledge(payload: KnowledgeCreate) -> KnowledgeItem:
 
 
 @router.post("/merge", response_model=KnowledgeItem, status_code=status.HTTP_201_CREATED)
-async def post_knowledge_merge(payload: KnowledgeMergeRequest) -> KnowledgeItem:
+async def post_knowledge_merge(
+    payload: KnowledgeMergeRequest,
+    auth_context: AuthContext = Depends(require_current_user),
+) -> KnowledgeItem:
     try:
-        created = await merge_knowledge(payload)
+        created = await merge_knowledge(payload, auth_context)
     except oracledb.Error as exc:
         error = exc.args[0] if exc.args else exc
         message = getattr(error, "message", str(exc))
@@ -88,9 +97,10 @@ async def post_knowledge_merge(payload: KnowledgeMergeRequest) -> KnowledgeItem:
 @router.post("/{knowledge_id}/convert-to-todo", response_model=TodoItem, status_code=status.HTTP_201_CREATED)
 async def post_knowledge_convert_to_todo(
     knowledge_id: Annotated[int, Path(ge=1)],
+    auth_context: AuthContext = Depends(require_current_user),
 ) -> TodoItem:
     try:
-        converted = await convert_knowledge_to_todo(knowledge_id)
+        converted = await convert_knowledge_to_todo(knowledge_id, auth_context)
     except oracledb.Error as exc:
         error = exc.args[0] if exc.args else exc
         message = getattr(error, "message", str(exc))
@@ -108,8 +118,9 @@ async def post_knowledge_convert_to_todo(
 @router.get("/{knowledge_id}", response_model=KnowledgeItem)
 async def get_knowledge_detail(
     knowledge_id: Annotated[int, Path(ge=1)],
+    auth_context: AuthContext = Depends(require_current_user),
 ) -> KnowledgeItem:
-    item = await get_knowledge_by_id(knowledge_id)
+    item = await get_knowledge_by_id(knowledge_id, auth_context)
     if item is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Knowledge item not found")
     return KnowledgeItem.model_validate(item)
@@ -119,9 +130,10 @@ async def get_knowledge_detail(
 async def patch_knowledge(
     knowledge_id: Annotated[int, Path(ge=1)],
     payload: KnowledgeUpdate,
+    auth_context: AuthContext = Depends(require_current_user),
 ) -> KnowledgeItem:
     try:
-        updated = await update_knowledge(knowledge_id, payload)
+        updated = await update_knowledge(knowledge_id, payload, auth_context)
     except oracledb.Error as exc:
         error = exc.args[0] if exc.args else exc
         message = getattr(error, "message", str(exc))
@@ -139,9 +151,10 @@ async def patch_knowledge(
 @router.delete("/{knowledge_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_knowledge_item(
     knowledge_id: Annotated[int, Path(ge=1)],
+    auth_context: AuthContext = Depends(require_current_user),
 ) -> None:
     try:
-        deleted = await delete_knowledge(knowledge_id)
+        deleted = await delete_knowledge(knowledge_id, auth_context)
     except oracledb.Error as exc:
         error = exc.args[0] if exc.args else exc
         message = getattr(error, "message", str(exc))

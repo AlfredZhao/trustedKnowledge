@@ -69,10 +69,56 @@ export type AppView =
   | "currentRecords"
   | "history"
   | "englishMaterials"
+  | "users"
   | "skills"
   | "historyAsk"
   | "aiCoding"
   | "usage";
+
+export type ManagedUserRole = "USER" | "PARENT" | "ADMIN";
+export type ManagedUserStatus = "ACTIVE" | "DISABLED";
+
+export interface ManagedUserItem {
+  user_id: number;
+  username: string;
+  display_name: string | null;
+  role_code: ManagedUserRole;
+  status: ManagedUserStatus;
+  has_password: boolean;
+  parent_count: number;
+  child_count: number;
+  created_at: string | null;
+  updated_at: string | null;
+  last_login_at: string | null;
+}
+
+export interface ManagedUserListResponse {
+  items: ManagedUserItem[];
+  total: number;
+}
+
+export interface ManagedUserCreateDraft {
+  username: string;
+  display_name: string;
+  password: string;
+  role_code: ManagedUserRole;
+}
+
+export interface UserRelationItem {
+  relation_id: number;
+  parent_user_id: number;
+  parent_username: string;
+  child_user_id: number;
+  child_username: string;
+  relation_type: string;
+  status: ManagedUserStatus;
+  created_at: string | null;
+}
+
+export interface UserRelationListResponse {
+  items: UserRelationItem[];
+  total: number;
+}
 
 export interface CurrentRecordItem {
   id: number;

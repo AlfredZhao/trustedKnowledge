@@ -3,16 +3,17 @@ from typing import Annotated, Literal
 import oracledb
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 
-from app.core.security import require_api_key
+from app.core.security import require_current_user
 from app.repositories.conversions import convert_todo_to_knowledge
 from app.repositories.current_records import prepend_todo_to_current_content
 from app.repositories.todos import create_todo, get_todo_by_id, list_todos, update_todo
+from app.repositories.users import AuthContext
 from app.schemas.current_records import CurrentRecordItem
 from app.schemas.knowledge import KnowledgeItem
 from app.schemas.todos import TodoCreate, TodoCurrentAppendTarget, TodoItem, TodoListResponse, TodoUpdate
 
 
-router = APIRouter(prefix="/todos", tags=["todos"], dependencies=[Depends(require_api_key)])
+router = APIRouter(prefix="/todos", tags=["todos"])
 
 
 @router.get("", response_model=TodoListResponse)
@@ -24,6 +25,7 @@ async def get_todos(
         Literal["待处理", "处理中", "已完成"] | None,
         Query(alias="status"),
     ] = None,
+    auth_context: AuthContext = Depends(require_current_user),
 ) -> TodoListResponse:
     try:
         items, total = await list_todos(
@@ -31,6 +33,7 @@ async def get_todos(
             offset=offset,
             q=q,
             todo_status=status_filter,
+            auth_context=auth_context,
         )
     except oracledb.Error as exc:
         error = exc.args[0] if exc.args else exc
@@ -44,9 +47,9 @@ async def get_todos(
 
 
 @router.post("", response_model=TodoItem, status_code=status.HTTP_201_CREATED)
-async def post_todo(payload: TodoCreate) -> TodoItem:
+async def post_todo(payload: TodoCreate, auth_context: AuthContext = Depends(require_current_user)) -> TodoItem:
     try:
-        created = await create_todo(payload)
+        created = await create_todo(payload, auth_context)
     except oracledb.Error as exc:
         error = exc.args[0] if exc.args else exc
         message = getattr(error, "message", str(exc))
@@ -59,9 +62,12 @@ async def post_todo(payload: TodoCreate) -> TodoItem:
 
 
 @router.post("/{todo_id}/convert-to-knowledge", response_model=KnowledgeItem, status_code=status.HTTP_201_CREATED)
-async def post_todo_convert_to_knowledge(todo_id: Annotated[int, Path(ge=1)]) -> KnowledgeItem:
+async def post_todo_convert_to_knowledge(
+    todo_id: Annotated[int, Path(ge=1)],
+    auth_context: AuthContext = Depends(require_current_user),
+) -> KnowledgeItem:
     try:
-        converted = await convert_todo_to_knowledge(todo_id)
+        converted = await convert_todo_to_knowledge(todo_id, auth_context)
     except oracledb.Error as exc:
         error = exc.args[0] if exc.args else exc
         message = getattr(error, "message", str(exc))
@@ -80,9 +86,10 @@ async def post_todo_convert_to_knowledge(todo_id: Annotated[int, Path(ge=1)]) ->
 async def post_todo_append_to_current(
     todo_id: Annotated[int, Path(ge=1)],
     payload: TodoCurrentAppendTarget,
+    auth_context: AuthContext = Depends(require_current_user),
 ) -> CurrentRecordItem:
     try:
-        todo = await get_todo_by_id(todo_id)
+        todo = await get_todo_by_id(todo_id, auth_context)
         if todo is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Todo item not found")
 
@@ -91,6 +98,7 @@ async def post_todo_append_to_current(
             current_type=payload.type,
             todo_title=todo["title"],
             todo_content=todo["content"],
+            auth_context=auth_context,
         )
     except HTTPException:
         raise
@@ -109,9 +117,12 @@ async def post_todo_append_to_current(
 
 
 @router.get("/{todo_id}", response_model=TodoItem)
-async def get_todo_detail(todo_id: Annotated[int, Path(ge=1)]) -> TodoItem:
+async def get_todo_detail(
+    todo_id: Annotated[int, Path(ge=1)],
+    auth_context: AuthContext = Depends(require_current_user),
+) -> TodoItem:
     try:
-        item = await get_todo_by_id(todo_id)
+        item = await get_todo_by_id(todo_id, auth_context)
     except oracledb.Error as exc:
         error = exc.args[0] if exc.args else exc
         message = getattr(error, "message", str(exc))
@@ -127,9 +138,13 @@ async def get_todo_detail(todo_id: Annotated[int, Path(ge=1)]) -> TodoItem:
 
 
 @router.patch("/{todo_id}", response_model=TodoItem)
-async def patch_todo(todo_id: Annotated[int, Path(ge=1)], payload: TodoUpdate) -> TodoItem:
+async def patch_todo(
+    todo_id: Annotated[int, Path(ge=1)],
+    payload: TodoUpdate,
+    auth_context: AuthContext = Depends(require_current_user),
+) -> TodoItem:
     try:
-        item = await update_todo(todo_id, payload)
+        item = await update_todo(todo_id, payload, auth_context)
     except oracledb.Error as exc:
         error = exc.args[0] if exc.args else exc
         message = getattr(error, "message", str(exc))

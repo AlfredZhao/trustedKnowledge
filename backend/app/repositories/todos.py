@@ -3,18 +3,19 @@ from typing import Any
 import oracledb
 
 from app.db.oracle import acquire_connection
+from app.repositories.users import AuthContext, append_user_visibility_clause, user_id_for_write
 from app.schemas.todos import TodoCreate, TodoUpdate
 
 
 LIST_COLUMNS = """
-    id,
-    title,
-    content,
-    source,
-    topic_tag,
-    created_at,
-    updated_at,
-    todo_status
+    todo_item.id,
+    todo_item.title,
+    todo_item.content,
+    todo_item.source,
+    todo_item.topic_tag,
+    todo_item.created_at,
+    todo_item.updated_at,
+    todo_item.todo_status
 """
 
 _table_ready = False
@@ -49,6 +50,7 @@ async def _ensure_todo_table(connection: oracledb.AsyncConnection) -> None:
                     content clob not null,
                     source varchar2(200),
                     topic_tag varchar2(100),
+                    user_id number,
                     created_at timestamp default systimestamp not null,
                     updated_at timestamp,
                     todo_status varchar2(20) default ''待处理'' not null,
@@ -59,6 +61,21 @@ async def _ensure_todo_table(connection: oracledb.AsyncConnection) -> None:
         exception
             when others then
                 if sqlcode != -955 then
+                    raise;
+                end if;
+        end;
+        """
+    )
+    await cursor.execute(
+        """
+        begin
+            execute immediate '
+                alter table ai_todo_items
+                add user_id number
+            ';
+        exception
+            when others then
+                if sqlcode != -1430 then
                     raise;
                 end if;
         end;
@@ -82,22 +99,24 @@ async def _ensure_todo_table(connection: oracledb.AsyncConnection) -> None:
     _table_ready = True
 
 
-def _build_filters(q: str | None, todo_status: str | None) -> tuple[str, dict[str, Any]]:
+def _build_filters(q: str | None, todo_status: str | None, auth_context: AuthContext) -> tuple[str, dict[str, Any]]:
     clauses: list[str] = []
     params: dict[str, Any] = {}
 
     if q:
         clauses.append(
-            "(lower(dbms_lob.substr(title, 4000, 1)) like '%' || lower(:q) || '%' "
-            "or lower(dbms_lob.substr(content, 4000, 1)) like '%' || lower(:q) || '%' "
-            "or lower(source) like '%' || lower(:q) || '%' "
-            "or lower(topic_tag) like '%' || lower(:q) || '%')"
+            "(lower(dbms_lob.substr(todo_item.title, 4000, 1)) like '%' || lower(:q) || '%' "
+            "or lower(dbms_lob.substr(todo_item.content, 4000, 1)) like '%' || lower(:q) || '%' "
+            "or lower(todo_item.source) like '%' || lower(:q) || '%' "
+            "or lower(todo_item.topic_tag) like '%' || lower(:q) || '%')"
         )
         params["q"] = q
 
     if todo_status:
-        clauses.append("todo_status = :todo_status")
+        clauses.append("todo_item.todo_status = :todo_status")
         params["todo_status"] = todo_status
+
+    append_user_visibility_clause(clauses, params, auth_context, "todo_item.user_id")
 
     if not clauses:
         return "", params
@@ -111,15 +130,16 @@ async def list_todos(
     offset: int,
     q: str | None = None,
     todo_status: str | None = None,
+    auth_context: AuthContext,
 ) -> tuple[list[dict[str, Any]], int]:
-    where_sql, params = _build_filters(q, todo_status)
+    where_sql, params = _build_filters(q, todo_status, auth_context)
 
-    count_sql = f"select count(*) from ai_todo_items{where_sql}"
+    count_sql = f"select count(*) from ai_todo_items todo_item{where_sql}"
     list_sql = f"""
         select {LIST_COLUMNS}
-        from ai_todo_items
+        from ai_todo_items todo_item
         {where_sql}
-        order by created_at desc nulls last, id desc
+        order by todo_item.created_at desc nulls last, todo_item.id desc
         offset :offset rows fetch next :limit rows only
     """
 
@@ -137,35 +157,41 @@ async def list_todos(
     return [_row_to_dict(row) for row in rows], total
 
 
-async def get_todo_by_id(todo_id: int) -> dict[str, Any] | None:
+async def get_todo_by_id(todo_id: int, auth_context: AuthContext | None = None) -> dict[str, Any] | None:
+    params: dict[str, Any] = {"todo_id": todo_id}
+    clauses = ["todo_item.id = :todo_id"]
+    if auth_context is not None:
+        append_user_visibility_clause(clauses, params, auth_context, "todo_item.user_id")
     sql = f"""
         select {LIST_COLUMNS}
-        from ai_todo_items
-        where id = :todo_id
+        from ai_todo_items todo_item
+        where {" and ".join(clauses)}
     """
 
     async with acquire_connection() as connection:
         await _ensure_todo_table(connection)
         cursor = connection.cursor()
-        await cursor.execute(sql, {"todo_id": todo_id})
+        await cursor.execute(sql, params)
         row = await cursor.fetchone()
 
     return _row_to_dict(row) if row else None
 
 
-async def create_todo(payload: TodoCreate) -> dict[str, Any]:
+async def create_todo(payload: TodoCreate, auth_context: AuthContext) -> dict[str, Any]:
     sql = """
         insert into ai_todo_items (
             title,
             content,
             source,
             topic_tag,
+            user_id,
             todo_status
         ) values (
             :title,
             :content,
             :source,
             :topic_tag,
+            :user_id,
             :todo_status
         )
         returning id into :new_id
@@ -182,6 +208,7 @@ async def create_todo(payload: TodoCreate) -> dict[str, Any]:
                 "content": payload.content,
                 "source": payload.source,
                 "topic_tag": payload.topic_tag,
+                "user_id": user_id_for_write(auth_context),
                 "todo_status": payload.todo_status,
                 "new_id": new_id,
             },
@@ -189,24 +216,26 @@ async def create_todo(payload: TodoCreate) -> dict[str, Any]:
         await connection.commit()
         todo_id = int(new_id.getvalue()[0])
 
-    created = await get_todo_by_id(todo_id)
+    created = await get_todo_by_id(todo_id, auth_context)
     if created is None:
         raise RuntimeError("Todo row was inserted but could not be reloaded")
     return created
 
 
-async def update_todo(todo_id: int, payload: TodoUpdate) -> dict[str, Any] | None:
+async def update_todo(todo_id: int, payload: TodoUpdate, auth_context: AuthContext) -> dict[str, Any] | None:
     values = payload.model_dump(exclude_unset=True)
     if not values:
-        return await get_todo_by_id(todo_id)
+        return await get_todo_by_id(todo_id, auth_context)
 
     assignments = [f"{column} = :{column}" for column in values]
     assignments.append("updated_at = systimestamp")
     params = {**values, "todo_id": todo_id}
+    clauses = ["id = :todo_id"]
+    append_user_visibility_clause(clauses, params, auth_context, "user_id")
     sql = f"""
         update ai_todo_items
         set {", ".join(assignments)}
-        where id = :todo_id
+        where {" and ".join(clauses)}
     """
 
     async with acquire_connection() as connection:
@@ -218,4 +247,4 @@ async def update_todo(todo_id: int, payload: TodoUpdate) -> dict[str, Any] | Non
             return None
         await connection.commit()
 
-    return await get_todo_by_id(todo_id)
+    return await get_todo_by_id(todo_id, auth_context)

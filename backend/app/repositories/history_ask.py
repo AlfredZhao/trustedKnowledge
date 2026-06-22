@@ -12,6 +12,7 @@ from app.core.config import settings
 from app.db.oracle import acquire_connection
 from app.repositories.llm_config import get_history_ask_llm_config
 from app.repositories.skills import get_prompt_skills
+from app.repositories.users import AuthContext
 
 
 COMMON_WORDS = {
@@ -247,34 +248,37 @@ def _append_filter_clauses(
     vector_status: int | None,
     date_from: date | None = None,
     date_to: date | None = None,
+    auth_context: AuthContext | None = None,
 ) -> None:
     if keyword:
-        clauses.append("lower(content) like '%' || lower(:keyword) || '%'")
+        clauses.append("lower(history_record.content) like '%' || lower(:keyword) || '%'")
         params["keyword"] = keyword
     if username:
-        clauses.append("lower(username) = lower(:username)")
+        clauses.append("lower(coalesce(record_user.username, history_record.username)) = lower(:username)")
         params["username"] = username
     if history_type:
-        clauses.append("lower(type) = lower(:history_type)")
+        clauses.append("lower(history_record.type) = lower(:history_type)")
         params["history_type"] = history_type
     if week:
-        clauses.append("lower(week) = lower(:week)")
+        clauses.append("lower(history_record.week) = lower(:week)")
         params["week"] = week
     if day:
-        clauses.append("lower(day) = lower(:day)")
+        clauses.append("lower(history_record.day) = lower(:day)")
         params["day"] = day
     if learn_level is not None:
-        clauses.append("learn_level = :learn_level")
+        clauses.append("history_record.learn_level = :learn_level")
         params["learn_level"] = learn_level
     if vector_status is not None:
-        clauses.append("v_needs_update = :vector_status")
+        clauses.append("history_record.v_needs_update = :vector_status")
         params["vector_status"] = vector_status
     if date_from is not None:
-        clauses.append("history_date >= :date_from")
+        clauses.append("history_record.history_date >= :date_from")
         params["date_from"] = date_from
     if date_to is not None:
-        clauses.append("history_date < :date_to + 1")
+        clauses.append("history_record.history_date < :date_to + 1")
         params["date_to"] = date_to
+    if auth_context is not None:
+        _append_visibility_clause(clauses, params, auth_context)
 
 
 async def _fetch_latest_history_date(
@@ -287,6 +291,7 @@ async def _fetch_latest_history_date(
     day: str | None,
     learn_level: int | None,
     vector_status: int | None,
+    auth_context: AuthContext,
 ) -> date | None:
     clauses: list[str] = []
     params: dict[str, Any] = {}
@@ -300,9 +305,18 @@ async def _fetch_latest_history_date(
         day=day,
         learn_level=learn_level,
         vector_status=vector_status,
+        auth_context=auth_context,
     )
     where_sql = " where " + " and ".join(clauses) if clauses else ""
-    await cursor.execute(f"select max(trunc(history_date)) from t_history{where_sql}", params)
+    await cursor.execute(
+        f"""
+        select max(trunc(history_record.history_date))
+        from t_history history_record
+        left join tk_users record_user on record_user.user_id = history_record.user_id
+        {where_sql}
+        """,
+        params,
+    )
     row = await cursor.fetchone()
     return _normalize_date(row[0]) if row else None
 
@@ -322,7 +336,8 @@ async def _fetch_count_distribution(
     await cursor.execute(
         f"""
             select {expression} as label, count(*) as item_count
-            from t_history
+            from t_history history_record
+            left join tk_users record_user on record_user.user_id = history_record.user_id
             {where_sql}
             group by {expression}
             order by item_count desc, label
@@ -331,6 +346,20 @@ async def _fetch_count_distribution(
         {**params, "distribution_limit": limit},
     )
     return _count_rows_to_dict(await cursor.fetchall())
+
+
+def _append_visibility_clause(clauses: list[str], params: dict[str, Any], auth_context: AuthContext) -> None:
+    if auth_context.is_admin or auth_context.visible_user_ids is None:
+        return
+    if not auth_context.visible_user_ids:
+        clauses.append("1 = 0")
+        return
+    bind_names = []
+    for index, user_id in enumerate(auth_context.visible_user_ids):
+        bind_name = f"visible_user_id_{index}"
+        bind_names.append(bind_name)
+        params[bind_name] = user_id
+    clauses.append(f"history_record.user_id in ({', '.join(f':{name}' for name in bind_names)})")
 
 
 def _trim_content(value: str | None, limit: int = 260) -> str:
@@ -494,13 +523,42 @@ def _format_selected_skills_for_prompt(selected_skills: list[dict[str, str]]) ->
     return "\n\n".join(blocks)
 
 
-async def ask_history(question: str, *, skill_ids: list[str] | None = None) -> dict[str, Any]:
+async def ask_history(
+    question: str,
+    *,
+    skill_ids: list[str] | None = None,
+    auth_context: AuthContext,
+) -> dict[str, Any]:
     selected_skills = get_prompt_skills(skill_ids or [])
     async with acquire_connection() as connection:
         cursor = connection.cursor()
-        await cursor.execute("select distinct username from t_history where username is not null")
+        visibility_clauses: list[str] = []
+        visibility_params: dict[str, Any] = {}
+        _append_visibility_clause(visibility_clauses, visibility_params, auth_context)
+        visibility_sql = " and " + " and ".join(visibility_clauses) if visibility_clauses else ""
+        from_sql = """
+            from t_history history_record
+            left join tk_users record_user on record_user.user_id = history_record.user_id
+        """
+        await cursor.execute(
+            f"""
+            select distinct coalesce(record_user.username, history_record.username) as username
+            {from_sql}
+            where coalesce(record_user.username, history_record.username) is not null
+            {visibility_sql}
+            """,
+            visibility_params,
+        )
         users = [row[0] for row in await cursor.fetchall()]
-        await cursor.execute("select distinct type from t_history where type is not null")
+        await cursor.execute(
+            f"""
+            select distinct history_record.type
+            {from_sql}
+            where history_record.type is not null
+            {visibility_sql}
+            """,
+            visibility_params,
+        )
         history_types = [row[0] for row in await cursor.fetchall()]
 
         keyword = _extract_keyword(question)
@@ -519,6 +577,7 @@ async def ask_history(question: str, *, skill_ids: list[str] | None = None) -> d
             day=day,
             learn_level=learn_level,
             vector_status=vector_status,
+            auth_context=auth_context,
         )
         date_from, date_to = _extract_date_range(question, anchor_date=anchor_date)
 
@@ -536,6 +595,7 @@ async def ask_history(question: str, *, skill_ids: list[str] | None = None) -> d
             vector_status=vector_status,
             date_from=date_from,
             date_to=date_to,
+            auth_context=auth_context,
         )
 
         where_sql = " where " + " and ".join(clauses) if clauses else ""
@@ -553,17 +613,24 @@ async def ask_history(question: str, *, skill_ids: list[str] | None = None) -> d
         stats_sql = f"""
             select
                 count(*),
-                count(distinct trunc(history_date)),
-                min(trunc(history_date)),
-                max(trunc(history_date))
-            from t_history
+                count(distinct trunc(history_record.history_date)),
+                min(trunc(history_record.history_date)),
+                max(trunc(history_record.history_date))
+            {from_sql}
             {where_sql}
         """
         evidence_sql = f"""
-            select id, history_date, type, week, day, username, content
-            from t_history
+            select
+                history_record.id,
+                history_record.history_date,
+                history_record.type,
+                history_record.week,
+                history_record.day,
+                coalesce(record_user.username, history_record.username) as username,
+                history_record.content
+            {from_sql}
             {where_sql}
-            order by history_date desc nulls last, id desc
+            order by history_record.history_date desc nulls last, history_record.id desc
             fetch next 80 rows only
         """
 
@@ -580,13 +647,13 @@ async def ask_history(question: str, *, skill_ids: list[str] | None = None) -> d
             "max_date": stats_row[3] if stats_row else None,
             "type_counts": await _fetch_count_distribution(
                 cursor,
-                expression="coalesce(type, '未分类')",
+                expression="coalesce(history_record.type, '未分类')",
                 where_sql=where_sql,
                 params=params,
             ),
             "week_counts": await _fetch_count_distribution(
                 cursor,
-                expression="coalesce(week, '未记录')",
+                expression="coalesce(history_record.week, '未记录')",
                 where_sql=where_sql,
                 params=params,
             ),
@@ -594,7 +661,13 @@ async def ask_history(question: str, *, skill_ids: list[str] | None = None) -> d
         }
 
         await cursor.execute(
-            f"select learn_level, count(*) from t_history{where_sql} group by learn_level order by learn_level",
+            f"""
+            select history_record.learn_level, count(*)
+            {from_sql}
+            {where_sql}
+            group by history_record.learn_level
+            order by history_record.learn_level
+            """,
             params,
         )
         level_rows = await cursor.fetchall()

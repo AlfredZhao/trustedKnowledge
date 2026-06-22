@@ -8,10 +8,19 @@ class LoginRequest(BaseModel):
 
 class LoginResponse(BaseModel):
     api_key: str
+    username: str
+    is_admin: bool
+    visible_users: list[str] = []
 
 
 class AuthConfigResponse(BaseModel):
     wechat_enabled: bool
+
+
+class AuthUserResponse(BaseModel):
+    username: str
+    is_admin: bool
+    visible_users: list[str] = []
 
 
 class WeChatLoginStartResponse(BaseModel):

@@ -1,9 +1,19 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.trim() ?? "";
 
 export const API_KEY_STORAGE_KEY = "trustedKnowledge.apiKey";
+export const AUTH_USER_STORAGE_KEY = "trustedKnowledge.authUser";
+
+export interface AuthUser {
+  username: string;
+  is_admin: boolean;
+  visible_users: string[];
+}
 
 interface LoginResponse {
   api_key: string;
+  username: string;
+  is_admin: boolean;
+  visible_users: string[];
 }
 
 interface AuthConfigResponse {
@@ -23,7 +33,7 @@ async function readErrorMessage(response: Response, fallback: string): Promise<s
   }
 }
 
-export async function login(username: string, password: string): Promise<string> {
+export async function login(username: string, password: string): Promise<LoginResponse> {
   const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
     method: "POST",
     headers: {
@@ -37,7 +47,24 @@ export async function login(username: string, password: string): Promise<string>
   }
 
   const data = (await response.json()) as LoginResponse;
-  return data.api_key;
+  return data;
+}
+
+export async function fetchCurrentAuthUser(): Promise<AuthUser> {
+  const apiKey = readStoredApiKey();
+  const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
+    headers: {
+      ...(apiKey ? { "X-API-Key": apiKey } : {}),
+    },
+  });
+
+  if (!response.ok) {
+    clearStoredApiKey();
+    window.dispatchEvent(new Event("trusted-knowledge:unauthorized"));
+    throw new Error("登录状态已失效");
+  }
+
+  return response.json() as Promise<AuthUser>;
 }
 
 export async function fetchAuthConfig(): Promise<AuthConfigResponse> {
@@ -78,7 +105,28 @@ export function persistApiKey(apiKey: string) {
   window.sessionStorage.removeItem(API_KEY_STORAGE_KEY);
 }
 
+export function readStoredAuthUser(): AuthUser | null {
+  const raw = window.localStorage.getItem(AUTH_USER_STORAGE_KEY);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as Partial<AuthUser>;
+    if (typeof parsed.username !== "string" || typeof parsed.is_admin !== "boolean") return null;
+    return {
+      username: parsed.username,
+      is_admin: parsed.is_admin,
+      visible_users: Array.isArray(parsed.visible_users) ? parsed.visible_users.filter((item) => typeof item === "string") : [],
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function persistAuthUser(user: AuthUser) {
+  window.localStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(user));
+}
+
 export function clearStoredApiKey() {
   window.localStorage.removeItem(API_KEY_STORAGE_KEY);
   window.sessionStorage.removeItem(API_KEY_STORAGE_KEY);
+  window.localStorage.removeItem(AUTH_USER_STORAGE_KEY);
 }

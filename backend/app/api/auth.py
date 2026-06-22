@@ -5,12 +5,13 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import urlopen
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import RedirectResponse
 
 from app.core.config import settings
-from app.core.security import create_oauth_state, validate_login, validate_oauth_state
-from app.schemas.auth import AuthConfigResponse, LoginRequest, LoginResponse, WeChatLoginStartResponse
+from app.core.security import create_oauth_state, require_current_user, validate_oauth_state
+from app.repositories.users import AuthContext, authenticate_user, list_visible_usernames
+from app.schemas.auth import AuthConfigResponse, AuthUserResponse, LoginRequest, LoginResponse, WeChatLoginStartResponse
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -19,13 +20,29 @@ logger = logging.getLogger(__name__)
 
 @router.post("/login", response_model=LoginResponse)
 async def login(payload: LoginRequest) -> LoginResponse:
-    if not validate_login(payload.username, payload.password):
+    result = await authenticate_user(payload.username, payload.password)
+    if result is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password",
         )
 
-    return LoginResponse(api_key=settings.api_key)
+    api_key, context = result
+    return LoginResponse(
+        api_key=api_key,
+        username=context.username,
+        is_admin=context.is_admin,
+        visible_users=await list_visible_usernames(context),
+    )
+
+
+@router.get("/me", response_model=AuthUserResponse)
+async def get_current_auth_user(context: AuthContext = Depends(require_current_user)) -> AuthUserResponse:
+    return AuthUserResponse(
+        username=context.username,
+        is_admin=context.is_admin,
+        visible_users=await list_visible_usernames(context),
+    )
 
 
 @router.get("/config", response_model=AuthConfigResponse)

@@ -5,6 +5,7 @@ from typing import Any
 import oracledb
 
 from app.db.oracle import acquire_connection
+from app.repositories.users import AuthContext, append_user_visibility_clause
 from app.schemas.blog_factory import (
     BlogFactoryArticleUpdate,
     BlogFactoryContentStatusUpdate,
@@ -15,33 +16,33 @@ from app.schemas.blog_factory import (
 
 
 COMMON_COLUMNS = """
-    id,
-    knowledge_id,
-    task_content,
-    question_snapshot,
-    answer_snapshot,
-    source_snapshot,
-    topic_tag_snapshot,
-    blog_status_snapshot,
-    copied_at,
-    nvl(factory_status, '待处理'),
-    article_title,
-    article_file_path,
-    article_checksum,
-    article_saved_at,
-    case when article_markdown is null then 0 else 1 end
+    factory_item.id,
+    factory_item.knowledge_id,
+    factory_item.task_content,
+    factory_item.question_snapshot,
+    factory_item.answer_snapshot,
+    factory_item.source_snapshot,
+    factory_item.topic_tag_snapshot,
+    factory_item.blog_status_snapshot,
+    factory_item.copied_at,
+    nvl(factory_item.factory_status, '待处理'),
+    factory_item.article_title,
+    factory_item.article_file_path,
+    factory_item.article_checksum,
+    factory_item.article_saved_at,
+    case when factory_item.article_markdown is null then 0 else 1 end
 """
 
 DETAIL_COLUMNS = f"""
     {COMMON_COLUMNS},
-    article_markdown
+    factory_item.article_markdown
 """
 
 SORT_COLUMNS = {
-    "copied_at": "copied_at",
-    "id": "id",
-    "knowledge_id": "knowledge_id",
-    "factory_status": "factory_status",
+    "copied_at": "factory_item.copied_at",
+    "id": "factory_item.id",
+    "knowledge_id": "factory_item.knowledge_id",
+    "factory_status": "factory_item.factory_status",
 }
 
 
@@ -88,6 +89,7 @@ async def _ensure_blog_factory_table(connection: oracledb.AsyncConnection) -> No
                     source_snapshot varchar2(200),
                     topic_tag_snapshot varchar2(100),
                     blog_status_snapshot varchar2(20),
+                    user_id number,
                     copied_at timestamp default systimestamp not null,
                     factory_status varchar2(20) default ''待处理'' not null
                 )
@@ -121,6 +123,7 @@ async def _ensure_blog_factory_table(connection: oracledb.AsyncConnection) -> No
     await _add_column_if_missing(cursor, "article_file_path varchar2(500)")
     await _add_column_if_missing(cursor, "article_checksum varchar2(64)")
     await _add_column_if_missing(cursor, "article_saved_at timestamp")
+    await _add_column_if_missing(cursor, "user_id number")
     _table_ready = True
 
 
@@ -148,31 +151,34 @@ def _build_filters(
     factory_status: str | None,
     topic: str | None,
     knowledge_id: int | None,
+    auth_context: AuthContext,
 ) -> tuple[str, dict[str, Any]]:
     clauses: list[str] = []
     params: dict[str, Any] = {}
 
     if q:
         clauses.append(
-            "(lower(dbms_lob.substr(task_content, 4000, 1)) like '%' || lower(:q) || '%' "
-            "or lower(dbms_lob.substr(question_snapshot, 4000, 1)) like '%' || lower(:q) || '%' "
-            "or lower(dbms_lob.substr(answer_snapshot, 4000, 1)) like '%' || lower(:q) || '%' "
-            "or lower(dbms_lob.substr(article_markdown, 4000, 1)) like '%' || lower(:q) || '%' "
-            "or lower(article_title) like '%' || lower(:q) || '%')"
+            "(lower(dbms_lob.substr(factory_item.task_content, 4000, 1)) like '%' || lower(:q) || '%' "
+            "or lower(dbms_lob.substr(factory_item.question_snapshot, 4000, 1)) like '%' || lower(:q) || '%' "
+            "or lower(dbms_lob.substr(factory_item.answer_snapshot, 4000, 1)) like '%' || lower(:q) || '%' "
+            "or lower(dbms_lob.substr(factory_item.article_markdown, 4000, 1)) like '%' || lower(:q) || '%' "
+            "or lower(factory_item.article_title) like '%' || lower(:q) || '%')"
         )
         params["q"] = q
 
     if factory_status:
-        clauses.append("factory_status = :factory_status")
+        clauses.append("factory_item.factory_status = :factory_status")
         params["factory_status"] = factory_status
 
     if topic:
-        clauses.append("lower(topic_tag_snapshot) like '%' || lower(:topic) || '%'")
+        clauses.append("lower(factory_item.topic_tag_snapshot) like '%' || lower(:topic) || '%'")
         params["topic"] = topic
 
     if knowledge_id is not None:
-        clauses.append("knowledge_id = :knowledge_id")
+        clauses.append("factory_item.knowledge_id = :knowledge_id")
         params["knowledge_id"] = knowledge_id
+
+    append_user_visibility_clause(clauses, params, auth_context, "factory_item.user_id")
 
     if not clauses:
         return "", params
@@ -190,17 +196,18 @@ async def list_blog_factory_items(
     knowledge_id: int | None = None,
     sort_by: str = "copied_at",
     sort_dir: str = "desc",
+    auth_context: AuthContext,
 ) -> tuple[list[dict[str, Any]], int]:
-    where_sql, params = _build_filters(q, factory_status, topic, knowledge_id)
+    where_sql, params = _build_filters(q, factory_status, topic, knowledge_id, auth_context)
     sort_column = SORT_COLUMNS.get(sort_by, "copied_at")
     sort_direction = "asc" if sort_dir == "asc" else "desc"
 
-    count_sql = f"select count(*) from ai_blog_factory{where_sql}"
+    count_sql = f"select count(*) from ai_blog_factory factory_item{where_sql}"
     list_sql = f"""
         select {COMMON_COLUMNS}
-        from ai_blog_factory
+        from ai_blog_factory factory_item
         {where_sql}
-        order by {sort_column} {sort_direction} nulls last, id desc
+        order by {sort_column} {sort_direction} nulls last, factory_item.id desc
         offset :offset rows fetch next :limit rows only
     """
 
@@ -218,32 +225,42 @@ async def list_blog_factory_items(
     return [_row_to_dict(row) for row in rows], total
 
 
-async def get_blog_factory_item(item_id: int) -> dict[str, Any] | None:
+async def get_blog_factory_item(item_id: int, auth_context: AuthContext | None = None) -> dict[str, Any] | None:
+    params: dict[str, Any] = {"item_id": item_id}
+    clauses = ["factory_item.id = :item_id"]
+    if auth_context is not None:
+        append_user_visibility_clause(clauses, params, auth_context, "factory_item.user_id")
     sql = f"""
         select {DETAIL_COLUMNS}
-        from ai_blog_factory
-        where id = :item_id
+        from ai_blog_factory factory_item
+        where {" and ".join(clauses)}
     """
 
     async with acquire_connection() as connection:
         await _ensure_blog_factory_table(connection)
         cursor = connection.cursor()
-        await cursor.execute(sql, {"item_id": item_id})
+        await cursor.execute(sql, params)
         row = await cursor.fetchone()
 
     return _row_to_dict(row) if row else None
 
 
-async def create_blog_factory_item(payload: BlogFactoryCreate) -> dict[str, Any] | None:
-    select_sql = """
+async def create_blog_factory_item(payload: BlogFactoryCreate, auth_context: AuthContext) -> dict[str, Any] | None:
+    visibility_clauses: list[str] = []
+    visibility_params: dict[str, Any] = {}
+    append_user_visibility_clause(visibility_clauses, visibility_params, auth_context, "user_id")
+    visibility_sql = " and " + " and ".join(visibility_clauses) if visibility_clauses else ""
+    select_sql = f"""
         select
             question,
             answer,
             source,
             topic_tag,
-            blog_status
+            blog_status,
+            user_id
         from ai_qa_lib
         where id = :knowledge_id
+        {visibility_sql}
     """
     insert_sql = """
         insert into ai_blog_factory (
@@ -254,6 +271,7 @@ async def create_blog_factory_item(payload: BlogFactoryCreate) -> dict[str, Any]
             source_snapshot,
             topic_tag_snapshot,
             blog_status_snapshot,
+            user_id,
             factory_status
         ) values (
             :knowledge_id,
@@ -263,6 +281,7 @@ async def create_blog_factory_item(payload: BlogFactoryCreate) -> dict[str, Any]
             :source_snapshot,
             :topic_tag_snapshot,
             :blog_status_snapshot,
+            :user_id,
             :factory_status
         )
         returning id into :new_id
@@ -271,7 +290,7 @@ async def create_blog_factory_item(payload: BlogFactoryCreate) -> dict[str, Any]
     async with acquire_connection() as connection:
         await _ensure_blog_factory_table(connection)
         cursor = connection.cursor()
-        await cursor.execute(select_sql, {"knowledge_id": payload.knowledge_id})
+        await cursor.execute(select_sql, {"knowledge_id": payload.knowledge_id, **visibility_params})
         source_row = await cursor.fetchone()
         if source_row is None:
             return None
@@ -287,6 +306,7 @@ async def create_blog_factory_item(payload: BlogFactoryCreate) -> dict[str, Any]
                 "source_snapshot": source_row[2],
                 "topic_tag_snapshot": source_row[3],
                 "blog_status_snapshot": source_row[4],
+                "user_id": source_row[5],
                 "factory_status": "待处理",
                 "new_id": new_id,
             },
@@ -294,42 +314,24 @@ async def create_blog_factory_item(payload: BlogFactoryCreate) -> dict[str, Any]
         await connection.commit()
         item_id = int(new_id.getvalue()[0])
 
-    created = await get_blog_factory_item(item_id)
+    created = await get_blog_factory_item(item_id, auth_context)
     if created is None:
         raise RuntimeError("Blog factory row was inserted but could not be reloaded")
     return created
 
 
-async def update_blog_factory_status(item_id: int, payload: BlogFactoryStatusUpdate) -> dict[str, Any] | None:
-    sql = """
-        update ai_blog_factory
-        set factory_status = :factory_status
-        where id = :item_id
-    """
-
-    async with acquire_connection() as connection:
-        await _ensure_blog_factory_table(connection)
-        cursor = connection.cursor()
-        await cursor.execute(sql, {"item_id": item_id, "factory_status": payload.factory_status})
-        if cursor.rowcount == 0:
-            await connection.rollback()
-            return None
-        await connection.commit()
-
-    return await get_blog_factory_item(item_id)
-
-
-async def update_blog_factory_item(item_id: int, payload: BlogFactoryUpdate) -> dict[str, Any] | None:
-    values = payload.model_dump(exclude_unset=True)
-    if not values:
-        return await get_blog_factory_item(item_id)
-
-    assignments = [f"{column} = :{column}" for column in values]
-    params = {**values, "item_id": item_id}
+async def update_blog_factory_status(
+    item_id: int,
+    payload: BlogFactoryStatusUpdate,
+    auth_context: AuthContext,
+) -> dict[str, Any] | None:
+    params: dict[str, Any] = {"item_id": item_id, "factory_status": payload.factory_status}
+    clauses = ["id = :item_id"]
+    append_user_visibility_clause(clauses, params, auth_context, "user_id")
     sql = f"""
         update ai_blog_factory
-        set {", ".join(assignments)}
-        where id = :item_id
+        set factory_status = :factory_status
+        where {" and ".join(clauses)}
     """
 
     async with acquire_connection() as connection:
@@ -341,43 +343,81 @@ async def update_blog_factory_item(item_id: int, payload: BlogFactoryUpdate) -> 
             return None
         await connection.commit()
 
-    return await get_blog_factory_item(item_id)
+    return await get_blog_factory_item(item_id, auth_context)
+
+
+async def update_blog_factory_item(
+    item_id: int,
+    payload: BlogFactoryUpdate,
+    auth_context: AuthContext,
+) -> dict[str, Any] | None:
+    values = payload.model_dump(exclude_unset=True)
+    if not values:
+        return await get_blog_factory_item(item_id, auth_context)
+
+    assignments = [f"{column} = :{column}" for column in values]
+    params = {**values, "item_id": item_id}
+    clauses = ["id = :item_id"]
+    append_user_visibility_clause(clauses, params, auth_context, "user_id")
+    sql = f"""
+        update ai_blog_factory
+        set {", ".join(assignments)}
+        where {" and ".join(clauses)}
+    """
+
+    async with acquire_connection() as connection:
+        await _ensure_blog_factory_table(connection)
+        cursor = connection.cursor()
+        await cursor.execute(sql, params)
+        if cursor.rowcount == 0:
+            await connection.rollback()
+            return None
+        await connection.commit()
+
+    return await get_blog_factory_item(item_id, auth_context)
 
 
 async def update_blog_factory_content_status(
     item_id: int,
     payload: BlogFactoryContentStatusUpdate,
+    auth_context: AuthContext,
 ) -> dict[str, Any] | None:
-    select_sql = """
-        select knowledge_id
+    params: dict[str, Any] = {"item_id": item_id}
+    clauses = ["id = :item_id"]
+    append_user_visibility_clause(clauses, params, auth_context, "user_id")
+    select_sql = f"""
+        select knowledge_id, user_id
         from ai_blog_factory
-        where id = :item_id
+        where {" and ".join(clauses)}
         for update
     """
     update_knowledge_sql = """
         update ai_qa_lib
         set blog_status = :blog_status
         where id = :knowledge_id
+          and ((user_id = :user_id) or (user_id is null and :user_id is null))
     """
     update_factory_sql = """
         update ai_blog_factory
         set blog_status_snapshot = :blog_status
         where knowledge_id = :knowledge_id
+          and ((user_id = :user_id) or (user_id is null and :user_id is null))
     """
 
     async with acquire_connection() as connection:
         await _ensure_blog_factory_table(connection)
         cursor = connection.cursor()
-        await cursor.execute(select_sql, {"item_id": item_id})
+        await cursor.execute(select_sql, params)
         row = await cursor.fetchone()
         if row is None:
             await connection.rollback()
             return None
 
         knowledge_id = row[0]
+        user_id = row[1]
         await cursor.execute(
             update_knowledge_sql,
-            {"knowledge_id": knowledge_id, "blog_status": payload.blog_status},
+            {"knowledge_id": knowledge_id, "blog_status": payload.blog_status, "user_id": user_id},
         )
         if cursor.rowcount == 0:
             await connection.rollback()
@@ -385,17 +425,30 @@ async def update_blog_factory_content_status(
 
         await cursor.execute(
             update_factory_sql,
-            {"knowledge_id": knowledge_id, "blog_status": payload.blog_status},
+            {"knowledge_id": knowledge_id, "blog_status": payload.blog_status, "user_id": user_id},
         )
         await connection.commit()
 
-    return await get_blog_factory_item(item_id)
+    return await get_blog_factory_item(item_id, auth_context)
 
 
-async def update_blog_factory_article(item_id: int, payload: BlogFactoryArticleUpdate) -> dict[str, Any] | None:
+async def update_blog_factory_article(
+    item_id: int,
+    payload: BlogFactoryArticleUpdate,
+    auth_context: AuthContext,
+) -> dict[str, Any] | None:
     title = _extract_article_title(payload.article_markdown)
     checksum = hashlib.sha256(payload.article_markdown.encode("utf-8")).hexdigest()
-    sql = """
+    params: dict[str, Any] = {
+        "item_id": item_id,
+        "article_markdown": payload.article_markdown,
+        "article_title": title,
+        "article_file_path": payload.article_file_path,
+        "article_checksum": checksum,
+    }
+    clauses = ["id = :item_id"]
+    append_user_visibility_clause(clauses, params, auth_context, "user_id")
+    sql = f"""
         update ai_blog_factory
         set article_markdown = :article_markdown,
             article_title = :article_title,
@@ -406,7 +459,7 @@ async def update_blog_factory_article(item_id: int, payload: BlogFactoryArticleU
                 when factory_status = '待处理' then '已处理'
                 else factory_status
             end
-        where id = :item_id
+        where {" and ".join(clauses)}
     """
 
     async with acquire_connection() as connection:
@@ -414,29 +467,26 @@ async def update_blog_factory_article(item_id: int, payload: BlogFactoryArticleU
         cursor = connection.cursor()
         await cursor.execute(
             sql,
-            {
-                "item_id": item_id,
-                "article_markdown": payload.article_markdown,
-                "article_title": title,
-                "article_file_path": payload.article_file_path,
-                "article_checksum": checksum,
-            },
+            params,
         )
         if cursor.rowcount == 0:
             await connection.rollback()
             return None
         await connection.commit()
 
-    return await get_blog_factory_item(item_id)
+    return await get_blog_factory_item(item_id, auth_context)
 
 
-async def delete_blog_factory_item(item_id: int) -> bool:
-    sql = "delete from ai_blog_factory where id = :item_id"
+async def delete_blog_factory_item(item_id: int, auth_context: AuthContext) -> bool:
+    params: dict[str, Any] = {"item_id": item_id}
+    clauses = ["id = :item_id"]
+    append_user_visibility_clause(clauses, params, auth_context, "user_id")
+    sql = f"delete from ai_blog_factory where {' and '.join(clauses)}"
 
     async with acquire_connection() as connection:
         await _ensure_blog_factory_table(connection)
         cursor = connection.cursor()
-        await cursor.execute(sql, {"item_id": item_id})
+        await cursor.execute(sql, params)
         if cursor.rowcount == 0:
             await connection.rollback()
             return False

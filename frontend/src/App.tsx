@@ -27,6 +27,7 @@ import {
   LogOut,
   Loader2,
   LockKeyhole,
+  KeyRound,
   Pencil,
   Plus,
   QrCode,
@@ -38,17 +39,22 @@ import {
   Tags,
   TriangleAlert,
   Trash2,
+  UserCog,
   WandSparkles,
   X,
 } from "lucide-react";
 
 import {
   clearStoredApiKey,
+  fetchCurrentAuthUser,
   fetchAuthConfig,
   login,
+  persistAuthUser,
   persistApiKey,
+  readStoredAuthUser,
   readStoredApiKey,
   startWeChatLogin,
+  type AuthUser,
 } from "./api/auth";
 import {
   appendTodoToCurrent,
@@ -108,6 +114,15 @@ import {
 } from "./api/skills";
 import { clearApiResponseCache } from "./api/localCache";
 import { fetchLlmUsage, readCachedLlmUsage } from "./api/usage";
+import {
+  createManagedUser,
+  createUserRelation,
+  fetchManagedUsers,
+  fetchUserRelations,
+  resetManagedUserPassword,
+  updateManagedUser,
+  updateUserRelation,
+} from "./api/users";
 import { MarkdownPreview } from "./components/MarkdownPreview";
 import { copyMarkdownAsPlainText, copyMarkdownAsRichText, removeLeakedMarkdownCodePlaceholders } from "./utils/markdown";
 import type {
@@ -132,6 +147,10 @@ import type {
   LlmConfig,
   LlmConfigDraft,
   LlmUsageSample,
+  ManagedUserCreateDraft,
+  ManagedUserItem,
+  ManagedUserRole,
+  ManagedUserStatus,
   SkillDetail,
   SkillDraft,
   SkillFile,
@@ -140,6 +159,7 @@ import type {
   TodoDraft,
   TodoItem,
   TodoStatus,
+  UserRelationItem,
 } from "./types";
 
 const emptyDraft: KnowledgeDraft = {
@@ -181,6 +201,19 @@ const emptySkillDraft: SkillDraft = {
   description: "",
   content: "",
   enabled: true,
+};
+
+const emptyManagedUserDraft: ManagedUserCreateDraft = {
+  username: "",
+  display_name: "",
+  password: "",
+  role_code: "USER",
+};
+
+const emptyRelationDraft = {
+  parent_user_id: "",
+  child_user_id: "",
+  relation_type: "GUARDIAN",
 };
 
 const PAGE_SIZE = 5;
@@ -233,6 +266,7 @@ const FUNCTION_NAV_ITEMS: FunctionNavItem[] = [
   { icon: FilePlus2, label: "当前记录", view: "currentRecords" },
   { icon: History, label: "历史查询", view: "history" },
   { icon: BookOpenCheck, label: "英语素材", view: "englishMaterials" },
+  { icon: UserCog, label: "用户管理", view: "users" },
   { icon: Layers3, label: "Skill 管理", view: "skills" },
   { icon: Bot, label: "AI 问数", view: "historyAsk" },
   { icon: WandSparkles, label: "AI 编程", view: "aiCoding" },
@@ -428,6 +462,7 @@ function App() {
 
     return readStoredApiKey();
   });
+  const [authUser, setAuthUser] = useState<AuthUser | null>(() => readStoredAuthUser());
   const [activeView, setActiveView] = useState<AppView>(restoredUiState.activeView);
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(restoredUiState.sidebarExpanded);
   const [items, setItems] = useState<KnowledgeItem[]>([]);
@@ -643,6 +678,19 @@ function App() {
   const [skillError, setSkillError] = useState<string | null>(null);
   const [skillSaveError, setSkillSaveError] = useState<string | null>(null);
   const [skillSavedLabel, setSkillSavedLabel] = useState<string | null>(null);
+  const [managedUsers, setManagedUsers] = useState<ManagedUserItem[]>([]);
+  const [managedUserTotal, setManagedUserTotal] = useState(0);
+  const [managedUserQuery, setManagedUserQuery] = useState("");
+  const [debouncedManagedUserQuery, setDebouncedManagedUserQuery] = useState("");
+  const [managedUserDraft, setManagedUserDraft] = useState<ManagedUserCreateDraft>(emptyManagedUserDraft);
+  const [userRelations, setUserRelations] = useState<UserRelationItem[]>([]);
+  const [relationDraft, setRelationDraft] = useState(emptyRelationDraft);
+  const [isUserManagementLoading, setIsUserManagementLoading] = useState(false);
+  const [isUserManagementSaving, setIsUserManagementSaving] = useState(false);
+  const [userManagementError, setUserManagementError] = useState<string | null>(null);
+  const [userManagementSavedLabel, setUserManagementSavedLabel] = useState<string | null>(null);
+  const [resetPasswordTarget, setResetPasswordTarget] = useState<ManagedUserItem | null>(null);
+  const [resetPasswordValue, setResetPasswordValue] = useState("");
   const [usageItems, setUsageItems] = useState<LlmUsageSample[]>([]);
   const [usageTotal, setUsageTotal] = useState(0);
   const [isUsageLoading, setIsUsageLoading] = useState(false);
@@ -723,6 +771,7 @@ function App() {
       clearApiResponseCache();
       clearStoredUiState();
       setApiKey(null);
+      setAuthUser(null);
       setItems([]);
       setSelectedId(null);
       setIsMobileKnowledgeEditorOpen(false);
@@ -779,6 +828,14 @@ function App() {
       setSkillFileContent("");
       setSkillError(null);
       setSkillSaveError(null);
+      setManagedUsers([]);
+      setManagedUserTotal(0);
+      setUserRelations([]);
+      setManagedUserDraft(emptyManagedUserDraft);
+      setRelationDraft(emptyRelationDraft);
+      setResetPasswordTarget(null);
+      setResetPasswordValue("");
+      setUserManagementError(null);
       setAiCodingMessages([]);
       setActiveCodexJobId(null);
       setLiveCodexOutput("");
@@ -795,6 +852,26 @@ function App() {
     window.addEventListener("trusted-knowledge:unauthorized", handleUnauthorized);
     return () => window.removeEventListener("trusted-knowledge:unauthorized", handleUnauthorized);
   }, []);
+
+  useEffect(() => {
+    if (!apiKey) return;
+    if (authUser) return;
+
+    let mounted = true;
+    fetchCurrentAuthUser()
+      .then((user) => {
+        if (!mounted) return;
+        persistAuthUser(user);
+        setAuthUser(user);
+      })
+      .catch(() => {
+        if (mounted) setAuthUser(null);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [apiKey, authUser]);
 
   useEffect(() => {
     if (activeView !== "workbench") {
@@ -1113,6 +1190,12 @@ function App() {
   }, [activeView, aiCodingNoticeStatus]);
 
   useEffect(() => {
+    if (activeView === "users" && authUser && !authUser.is_admin) {
+      setActiveView("overview");
+    }
+  }, [activeView, authUser]);
+
+  useEffect(() => {
     if (!apiKey || activeView !== "historyAsk") return;
 
     let mounted = true;
@@ -1177,6 +1260,37 @@ function App() {
       cancelled = true;
     };
   }, [activeView, apiKey, debouncedSkillQuery]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedManagedUserQuery(managedUserQuery.trim()), 260);
+    return () => window.clearTimeout(timer);
+  }, [managedUserQuery]);
+
+  useEffect(() => {
+    if (!apiKey || activeView !== "users" || !authUser?.is_admin) return;
+
+    let cancelled = false;
+    setIsUserManagementLoading(true);
+    setUserManagementError(null);
+    Promise.all([fetchManagedUsers(debouncedManagedUserQuery), fetchUserRelations()])
+      .then(([usersResponse, relationsResponse]) => {
+        if (cancelled) return;
+        setManagedUsers(usersResponse.items);
+        setManagedUserTotal(usersResponse.total);
+        setUserRelations(relationsResponse.items);
+      })
+      .catch((error: Error) => {
+        if (cancelled) return;
+        setUserManagementError(error.message);
+      })
+      .finally(() => {
+        if (!cancelled) setIsUserManagementLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeView, apiKey, authUser?.is_admin, debouncedManagedUserQuery, userManagementSavedLabel]);
 
   useEffect(() => {
     setTodoCopyError(null);
@@ -1515,6 +1629,9 @@ function App() {
           ...current,
           username: current.username || options.users[0] || "",
         }));
+        if (!authUser?.is_admin && options.users.length === 1) {
+          setCurrentRecordUsername(options.users[0]);
+        }
       })
       .catch((error: Error) => {
         if (!mounted) return;
@@ -1528,7 +1645,7 @@ function App() {
     return () => {
       mounted = false;
     };
-  }, [activeView, apiKey, currentRecordRefreshToken]);
+  }, [activeView, apiKey, authUser?.is_admin, currentRecordRefreshToken]);
 
   useEffect(() => {
     if (!apiKey) return;
@@ -1744,6 +1861,9 @@ function App() {
         setHistoryItems(data.items);
         setHistoryTotal(data.total);
         setHistorySummary({ ...data.summary, user_types: data.summary.user_types ?? {} });
+        if (!authUser?.is_admin && data.summary.users.length === 1) {
+          setHistoryUsername(data.summary.users[0]);
+        }
         setHistoryError(null);
       })
       .catch((error: Error) => {
@@ -1761,6 +1881,7 @@ function App() {
   }, [
     activeView,
     apiKey,
+    authUser?.is_admin,
     debouncedHistoryQuery,
     historyDateFrom,
     historyDateTo,
@@ -2220,9 +2341,16 @@ function App() {
     restoreMobileViewportScale();
   }
 
-  function handleLogin(nextApiKey: string) {
-    persistApiKey(nextApiKey);
-    setApiKey(nextApiKey);
+  function handleLogin(result: { api_key: string; username: string; is_admin: boolean; visible_users: string[] }) {
+    const nextAuthUser = {
+      username: result.username,
+      is_admin: result.is_admin,
+      visible_users: result.visible_users,
+    };
+    persistApiKey(result.api_key);
+    persistAuthUser(nextAuthUser);
+    setApiKey(result.api_key);
+    setAuthUser(nextAuthUser);
     setPage(1);
     setDebouncedQuery("");
     setQuery("");
@@ -2238,6 +2366,7 @@ function App() {
     clearStoredNewDraft();
     clearStoredUiState();
     setApiKey(null);
+    setAuthUser(null);
     setItems([]);
     setSelectedId(null);
     setIsMobileKnowledgeEditorOpen(false);
@@ -3046,6 +3175,106 @@ function App() {
     }
   }
 
+  async function handleCreateManagedUser(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!managedUserDraft.username.trim() || !managedUserDraft.password || isUserManagementSaving) return;
+
+    setIsUserManagementSaving(true);
+    setUserManagementError(null);
+    try {
+      await createManagedUser(managedUserDraft);
+      setManagedUserDraft(emptyManagedUserDraft);
+      markUserManagementSaved("用户已创建");
+    } catch (error) {
+      setUserManagementError(error instanceof Error ? error.message : "用户创建失败，请稍后重试。");
+    } finally {
+      setIsUserManagementSaving(false);
+    }
+  }
+
+  async function handleUpdateManagedUser(
+    user: ManagedUserItem,
+    payload: { display_name?: string | null; role_code?: ManagedUserRole; status?: ManagedUserStatus },
+  ) {
+    if (isUserManagementSaving) return;
+    setIsUserManagementSaving(true);
+    setUserManagementError(null);
+    try {
+      const updated = await updateManagedUser(user.user_id, payload);
+      setManagedUsers((current) => current.map((item) => (item.user_id === updated.user_id ? updated : item)));
+      markUserManagementSaved("用户已更新");
+    } catch (error) {
+      setUserManagementError(error instanceof Error ? error.message : "用户更新失败，请稍后重试。");
+    } finally {
+      setIsUserManagementSaving(false);
+    }
+  }
+
+  async function handleResetManagedUserPassword(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!resetPasswordTarget || resetPasswordValue.length < 6 || isUserManagementSaving) return;
+
+    setIsUserManagementSaving(true);
+    setUserManagementError(null);
+    try {
+      const updated = await resetManagedUserPassword(resetPasswordTarget.user_id, resetPasswordValue);
+      setManagedUsers((current) => current.map((item) => (item.user_id === updated.user_id ? updated : item)));
+      setResetPasswordTarget(null);
+      setResetPasswordValue("");
+      markUserManagementSaved("密码已重置，旧 session 已失效");
+    } catch (error) {
+      setUserManagementError(error instanceof Error ? error.message : "密码重置失败，请稍后重试。");
+    } finally {
+      setIsUserManagementSaving(false);
+    }
+  }
+
+  async function handleCreateUserRelation(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const parentUserId = Number(relationDraft.parent_user_id);
+    const childUserId = Number(relationDraft.child_user_id);
+    if (!parentUserId || !childUserId || isUserManagementSaving) return;
+
+    setIsUserManagementSaving(true);
+    setUserManagementError(null);
+    try {
+      await createUserRelation({
+        parent_user_id: parentUserId,
+        child_user_id: childUserId,
+        relation_type: relationDraft.relation_type,
+      });
+      setRelationDraft(emptyRelationDraft);
+      markUserManagementSaved("关系已创建");
+    } catch (error) {
+      setUserManagementError(error instanceof Error ? error.message : "关系创建失败，请稍后重试。");
+    } finally {
+      setIsUserManagementSaving(false);
+    }
+  }
+
+  async function handleUpdateUserRelation(relation: UserRelationItem, status: ManagedUserStatus) {
+    if (isUserManagementSaving) return;
+    setIsUserManagementSaving(true);
+    setUserManagementError(null);
+    try {
+      const updated = await updateUserRelation(relation.relation_id, status);
+      setUserRelations((current) => current.map((item) => (item.relation_id === updated.relation_id ? updated : item)));
+      markUserManagementSaved(status === "ACTIVE" ? "关系已启用" : "关系已停用");
+    } catch (error) {
+      setUserManagementError(error instanceof Error ? error.message : "关系更新失败，请稍后重试。");
+    } finally {
+      setIsUserManagementSaving(false);
+    }
+  }
+
+  function markUserManagementSaved(label: string) {
+    const nextLabel = `${label} ${Date.now()}`;
+    setUserManagementSavedLabel(nextLabel);
+    window.setTimeout(() => {
+      setUserManagementSavedLabel((current) => (current === nextLabel ? null : current));
+    }, 1800);
+  }
+
   async function handleUploadSkillZip(file: File | null) {
     if (!file || isSkillUploading) return;
 
@@ -3269,6 +3498,8 @@ function App() {
               ? "历史记录查询"
               : activeView === "englishMaterials"
                 ? "英语素材管理"
+              : activeView === "users"
+                ? "用户管理"
               : activeView === "skills"
                 ? "Skill 管理"
               : activeView === "historyAsk"
@@ -3293,6 +3524,8 @@ function App() {
               ? "History Explorer"
               : activeView === "englishMaterials"
                 ? "English Materials"
+              : activeView === "users"
+                ? "User Management"
               : activeView === "skills"
                 ? "Skill Registry"
               : activeView === "historyAsk"
@@ -3327,6 +3560,7 @@ function App() {
       >
         <Sidebar
           activeView={activeView}
+          isAdmin={authUser?.is_admin ?? false}
           isExpanded={isSidebarExpanded}
           onToggleExpanded={() => setIsSidebarExpanded((expanded) => !expanded)}
           onViewChange={setActiveView}
@@ -3335,6 +3569,7 @@ function App() {
         <section className="flex min-w-0 flex-col">
           <Topbar
             activeView={activeView}
+            isAdmin={authUser?.is_admin ?? false}
             query={
               activeView === "overview"
                 ? ""
@@ -3350,6 +3585,8 @@ function App() {
                       ? currentRecordQuery
                       : activeView === "englishMaterials"
                         ? englishMaterialQuery
+                      : activeView === "users"
+                        ? managedUserQuery
                       : activeView === "skills"
                         ? skillQuery
                       : activeView === "history"
@@ -3372,6 +3609,8 @@ function App() {
                       ? setCurrentRecordQuery
                     : activeView === "englishMaterials"
                       ? setEnglishMaterialQuery
+                    : activeView === "users"
+                      ? setManagedUserQuery
                     : activeView === "skills"
                       ? setSkillQuery
                     : activeView === "history"
@@ -3426,6 +3665,29 @@ function App() {
               onSaveFile={handleSaveSelectedSkillFile}
               onSelect={handleSelectSkill}
               onUpload={handleUploadSkillZip}
+            />
+          ) : activeView === "users" ? (
+            <UserManagementWorkspace
+              users={managedUsers}
+              total={managedUserTotal}
+              relations={userRelations}
+              createDraft={managedUserDraft}
+              relationDraft={relationDraft}
+              resetTarget={resetPasswordTarget}
+              resetPasswordValue={resetPasswordValue}
+              isLoading={isUserManagementLoading}
+              isSaving={isUserManagementSaving}
+              error={userManagementError}
+              savedLabel={userManagementSavedLabel}
+              onCreateDraftChange={setManagedUserDraft}
+              onRelationDraftChange={setRelationDraft}
+              onResetTargetChange={setResetPasswordTarget}
+              onResetPasswordValueChange={setResetPasswordValue}
+              onCreateUser={handleCreateManagedUser}
+              onUpdateUser={handleUpdateManagedUser}
+              onResetPassword={handleResetManagedUserPassword}
+              onCreateRelation={handleCreateUserRelation}
+              onUpdateRelation={handleUpdateUserRelation}
             />
           ) : activeView === "historyAsk" ? (
             <HistoryAskPanel
@@ -3584,6 +3846,7 @@ function App() {
               total={currentRecordTotal}
               page={currentRecordPage}
               options={currentRecordOptions}
+              authUser={authUser}
               draft={currentRecordDraft}
               selectedItem={selectedCurrentRecord}
               isLoading={isCurrentRecordLoading}
@@ -3605,7 +3868,7 @@ function App() {
                 setCurrentRecordPage(1);
                 setCurrentRecordQuery("");
                 setDebouncedCurrentRecordQuery("");
-                setCurrentRecordUsername("");
+                setCurrentRecordUsername(!authUser?.is_admin && currentRecordOptions.users.length === 1 ? currentRecordOptions.users[0] : "");
                 setCurrentRecordTypeFilter("");
                 setCurrentRecordWeek("");
                 setCurrentRecordDay("");
@@ -3687,6 +3950,7 @@ function App() {
               total={historyTotal}
               page={historyPage}
               summary={historySummary}
+              authUser={authUser}
               isLoading={isHistoryLoading}
               loadError={historyError}
               filters={{
@@ -3719,7 +3983,7 @@ function App() {
                 setHistoryQuery("");
                 setDebouncedHistoryQuery("");
                 setHistoryType("");
-                setHistoryUsername("");
+                setHistoryUsername(!authUser?.is_admin && historySummary.users.length === 1 ? historySummary.users[0] : "");
                 setHistoryWeek("");
                 setHistoryDay("");
                 setHistoryLearnLevel("");
@@ -3973,11 +4237,13 @@ function App() {
 
 function Sidebar({
   activeView,
+  isAdmin,
   isExpanded,
   onToggleExpanded,
   onViewChange,
 }: {
   activeView: AppView;
+  isAdmin: boolean;
   isExpanded: boolean;
   onToggleExpanded: () => void;
   onViewChange: (view: AppView) => void;
@@ -3991,8 +4257,9 @@ function Sidebar({
     { icon: ShieldCheck, label: "Review" },
     { icon: Database, label: "Sources" },
   ];
-  const primaryItems = FUNCTION_NAV_ITEMS.filter((item) => item.view !== "usage");
-  const usageItem = FUNCTION_NAV_ITEMS.find((item) => item.view === "usage");
+  const availableItems = FUNCTION_NAV_ITEMS.filter((item) => isAdmin || item.view !== "users");
+  const primaryItems = availableItems.filter((item) => item.view !== "usage");
+  const usageItem = availableItems.find((item) => item.view === "usage");
   const usageActive = activeView === "usage";
   const sidebarButtonMotion =
     "transition-[width,gap,color,background-color,border-color,box-shadow,transform] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none";
@@ -4077,6 +4344,7 @@ function Sidebar({
 function Topbar({
   activeView,
   aiCodingNotice,
+  isAdmin,
   query,
   statusFilter,
   title,
@@ -4088,6 +4356,7 @@ function Topbar({
 }: {
   activeView: AppView;
   aiCodingNotice: AiCodingNoticeStatus | null;
+  isAdmin: boolean;
   query: string;
   statusFilter?: KnowledgeStatus | "all";
   title: string;
@@ -4104,6 +4373,7 @@ function Topbar({
     { label: "已发布", value: "已发布" },
     { label: "跳过", value: "跳过" },
   ];
+  const availableItems = FUNCTION_NAV_ITEMS.filter((item) => isAdmin || item.view !== "users");
   const activeLabel = statusOptions.find((option) => option.value === statusFilter)?.label ?? "全部状态";
   const aiCodingNoticeMeta =
     aiCodingNotice === "running"
@@ -4139,7 +4409,7 @@ function Topbar({
         <h1 className="text-2xl font-semibold tracking-normal text-slate-50">{title}</h1>
       </div>
       <nav className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:hidden" aria-label="功能页面">
-        {FUNCTION_NAV_ITEMS.map((item) => {
+        {availableItems.map((item) => {
           const active = item.view === activeView;
           return (
             <button
@@ -4247,7 +4517,11 @@ function Topbar({
   );
 }
 
-function LoginScreen({ onLogin }: { onLogin: (apiKey: string) => void }) {
+function LoginScreen({
+  onLogin,
+}: {
+  onLogin: (result: { api_key: string; username: string; is_admin: boolean; visible_users: string[] }) => void;
+}) {
   const [username, setUsername] = useState("admin");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(() => {
@@ -4278,8 +4552,8 @@ function LoginScreen({ onLogin }: { onLogin: (apiKey: string) => void }) {
     setError(null);
 
     try {
-      const nextApiKey = await login(username.trim(), password);
-      onLogin(nextApiKey);
+      const result = await login(username.trim(), password);
+      onLogin(result);
     } catch (loginError) {
       setError(loginError instanceof Error ? loginError.message : "登录失败，请稍后重试");
     } finally {
@@ -6987,6 +7261,7 @@ function CurrentRecordsWorkspace({
   total,
   page,
   options,
+  authUser,
   draft,
   selectedItem,
   isLoading,
@@ -7009,6 +7284,7 @@ function CurrentRecordsWorkspace({
   total: number;
   page: number;
   options: CurrentRecordOptions;
+  authUser: AuthUser | null;
   draft: { username: string; type: string; content: string };
   selectedItem: CurrentRecordItem | null;
   isLoading: boolean;
@@ -7032,6 +7308,9 @@ function CurrentRecordsWorkspace({
   const rangeEnd = Math.min(page * CURRENT_RECORDS_PAGE_SIZE, total);
   const canSubmit = draft.username.trim().length > 0 && draft.type.trim().length > 0 && !isSaving;
   const currentTypeOptions = filters.username ? options.user_types[filters.username] ?? [] : options.types;
+  const isAdminUser = authUser?.is_admin ?? false;
+  const hasSingleVisibleUser = !isAdminUser && options.users.length <= 1;
+  const allUsersLabel = isAdminUser ? "全部用户" : "全部可见用户";
 
   return (
     <div className="grid flex-1 gap-4 px-4 pb-4 pt-2 xl:grid-cols-[minmax(440px,1fr)_340px_320px]">
@@ -7053,6 +7332,7 @@ function CurrentRecordsWorkspace({
           <Field label="用户" icon={<ShieldCheck size={16} />}>
             <select
               className="control"
+              disabled={hasSingleVisibleUser}
               value={filters.username}
               onChange={(event) => {
                 const username = event.target.value;
@@ -7063,7 +7343,7 @@ function CurrentRecordsWorkspace({
                 });
               }}
             >
-              <option value="">全部用户</option>
+              <option value="">{allUsersLabel}</option>
               {options.users.map((user) => (
                 <option key={user} value={user}>
                   {user}
@@ -7257,7 +7537,7 @@ function CurrentRecordsWorkspace({
           <Field label="用户" icon={<ShieldCheck size={16} />}>
             <select
               className="control"
-              disabled={isOptionsLoading}
+              disabled={isOptionsLoading || hasSingleVisibleUser}
               value={draft.username}
               onChange={(event) => onDraftChange({ ...draft, username: event.target.value })}
             >
@@ -8147,6 +8427,335 @@ function CurrentRecordEditDialog({
           </button>
         </div>
       </section>
+    </div>
+  );
+}
+
+function UserManagementWorkspace({
+  users,
+  total,
+  relations,
+  createDraft,
+  relationDraft,
+  resetTarget,
+  resetPasswordValue,
+  isLoading,
+  isSaving,
+  error,
+  savedLabel,
+  onCreateDraftChange,
+  onRelationDraftChange,
+  onResetTargetChange,
+  onResetPasswordValueChange,
+  onCreateUser,
+  onUpdateUser,
+  onResetPassword,
+  onCreateRelation,
+  onUpdateRelation,
+}: {
+  users: ManagedUserItem[];
+  total: number;
+  relations: UserRelationItem[];
+  createDraft: ManagedUserCreateDraft;
+  relationDraft: typeof emptyRelationDraft;
+  resetTarget: ManagedUserItem | null;
+  resetPasswordValue: string;
+  isLoading: boolean;
+  isSaving: boolean;
+  error: string | null;
+  savedLabel: string | null;
+  onCreateDraftChange: (draft: ManagedUserCreateDraft) => void;
+  onRelationDraftChange: (draft: typeof emptyRelationDraft) => void;
+  onResetTargetChange: (user: ManagedUserItem | null) => void;
+  onResetPasswordValueChange: (value: string) => void;
+  onCreateUser: (event: React.FormEvent<HTMLFormElement>) => void;
+  onUpdateUser: (
+    user: ManagedUserItem,
+    payload: { display_name?: string | null; role_code?: ManagedUserRole; status?: ManagedUserStatus },
+  ) => void;
+  onResetPassword: (event: React.FormEvent<HTMLFormElement>) => void;
+  onCreateRelation: (event: React.FormEvent<HTMLFormElement>) => void;
+  onUpdateRelation: (relation: UserRelationItem, status: ManagedUserStatus) => void;
+}) {
+  const activeUsers = users.filter((user) => user.status === "ACTIVE").length;
+  const parentUsers = users.filter((user) => user.role_code === "PARENT").length;
+  const canCreateUser = createDraft.username.trim().length > 0 && createDraft.password.length >= 6 && !isSaving;
+  const canCreateRelation = Boolean(relationDraft.parent_user_id && relationDraft.child_user_id) && !isSaving;
+
+  return (
+    <div className="grid flex-1 gap-4 px-4 pb-4 pt-2 xl:grid-cols-[minmax(520px,1fr)_360px]">
+      <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/72 p-4 shadow-soft-glow backdrop-blur-xl">
+        <div className="mb-5 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div>
+            <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
+              <UserCog size={17} />
+              TK Users
+            </div>
+            <h2 className="text-xl font-semibold text-slate-50">用户管理</h2>
+          </div>
+          <div className="grid grid-cols-3 gap-2 text-sm">
+            <MetricTile icon={<ShieldCheck size={17} />} label="用户" value={String(total)} detail="总数" />
+            <MetricTile icon={<CheckCircle2 size={17} />} label="启用" value={String(activeUsers)} detail="ACTIVE" />
+            <MetricTile icon={<UserCog size={17} />} label="家长" value={String(parentUsers)} detail="PARENT" />
+          </div>
+        </div>
+
+        {error ? (
+          <div className="mb-4 rounded-lg border border-red-400/25 bg-red-400/10 p-3 text-sm text-red-100">{error}</div>
+        ) : null}
+        {savedLabel ? (
+          <div className="mb-4 rounded-lg border border-mint-300/25 bg-mint-300/10 p-3 text-sm text-mint-200">
+            {savedLabel.replace(/\s\d+$/, "")}
+          </div>
+        ) : null}
+
+        {isLoading ? (
+          <LoadingStack />
+        ) : users.length === 0 ? (
+          <div className="grid min-h-[220px] place-items-center rounded-lg border border-white/10 bg-white/[0.025] p-6 text-center">
+            <div>
+              <UserCog className="mx-auto mb-3 text-slate-600" size={36} />
+              <div className="font-medium text-slate-300">没有匹配用户</div>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {users.map((user) => (
+              <article key={user.user_id} className="rounded-lg border border-white/10 bg-white/[0.028] p-4">
+                <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="min-w-0">
+                    <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                      <span>#{user.user_id}</span>
+                      <span>{user.role_code}</span>
+                      <span>{user.status}</span>
+                      <span>孩子 {user.child_count}</span>
+                      <span>家长 {user.parent_count}</span>
+                    </div>
+                    <div className="text-sm font-semibold text-slate-50">{user.username}</div>
+                    <div className="mt-1 text-xs text-slate-500">{user.display_name || "未设置显示名"}</div>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      className="flex h-9 items-center gap-2 rounded-lg border border-mint-300/25 bg-mint-300/10 px-3 text-xs font-medium text-mint-200 transition hover:bg-mint-300/16"
+                      type="button"
+                      onClick={() => {
+                        onResetTargetChange(user);
+                        onResetPasswordValueChange("");
+                      }}
+                    >
+                      <KeyRound size={14} />
+                      重置密码
+                    </button>
+                    <button
+                      className="h-9 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-xs font-medium text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300"
+                      type="button"
+                      onClick={() => onUpdateUser(user, { status: user.status === "ACTIVE" ? "DISABLED" : "ACTIVE" })}
+                    >
+                      {user.status === "ACTIVE" ? "停用" : "启用"}
+                    </button>
+                  </div>
+                </div>
+                <div className="grid gap-3 md:grid-cols-[1fr_160px]">
+                  <Field label="显示名" icon={<Pencil size={16} />}>
+                    <input
+                      className="control"
+                      defaultValue={user.display_name ?? ""}
+                      maxLength={100}
+                      onBlur={(event) => {
+                        const nextValue = event.target.value.trim();
+                        if (nextValue !== (user.display_name ?? "")) {
+                          onUpdateUser(user, { display_name: nextValue || null });
+                        }
+                      }}
+                    />
+                  </Field>
+                  <Field label="角色" icon={<ShieldCheck size={16} />}>
+                    <select
+                      className="control"
+                      value={user.role_code}
+                      onChange={(event) => onUpdateUser(user, { role_code: event.target.value as ManagedUserRole })}
+                    >
+                      <option value="USER">USER</option>
+                      <option value="PARENT">PARENT</option>
+                      <option value="ADMIN">ADMIN</option>
+                    </select>
+                  </Field>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <aside className="space-y-4">
+        <section className="rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
+          <div className="mb-4 flex items-center gap-2 text-sm text-mint-300">
+            <Plus size={17} />
+            新建用户
+          </div>
+          <form className="space-y-4" onSubmit={onCreateUser}>
+            <Field label="用户名" icon={<ShieldCheck size={16} />}>
+              <input
+                className="control"
+                maxLength={100}
+                value={createDraft.username}
+                onChange={(event) => onCreateDraftChange({ ...createDraft, username: event.target.value })}
+              />
+            </Field>
+            <Field label="显示名" icon={<Pencil size={16} />}>
+              <input
+                className="control"
+                maxLength={100}
+                value={createDraft.display_name}
+                onChange={(event) => onCreateDraftChange({ ...createDraft, display_name: event.target.value })}
+              />
+            </Field>
+            <Field label="初始密码" icon={<KeyRound size={16} />}>
+              <input
+                className="control"
+                minLength={6}
+                type="password"
+                value={createDraft.password}
+                onChange={(event) => onCreateDraftChange({ ...createDraft, password: event.target.value })}
+              />
+            </Field>
+            <Field label="角色" icon={<UserCog size={16} />}>
+              <select
+                className="control"
+                value={createDraft.role_code}
+                onChange={(event) => onCreateDraftChange({ ...createDraft, role_code: event.target.value as ManagedUserRole })}
+              >
+                <option value="USER">USER</option>
+                <option value="PARENT">PARENT</option>
+                <option value="ADMIN">ADMIN</option>
+              </select>
+            </Field>
+            <button
+              className="flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
+              disabled={!canCreateUser}
+              type="submit"
+            >
+              {isSaving ? <Loader2 className="animate-spin" size={17} /> : <Plus size={17} />}
+              创建用户
+            </button>
+          </form>
+        </section>
+
+        <section className="rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
+          <div className="mb-4 flex items-center gap-2 text-sm text-mint-300">
+            <UserCog size={17} />
+            家长关系
+          </div>
+          <form className="mb-4 space-y-4" onSubmit={onCreateRelation}>
+            <Field label="家长用户" icon={<ShieldCheck size={16} />}>
+              <select
+                className="control"
+                value={relationDraft.parent_user_id}
+                onChange={(event) => onRelationDraftChange({ ...relationDraft, parent_user_id: event.target.value })}
+              >
+                <option value="">选择家长</option>
+                {users.map((user) => (
+                  <option key={user.user_id} value={user.user_id}>
+                    {user.username}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="孩子用户" icon={<ShieldCheck size={16} />}>
+              <select
+                className="control"
+                value={relationDraft.child_user_id}
+                onChange={(event) => onRelationDraftChange({ ...relationDraft, child_user_id: event.target.value })}
+              >
+                <option value="">选择孩子</option>
+                {users.map((user) => (
+                  <option key={user.user_id} value={user.user_id}>
+                    {user.username}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <button
+              className="flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] font-medium text-slate-200 transition hover:border-mint-300/30 hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-500"
+              disabled={!canCreateRelation}
+              type="submit"
+            >
+              建立关系
+            </button>
+          </form>
+          <div className="space-y-2">
+            {relations.length === 0 ? (
+              <div className="rounded-lg border border-white/10 bg-white/[0.025] p-3 text-sm text-slate-500">暂无关系</div>
+            ) : (
+              relations.map((relation) => (
+                <div key={relation.relation_id} className="rounded-lg border border-white/10 bg-white/[0.028] p-3 text-sm">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <span className="min-w-0 truncate text-slate-200">
+                      {relation.parent_username} / {relation.child_username}
+                    </span>
+                    <span className={relation.status === "ACTIVE" ? "text-mint-300" : "text-slate-500"}>{relation.status}</span>
+                  </div>
+                  <button
+                    className="h-8 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-xs text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300"
+                    type="button"
+                    onClick={() => onUpdateRelation(relation, relation.status === "ACTIVE" ? "DISABLED" : "ACTIVE")}
+                  >
+                    {relation.status === "ACTIVE" ? "停用关系" : "启用关系"}
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        </section>
+      </aside>
+
+      {resetTarget ? (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-lg border border-white/10 bg-ink-900 p-4 shadow-soft-glow">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-sm font-medium text-mint-300">
+                <KeyRound size={18} />
+                重置 {resetTarget.username} 密码
+              </div>
+              <button
+                className="grid h-9 w-9 place-items-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-300 transition hover:border-white/16"
+                type="button"
+                onClick={() => onResetTargetChange(null)}
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <form className="space-y-4" onSubmit={onResetPassword}>
+              <Field label="新密码" icon={<KeyRound size={16} />}>
+                <input
+                  className="control"
+                  minLength={6}
+                  type="password"
+                  value={resetPasswordValue}
+                  onChange={(event) => onResetPasswordValueChange(event.target.value)}
+                />
+              </Field>
+              <div className="flex justify-end gap-2">
+                <button
+                  className="h-10 rounded-lg border border-white/10 bg-white/[0.035] px-4 text-sm text-slate-300 transition hover:border-white/16"
+                  type="button"
+                  onClick={() => onResetTargetChange(null)}
+                >
+                  取消
+                </button>
+                <button
+                  className="flex h-10 items-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:text-slate-500"
+                  disabled={resetPasswordValue.length < 6 || isSaving}
+                  type="submit"
+                >
+                  {isSaving ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
+                  保存
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -9450,6 +10059,7 @@ function HistoryExplorer({
   total,
   page,
   summary,
+  authUser,
   isLoading,
   loadError,
   filters,
@@ -9461,6 +10071,7 @@ function HistoryExplorer({
   total: number;
   page: number;
   summary: HistorySummary;
+  authUser: AuthUser | null;
   isLoading: boolean;
   loadError: string | null;
   filters: HistoryFilters;
@@ -9473,6 +10084,9 @@ function HistoryExplorer({
   const rangeStart = total === 0 ? 0 : (page - 1) * HISTORY_PAGE_SIZE + 1;
   const rangeEnd = Math.min(page * HISTORY_PAGE_SIZE, total);
   const historyTypeOptions = filters.username ? summary.user_types[filters.username] ?? [] : summary.types;
+  const isAdminUser = authUser?.is_admin ?? false;
+  const hasSingleVisibleUser = !isAdminUser && summary.users.length <= 1;
+  const allUsersLabel = isAdminUser ? "全部用户" : "全部可见用户";
 
   return (
     <div className="flex-1 px-4 pb-4 pt-2">
@@ -9490,6 +10104,7 @@ function HistoryExplorer({
             <Field label="用户" icon={<ShieldCheck size={16} />}>
               <select
                 className="control"
+                disabled={hasSingleVisibleUser}
                 value={filters.username}
                 onChange={(event) => {
                   const username = event.target.value;
@@ -9500,7 +10115,7 @@ function HistoryExplorer({
                   });
                 }}
               >
-                <option value="">全部用户</option>
+                <option value="">{allUsersLabel}</option>
                 {summary.users.map((user) => (
                   <option key={user} value={user}>
                     {user}

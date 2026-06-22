@@ -4,12 +4,13 @@ from typing import Annotated, Literal
 import oracledb
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from app.core.security import require_api_key
+from app.core.security import require_current_user
 from app.repositories.history import list_history
+from app.repositories.users import AuthContext
 from app.schemas.history import HistoryListResponse
 
 
-router = APIRouter(prefix="/history", tags=["history"], dependencies=[Depends(require_api_key)])
+router = APIRouter(prefix="/history", tags=["history"])
 
 
 @router.get("", response_model=HistoryListResponse)
@@ -27,6 +28,7 @@ async def get_history(
     date_to: date | None = None,
     sort_by: Literal["history_date", "id", "type", "username", "learn_level"] = "history_date",
     sort_dir: Literal["asc", "desc"] = "desc",
+    auth_context: AuthContext = Depends(require_current_user),
 ) -> HistoryListResponse:
     try:
         items, total, summary = await list_history(
@@ -43,6 +45,7 @@ async def get_history(
             date_to=date_to,
             sort_by=sort_by,
             sort_dir=sort_dir,
+            auth_context=auth_context,
         )
     except oracledb.Error as exc:
         error = exc.args[0] if exc.args else exc

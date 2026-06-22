@@ -3,28 +3,29 @@ from typing import Any
 import oracledb
 
 from app.db.oracle import acquire_connection
+from app.repositories.users import AuthContext, append_user_visibility_clause, user_id_for_write
 from app.schemas.english_materials import EnglishMaterialCreate, EnglishMaterialUpdate
 
 
 LIST_COLUMNS = """
-    id,
-    "序号",
-    "分类标识",
-    "基础表达",
-    "职业完整句式",
-    "地道中文翻译",
-    "完整口播内容",
-    flag,
-    title
+    material.id,
+    material."序号",
+    material."分类标识",
+    material."基础表达",
+    material."职业完整句式",
+    material."地道中文翻译",
+    material."完整口播内容",
+    material.flag,
+    material.title
 """
 
 SORT_COLUMNS = {
-    "id": "id",
-    "sequence_no": '"序号"',
-    "category": '"分类标识"',
-    "base_expression": '"基础表达"',
-    "title": "title",
-    "flag": "flag",
+    "id": "material.id",
+    "sequence_no": 'material."序号"',
+    "category": 'material."分类标识"',
+    "base_expression": 'material."基础表达"',
+    "title": "material.title",
+    "flag": "material.flag",
 }
 
 UPDATE_COLUMNS = {
@@ -57,28 +58,31 @@ def _build_filters(
     q: str | None,
     category: str | None,
     flag: int | None,
+    auth_context: AuthContext,
 ) -> tuple[str, dict[str, Any]]:
     clauses: list[str] = []
     params: dict[str, Any] = {}
 
     if q:
         clauses.append(
-            "(lower(title) like '%' || lower(:q) || '%' "
-            "or lower(\"分类标识\") like '%' || lower(:q) || '%' "
-            "or lower(\"基础表达\") like '%' || lower(:q) || '%' "
-            "or lower(\"职业完整句式\") like '%' || lower(:q) || '%' "
-            "or lower(\"地道中文翻译\") like '%' || lower(:q) || '%' "
-            "or lower(\"完整口播内容\") like '%' || lower(:q) || '%')"
+            "(lower(material.title) like '%' || lower(:q) || '%' "
+            "or lower(material.\"分类标识\") like '%' || lower(:q) || '%' "
+            "or lower(material.\"基础表达\") like '%' || lower(:q) || '%' "
+            "or lower(material.\"职业完整句式\") like '%' || lower(:q) || '%' "
+            "or lower(material.\"地道中文翻译\") like '%' || lower(:q) || '%' "
+            "or lower(material.\"完整口播内容\") like '%' || lower(:q) || '%')"
         )
         params["q"] = q
 
     if category:
-        clauses.append("lower(\"分类标识\") = lower(:category)")
+        clauses.append("lower(material.\"分类标识\") = lower(:category)")
         params["category"] = category
 
     if flag is not None:
-        clauses.append("flag = :flag")
+        clauses.append("material.flag = :flag")
         params["flag"] = flag
+
+    append_user_visibility_clause(clauses, params, auth_context, "material.user_id")
 
     if not clauses:
         return "", params
@@ -95,17 +99,18 @@ async def list_english_materials(
     flag: int | None = None,
     sort_by: str = "id",
     sort_dir: str = "desc",
+    auth_context: AuthContext,
 ) -> tuple[list[dict[str, Any]], int]:
-    where_sql, params = _build_filters(q, category, flag)
+    where_sql, params = _build_filters(q, category, flag, auth_context)
     sort_column = SORT_COLUMNS.get(sort_by, "id")
     sort_direction = "asc" if sort_dir == "asc" else "desc"
 
-    count_sql = f"select count(*) from t_douyin_details{where_sql}"
+    count_sql = f"select count(*) from t_douyin_details material{where_sql}"
     list_sql = f"""
         select {LIST_COLUMNS}
-        from t_douyin_details
+        from t_douyin_details material
         {where_sql}
-        order by {sort_column} {sort_direction} nulls last, id desc
+        order by {sort_column} {sort_direction} nulls last, material.id desc
         offset :offset rows fetch next :limit rows only
     """
 
@@ -121,22 +126,26 @@ async def list_english_materials(
     return [_row_to_dict(row) for row in rows], total
 
 
-async def get_english_material(material_id: int) -> dict[str, Any] | None:
+async def get_english_material(material_id: int, auth_context: AuthContext | None = None) -> dict[str, Any] | None:
+    params: dict[str, Any] = {"material_id": material_id}
+    clauses = ["material.id = :material_id"]
+    if auth_context is not None:
+        append_user_visibility_clause(clauses, params, auth_context, "material.user_id")
     sql = f"""
         select {LIST_COLUMNS}
-        from t_douyin_details
-        where id = :material_id
+        from t_douyin_details material
+        where {" and ".join(clauses)}
     """
 
     async with acquire_connection() as connection:
         cursor = connection.cursor()
-        await cursor.execute(sql, {"material_id": material_id})
+        await cursor.execute(sql, params)
         row = await cursor.fetchone()
 
     return _row_to_dict(row) if row else None
 
 
-async def create_english_material(payload: EnglishMaterialCreate) -> dict[str, Any]:
+async def create_english_material(payload: EnglishMaterialCreate, auth_context: AuthContext) -> dict[str, Any]:
     sql = """
         insert into t_douyin_details (
             "序号",
@@ -146,7 +155,8 @@ async def create_english_material(payload: EnglishMaterialCreate) -> dict[str, A
             "地道中文翻译",
             "完整口播内容",
             flag,
-            title
+            title,
+            user_id
         ) values (
             :sequence_no,
             :category,
@@ -155,7 +165,8 @@ async def create_english_material(payload: EnglishMaterialCreate) -> dict[str, A
             :chinese_translation,
             :full_script,
             :flag,
-            :title
+            :title,
+            :user_id
         )
         returning id into :new_id
     """
@@ -174,36 +185,44 @@ async def create_english_material(payload: EnglishMaterialCreate) -> dict[str, A
                 "full_script": payload.full_script,
                 "flag": payload.flag,
                 "title": payload.title,
+                "user_id": user_id_for_write(auth_context),
                 "new_id": new_id,
             },
         )
         await connection.commit()
         material_id = int(new_id.getvalue()[0])
 
-    created = await get_english_material(material_id)
+    created = await get_english_material(material_id, auth_context)
     if created is None:
         raise RuntimeError("English material row was inserted but could not be reloaded")
     return created
 
 
-async def update_english_material(material_id: int, payload: EnglishMaterialUpdate) -> dict[str, Any] | None:
+async def update_english_material(
+    material_id: int,
+    payload: EnglishMaterialUpdate,
+    auth_context: AuthContext,
+) -> dict[str, Any] | None:
     values = payload.model_dump(exclude_unset=True)
     if not values:
-        return await get_english_material(material_id)
+        return await get_english_material(material_id, auth_context)
 
     assignments = [f"{UPDATE_COLUMNS[key]} = :{key}" for key in values]
+    params = {**values, "material_id": material_id}
+    clauses = ["id = :material_id"]
+    append_user_visibility_clause(clauses, params, auth_context, "user_id")
     sql = f"""
         update t_douyin_details
         set {", ".join(assignments)}
-        where id = :material_id
+        where {" and ".join(clauses)}
     """
 
     async with acquire_connection() as connection:
         cursor = connection.cursor()
-        await cursor.execute(sql, {**values, "material_id": material_id})
+        await cursor.execute(sql, params)
         if cursor.rowcount == 0:
             await connection.rollback()
             return None
         await connection.commit()
 
-    return await get_english_material(material_id)
+    return await get_english_material(material_id, auth_context)

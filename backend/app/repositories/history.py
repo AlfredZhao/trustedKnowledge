@@ -2,26 +2,27 @@ from datetime import date
 from typing import Any
 
 from app.db.oracle import acquire_connection
+from app.repositories.users import AuthContext
 
 
 LIST_COLUMNS = """
-    id,
-    type,
-    week,
-    day,
-    history_date,
-    content,
-    username,
-    v_needs_update,
-    learn_level
+    history_record.id,
+    history_record.type,
+    history_record.week,
+    history_record.day,
+    history_record.history_date,
+    history_record.content,
+    coalesce(record_user.username, history_record.username) as username,
+    history_record.v_needs_update,
+    history_record.learn_level
 """
 
 SORT_COLUMNS = {
-    "history_date": "history_date",
-    "id": "id",
-    "type": "type",
-    "username": "username",
-    "learn_level": "learn_level",
+    "history_date": "history_record.history_date",
+    "id": "history_record.id",
+    "type": "history_record.type",
+    "username": "record_user.username",
+    "learn_level": "history_record.learn_level",
 }
 
 
@@ -49,45 +50,48 @@ def _build_filters(
     v_needs_update: int | None,
     date_from: date | None,
     date_to: date | None,
+    auth_context: AuthContext,
 ) -> tuple[str, dict[str, Any]]:
     clauses: list[str] = []
     params: dict[str, Any] = {}
 
     if q:
-        clauses.append("lower(content) like '%' || lower(:q) || '%'")
+        clauses.append("lower(history_record.content) like '%' || lower(:q) || '%'")
         params["q"] = q
 
     if history_type:
-        clauses.append("lower(type) = lower(:history_type)")
+        clauses.append("lower(history_record.type) = lower(:history_type)")
         params["history_type"] = history_type
 
     if username:
-        clauses.append("lower(username) = lower(:username)")
+        clauses.append("lower(coalesce(record_user.username, history_record.username)) = lower(:username)")
         params["username"] = username
 
     if week:
-        clauses.append("lower(week) = lower(:week)")
+        clauses.append("lower(history_record.week) = lower(:week)")
         params["week"] = week
 
     if day:
-        clauses.append("lower(day) = lower(:day)")
+        clauses.append("lower(history_record.day) = lower(:day)")
         params["day"] = day
 
     if learn_level is not None:
-        clauses.append("learn_level = :learn_level")
+        clauses.append("history_record.learn_level = :learn_level")
         params["learn_level"] = learn_level
 
     if v_needs_update is not None:
-        clauses.append("v_needs_update = :v_needs_update")
+        clauses.append("history_record.v_needs_update = :v_needs_update")
         params["v_needs_update"] = v_needs_update
 
     if date_from is not None:
-        clauses.append("history_date >= :date_from")
+        clauses.append("history_record.history_date >= :date_from")
         params["date_from"] = date_from
 
     if date_to is not None:
-        clauses.append("history_date < :date_to + 1")
+        clauses.append("history_record.history_date < :date_to + 1")
         params["date_to"] = date_to
+
+    _append_visibility_clause(clauses, params, auth_context)
 
     if not clauses:
         return "", params
@@ -110,6 +114,7 @@ async def list_history(
     date_to: date | None = None,
     sort_by: str = "history_date",
     sort_dir: str = "desc",
+    auth_context: AuthContext,
 ) -> tuple[list[dict[str, Any]], int, dict[str, Any]]:
     where_sql, params = _build_filters(
         q,
@@ -121,33 +126,55 @@ async def list_history(
         v_needs_update,
         date_from,
         date_to,
+        auth_context,
     )
     sort_column = SORT_COLUMNS.get(sort_by, "history_date")
     sort_direction = "asc" if sort_dir == "asc" else "desc"
 
-    count_sql = f"select count(*) from t_history{where_sql}"
+    from_sql = """
+        from t_history history_record
+        left join tk_users record_user on record_user.user_id = history_record.user_id
+    """
+    count_sql = f"select count(*) {from_sql} {where_sql}"
     summary_sql = f"""
         select
-            min(trunc(history_date)),
-            max(trunc(history_date))
-        from t_history
+            min(trunc(history_record.history_date)),
+            max(trunc(history_record.history_date))
+        {from_sql}
         {where_sql}
     """
     list_sql = f"""
         select {LIST_COLUMNS}
-        from t_history
+        {from_sql}
         {where_sql}
-        order by {sort_column} {sort_direction} nulls last, id desc
+        order by {sort_column} {sort_direction} nulls last, history_record.id desc
         offset :offset rows fetch next :limit rows only
     """
-    type_sql = "select distinct type from t_history where type is not null order by type"
-    user_sql = "select distinct username from t_history where username is not null order by username"
-    user_type_sql = """
-        select username, type
-        from t_history
-        where username is not null
-          and type is not null
-        order by username, type
+    visibility_clauses: list[str] = []
+    visibility_params: dict[str, Any] = {}
+    _append_visibility_clause(visibility_clauses, visibility_params, auth_context)
+    visibility_sql = " and " + " and ".join(visibility_clauses) if visibility_clauses else ""
+    type_sql = f"""
+        select distinct history_record.type
+        {from_sql}
+        where history_record.type is not null
+        {visibility_sql}
+        order by history_record.type
+    """
+    user_sql = f"""
+        select distinct coalesce(record_user.username, history_record.username) as username
+        {from_sql}
+        where coalesce(record_user.username, history_record.username) is not null
+        {visibility_sql}
+        order by username
+    """
+    user_type_sql = f"""
+        select coalesce(record_user.username, history_record.username) as username, history_record.type
+        {from_sql}
+        where coalesce(record_user.username, history_record.username) is not null
+          and history_record.type is not null
+        {visibility_sql}
+        order by username, history_record.type
     """
 
     async with acquire_connection() as connection:
@@ -159,13 +186,13 @@ async def list_history(
         await cursor.execute(summary_sql, params)
         summary_row = await cursor.fetchone()
 
-        await cursor.execute(type_sql)
+        await cursor.execute(type_sql, visibility_params)
         type_rows = await cursor.fetchall()
 
-        await cursor.execute(user_sql)
+        await cursor.execute(user_sql, visibility_params)
         user_rows = await cursor.fetchall()
 
-        await cursor.execute(user_type_sql)
+        await cursor.execute(user_type_sql, visibility_params)
         user_type_rows = await cursor.fetchall()
 
         list_params = {**params, "offset": offset, "limit": limit}
@@ -190,3 +217,17 @@ async def list_history(
         "max_date": summary_row[1] if summary_row else None,
     }
     return [_row_to_dict(row) for row in rows], total, summary
+
+
+def _append_visibility_clause(clauses: list[str], params: dict[str, Any], auth_context: AuthContext) -> None:
+    if auth_context.is_admin or auth_context.visible_user_ids is None:
+        return
+    if not auth_context.visible_user_ids:
+        clauses.append("1 = 0")
+        return
+    bind_names = []
+    for index, user_id in enumerate(auth_context.visible_user_ids):
+        bind_name = f"visible_user_id_{index}"
+        bind_names.append(bind_name)
+        params[bind_name] = user_id
+    clauses.append(f"history_record.user_id in ({', '.join(f':{name}' for name in bind_names)})")

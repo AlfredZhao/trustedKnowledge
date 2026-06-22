@@ -13,6 +13,18 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Added / 新增
 
+- Added the independent `TK_` user management schema with `TK_USERS`, `TK_USER_SESSIONS`, and `TK_RELATIONS`, including compatible `USER_ID` backfill for current/history records.
+- 新增独立 `TK_` 用户管理体系，包含 `TK_USERS`、`TK_USER_SESSIONS` 和 `TK_RELATIONS`，并为当前记录/历史记录兼容回填 `USER_ID`。
+
+- Added compatible `USER_ID` ownership columns for `AI_BLOG_FACTORY`, `AI_QA_LIB`, `AI_TODO_ITEMS`, and `T_DOUYIN_DETAILS`.
+- 为 `AI_BLOG_FACTORY`、`AI_QA_LIB`、`AI_TODO_ITEMS` 和 `T_DOUYIN_DETAILS` 新增兼容 `USER_ID` 归属列。
+
+- Added ordinary-user session login alongside the existing environment-based `admin` super administrator.
+- 新增普通用户 session 登录，同时保留现有环境变量 `admin` 超级管理员登录方式。
+
+- Added an admin-only User Management workspace for creating users, changing roles/status, resetting passwords, and maintaining parent-child visibility relations.
+- 新增仅 admin 可见的用户管理界面，支持创建用户、调整角色/状态、重置密码，以及维护家长-孩子可见关系。
+
 - Added selected Blog Factory task editing, content status updates, deletion, and a mobile PWA detail sheet.
 - 为博客工厂选中任务新增编辑、内容状态更新、删除能力，并在手机端 PWA 中改为弹窗操作。
 
@@ -23,6 +35,15 @@ The format follows the common GitHub changelog convention inspired by
 - 为博客工厂任务内容复制新增 Markdown 美化富文本和裸文本两种模式。
 
 #### Changed / 变更
+
+- Scoped Current Records, History, and AI Ask history data by visible users for ordinary users, while `admin` keeps the existing all-user view.
+- 当前记录、历史查询和 AI 问数会按普通用户的可见用户范围过滤数据，`admin` 保持现有全量视图。
+
+- Scoped Knowledge, Todo, Blog Factory, and English Materials data by visible users, with conversions inheriting the source record `USER_ID`.
+- 可信知识、待办事项、博客工厂和英语素材也会按可见用户范围过滤，模块转换会继承源记录的 `USER_ID`。
+
+- Changed Current Records and History user filters so non-admin users are limited to visible users, with single-user scopes locked in the UI.
+- 调整当前记录和历史查询的用户筛选：非 admin 用户只能在可见用户范围内筛选，单用户范围会在界面中锁定。
 
 - Increased the Codex prompt limit from 12,000 to 50,000 characters so Knowledge Processing can handle longer source material.
 - 将 Codex prompt 限制从 12,000 字提升到 50,000 字，知识加工可处理更长的原始素材。

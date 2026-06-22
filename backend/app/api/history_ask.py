@@ -1,9 +1,10 @@
 import oracledb
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.core.security import require_api_key
+from app.core.security import require_api_key, require_current_user
 from app.db.oracle import acquire_connection
 from app.repositories.history_ask import ask_history
+from app.repositories.users import AuthContext
 from app.repositories.llm_config import (
     ensure_llm_config_table,
     get_history_ask_llm_config,
@@ -62,9 +63,12 @@ async def put_llm_config(payload: LlmConfigUpdate) -> LlmConfigResponse:
 
 
 @router.post("", response_model=HistoryAskResponse)
-async def post_history_ask(payload: HistoryAskRequest) -> HistoryAskResponse:
+async def post_history_ask(
+    payload: HistoryAskRequest,
+    auth_context: AuthContext = Depends(require_current_user),
+) -> HistoryAskResponse:
     try:
-        result = await ask_history(payload.question.strip(), skill_ids=payload.skill_ids)
+        result = await ask_history(payload.question.strip(), skill_ids=payload.skill_ids, auth_context=auth_context)
     except oracledb.Error as exc:
         error = exc.args[0] if exc.args else exc
         message = getattr(error, "message", str(exc))

@@ -30,11 +30,27 @@ The pool ping/lifetime settings keep idle Oracle sessions from being reused too 
 
 AI Ask keeps Base URL, model name, and enablement in Oracle, but reads the LLM API key only from `TRUSTED_KNOWLEDGE_HISTORY_ASK_LLM_API_KEY`.
 
-All `/api/knowledge` routes require:
+Protected API routes require:
 
 ```text
-X-API-Key: <TRUSTED_KNOWLEDGE_API_KEY>
+X-API-Key: <TRUSTED_KNOWLEDGE_API_KEY or login session token>
 ```
+
+The environment `admin` user keeps using `TRUSTED_KNOWLEDGE_API_KEY` and is treated as the super administrator.
+Ordinary users are stored in the independent `TK_USERS` table and receive a session token from `POST /api/auth/login`.
+The backend initializes `TK_USERS`, `TK_USER_SESSIONS`, and `TK_RELATIONS` on startup, then backfills compatible `USER_ID` columns on `T_CURRENT`, `T_HISTORY`, and `T_RELATIONS` while preserving the old `USERNAME` columns for display compatibility.
+It also adds compatible `USER_ID` ownership columns on `AI_QA_LIB`, `AI_TODO_ITEMS`, `AI_BLOG_FACTORY`, and `T_DOUYIN_DETAILS`.
+Rows with no `USER_ID` remain admin-visible legacy rows; ordinary users only see rows owned by themselves or visible child users.
+
+Admin-only user management routes live under `/api/users`:
+
+- `GET /api/users`
+- `POST /api/users`
+- `PATCH /api/users/{user_id}`
+- `POST /api/users/{user_id}/reset-password`
+- `GET /api/users/relations`
+- `POST /api/users/relations`
+- `PATCH /api/users/relations/{relation_id}`
 
 ## WeChat Login
 
