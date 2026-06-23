@@ -205,6 +205,7 @@ const emptySkillDraft: SkillDraft = {
   description: "",
   content: "",
   enabled: true,
+  published: false,
 };
 
 const emptyManagedUserDraft: ManagedUserCreateDraft = {
@@ -711,6 +712,7 @@ function App() {
   const [skillTotal, setSkillTotal] = useState(0);
   const [skillQuery, setSkillQuery] = useState("");
   const [debouncedSkillQuery, setDebouncedSkillQuery] = useState("");
+  const [skillListScope, setSkillListScope] = useState<"owned" | "callable">("owned");
   const [selectedSkill, setSelectedSkill] = useState<SkillDetail | null>(null);
   const [newSkillDraft, setNewSkillDraft] = useState<SkillDraft>(emptySkillDraft);
   const [skillDraft, setSkillDraft] = useState<SkillDraft>(emptySkillDraft);
@@ -1319,6 +1321,7 @@ function App() {
     fetchSkills({
       q: activeView === "skills" ? debouncedSkillQuery : undefined,
       enabled: activeView === "historyAsk" || activeView === "factory" ? true : undefined,
+      scope: activeView === "skills" ? skillListScope : "callable",
     })
       .then((response) => {
         if (cancelled) return;
@@ -1338,7 +1341,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [activeView, apiKey, debouncedSkillQuery]);
+  }, [activeView, apiKey, debouncedSkillQuery, skillListScope]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedManagedUserQuery(managedUserQuery.trim()), 260);
@@ -3184,6 +3187,10 @@ function App() {
     );
   }
 
+  function getPreferredSkillFile(files: SkillFile[]) {
+    return files.find((file) => file.path.endsWith("SKILL.md") && file.readable) ?? files.find((file) => file.readable) ?? null;
+  }
+
   async function handleCreateSkill(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!newSkillDraft.name.trim() || isSkillSaving) return;
@@ -3193,10 +3200,10 @@ function App() {
     try {
       const created = await createSkill(newSkillDraft);
       setSelectedSkill(created);
-      setSkillDraft({ name: created.name, description: created.description, content: "", enabled: created.enabled });
-      const editableFile = created.files.find((file) => file.path.endsWith("SKILL.md") && file.editable) ?? created.files.find((file) => file.editable) ?? null;
-      setSelectedSkillFile(editableFile);
-      setSkillFileContent(editableFile ? created.skill_markdown : "");
+      setSkillDraft({ name: created.name, description: created.description, content: "", enabled: created.enabled, published: created.published });
+      const preferredFile = getPreferredSkillFile(created.files);
+      setSelectedSkillFile(preferredFile);
+      setSkillFileContent(preferredFile?.path.endsWith("SKILL.md") ? created.skill_markdown : "");
       setSkillItems((current) => [created, ...current.filter((item) => item.id !== created.id)]);
       setSkillTotal((current) => current + 1);
       setSkillSavedLabel("已新建");
@@ -3217,10 +3224,10 @@ function App() {
     try {
       const detail = await fetchSkill(skillId);
       setSelectedSkill(detail);
-      setSkillDraft({ name: detail.name, description: detail.description, content: "", enabled: detail.enabled });
-      const editableFile = detail.files.find((file) => file.path.endsWith("SKILL.md") && file.editable) ?? detail.files.find((file) => file.editable) ?? null;
-      setSelectedSkillFile(editableFile);
-      setSkillFileContent(editableFile ? detail.skill_markdown : "");
+      setSkillDraft({ name: detail.name, description: detail.description, content: "", enabled: detail.enabled, published: detail.published });
+      const preferredFile = getPreferredSkillFile(detail.files);
+      setSelectedSkillFile(preferredFile);
+      setSkillFileContent(preferredFile?.path.endsWith("SKILL.md") ? detail.skill_markdown : "");
     } catch (error) {
       setSkillSaveError(error instanceof Error ? error.message : "Skill 详情加载失败。");
     } finally {
@@ -3229,7 +3236,7 @@ function App() {
   }
 
   async function handleSelectSkillFile(file: SkillFile) {
-    if (!selectedSkill || !file.editable) return;
+    if (!selectedSkill || !file.readable) return;
 
     setSelectedSkillFile(file);
     setIsSkillDetailLoading(true);
@@ -3246,7 +3253,7 @@ function App() {
 
   async function handleSaveSelectedSkill(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!selectedSkill || !skillDraft.name.trim() || isSkillSaving) return;
+    if (!selectedSkill || !selectedSkill.can_edit || !skillDraft.name.trim() || isSkillSaving) return;
 
     setIsSkillSaving(true);
     setSkillSaveError(null);
@@ -3255,6 +3262,7 @@ function App() {
         name: skillDraft.name,
         description: skillDraft.description,
         enabled: skillDraft.enabled,
+        published: skillDraft.published,
       });
       setSelectedSkill(updated);
       setSkillItems((current) => current.map((item) => (item.id === updated.id ? updated : item)));
@@ -3272,7 +3280,7 @@ function App() {
   }
 
   async function handleSaveSelectedSkillFile() {
-    if (!selectedSkill || !selectedSkillFile || isSkillFileSaving) return;
+    if (!selectedSkill || !selectedSkill.can_edit || !selectedSkillFile || !selectedSkillFile.editable || isSkillFileSaving) return;
 
     setIsSkillFileSaving(true);
     setSkillSaveError(null);
@@ -3413,10 +3421,10 @@ function App() {
     try {
       const uploaded = await uploadSkillZip(file);
       setSelectedSkill(uploaded);
-      setSkillDraft({ name: uploaded.name, description: uploaded.description, content: "", enabled: uploaded.enabled });
-      const editableFile = uploaded.files.find((item) => item.path.endsWith("SKILL.md") && item.editable) ?? uploaded.files.find((item) => item.editable) ?? null;
-      setSelectedSkillFile(editableFile);
-      setSkillFileContent(editableFile ? uploaded.skill_markdown : "");
+      setSkillDraft({ name: uploaded.name, description: uploaded.description, content: "", enabled: uploaded.enabled, published: uploaded.published });
+      const preferredFile = getPreferredSkillFile(uploaded.files);
+      setSelectedSkillFile(preferredFile);
+      setSkillFileContent(preferredFile?.path.endsWith("SKILL.md") ? uploaded.skill_markdown : "");
       setSkillItems((current) => [uploaded, ...current.filter((item) => item.id !== uploaded.id)]);
       setSkillTotal((current) => current + 1);
       setSkillSavedLabel("已上传");
@@ -3429,7 +3437,7 @@ function App() {
   }
 
   async function handleDeleteSelectedSkill() {
-    if (!selectedSkill || isSkillSaving) return;
+    if (!selectedSkill || !selectedSkill.can_delete || isSkillSaving) return;
     const confirmed = window.confirm(`确定删除 Skill「${selectedSkill.name}」吗？`);
     if (!confirmed) return;
 
@@ -3783,6 +3791,7 @@ function App() {
               isUploading={isSkillUploading}
               items={skillItems}
               newDraft={newSkillDraft}
+              scope={skillListScope}
               saveError={skillSaveError}
               savedLabel={skillSavedLabel}
               selectedFile={selectedSkillFile}
@@ -3793,6 +3802,7 @@ function App() {
               onFileChange={setSkillFileContent}
               onFileSelect={handleSelectSkillFile}
               onNewDraftChange={setNewSkillDraft}
+              onScopeChange={setSkillListScope}
               onSave={handleSaveSelectedSkill}
               onSaveFile={handleSaveSelectedSkillFile}
               onSelect={handleSelectSkill}
@@ -6178,6 +6188,10 @@ function KnowledgeFactory({
                       {selected ? <CheckCircle2 className="shrink-0 text-mint-300" size={15} /> : null}
                     </div>
                     <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{skill.description || "无描述"}</p>
+                    <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-600">
+                      <span>{skill.skill_type === "system" ? "系统自带" : "用户自建"}</span>
+                      <span>{skill.owner_username ? skill.owner_username : "系统"}</span>
+                    </div>
                   </button>
                 );
               })}
@@ -9127,6 +9141,7 @@ function SkillManager({
   isUploading,
   items,
   newDraft,
+  scope,
   saveError,
   savedLabel,
   selectedFile,
@@ -9137,6 +9152,7 @@ function SkillManager({
   onFileChange,
   onFileSelect,
   onNewDraftChange,
+  onScopeChange,
   onSave,
   onSaveFile,
   onSelect,
@@ -9153,6 +9169,7 @@ function SkillManager({
   isUploading: boolean;
   items: SkillSummary[];
   newDraft: SkillDraft;
+  scope: "owned" | "callable";
   saveError: string | null;
   savedLabel: string | null;
   selectedFile: SkillFile | null;
@@ -9163,14 +9180,15 @@ function SkillManager({
   onFileChange: (content: string) => void;
   onFileSelect: (file: SkillFile) => void;
   onNewDraftChange: (draft: SkillDraft) => void;
+  onScopeChange: (scope: "owned" | "callable") => void;
   onSave: (event: React.FormEvent<HTMLFormElement>) => void;
   onSaveFile: () => void;
   onSelect: (skillId: string) => void;
   onUpload: (file: File | null) => void;
 }) {
   const canCreate = newDraft.name.trim().length > 0 && !isSaving;
-  const canSave = Boolean(detail) && draft.name.trim().length > 0 && !isSaving;
-  const canSaveFile = Boolean(detail && selectedFile?.editable) && !isFileSaving;
+  const canSave = Boolean(detail?.can_edit) && draft.name.trim().length > 0 && !isSaving;
+  const canSaveFile = Boolean(detail?.can_edit && selectedFile?.editable) && !isFileSaving;
   const [expandedSkillDirectories, setExpandedSkillDirectories] = useState<Set<string>>(() => new Set());
   const skillFileGroups = useMemo(() => {
     const rootFiles: SkillFile[] = [];
@@ -9221,13 +9239,15 @@ function SkillManager({
           selectedFile?.path === file.path
             ? "border-mint-300/30 bg-mint-300/10 text-mint-100"
             : "border-white/10 bg-white/[0.028] text-slate-400 hover:border-mint-300/25"
-        } ${file.editable ? "" : "opacity-55"} ${nested ? "ml-5 w-[calc(100%-1.25rem)]" : ""}`}
-        disabled={!file.editable}
+        } ${file.readable ? "" : "opacity-55"} ${nested ? "ml-5 w-[calc(100%-1.25rem)]" : ""}`}
+        disabled={!file.readable}
         type="button"
         onClick={() => onFileSelect(file)}
       >
         <span className="block truncate">{fileName}</span>
-        <span className="mt-1 block text-[11px] text-slate-600">{formatAmount(file.size)} bytes</span>
+        <span className="mt-1 block text-[11px] text-slate-600">
+          {formatAmount(file.size)} bytes{file.readable ? (file.editable ? " · 可编辑" : " · 只读") : " · 不可预览"}
+        </span>
       </button>
     );
   }
@@ -9247,6 +9267,31 @@ function SkillManager({
             <span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-xs text-slate-400">
               {formatAmount(total)}
             </span>
+          </div>
+
+          <div className="mb-4 flex gap-2">
+            <button
+              className={`rounded-lg border px-3 py-2 text-xs transition ${
+                scope === "owned"
+                  ? "border-mint-300/30 bg-mint-300/12 text-mint-200"
+                  : "border-white/10 bg-white/[0.03] text-slate-400 hover:border-mint-300/25 hover:text-slate-200"
+              }`}
+              type="button"
+              onClick={() => onScopeChange("owned")}
+            >
+              我的 Skill
+            </button>
+            <button
+              className={`rounded-lg border px-3 py-2 text-xs transition ${
+                scope === "callable"
+                  ? "border-mint-300/30 bg-mint-300/12 text-mint-200"
+                  : "border-white/10 bg-white/[0.03] text-slate-400 hover:border-mint-300/25 hover:text-slate-200"
+              }`}
+              type="button"
+              onClick={() => onScopeChange("callable")}
+            >
+              可调用 Skill
+            </button>
           </div>
 
           {isLoading ? (
@@ -9282,7 +9327,9 @@ function SkillManager({
                     </div>
                     <p className="line-clamp-2 text-xs leading-5 text-slate-500">{skill.description || "无描述"}</p>
                     <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-600">
-                      <span>{skill.source}</span>
+                      <span>{skill.skill_type === "system" ? "系统自带" : "用户自建"}</span>
+                      <span>{skill.published ? "已发布" : "仅自己可见"}</span>
+                      <span>{skill.owner_username ? `Owner: ${skill.owner_username}` : "Owner: 系统"}</span>
                       <span>{formatAmount(skill.file_count)} files</span>
                     </div>
                   </button>
@@ -9320,6 +9367,15 @@ function SkillManager({
               onChange={(event) => onNewDraftChange({ ...newDraft, content: event.target.value })}
               placeholder={"# Skill 名称\n\n描述：...\n\n## 使用规则\n- ..."}
             />
+            <label className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.028] px-3 py-2 text-sm text-slate-300">
+              <span>发布给其他用户调用</span>
+              <input
+                checked={newDraft.published}
+                className="h-4 w-4 accent-mint-300"
+                type="checkbox"
+                onChange={(event) => onNewDraftChange({ ...newDraft, published: event.target.checked })}
+              />
+            </label>
             <button
               className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-3 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
               disabled={!canCreate}
@@ -9368,11 +9424,17 @@ function SkillManager({
                     Metadata
                   </div>
                   <h2 className="text-lg font-semibold text-slate-50">Skill 元信息</h2>
+                  <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-500">
+                    <span>{detail.skill_type === "system" ? "系统自带" : "用户自建"}</span>
+                    <span>{detail.owner_username ? `Owner: ${detail.owner_username}` : "Owner: 系统"}</span>
+                    <span>{detail.published ? "已发布" : "未发布"}</span>
+                    {!detail.can_edit ? <span>当前仅可调用，不可编辑</span> : null}
+                  </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button
                     className="flex h-9 items-center gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 text-xs font-medium text-red-100 transition hover:bg-red-400/15 disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={isSaving}
+                    disabled={isSaving || !detail.can_delete}
                     type="button"
                     onClick={onDelete}
                   >
@@ -9394,6 +9456,7 @@ function SkillManager({
                   名称
                   <input
                     className="control mt-2 h-10"
+                    disabled={!detail.can_edit}
                     value={draft.name}
                     onChange={(event) => onDraftChange({ ...draft, name: event.target.value })}
                   />
@@ -9403,8 +9466,19 @@ function SkillManager({
                   <input
                     checked={draft.enabled}
                     className="h-4 w-4 accent-mint-300"
+                    disabled={!detail.can_edit}
                     type="checkbox"
                     onChange={(event) => onDraftChange({ ...draft, enabled: event.target.checked })}
+                  />
+                </label>
+                <label className="flex items-center justify-between gap-3 self-end rounded-lg border border-white/10 bg-white/[0.028] px-3 py-2 text-sm text-slate-300">
+                  <span>发布</span>
+                  <input
+                    checked={draft.published}
+                    className="h-4 w-4 accent-mint-300"
+                    disabled={!detail.can_edit}
+                    type="checkbox"
+                    onChange={(event) => onDraftChange({ ...draft, published: event.target.checked })}
                   />
                 </label>
               </div>
@@ -9412,6 +9486,7 @@ function SkillManager({
                 描述
                 <textarea
                   className="control mt-2 min-h-24 resize-y"
+                  disabled={!detail.can_edit}
                   value={draft.description}
                   onChange={(event) => onDraftChange({ ...draft, description: event.target.value })}
                 />
@@ -9463,7 +9538,15 @@ function SkillManager({
                 <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="min-w-0">
                     <div className="truncate text-sm font-medium text-slate-200">{selectedFile?.path ?? "未选择文件"}</div>
-                    <div className="text-xs text-slate-600">支持编辑 Markdown、JSON、YAML、代码和文本文件。</div>
+                    <div className="text-xs text-slate-600">
+                      {selectedFile
+                        ? selectedFile.editable
+                          ? "支持在线编辑。"
+                          : selectedFile.readable
+                            ? "当前文件仅支持只读预览。"
+                            : "当前文件不可在线预览。"
+                        : "支持编辑 Markdown、JSON、YAML、代码和文本文件。"}
+                    </div>
                   </div>
                   <button
                     className="flex h-9 items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-3 text-xs font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
@@ -9477,15 +9560,16 @@ function SkillManager({
                 </div>
                 {isDetailLoading ? (
                   <LoadingStack />
-                ) : selectedFile ? (
+                ) : selectedFile?.readable ? (
                   <textarea
                     className="control min-h-[520px] resize-y font-mono text-xs leading-6"
+                    readOnly={!selectedFile.editable || !detail.can_edit}
                     value={fileContent}
                     onChange={(event) => onFileChange(event.target.value)}
                   />
                 ) : (
                   <div className="grid min-h-[420px] place-items-center rounded-lg border border-white/10 bg-black/10 text-center text-sm text-slate-500">
-                    选择一个可编辑文件后在这里修改内容。
+                    选择一个可预览文件后在这里查看或修改内容。
                   </div>
                 )}
               </div>
@@ -9639,6 +9723,10 @@ function HistoryAskPanel({
                           {selected ? <CheckCircle2 className="shrink-0 text-mint-300" size={15} /> : null}
                         </div>
                         <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{skill.description || "无描述"}</p>
+                        <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-600">
+                          <span>{skill.skill_type === "system" ? "系统自带" : "用户自建"}</span>
+                          <span>{skill.owner_username ? skill.owner_username : "系统"}</span>
+                        </div>
                       </button>
                     );
                   })}

@@ -286,12 +286,15 @@
 - 搜索 Skills。
 - 创建自定义 Skill。
 - 上传标准 Skill zip 包。
-- 编辑 Skill 元数据。
-- 编辑单个可编辑 Skill 文件。
-- 删除选中 Skill。
+- 默认显示当前登录用户可编辑的自有 Skills，并可切换到“可调用 Skill”查看系统自带或其他用户已发布的 Skills。
+- 自定义 Skill 支持设置是否发布给其他用户调用。
+- 仅 Skill 所有者可编辑元数据、保存文件、修改发布状态和删除用户自建 Skill；其他用户只能只读查看已发布 Skill 并用于调用。
+- Skill 会展示系统自带 / 用户自建、Owner、是否发布等标记。
+- 编辑单个可编辑 Skill 文件；只读 Skill 文件支持在线预览文本内容。
+- 系统自带 Skill 不支持通过前端删除。
 - 文件夹列表默认折叠，按需展开。
 
-`historyAsk` 和 `factory` 也会加载 Skill 数据，但这两个页面只拉取已启用的 Skills。
+`historyAsk`、`factory` 和 `aiCoding` 调用 Skill 时，只拉取当前用户可调用且已启用的 Skills：包括自己的 Skills，以及其他用户或系统已发布的 Skills。
 
 ### 用户管理 / `users`
 

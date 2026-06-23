@@ -21,6 +21,9 @@ The format follows the common GitHub changelog convention inspired by
 - Changed AI Coding and AI Usage to follow the same admin-only navigation rule as User Management by default, with super admin configurable access for admin-role users.
 - 调整 AI 编程与 AI 用量模块，默认与用户管理一样仅 admin 用户可见；超级管理员可在前台把它们授权给 admin 角色用户访问。
 
+- Changed Skill management and invocation to be user-aware: custom skills now track owner, publish state, and system/user type; the Skill page defaults to showing only editable self-owned skills, while published skills remain callable by other users in AI Ask, Knowledge Processing, and AI Coding.
+- 调整 Skill 管理与调用范围为按用户隔离：自建 Skill 新增所有者、发布状态和系统/用户类型；Skill 页面默认只显示当前用户可编辑的自有 Skill，而已发布 Skill 仍可在 AI 问数、知识加工和 AI 编程中被其他用户调用。
+
 - Added a subtle top-right signed-in user indicator so the current login username stays visible without competing with primary actions.
 - 在顶部栏右上角新增低干扰的当前登录用户名提示，持续显示“当前是谁登录”，但不抢占主要操作视觉。
 

@@ -11,8 +11,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 
 from app.core.config import settings
-from app.core.security import require_admin_module
+from app.core.security import require_admin_module, require_current_user
 from app.repositories.skills import get_prompt_skills
+from app.repositories.users import AuthContext
 from app.schemas.codex import CodexJobSnapshot, CodexJobStatus, CodexRunRequest, CodexRunResponse
 
 
@@ -41,7 +42,10 @@ class CodexJobState:
 
 
 @router.post("/runs", response_model=CodexRunResponse)
-async def run_codex(payload: CodexRunRequest) -> CodexRunResponse:
+async def run_codex(
+    payload: CodexRunRequest,
+    auth_context: AuthContext = Depends(require_current_user),
+) -> CodexRunResponse:
     if not settings.allow_web_codex:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -56,7 +60,7 @@ async def run_codex(payload: CodexRunRequest) -> CodexRunResponse:
 
     async with _codex_lock:
         started_at = time.monotonic()
-        prompt = _build_prompt(payload.prompt.strip(), payload.skill_ids)
+        prompt = _build_prompt(payload.prompt.strip(), payload.skill_ids, auth_context)
 
         try:
             process = await asyncio.create_subprocess_exec(
@@ -106,7 +110,10 @@ async def run_codex(payload: CodexRunRequest) -> CodexRunResponse:
 
 
 @router.post("/runs/stream")
-async def stream_codex(payload: CodexRunRequest) -> StreamingResponse:
+async def stream_codex(
+    payload: CodexRunRequest,
+    auth_context: AuthContext = Depends(require_current_user),
+) -> StreamingResponse:
     if not settings.allow_web_codex:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -120,14 +127,17 @@ async def stream_codex(payload: CodexRunRequest) -> StreamingResponse:
         )
 
     return StreamingResponse(
-        _stream_codex_events(payload.prompt.strip(), payload.skill_ids, payload.sandbox_mode),
+        _stream_codex_events(payload.prompt.strip(), payload.skill_ids, payload.sandbox_mode, auth_context),
         media_type="application/x-ndjson",
         headers={"Cache-Control": "no-store"},
     )
 
 
 @router.post("/runs/jobs", response_model=CodexJobSnapshot, status_code=status.HTTP_202_ACCEPTED)
-async def start_codex_job(payload: CodexRunRequest) -> CodexJobSnapshot:
+async def start_codex_job(
+    payload: CodexRunRequest,
+    auth_context: AuthContext = Depends(require_current_user),
+) -> CodexJobSnapshot:
     if not settings.allow_web_codex:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -149,7 +159,7 @@ async def start_codex_job(payload: CodexRunRequest) -> CodexJobSnapshot:
     )
     _codex_jobs[job.job_id] = job
     _latest_codex_job_id = job.job_id
-    task = asyncio.create_task(_run_codex_job(job))
+    task = asyncio.create_task(_run_codex_job(job, auth_context))
     task.add_done_callback(lambda completed_task: _handle_codex_job_task_done(job, completed_task))
     return _snapshot_codex_job(job)
 
@@ -169,8 +179,12 @@ async def get_codex_job(job_id: str) -> CodexJobSnapshot:
     return _snapshot_codex_job(job)
 
 
-def _build_prompt(user_prompt: str, skill_ids: list[str] | None = None) -> str:
-    selected_skills = get_prompt_skills(skill_ids or [])
+def _build_prompt(
+    user_prompt: str,
+    skill_ids: list[str] | None = None,
+    auth_context: AuthContext | None = None,
+) -> str:
+    selected_skills = get_prompt_skills(skill_ids or [], auth_context) if auth_context else []
     lines = [
         "You are running from the trustedKnowledge web AI coding interface.",
         "Follow the repository AGENTS.md instructions strictly.",
@@ -197,10 +211,10 @@ def _build_prompt(user_prompt: str, skill_ids: list[str] | None = None) -> str:
     return "\n".join(lines)
 
 
-async def _run_codex_job(job: CodexJobState) -> None:
+async def _run_codex_job(job: CodexJobState, auth_context: AuthContext) -> None:
     async with _codex_lock:
         started_at = time.monotonic()
-        prompt = _build_prompt(job.prompt, job.skill_ids)
+        prompt = _build_prompt(job.prompt, job.skill_ids, auth_context)
 
         try:
             process = await asyncio.create_subprocess_exec(
@@ -271,10 +285,11 @@ async def _stream_codex_events(
     user_prompt: str,
     skill_ids: list[str] | None = None,
     sandbox_mode: str = "workspace-write",
+    auth_context: AuthContext | None = None,
 ) -> AsyncIterator[str]:
     async with _codex_lock:
         started_at = time.monotonic()
-        prompt = _build_prompt(user_prompt, skill_ids)
+        prompt = _build_prompt(user_prompt, skill_ids, auth_context)
         stdout_parts: list[str] = []
         stderr_parts: list[str] = []
         queue: asyncio.Queue[dict[str, str]] = asyncio.Queue()

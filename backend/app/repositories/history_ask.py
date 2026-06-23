@@ -529,7 +529,7 @@ async def ask_history(
     skill_ids: list[str] | None = None,
     auth_context: AuthContext,
 ) -> dict[str, Any]:
-    selected_skills = get_prompt_skills(skill_ids or [])
+    selected_skills = get_prompt_skills(skill_ids or [], auth_context)
     async with acquire_connection() as connection:
         cursor = connection.cursor()
         visibility_clauses: list[str] = []

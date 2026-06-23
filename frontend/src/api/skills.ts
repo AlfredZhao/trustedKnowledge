@@ -60,10 +60,11 @@ async function uploadRequest<T>(path: string, file: File): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export async function fetchSkills(params?: { q?: string; enabled?: boolean }): Promise<SkillListResponse> {
+export async function fetchSkills(params?: { q?: string; enabled?: boolean; scope?: "owned" | "callable" }): Promise<SkillListResponse> {
   const search = new URLSearchParams();
   if (params?.q?.trim()) search.set("q", params.q.trim());
   if (params?.enabled !== undefined) search.set("enabled", String(params.enabled));
+  if (params?.scope) search.set("scope", params.scope);
   const query = search.toString();
   return request<SkillListResponse>(`/api/skills${query ? `?${query}` : ""}`);
 }
