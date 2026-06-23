@@ -38,6 +38,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Fixed / 修复
 
+- Fixed the Todo completion append dialog so it also lets users adjust `Week` and `Day` while prepending a finished task into the selected Current Record, instead of limiting the action to only user and type.
+- 修复待办事项完成后的追加弹窗只能选择用户和类型的问题；现在追加到当前记录时也可同步选择并推进 `Week` 与 `Day`。
+
 - Changed the Overview dashboard to always query the signed-in username for Todo, trusted knowledge, and English material cards, so it no longer mixes in other visible users' records.
 - 调整总览 Dashboard 的 Todo、可信知识和 English 素材查询，固定按当前登录用户名读取，不再混入其他可见用户的数据。
 

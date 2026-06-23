@@ -465,6 +465,8 @@ interface PendingCurrentRecordUpdate {
 interface CurrentAppendTarget {
   username: string;
   type: string;
+  week: CurrentWeek | "";
+  day: CurrentDay | "";
 }
 
 const statusStyles: Record<KnowledgeStatus, string> = {
@@ -616,9 +618,21 @@ function App() {
   const [hasCopiedTodoContent, setHasCopiedTodoContent] = useState(false);
   const [todoRefreshToken, setTodoRefreshToken] = useState(0);
   const [pendingTodoCurrentAppend, setPendingTodoCurrentAppend] = useState<TodoItem | null>(null);
-  const [todoCurrentAppendTarget, setTodoCurrentAppendTarget] = useState<CurrentAppendTarget>({ username: "", type: "" });
+  const [todoCurrentAppendTarget, setTodoCurrentAppendTarget] = useState<CurrentAppendTarget>({
+    username: "",
+    type: "",
+    week: "",
+    day: "",
+  });
   const [isTodoCurrentAppendOptionsLoading, setIsTodoCurrentAppendOptionsLoading] = useState(false);
   const [isAppendingTodoToCurrent, setIsAppendingTodoToCurrent] = useState(false);
+  const todoCurrentAppendRequestRef = useRef(0);
+  const todoCurrentAppendTargetRef = useRef<CurrentAppendTarget>({
+    username: "",
+    type: "",
+    week: "",
+    day: "",
+  });
   const pendingTodoNavigationRef = useRef<"previous" | "next" | null>(null);
   const selectedTodoSavedStatusRef = useRef<TodoStatus | null>(restoredUiState.todos.draft?.todo_status ?? null);
   const [conversionTarget, setConversionTarget] = useState<ConversionTarget | null>(null);
@@ -663,6 +677,7 @@ function App() {
   const [englishMaterialSortBy, setEnglishMaterialSortBy] = useState<EnglishMaterialSortBy>(restoredUiState.englishMaterials.sortBy);
   const [englishMaterialSortDir, setEnglishMaterialSortDir] = useState<SortDirection>(restoredUiState.englishMaterials.sortDir);
   const [selectedEnglishMaterial, setSelectedEnglishMaterial] = useState<EnglishMaterialItem | null>(null);
+  todoCurrentAppendTargetRef.current = todoCurrentAppendTarget;
   const [isEnglishMaterialDetailOpen, setIsEnglishMaterialDetailOpen] = useState(false);
   const [englishMaterialDraft, setEnglishMaterialDraft] = useState<EnglishMaterialDraft>(restoredUiState.englishMaterials.draft);
   const [englishMaterialDetailDraft, setEnglishMaterialDetailDraft] = useState<EnglishMaterialDraft>(emptyEnglishMaterialDraft);
@@ -854,8 +869,7 @@ function App() {
       setTodoCopyError(null);
       setHasCopiedTodoContent(false);
       setIsConvertingTodoToKnowledge(false);
-      setPendingTodoCurrentAppend(null);
-      setTodoCurrentAppendTarget({ username: "", type: "" });
+      resetTodoCurrentAppendState();
       setIsAppendingTodoToCurrent(false);
       setConversionTarget(null);
       setCurrentRecordItems([]);
@@ -2510,8 +2524,7 @@ function App() {
     setTodoDraft(emptyTodoDraft);
     setTodoCopyError(null);
     setHasCopiedTodoContent(false);
-    setPendingTodoCurrentAppend(null);
-    setTodoCurrentAppendTarget({ username: "", type: "" });
+    resetTodoCurrentAppendState();
     setIsAppendingTodoToCurrent(false);
     setCurrentRecordItems([]);
     setCurrentRecordTotal(0);
@@ -2846,6 +2859,68 @@ function App() {
     }
   }
 
+  function resetTodoCurrentAppendState() {
+    todoCurrentAppendRequestRef.current += 1;
+    setPendingTodoCurrentAppend(null);
+    setTodoCurrentAppendTarget({ username: "", type: "", week: "", day: "" });
+    setIsTodoCurrentAppendOptionsLoading(false);
+  }
+
+  async function hydrateTodoCurrentAppendTarget(options: CurrentRecordOptions, preferred?: CurrentAppendTarget) {
+    const nextTarget = resolveCurrentAppendTarget(options, preferred);
+    const preferredWeek = preferred?.username === nextTarget.username && preferred?.type === nextTarget.type ? preferred.week : "";
+    const preferredDay = preferred?.username === nextTarget.username && preferred?.type === nextTarget.type ? preferred.day : "";
+    setTodoCurrentAppendTarget(nextTarget);
+
+    if (!nextTarget.username || !nextTarget.type) return;
+
+    const requestId = ++todoCurrentAppendRequestRef.current;
+    setIsTodoCurrentAppendOptionsLoading(true);
+    try {
+      const response = await fetchCurrentRecords({
+        username: nextTarget.username,
+        type: nextTarget.type,
+        sortBy: "id",
+        sortDir: "desc",
+        limit: 1,
+        offset: 0,
+      });
+      if (todoCurrentAppendRequestRef.current !== requestId) return;
+
+      const matched = response.items[0];
+      if (!matched) {
+        setTodoCurrentAppendTarget((current) =>
+          current.username === nextTarget.username && current.type === nextTarget.type ? { ...current, week: "", day: "" } : current,
+        );
+        setTodoSaveError("未找到对应的当前记录，请先检查用户和类型。");
+        return;
+      }
+
+      setTodoCurrentAppendTarget((current) =>
+        current.username === nextTarget.username && current.type === nextTarget.type
+          ? { ...current, week: preferredWeek || matched.week, day: preferredDay || matched.day }
+          : current,
+      );
+    } catch (error) {
+      if (todoCurrentAppendRequestRef.current !== requestId) return;
+      setTodoSaveError(error instanceof Error ? error.message : "当前记录读取失败，请稍后重试。");
+    } finally {
+      if (todoCurrentAppendRequestRef.current === requestId) {
+        setIsTodoCurrentAppendOptionsLoading(false);
+      }
+    }
+  }
+
+  function handleTodoCurrentAppendTargetChange(nextTarget: CurrentAppendTarget) {
+    if (nextTarget.username !== todoCurrentAppendTarget.username || nextTarget.type !== todoCurrentAppendTarget.type) {
+      setTodoSaveError(null);
+      void hydrateTodoCurrentAppendTarget(currentRecordOptions, nextTarget);
+      return;
+    }
+
+    setTodoCurrentAppendTarget(nextTarget);
+  }
+
   async function prepareTodoCurrentAppend(todo: TodoItem) {
     setPendingTodoCurrentAppend(todo);
     setTodoSaveError(null);
@@ -2854,20 +2929,17 @@ function App() {
     if (cached) {
       const nextOptions = normalizeCurrentRecordOptions(cached);
       setCurrentRecordOptions(nextOptions);
-      setTodoCurrentAppendTarget((current) => resolveCurrentAppendTarget(nextOptions, current));
+      void hydrateTodoCurrentAppendTarget(nextOptions, todoCurrentAppendTargetRef.current);
     } else {
-      setTodoCurrentAppendTarget((current) => resolveCurrentAppendTarget(currentRecordOptions, current));
+      void hydrateTodoCurrentAppendTarget(currentRecordOptions, todoCurrentAppendTargetRef.current);
     }
 
-    setIsTodoCurrentAppendOptionsLoading(!cached);
     try {
       const options = normalizeCurrentRecordOptions(await fetchCurrentRecordOptions());
       setCurrentRecordOptions(options);
-      setTodoCurrentAppendTarget((current) => resolveCurrentAppendTarget(options, current));
+      void hydrateTodoCurrentAppendTarget(options, todoCurrentAppendTargetRef.current);
     } catch (error) {
       setTodoSaveError(error instanceof Error ? error.message : "当前记录选项读取失败，请稍后重试。");
-    } finally {
-      setIsTodoCurrentAppendOptionsLoading(false);
     }
   }
 
@@ -2876,7 +2948,9 @@ function App() {
       pendingTodoCurrentAppend === null ||
       isAppendingTodoToCurrent ||
       !todoCurrentAppendTarget.username ||
-      !todoCurrentAppendTarget.type
+      !todoCurrentAppendTarget.type ||
+      !todoCurrentAppendTarget.week ||
+      !todoCurrentAppendTarget.day
     ) {
       return;
     }
@@ -2888,11 +2962,13 @@ function App() {
         id: pendingTodoCurrentAppend.id,
         username: todoCurrentAppendTarget.username,
         type: todoCurrentAppendTarget.type,
+        week: todoCurrentAppendTarget.week,
+        day: todoCurrentAppendTarget.day,
       });
       clearApiResponseCache();
       setCurrentRecordItems((current) => current.map((item) => (item.id === updated.id ? updated : item)));
       setCurrentRecordRefreshToken((current) => current + 1);
-      setPendingTodoCurrentAppend(null);
+      resetTodoCurrentAppendState();
     } catch (error) {
       setTodoSaveError(error instanceof Error ? error.message : "追加到当前记录失败，请稍后重试。");
     } finally {
@@ -4379,12 +4455,12 @@ function App() {
         target={todoCurrentAppendTarget}
         todo={pendingTodoCurrentAppend}
         onCancel={() => {
-          if (!isAppendingTodoToCurrent) setPendingTodoCurrentAppend(null);
+          if (!isAppendingTodoToCurrent) resetTodoCurrentAppendState();
         }}
         onConfirm={() => {
           void confirmTodoCurrentAppend();
         }}
-        onTargetChange={setTodoCurrentAppendTarget}
+        onTargetChange={handleTodoCurrentAppendTargetChange}
       />
       <AppConfirmDialog
         confirmLabel={isBlogFactoryDeleting ? "删除中" : "确认删除"}
@@ -5137,7 +5213,7 @@ function TodoCurrentAppendDialog({
 
   const userOptions = options.users.filter((user) => (options.user_types[user] ?? []).length > 0);
   const typeOptions = target.username ? options.user_types[target.username] ?? [] : [];
-  const canConfirm = Boolean(target.username && target.type) && !isLoadingOptions && !isPending;
+  const canConfirm = Boolean(target.username && target.type && target.week && target.day) && !isLoadingOptions && !isPending;
 
   return (
     <div
@@ -5177,7 +5253,7 @@ function TodoCurrentAppendDialog({
               value={target.username}
               onChange={(event) => {
                 const username = event.target.value;
-                onTargetChange(resolveCurrentAppendTarget(options, { username, type: target.type }));
+                onTargetChange(resolveCurrentAppendTarget(options, { username, type: target.type, week: "", day: "" }));
               }}
             >
               {userOptions.length === 0 ? <option value="">暂无用户</option> : null}
@@ -5193,7 +5269,7 @@ function TodoCurrentAppendDialog({
               className="control"
               disabled={isLoadingOptions || isPending || typeOptions.length === 0}
               value={target.type}
-              onChange={(event) => onTargetChange({ ...target, type: event.target.value })}
+              onChange={(event) => onTargetChange({ ...target, type: event.target.value, week: "", day: "" })}
             >
               {typeOptions.length === 0 ? <option value="">暂无类型</option> : null}
               {typeOptions.map((type) => (
@@ -5203,11 +5279,41 @@ function TodoCurrentAppendDialog({
               ))}
             </select>
           </Field>
+          <Field label="Week" icon={<CalendarClock size={16} />}>
+            <select
+              className="control"
+              disabled={isLoadingOptions || isPending || !target.type}
+              value={target.week}
+              onChange={(event) => onTargetChange({ ...target, week: event.target.value as CurrentWeek })}
+            >
+              <option value="">选择 Week</option>
+              {options.weeks.map((week) => (
+                <option key={week} value={week}>
+                  {week}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Day" icon={<CalendarClock size={16} />}>
+            <select
+              className="control"
+              disabled={isLoadingOptions || isPending || !target.type}
+              value={target.day}
+              onChange={(event) => onTargetChange({ ...target, day: event.target.value as CurrentDay })}
+            >
+              <option value="">选择 Day</option>
+              {options.days.map((day) => (
+                <option key={day} value={day}>
+                  {day}
+                </option>
+              ))}
+            </select>
+          </Field>
         </div>
 
         <div className="mb-5 flex items-start gap-2 rounded-lg border border-mint-300/25 bg-mint-300/10 px-3 py-3 text-sm text-mint-100">
           {isLoadingOptions ? <Loader2 className="mt-0.5 shrink-0 animate-spin" size={17} /> : <FilePlus2 className="mt-0.5 shrink-0" size={17} />}
-          <span>确认后会把任务目标和任务内容追加到所选当前记录的 CONTENT 最前面，原内容保持不变。</span>
+          <span>确认后会把任务目标和任务内容追加到所选当前记录的 CONTENT 最前面，并按你的选择同步更新 Week / Day。</span>
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">
@@ -12084,16 +12190,18 @@ function resolveCurrentAppendTarget(options: CurrentRecordOptions, preferred?: C
   const defaultUser = usersWithTypes.includes("Alfred") ? "Alfred" : usersWithTypes[0] || "";
   const username = preferred?.username && preferredTypes.length > 0 ? preferred.username : defaultUser;
   const typeOptions = username ? options.user_types[username] ?? [] : [];
+  const week = preferred?.week && options.weeks.includes(preferred.week) ? preferred.week : "";
+  const day = preferred?.day && options.days.includes(preferred.day) ? preferred.day : "";
 
   if (preferred?.type && typeOptions.includes(preferred.type)) {
-    return { username, type: preferred.type };
+    return { username, type: preferred.type, week, day };
   }
 
   if (username === "Alfred" && typeOptions.includes("Work")) {
-    return { username, type: "Work" };
+    return { username, type: "Work", week, day };
   }
 
-  return { username, type: typeOptions[0] || "" };
+  return { username, type: typeOptions[0] || "", week, day };
 }
 
 function getNextWeek(value: CurrentWeek): CurrentWeek {

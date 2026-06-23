@@ -1,7 +1,9 @@
 import type {
   BlogFactoryItem,
+  CurrentDay,
   BlogFactoryStatus,
   CurrentRecordItem,
+  CurrentWeek,
   KnowledgeDraft,
   KnowledgeItem,
   KnowledgeStatus,
@@ -297,14 +299,18 @@ export async function appendTodoToCurrent({
   id,
   username,
   type,
+  week,
+  day,
 }: {
   id: number;
   username: string;
   type: string;
+  week: CurrentWeek;
+  day: CurrentDay;
 }): Promise<CurrentRecordItem> {
   return request<CurrentRecordItem>(`/api/todos/${id}/append-to-current`, {
     method: "POST",
-    body: JSON.stringify({ username, type }),
+    body: JSON.stringify({ username, type, week, day }),
   });
 }
 

@@ -3,6 +3,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.schemas.current_records import DayValue, WeekValue
+
 
 TodoStatus = Literal["待处理", "处理中", "已完成"]
 
@@ -64,6 +66,8 @@ class TodoUpdate(BaseModel):
 class TodoCurrentAppendTarget(BaseModel):
     username: str = Field(..., min_length=1, max_length=30)
     type: str = Field(..., min_length=1, max_length=40)
+    week: WeekValue | None = None
+    day: DayValue | None = None
 
     @field_validator("username", "type")
     @classmethod

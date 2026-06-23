@@ -98,6 +98,8 @@ async def post_todo_append_to_current(
         updated = await prepend_todo_to_current_content(
             username=payload.username,
             current_type=payload.type,
+            week=payload.week,
+            day=payload.day,
             todo_title=todo["title"],
             todo_content=todo["content"],
             auth_context=auth_context,

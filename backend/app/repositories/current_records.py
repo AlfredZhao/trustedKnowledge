@@ -337,6 +337,8 @@ async def prepend_todo_to_current_content(
     *,
     username: str,
     current_type: str,
+    week: str | None,
+    day: str | None,
     todo_title: str,
     todo_content: str,
     auth_context: AuthContext,
@@ -356,7 +358,10 @@ async def prepend_todo_to_current_content(
     """
     update_sql = """
         update t_current
-        set content = :content
+        set week = :week,
+            day = :day,
+            content = :content,
+            learn_level = :learn_level
         where id = :record_id
     """
 
@@ -372,8 +377,23 @@ async def prepend_todo_to_current_content(
         prepended = _format_todo_current_entry(todo_title, todo_content)
         existing_content = current["content"] or ""
         next_content = prepended if not existing_content.strip() else f"{prepended}\n\n{existing_content}"
+        next_payload = CurrentRecordUpdate(
+            week=week or current["week"],
+            day=day or current["day"],
+            content=next_content,
+        )
+        next_level = _resolve_next_level(current, next_payload)
 
-        await cursor.execute(update_sql, {"record_id": current["id"], "content": next_content})
+        await cursor.execute(
+            update_sql,
+            {
+                "record_id": current["id"],
+                "week": next_payload.week,
+                "day": next_payload.day,
+                "content": next_content,
+                "learn_level": next_level,
+            },
+        )
         await connection.commit()
 
     return await get_current_record(current["id"], auth_context)
