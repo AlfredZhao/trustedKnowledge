@@ -3624,6 +3624,7 @@ function App() {
           <Topbar
             activeView={activeView}
             availableItems={availableFunctionNavItems}
+            currentUsername={authUser?.username ?? ""}
             query={
               activeView === "overview"
                 ? ""
@@ -4401,6 +4402,7 @@ function Topbar({
   activeView,
   aiCodingNotice,
   availableItems,
+  currentUsername,
   query,
   statusFilter,
   title,
@@ -4413,6 +4415,7 @@ function Topbar({
   activeView: AppView;
   aiCodingNotice: AiCodingNoticeStatus | null;
   availableItems: FunctionNavItem[];
+  currentUsername: string;
   query: string;
   statusFilter?: KnowledgeStatus | "all";
   title: string;
@@ -4559,6 +4562,13 @@ function Topbar({
           ) : null}
         </div>
         ) : null}
+        <div
+          className="flex h-11 min-w-0 max-w-full items-center rounded-lg border border-white/10 bg-white/[0.028] px-3 text-sm text-slate-400"
+          title={`当前登录用户：${currentUsername}`}
+        >
+          <span className="mr-1 hidden text-slate-500 sm:inline">您好，</span>
+          <span className="truncate font-medium text-slate-200">{currentUsername}</span>
+        </div>
         <button
           className="grid h-11 w-11 place-items-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-300 transition hover:border-red-300/30 hover:text-red-200"
           title="退出登录"
