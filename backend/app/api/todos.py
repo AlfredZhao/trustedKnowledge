@@ -21,6 +21,7 @@ async def get_todos(
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
     q: Annotated[str | None, Query(min_length=1, max_length=400)] = None,
+    username: Annotated[str | None, Query(min_length=1, max_length=100)] = None,
     status_filter: Annotated[
         Literal["待处理", "处理中", "已完成"] | None,
         Query(alias="status"),
@@ -32,6 +33,7 @@ async def get_todos(
             limit=limit,
             offset=offset,
             q=q,
+            username=username,
             todo_status=status_filter,
             auth_context=auth_context,
         )

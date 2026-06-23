@@ -5,7 +5,7 @@ from typing import Any
 import oracledb
 
 from app.db.oracle import acquire_connection
-from app.repositories.users import AuthContext, append_user_visibility_clause
+from app.repositories.users import AuthContext, append_requested_username_clause, append_user_visibility_clause
 from app.schemas.blog_factory import (
     BlogFactoryArticleUpdate,
     BlogFactoryContentStatusUpdate,
@@ -152,7 +152,7 @@ def _build_filters(
     topic: str | None,
     knowledge_id: int | None,
     auth_context: AuthContext,
-) -> tuple[str, dict[str, Any]]:
+) -> tuple[list[str], dict[str, Any]]:
     clauses: list[str] = []
     params: dict[str, Any] = {}
 
@@ -179,11 +179,7 @@ def _build_filters(
         params["knowledge_id"] = knowledge_id
 
     append_user_visibility_clause(clauses, params, auth_context, "factory_item.user_id")
-
-    if not clauses:
-        return "", params
-
-    return " where " + " and ".join(clauses), params
+    return clauses, params
 
 
 async def list_blog_factory_items(
@@ -191,6 +187,7 @@ async def list_blog_factory_items(
     limit: int,
     offset: int,
     q: str | None = None,
+    username: str | None = None,
     factory_status: str | None = None,
     topic: str | None = None,
     knowledge_id: int | None = None,
@@ -198,21 +195,30 @@ async def list_blog_factory_items(
     sort_dir: str = "desc",
     auth_context: AuthContext,
 ) -> tuple[list[dict[str, Any]], int]:
-    where_sql, params = _build_filters(q, factory_status, topic, knowledge_id, auth_context)
     sort_column = SORT_COLUMNS.get(sort_by, "copied_at")
     sort_direction = "asc" if sort_dir == "asc" else "desc"
 
-    count_sql = f"select count(*) from ai_blog_factory factory_item{where_sql}"
-    list_sql = f"""
-        select {COMMON_COLUMNS}
-        from ai_blog_factory factory_item
-        {where_sql}
-        order by {sort_column} {sort_direction} nulls last, factory_item.id desc
-        offset :offset rows fetch next :limit rows only
-    """
-
     async with acquire_connection() as connection:
         await _ensure_blog_factory_table(connection)
+        clauses, params = _build_filters(q, factory_status, topic, knowledge_id, auth_context)
+        await append_requested_username_clause(
+            connection,
+            clauses,
+            params,
+            auth_context,
+            username,
+            "factory_item.user_id",
+        )
+        where_sql = f" where {' and '.join(clauses)}" if clauses else ""
+
+        count_sql = f"select count(*) from ai_blog_factory factory_item{where_sql}"
+        list_sql = f"""
+            select {COMMON_COLUMNS}
+            from ai_blog_factory factory_item
+            {where_sql}
+            order by {sort_column} {sort_direction} nulls last, factory_item.id desc
+            offset :offset rows fetch next :limit rows only
+        """
         cursor = connection.cursor()
         await cursor.execute(count_sql, params)
         count_row = await cursor.fetchone()

@@ -32,6 +32,7 @@ async def get_knowledge(
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
     q: Annotated[str | None, Query(min_length=1, max_length=200)] = None,
+    username: Annotated[str | None, Query(min_length=1, max_length=100)] = None,
     topic: Annotated[str | None, Query(min_length=1, max_length=100)] = None,
     source: Annotated[str | None, Query(min_length=1, max_length=200)] = None,
     status_filter: Annotated[
@@ -44,6 +45,7 @@ async def get_knowledge(
         limit=limit,
         offset=offset,
         q=q,
+        username=username,
         topic=topic,
         source=source,
         status=status_filter,

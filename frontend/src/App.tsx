@@ -299,6 +299,7 @@ interface StoredUiState {
   sidebarExpanded: boolean;
   workbench: {
     query: string;
+    username: string;
     statusFilter: KnowledgeStatus | "all";
     page: number;
     selectedId: number | null;
@@ -306,6 +307,7 @@ interface StoredUiState {
   };
   factory: {
     query: string;
+    username: string;
     page: number;
     selectedId: number | null;
     task: string;
@@ -314,6 +316,7 @@ interface StoredUiState {
   };
   blogFactory: {
     query: string;
+    username: string;
     page: number;
     status: BlogFactoryStatus | "all";
     topic: string;
@@ -326,6 +329,7 @@ interface StoredUiState {
   };
   todos: {
     query: string;
+    username: string;
     page: number;
     status: TodoStatus | "all";
     selectedId: number | null;
@@ -345,6 +349,7 @@ interface StoredUiState {
   };
   englishMaterials: {
     query: string;
+    username: string;
     page: number;
     category: string;
     flag: "" | "0" | "1";
@@ -413,6 +418,25 @@ function canAccessView(view: AppView, authUser: AuthUser | null): boolean {
     return Boolean(authUser?.is_admin || authUser?.visible_admin_modules.includes(view));
   }
   return true;
+}
+
+function getVisibleUsers(authUser: AuthUser | null): string[] {
+  return authUser?.visible_users ?? [];
+}
+
+function getDefaultOwnedUsername(authUser: AuthUser | null): string {
+  if (!authUser || authUser.is_admin) return "";
+  const visibleUsers = getVisibleUsers(authUser);
+  if (visibleUsers.includes(authUser.username)) return authUser.username;
+  return visibleUsers[0] ?? authUser.username;
+}
+
+function resolveScopedUsernameFilter(authUser: AuthUser | null, currentValue: string): string {
+  if (!authUser) return currentValue;
+  if (authUser.is_admin) return currentValue;
+  const visibleUsers = getVisibleUsers(authUser);
+  if (currentValue && visibleUsers.includes(currentValue)) return currentValue;
+  return getDefaultOwnedUsername(authUser);
 }
 
 interface AiCodingMessage {
@@ -486,6 +510,7 @@ function App() {
   const [draft, setDraft] = useState<KnowledgeDraft>(() => restoredUiState.workbench.draft ?? readStoredNewDraft() ?? emptyDraft);
   const [query, setQuery] = useState(restoredUiState.workbench.query);
   const [debouncedQuery, setDebouncedQuery] = useState(restoredUiState.workbench.query.trim());
+  const [workbenchUsername, setWorkbenchUsername] = useState(restoredUiState.workbench.username);
   const [statusFilter, setStatusFilter] = useState<KnowledgeStatus | "all">(restoredUiState.workbench.statusFilter);
   const [isTodoEntry, setIsTodoEntry] = useState(false);
   const [page, setPage] = useState(restoredUiState.workbench.page);
@@ -508,6 +533,7 @@ function App() {
   const [factoryPage, setFactoryPage] = useState(restoredUiState.factory.page);
   const [factoryQuery, setFactoryQuery] = useState(restoredUiState.factory.query);
   const [debouncedFactoryQuery, setDebouncedFactoryQuery] = useState(restoredUiState.factory.query.trim());
+  const [factoryUsername, setFactoryUsername] = useState(restoredUiState.factory.username);
   const [factorySelectedId, setFactorySelectedId] = useState<number | null>(restoredUiState.factory.selectedId);
   const [factoryTask, setFactoryTask] = useState(restoredUiState.factory.task);
   const [factorySkillIds, setFactorySkillIds] = useState<string[]>(restoredUiState.factory.skillIds);
@@ -529,6 +555,7 @@ function App() {
   const [blogFactoryPage, setBlogFactoryPage] = useState(restoredUiState.blogFactory.page);
   const [blogFactoryQuery, setBlogFactoryQuery] = useState(restoredUiState.blogFactory.query);
   const [debouncedBlogFactoryQuery, setDebouncedBlogFactoryQuery] = useState(restoredUiState.blogFactory.query.trim());
+  const [blogFactoryUsername, setBlogFactoryUsername] = useState(restoredUiState.blogFactory.username);
   const [blogFactoryStatus, setBlogFactoryStatus] = useState<BlogFactoryStatus | "all">(restoredUiState.blogFactory.status);
   const [blogFactoryTopic, setBlogFactoryTopic] = useState(restoredUiState.blogFactory.topic);
   const [blogFactoryKnowledgeId, setBlogFactoryKnowledgeId] = useState(restoredUiState.blogFactory.knowledgeId);
@@ -566,6 +593,7 @@ function App() {
   const [todoPage, setTodoPage] = useState(restoredUiState.todos.page);
   const [todoQuery, setTodoQuery] = useState(restoredUiState.todos.query);
   const [debouncedTodoQuery, setDebouncedTodoQuery] = useState(restoredUiState.todos.query.trim());
+  const [todoUsername, setTodoUsername] = useState(restoredUiState.todos.username);
   const [todoStatus, setTodoStatus] = useState<TodoStatus | "all">(restoredUiState.todos.status);
   const [selectedTodoId, setSelectedTodoId] = useState<number | null>(restoredUiState.todos.selectedId);
   const [isMobileTodoEditorOpen, setIsMobileTodoEditorOpen] = useState(false);
@@ -621,6 +649,7 @@ function App() {
   const [englishMaterialPage, setEnglishMaterialPage] = useState(restoredUiState.englishMaterials.page);
   const [englishMaterialQuery, setEnglishMaterialQuery] = useState(restoredUiState.englishMaterials.query);
   const [debouncedEnglishMaterialQuery, setDebouncedEnglishMaterialQuery] = useState(restoredUiState.englishMaterials.query.trim());
+  const [englishMaterialUsername, setEnglishMaterialUsername] = useState(restoredUiState.englishMaterials.username);
   const [englishMaterialCategory, setEnglishMaterialCategory] = useState(restoredUiState.englishMaterials.category);
   const [englishMaterialFlag, setEnglishMaterialFlag] = useState(restoredUiState.englishMaterials.flag);
   const [englishMaterialSortBy, setEnglishMaterialSortBy] = useState<EnglishMaterialSortBy>(restoredUiState.englishMaterials.sortBy);
@@ -798,13 +827,17 @@ function App() {
       setApiKey(null);
       setAuthUser(null);
       setItems([]);
+      setWorkbenchUsername("");
       setSelectedId(null);
       setIsMobileKnowledgeEditorOpen(false);
       setIsConvertingKnowledgeToTodo(false);
+      setFactoryUsername("");
       setBlogFactoryItems([]);
+      setBlogFactoryUsername("");
       setBlogFactoryTotal(0);
       setSelectedBlogFactoryItem(null);
       setTodoItems([]);
+      setTodoUsername("");
       setTodoTotal(0);
       setSelectedTodoId(null);
       selectedTodoSavedStatusRef.current = null;
@@ -821,6 +854,7 @@ function App() {
       setSelectedCurrentRecord(null);
       setPendingCurrentRecordUpdate(null);
       setEnglishMaterialItems([]);
+      setEnglishMaterialUsername("");
       setEnglishMaterialTotal(0);
       setSelectedEnglishMaterial(null);
       setUsageItems([]);
@@ -899,6 +933,16 @@ function App() {
   }, [apiKey, authUser]);
 
   useEffect(() => {
+    if (!authUser) return;
+
+    setWorkbenchUsername((current) => resolveScopedUsernameFilter(authUser, current));
+    setFactoryUsername((current) => resolveScopedUsernameFilter(authUser, current));
+    setBlogFactoryUsername((current) => resolveScopedUsernameFilter(authUser, current));
+    setTodoUsername((current) => resolveScopedUsernameFilter(authUser, current));
+    setEnglishMaterialUsername((current) => resolveScopedUsernameFilter(authUser, current));
+  }, [authUser]);
+
+  useEffect(() => {
     if (activeView !== "workbench") {
       setIsMobileKnowledgeEditorOpen(false);
     }
@@ -915,6 +959,7 @@ function App() {
       sidebarExpanded: isSidebarExpanded,
       workbench: {
         query,
+        username: workbenchUsername,
         statusFilter,
         page,
         selectedId,
@@ -922,6 +967,7 @@ function App() {
       },
       factory: {
         query: factoryQuery,
+        username: factoryUsername,
         page: factoryPage,
         selectedId: factorySelectedId,
         task: factoryTask,
@@ -930,6 +976,7 @@ function App() {
       },
       blogFactory: {
         query: blogFactoryQuery,
+        username: blogFactoryUsername,
         page: blogFactoryPage,
         status: blogFactoryStatus,
         topic: blogFactoryTopic,
@@ -942,6 +989,7 @@ function App() {
       },
       todos: {
         query: todoQuery,
+        username: todoUsername,
         page: todoPage,
         status: todoStatus,
         selectedId: selectedTodoId,
@@ -961,6 +1009,7 @@ function App() {
       },
       englishMaterials: {
         query: englishMaterialQuery,
+        username: englishMaterialUsername,
         page: englishMaterialPage,
         category: englishMaterialCategory,
         flag: englishMaterialFlag,
@@ -1006,6 +1055,7 @@ function App() {
     blogFactoryKnowledgeId,
     blogFactoryPage,
     blogFactoryQuery,
+    blogFactoryUsername,
     blogFactorySortBy,
     blogFactorySortDir,
     blogFactoryStatus,
@@ -1025,6 +1075,7 @@ function App() {
     englishMaterialFlag,
     englishMaterialPage,
     englishMaterialQuery,
+    englishMaterialUsername,
     englishMaterialSortBy,
     englishMaterialSortDir,
     draft,
@@ -1057,10 +1108,13 @@ function App() {
     selectedEnglishMaterial?.id,
     selectedId,
     statusFilter,
+    workbenchUsername,
     todoDraft,
     todoPage,
     todoQuery,
+    todoUsername,
     todoStatus,
+    factoryUsername,
     selectedTodoId,
   ]);
 
@@ -1353,6 +1407,7 @@ function App() {
     let mounted = true;
     const requestQuery = {
       query: debouncedQuery,
+      username: workbenchUsername,
       limit: PAGE_SIZE,
       offset: (page - 1) * PAGE_SIZE,
       status: statusFilter === "all" ? undefined : statusFilter,
@@ -1404,7 +1459,7 @@ function App() {
     return () => {
       mounted = false;
     };
-  }, [activeView, apiKey, debouncedQuery, page, refreshToken, statusFilter]);
+  }, [activeView, apiKey, debouncedQuery, page, refreshToken, statusFilter, workbenchUsername]);
 
   useEffect(() => {
     if (!apiKey) return;
@@ -1425,6 +1480,7 @@ function App() {
     let mounted = true;
     const requestQuery = {
       query: debouncedFactoryQuery,
+      username: factoryUsername,
       limit: FACTORY_PAGE_SIZE,
       offset: (factoryPage - 1) * FACTORY_PAGE_SIZE,
       status: "未发布",
@@ -1472,7 +1528,7 @@ function App() {
     return () => {
       mounted = false;
     };
-  }, [activeView, apiKey, debouncedFactoryQuery, factoryPage, factoryRefreshToken]);
+  }, [activeView, apiKey, debouncedFactoryQuery, factoryPage, factoryRefreshToken, factoryUsername]);
 
   useEffect(() => {
     if (!apiKey) return;
@@ -1493,6 +1549,7 @@ function App() {
     let mounted = true;
     const requestQuery = {
       query: debouncedBlogFactoryQuery,
+      username: blogFactoryUsername,
       limit: BLOG_FACTORY_PAGE_SIZE,
       offset: (blogFactoryPage - 1) * BLOG_FACTORY_PAGE_SIZE,
       factoryStatus: blogFactoryStatus === "all" ? undefined : blogFactoryStatus,
@@ -1547,6 +1604,7 @@ function App() {
     blogFactorySortDir,
     blogFactoryStatus,
     blogFactoryTopic,
+    blogFactoryUsername,
     debouncedBlogFactoryQuery,
   ]);
 
@@ -1569,6 +1627,7 @@ function App() {
     let mounted = true;
     const requestQuery = {
       query: debouncedTodoQuery,
+      username: todoUsername,
       limit: TODO_PAGE_SIZE,
       offset: (todoPage - 1) * TODO_PAGE_SIZE,
       status: todoStatus === "all" ? undefined : todoStatus,
@@ -1623,7 +1682,7 @@ function App() {
     return () => {
       mounted = false;
     };
-  }, [activeView, apiKey, debouncedTodoQuery, todoPage, todoRefreshToken, todoStatus]);
+  }, [activeView, apiKey, debouncedTodoQuery, todoPage, todoRefreshToken, todoStatus, todoUsername]);
 
   useEffect(() => {
     if (!apiKey || activeView !== "currentRecords") return;
@@ -1763,6 +1822,7 @@ function App() {
     let mounted = true;
     const requestQuery = {
       query: debouncedEnglishMaterialQuery,
+      username: englishMaterialUsername,
       category: englishMaterialCategory,
       flag: englishMaterialFlag,
       sortBy: englishMaterialSortBy,
@@ -1812,13 +1872,14 @@ function App() {
     englishMaterialRefreshToken,
     englishMaterialSortBy,
     englishMaterialSortDir,
+    englishMaterialUsername,
   ]);
 
   useEffect(() => {
     if (!apiKey || activeView !== "englishMaterials") return;
 
     let mounted = true;
-    fetchNextEnglishMaterialSequence()
+    fetchNextEnglishMaterialSequence({ username: englishMaterialUsername })
       .then((nextSequence) => {
         if (!mounted) return;
         setEnglishMaterialDraft((current) => {
@@ -1838,7 +1899,7 @@ function App() {
     return () => {
       mounted = false;
     };
-  }, [activeView, apiKey, englishMaterialRefreshToken]);
+  }, [activeView, apiKey, englishMaterialRefreshToken, englishMaterialUsername]);
 
   useEffect(() => {
     if (!apiKey) return;
@@ -2389,10 +2450,15 @@ function App() {
     setPage(1);
     setDebouncedQuery("");
     setQuery("");
+    setWorkbenchUsername(getDefaultOwnedUsername(nextAuthUser));
     setSelectedId(null);
     setIsMobileKnowledgeEditorOpen(false);
     setDraft(readStoredNewDraft() ?? emptyDraft);
     setIsTodoEntry(false);
+    setFactoryUsername(getDefaultOwnedUsername(nextAuthUser));
+    setBlogFactoryUsername(getDefaultOwnedUsername(nextAuthUser));
+    setTodoUsername(getDefaultOwnedUsername(nextAuthUser));
+    setEnglishMaterialUsername(getDefaultOwnedUsername(nextAuthUser));
   }
 
   function handleLogout() {
@@ -2403,11 +2469,13 @@ function App() {
     setApiKey(null);
     setAuthUser(null);
     setItems([]);
+    setWorkbenchUsername("");
     setSelectedId(null);
     setIsMobileKnowledgeEditorOpen(false);
     setDraft(emptyDraft);
     setFactoryItems([]);
     setFactorySelectedId(null);
+    setFactoryUsername("");
     setFactoryTask("");
     setFactorySkillIds([]);
     setFactoryCodexJobId(null);
@@ -2416,9 +2484,11 @@ function App() {
     setFactoryCodexErrorOutput("");
     setBlogFactoryItems([]);
     setBlogFactoryTotal(0);
+    setBlogFactoryUsername("");
     setSelectedBlogFactoryItem(null);
     setTodoItems([]);
     setTodoTotal(0);
+    setTodoUsername("");
     setSelectedTodoId(null);
     selectedTodoSavedStatusRef.current = null;
     setIsMobileTodoEditorOpen(false);
@@ -2431,14 +2501,15 @@ function App() {
     setCurrentRecordItems([]);
     setCurrentRecordTotal(0);
     setSelectedCurrentRecord(null);
-      setEnglishMaterialItems([]);
-      setEnglishMaterialTotal(0);
-      setSelectedEnglishMaterial(null);
-      setIsEnglishMaterialDetailOpen(false);
-      englishMaterialSequenceTouchedRef.current = false;
-      setEnglishMaterialDraft(emptyEnglishMaterialDraft);
-      setEnglishMaterialDetailDraft(emptyEnglishMaterialDraft);
-      setEnglishMaterialCopiedLabel(null);
+    setEnglishMaterialItems([]);
+    setEnglishMaterialTotal(0);
+    setEnglishMaterialUsername("");
+    setSelectedEnglishMaterial(null);
+    setIsEnglishMaterialDetailOpen(false);
+    englishMaterialSequenceTouchedRef.current = false;
+    setEnglishMaterialDraft(emptyEnglishMaterialDraft);
+    setEnglishMaterialDetailDraft(emptyEnglishMaterialDraft);
+    setEnglishMaterialCopiedLabel(null);
     setUsageItems([]);
     setUsageTotal(0);
     setHistoryItems([]);
@@ -3800,6 +3871,7 @@ function App() {
             />
           ) : activeView === "blogFactory" ? (
             <BlogFactoryRecords
+              authUser={authUser}
               items={blogFactoryItems}
               total={blogFactoryTotal}
               page={blogFactoryPage}
@@ -3823,6 +3895,7 @@ function App() {
               hasCopiedArticle={hasCopiedBlogFactoryArticle}
               hasCopiedTask={hasCopiedBlogFactoryTask}
               filters={{
+                username: blogFactoryUsername,
                 factoryStatus: blogFactoryStatus,
                 topic: blogFactoryTopic,
                 knowledgeId: blogFactoryKnowledgeId,
@@ -3833,6 +3906,7 @@ function App() {
                 setBlogFactoryPage(1);
                 setBlogFactoryQuery("");
                 setDebouncedBlogFactoryQuery("");
+                setBlogFactoryUsername(getDefaultOwnedUsername(authUser));
                 setBlogFactoryStatus("all");
                 setBlogFactoryTopic("");
                 setBlogFactoryKnowledgeId("");
@@ -3841,6 +3915,7 @@ function App() {
               }}
               onFilterChange={(nextFilters) => {
                 setBlogFactoryPage(1);
+                if (nextFilters.username !== undefined) setBlogFactoryUsername(nextFilters.username);
                 if (nextFilters.factoryStatus !== undefined) setBlogFactoryStatus(nextFilters.factoryStatus);
                 if (nextFilters.topic !== undefined) setBlogFactoryTopic(nextFilters.topic);
                 if (nextFilters.knowledgeId !== undefined) setBlogFactoryKnowledgeId(nextFilters.knowledgeId);
@@ -3863,10 +3938,12 @@ function App() {
             />
           ) : activeView === "todos" ? (
             <TodoWorkspace
+              authUser={authUser}
               items={todoItems}
               total={todoTotal}
               page={todoPage}
               selectedId={selectedTodoId}
+              username={todoUsername}
               isMobileEditorOpen={isMobileTodoEditorOpen}
               draft={todoDraft}
               status={todoStatus}
@@ -3883,6 +3960,7 @@ function App() {
                 setTodoPage(1);
                 setTodoQuery("");
                 setDebouncedTodoQuery("");
+                setTodoUsername(getDefaultOwnedUsername(authUser));
                 setTodoStatus("all");
               }}
               onCloseMobileEditor={() => setIsMobileTodoEditorOpen(false)}
@@ -3895,6 +3973,10 @@ function App() {
               onStatusFilterChange={(nextStatus) => {
                 setTodoPage(1);
                 setTodoStatus(nextStatus);
+              }}
+              onUsernameFilterChange={(nextUsername) => {
+                setTodoPage(1);
+                setTodoUsername(nextUsername);
               }}
               onSubmit={handleUpdateTodo}
             />
@@ -3955,6 +4037,7 @@ function App() {
             />
           ) : activeView === "englishMaterials" ? (
             <EnglishMaterialsWorkspace
+              authUser={authUser}
               items={englishMaterialItems}
               total={englishMaterialTotal}
               page={englishMaterialPage}
@@ -3970,6 +4053,7 @@ function App() {
               loadError={englishMaterialError}
               saveError={englishMaterialSaveError}
               filters={{
+                username: englishMaterialUsername,
                 category: englishMaterialCategory,
                 flag: englishMaterialFlag,
                 sortBy: englishMaterialSortBy,
@@ -3979,6 +4063,7 @@ function App() {
                 setEnglishMaterialPage(1);
                 setEnglishMaterialQuery("");
                 setDebouncedEnglishMaterialQuery("");
+                setEnglishMaterialUsername(getDefaultOwnedUsername(authUser));
                 setEnglishMaterialCategory("");
                 setEnglishMaterialFlag("");
                 setEnglishMaterialSortBy("id");
@@ -3987,6 +4072,7 @@ function App() {
               onDraftChange={handleEnglishMaterialDraftChange}
               onFilterChange={(nextFilters) => {
                 setEnglishMaterialPage(1);
+                if (nextFilters.username !== undefined) setEnglishMaterialUsername(nextFilters.username);
                 if (nextFilters.category !== undefined) setEnglishMaterialCategory(nextFilters.category);
                 if (nextFilters.flag !== undefined) setEnglishMaterialFlag(nextFilters.flag);
                 if (nextFilters.sortBy !== undefined) setEnglishMaterialSortBy(nextFilters.sortBy);
@@ -4088,6 +4174,7 @@ function App() {
               />
 
               <KnowledgeList
+                authUser={authUser}
                 items={items}
                 totalItems={totalItems}
                 page={page}
@@ -4096,7 +4183,12 @@ function App() {
                 loadError={loadError}
                 selectedId={selectedId}
                 lastCreatedId={lastCreatedId}
+                username={workbenchUsername}
                 onPageChange={setPage}
+                onUsernameChange={(nextUsername) => {
+                  setPage(1);
+                  setWorkbenchUsername(nextUsername);
+                }}
                 onSelect={handleSelectItem}
               />
 
@@ -4108,6 +4200,7 @@ function App() {
             </div>
           ) : (
             <KnowledgeFactory
+              authUser={authUser}
               items={factoryItems}
               totalItems={factoryTotalItems}
               page={factoryPage}
@@ -4128,6 +4221,7 @@ function App() {
               codexErrorOutput={factoryCodexErrorOutput}
               codexStatus={factoryCodexStatus}
               searchQuery={factoryQuery}
+              username={factoryUsername}
               onClearSearch={() => {
                 setFactoryQuery("");
                 setDebouncedFactoryQuery("");
@@ -4137,6 +4231,10 @@ function App() {
               onGenerateTask={handleGenerateFactoryTask}
               onMergeKnowledge={handleMergeFactoryKnowledge}
               onPageChange={setFactoryPage}
+              onUsernameChange={(nextUsername) => {
+                setFactoryPage(1);
+                setFactoryUsername(nextUsername);
+              }}
               onSelect={(item) => {
                 setFactorySelectedId(item.id);
                 setFactoryTask("");
@@ -5467,6 +5565,7 @@ function Field({
 }
 
 function KnowledgeList({
+  authUser,
   items,
   totalItems,
   page,
@@ -5475,9 +5574,12 @@ function KnowledgeList({
   loadError,
   selectedId,
   lastCreatedId,
+  username,
   onPageChange,
+  onUsernameChange,
   onSelect,
 }: {
+  authUser: AuthUser | null;
   items: KnowledgeItem[];
   totalItems: number;
   page: number;
@@ -5486,12 +5588,18 @@ function KnowledgeList({
   loadError: string | null;
   selectedId: number | null;
   lastCreatedId: number | null;
+  username: string;
   onPageChange: (page: number) => void;
+  onUsernameChange: (username: string) => void;
   onSelect: (item: KnowledgeItem) => void;
 }) {
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
   const rangeStart = totalItems === 0 ? 0 : (page - 1) * pageSize + 1;
   const rangeEnd = Math.min(page * pageSize, totalItems);
+  const visibleUsers = getVisibleUsers(authUser);
+  const isAdminUser = authUser?.is_admin ?? false;
+  const hasSingleVisibleUser = !isAdminUser && visibleUsers.length <= 1;
+  const allUsersLabel = isAdminUser ? "全部用户" : "全部可见用户";
 
   return (
     <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/68 p-4 backdrop-blur-xl">
@@ -5506,6 +5614,24 @@ function KnowledgeList({
         <div className="rounded-lg border border-white/10 bg-white/[0.035] px-3 py-2 text-sm text-slate-300">
           {totalItems} 条
         </div>
+      </div>
+
+      <div className="mb-4">
+        <Field label="用户" icon={<ShieldCheck size={16} />}>
+          <select
+            className="control"
+            disabled={hasSingleVisibleUser}
+            value={username}
+            onChange={(event) => onUsernameChange(event.target.value)}
+          >
+            <option value="">{allUsersLabel}</option>
+            {visibleUsers.map((user) => (
+              <option key={user} value={user}>
+                {user}
+              </option>
+            ))}
+          </select>
+        </Field>
       </div>
 
       {isLoading ? (
@@ -5612,6 +5738,7 @@ function KnowledgeList({
 }
 
 function KnowledgeFactory({
+  authUser,
   items,
   totalItems,
   page,
@@ -5632,14 +5759,17 @@ function KnowledgeFactory({
   codexErrorOutput,
   codexStatus,
   searchQuery,
+  username,
   onClearSearch,
   onCopyTask,
   onGenerateTask,
   onMergeKnowledge,
   onPageChange,
+  onUsernameChange,
   onSelect,
   onToggleSkill,
 }: {
+  authUser: AuthUser | null;
   items: KnowledgeItem[];
   totalItems: number;
   page: number;
@@ -5660,11 +5790,13 @@ function KnowledgeFactory({
   codexErrorOutput: string;
   codexStatus: string;
   searchQuery: string;
+  username: string;
   onClearSearch: () => void;
   onCopyTask: (view: MarkdownContentView) => void;
   onGenerateTask: (item: KnowledgeItem) => void;
   onMergeKnowledge: (knowledgeIds: number[], mergeDraft: KnowledgeDraft) => Promise<KnowledgeItem>;
   onPageChange: (page: number) => void;
+  onUsernameChange: (username: string) => void;
   onSelect: (item: KnowledgeItem) => void;
   onToggleSkill: (skillId: string) => void;
 }) {
@@ -5679,6 +5811,10 @@ function KnowledgeFactory({
   const selectedMergeIds = selectedMergeItems.map((item) => item.id);
   const allVisibleSelected = items.length > 0 && items.every((item) => selectedMergeIds.includes(item.id));
   const trimmedSearchQuery = searchQuery.trim();
+  const visibleUsers = getVisibleUsers(authUser);
+  const isAdminUser = authUser?.is_admin ?? false;
+  const hasSingleVisibleUser = !isAdminUser && visibleUsers.length <= 1;
+  const allUsersLabel = isAdminUser ? "全部用户" : "全部可见用户";
 
   useEffect(() => {
     setSelectedMergeItems((current) => current.map((selected) => items.find((item) => item.id === selected.id) ?? selected));
@@ -5739,6 +5875,24 @@ function KnowledgeFactory({
           <div className="rounded-lg border border-slate-500/30 bg-slate-400/10 px-3 py-2 text-sm text-slate-200">
             {totalItems} 条
           </div>
+        </div>
+
+        <div className="mb-4">
+          <Field label="用户" icon={<ShieldCheck size={16} />}>
+            <select
+              className="control"
+              disabled={hasSingleVisibleUser}
+              value={username}
+              onChange={(event) => onUsernameChange(event.target.value)}
+            >
+              <option value="">{allUsersLabel}</option>
+              {visibleUsers.map((user) => (
+                <option key={user} value={user}>
+                  {user}
+                </option>
+              ))}
+            </select>
+          </Field>
         </div>
 
         {isLoading ? (
@@ -6283,6 +6437,7 @@ type HistoryFilters = {
 };
 
 type BlogFactoryFilters = {
+  username: string;
   factoryStatus: BlogFactoryStatus | "all";
   topic: string;
   knowledgeId: string;
@@ -6309,6 +6464,7 @@ type CurrentRecordFilters = {
 };
 
 type EnglishMaterialFilters = {
+  username: string;
   category: string;
   flag: "" | "0" | "1";
   sortBy: "id" | "sequence_no" | "category" | "base_expression" | "title" | "flag";
@@ -6316,6 +6472,7 @@ type EnglishMaterialFilters = {
 };
 
 function BlogFactoryRecords({
+  authUser,
   items,
   total,
   page,
@@ -6355,6 +6512,7 @@ function BlogFactoryRecords({
   onSelect,
   onStatusChange,
 }: {
+  authUser: AuthUser | null;
   items: BlogFactoryItem[];
   total: number;
   page: number;
@@ -6398,6 +6556,10 @@ function BlogFactoryRecords({
   const rangeStart = total === 0 ? 0 : (page - 1) * BLOG_FACTORY_PAGE_SIZE + 1;
   const rangeEnd = Math.min(page * BLOG_FACTORY_PAGE_SIZE, total);
   const [taskCopyView, setTaskCopyView] = useState<MarkdownContentView>("rendered");
+  const visibleUsers = getVisibleUsers(authUser);
+  const isAdminUser = authUser?.is_admin ?? false;
+  const hasSingleVisibleUser = !isAdminUser && visibleUsers.length <= 1;
+  const allUsersLabel = isAdminUser ? "全部用户" : "全部可见用户";
   const statusOptions: Array<{ label: string; value: BlogFactoryStatus | "all" }> = [
     { label: "全部状态", value: "all" },
     { label: "待处理", value: "待处理" },
@@ -6723,6 +6885,22 @@ function BlogFactoryRecords({
         </div>
 
         <div className="space-y-4">
+          <Field label="用户" icon={<ShieldCheck size={16} />}>
+            <select
+              className="control"
+              disabled={hasSingleVisibleUser}
+              value={filters.username}
+              onChange={(event) => onFilterChange({ username: event.target.value })}
+            >
+              <option value="">{allUsersLabel}</option>
+              {visibleUsers.map((user) => (
+                <option key={user} value={user}>
+                  {user}
+                </option>
+              ))}
+            </select>
+          </Field>
+
           <Field label="工厂状态" icon={<CheckCircle2 size={16} />}>
             <select
               className="control"
@@ -6954,10 +7132,12 @@ function DetailBlock({
 }
 
 function TodoWorkspace({
+  authUser,
   items,
   total,
   page,
   selectedId,
+  username,
   isMobileEditorOpen,
   draft,
   status,
@@ -6979,12 +7159,15 @@ function TodoWorkspace({
   onConvertToKnowledge,
   onCloseMobileEditor,
   onStatusFilterChange,
+  onUsernameFilterChange,
   onSubmit,
 }: {
+  authUser: AuthUser | null;
   items: TodoItem[];
   total: number;
   page: number;
   selectedId: number | null;
+  username: string;
   isMobileEditorOpen: boolean;
   draft: TodoDraft;
   status: TodoStatus | "all";
@@ -7006,6 +7189,7 @@ function TodoWorkspace({
   onConvertToKnowledge: () => void;
   onCloseMobileEditor: () => void;
   onStatusFilterChange: (status: TodoStatus | "all") => void;
+  onUsernameFilterChange: (username: string) => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
 }) {
   const totalPages = Math.max(1, Math.ceil(total / TODO_PAGE_SIZE));
@@ -7017,6 +7201,10 @@ function TodoWorkspace({
     { label: "处理中", value: "处理中" },
     { label: "已完成", value: "已完成" },
   ];
+  const visibleUsers = getVisibleUsers(authUser);
+  const isAdminUser = authUser?.is_admin ?? false;
+  const hasSingleVisibleUser = !isAdminUser && visibleUsers.length <= 1;
+  const allUsersLabel = isAdminUser ? "全部用户" : "全部可见用户";
   const canSave =
     selectedId !== null &&
     draft.title.trim().length > 0 &&
@@ -7188,7 +7376,22 @@ function TodoWorkspace({
           </div>
         </div>
 
-        <div className="mb-4 grid gap-3 sm:grid-cols-[minmax(0,240px)_auto]">
+        <div className="mb-4 grid gap-3 sm:grid-cols-[minmax(0,220px)_minmax(0,220px)_auto]">
+          <Field label="用户" icon={<ShieldCheck size={16} />}>
+            <select
+              className="control"
+              disabled={hasSingleVisibleUser}
+              value={username}
+              onChange={(event) => onUsernameFilterChange(event.target.value)}
+            >
+              <option value="">{allUsersLabel}</option>
+              {visibleUsers.map((user) => (
+                <option key={user} value={user}>
+                  {user}
+                </option>
+              ))}
+            </select>
+          </Field>
           <Field label="待办状态" icon={<CheckCircle2 size={16} />}>
             <select
               className="control"
@@ -7708,6 +7911,7 @@ function CurrentRecordsWorkspace({
 }
 
 function EnglishMaterialsWorkspace({
+  authUser,
   items,
   total,
   page,
@@ -7734,6 +7938,7 @@ function EnglishMaterialsWorkspace({
   onSelect,
   onSubmit,
 }: {
+  authUser: AuthUser | null;
   items: EnglishMaterialItem[];
   total: number;
   page: number;
@@ -7767,6 +7972,10 @@ function EnglishMaterialsWorkspace({
   const selectedIndex = selectedItem ? items.findIndex((item) => item.id === selectedItem.id) : -1;
   const previousItem = selectedIndex > 0 ? items[selectedIndex - 1] : null;
   const nextItem = selectedIndex >= 0 && selectedIndex < items.length - 1 ? items[selectedIndex + 1] : null;
+  const visibleUsers = getVisibleUsers(authUser);
+  const isAdminUser = authUser?.is_admin ?? false;
+  const hasSingleVisibleUser = !isAdminUser && visibleUsers.length <= 1;
+  const allUsersLabel = isAdminUser ? "全部用户" : "全部可见用户";
 
   return (
     <div className="grid flex-1 gap-4 px-4 pb-4 pt-2 xl:grid-cols-[minmax(520px,1fr)_380px]">
@@ -7784,7 +7993,22 @@ function EnglishMaterialsWorkspace({
           </div>
         </div>
 
-        <div className="mb-4 grid gap-3 md:grid-cols-[1fr_120px_1fr_auto]">
+        <div className="mb-4 grid gap-3 md:grid-cols-[1fr_1fr_120px_1fr_auto]">
+          <Field label="用户" icon={<ShieldCheck size={16} />}>
+            <select
+              className="control"
+              disabled={hasSingleVisibleUser}
+              value={filters.username}
+              onChange={(event) => onFilterChange({ username: event.target.value })}
+            >
+              <option value="">{allUsersLabel}</option>
+              {visibleUsers.map((user) => (
+                <option key={user} value={user}>
+                  {user}
+                </option>
+              ))}
+            </select>
+          </Field>
           <Field label="分类标识" icon={<Tags size={16} />}>
             <input
               className="control"
@@ -11837,6 +12061,7 @@ function readStoredUiState(): StoredUiState {
       sidebarExpanded: typeof stored.sidebarExpanded === "boolean" ? stored.sidebarExpanded : defaults.sidebarExpanded,
       workbench: {
         query: readString(workbench.query),
+        username: readString(workbench.username),
         statusFilter: readKnowledgeStatusFilter(workbench.statusFilter, defaults.workbench.statusFilter),
         page: readPositiveInteger(workbench.page, defaults.workbench.page),
         selectedId: readNullablePositiveInteger(workbench.selectedId),
@@ -11844,6 +12069,7 @@ function readStoredUiState(): StoredUiState {
       },
       factory: {
         query: readString(factory.query),
+        username: readString(factory.username),
         page: readPositiveInteger(factory.page, defaults.factory.page),
         selectedId: readNullablePositiveInteger(factory.selectedId),
         task: normalizeFactoryTaskResult(readString(factory.task)),
@@ -11852,6 +12078,7 @@ function readStoredUiState(): StoredUiState {
       },
       blogFactory: {
         query: readString(blogFactory.query),
+        username: readString(blogFactory.username),
         page: readPositiveInteger(blogFactory.page, defaults.blogFactory.page),
         status: readBlogFactoryStatusFilter(blogFactory.status, defaults.blogFactory.status),
         topic: readString(blogFactory.topic),
@@ -11864,6 +12091,7 @@ function readStoredUiState(): StoredUiState {
       },
       todos: {
         query: readString(todos.query),
+        username: readString(todos.username),
         page: readPositiveInteger(todos.page, defaults.todos.page),
         status: readTodoStatusFilter(todos.status, defaults.todos.status),
         selectedId: readNullablePositiveInteger(todos.selectedId),
@@ -11887,6 +12115,7 @@ function readStoredUiState(): StoredUiState {
       },
       englishMaterials: {
         query: readString(englishMaterials.query),
+        username: readString(englishMaterials.username),
         page: readPositiveInteger(englishMaterials.page, defaults.englishMaterials.page),
         category: readString(englishMaterials.category),
         flag: readStringUnion(englishMaterials.flag, ["", "0", "1"] as const, defaults.englishMaterials.flag),
@@ -11945,6 +12174,7 @@ function buildDefaultUiState(): StoredUiState {
     sidebarExpanded: false,
     workbench: {
       query: "",
+      username: "",
       statusFilter: "all",
       page: 1,
       selectedId: null,
@@ -11952,6 +12182,7 @@ function buildDefaultUiState(): StoredUiState {
     },
     factory: {
       query: "",
+      username: "",
       page: 1,
       selectedId: null,
       task: "",
@@ -11960,6 +12191,7 @@ function buildDefaultUiState(): StoredUiState {
     },
     blogFactory: {
       query: "",
+      username: "",
       page: 1,
       status: "all",
       topic: "",
@@ -11972,6 +12204,7 @@ function buildDefaultUiState(): StoredUiState {
     },
     todos: {
       query: "",
+      username: "",
       page: 1,
       status: "all",
       selectedId: null,
@@ -11991,6 +12224,7 @@ function buildDefaultUiState(): StoredUiState {
     },
     englishMaterials: {
       query: "",
+      username: "",
       page: 1,
       category: "",
       flag: "",

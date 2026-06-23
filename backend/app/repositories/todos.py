@@ -3,7 +3,12 @@ from typing import Any
 import oracledb
 
 from app.db.oracle import acquire_connection
-from app.repositories.users import AuthContext, append_user_visibility_clause, user_id_for_write
+from app.repositories.users import (
+    AuthContext,
+    append_requested_username_clause,
+    append_user_visibility_clause,
+    user_id_for_write,
+)
 from app.schemas.todos import TodoCreate, TodoUpdate
 
 
@@ -99,7 +104,7 @@ async def _ensure_todo_table(connection: oracledb.AsyncConnection) -> None:
     _table_ready = True
 
 
-def _build_filters(q: str | None, todo_status: str | None, auth_context: AuthContext) -> tuple[str, dict[str, Any]]:
+def _build_filters(q: str | None, todo_status: str | None, auth_context: AuthContext) -> tuple[list[str], dict[str, Any]]:
     clauses: list[str] = []
     params: dict[str, Any] = {}
 
@@ -117,11 +122,7 @@ def _build_filters(q: str | None, todo_status: str | None, auth_context: AuthCon
         params["todo_status"] = todo_status
 
     append_user_visibility_clause(clauses, params, auth_context, "todo_item.user_id")
-
-    if not clauses:
-        return "", params
-
-    return " where " + " and ".join(clauses), params
+    return clauses, params
 
 
 async def list_todos(
@@ -129,22 +130,31 @@ async def list_todos(
     limit: int,
     offset: int,
     q: str | None = None,
+    username: str | None = None,
     todo_status: str | None = None,
     auth_context: AuthContext,
 ) -> tuple[list[dict[str, Any]], int]:
-    where_sql, params = _build_filters(q, todo_status, auth_context)
-
-    count_sql = f"select count(*) from ai_todo_items todo_item{where_sql}"
-    list_sql = f"""
-        select {LIST_COLUMNS}
-        from ai_todo_items todo_item
-        {where_sql}
-        order by todo_item.created_at desc nulls last, todo_item.id desc
-        offset :offset rows fetch next :limit rows only
-    """
-
     async with acquire_connection() as connection:
         await _ensure_todo_table(connection)
+        clauses, params = _build_filters(q, todo_status, auth_context)
+        await append_requested_username_clause(
+            connection,
+            clauses,
+            params,
+            auth_context,
+            username,
+            "todo_item.user_id",
+        )
+        where_sql = f" where {' and '.join(clauses)}" if clauses else ""
+
+        count_sql = f"select count(*) from ai_todo_items todo_item{where_sql}"
+        list_sql = f"""
+            select {LIST_COLUMNS}
+            from ai_todo_items todo_item
+            {where_sql}
+            order by todo_item.created_at desc nulls last, todo_item.id desc
+            offset :offset rows fetch next :limit rows only
+        """
         cursor = connection.cursor()
         await cursor.execute(count_sql, params)
         count_row = await cursor.fetchone()

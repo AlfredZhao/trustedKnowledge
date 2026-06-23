@@ -110,6 +110,7 @@ async def ensure_user_schema_for_connection(connection: oracledb.AsyncConnection
         return
 
     cursor = connection.cursor()
+    legacy_relations_exists = await _table_exists(cursor, "t_relations")
     await _execute_ddl(
         cursor,
         """
@@ -181,17 +182,18 @@ async def ensure_user_schema_for_connection(connection: oracledb.AsyncConnection
     await _add_column_if_missing(cursor, "tk_users", "admin_enabled number(1) default 0 not null")
     await _add_column_if_missing(cursor, "t_current", "user_id number")
     await _add_column_if_missing(cursor, "t_history", "user_id number")
-    await _add_column_if_missing(cursor, "t_relations", "student_user_id number")
-    await _add_column_if_missing(cursor, "t_relations", "guardian_user_id number")
+    if legacy_relations_exists:
+        await _add_column_if_missing(cursor, "t_relations", "student_user_id number")
+        await _add_column_if_missing(cursor, "t_relations", "guardian_user_id number")
     await _add_column_if_missing(cursor, "ai_blog_factory", "user_id number")
     await _add_column_if_missing(cursor, "ai_qa_lib", "user_id number")
     await _add_column_if_missing(cursor, "ai_todo_items", "user_id number")
     await _add_column_if_missing(cursor, "t_douyin_details", "user_id number")
 
-    await _migrate_users(cursor)
+    await _migrate_users(cursor, legacy_relations_exists=legacy_relations_exists)
     await _backfill_fact_user_ids(cursor)
     await _backfill_owned_table_user_ids(cursor)
-    await _migrate_relations(cursor)
+    await _migrate_relations(cursor, legacy_relations_exists=legacy_relations_exists)
     await _migrate_admin_roles(cursor)
     await _ensure_module_access_defaults(cursor)
     await connection.commit()
@@ -231,18 +233,35 @@ async def _add_column_if_missing(cursor: Any, table_name: str, column_definition
     )
 
 
-async def _migrate_users(cursor: Any) -> None:
+async def _table_exists(cursor: Any, table_name: str) -> bool:
     await cursor.execute(
         """
+        select 1
+        from user_tables
+        where table_name = :table_name
+        """,
+        {"table_name": table_name.upper()},
+    )
+    return await cursor.fetchone() is not None
+
+
+async def _migrate_users(cursor: Any, *, legacy_relations_exists: bool) -> None:
+    username_sources = [
+        "select username from t_current where username is not null",
+        "select username from t_history where username is not null",
+    ]
+    if legacy_relations_exists:
+        username_sources.extend(
+            [
+                "select student_user as username from t_relations where student_user is not null",
+                "select guardian_user as username from t_relations where guardian_user is not null",
+            ]
+        )
+    await cursor.execute(
+        f"""
         select username
         from (
-            select username from t_current where username is not null
-            union
-            select username from t_history where username is not null
-            union
-            select student_user from t_relations where student_user is not null
-            union
-            select guardian_user from t_relations where guardian_user is not null
+            {" union ".join(username_sources)}
         )
         where username is not null
         """
@@ -323,42 +342,43 @@ async def _backfill_owned_table_user_ids(cursor: Any) -> None:
     )
 
 
-async def _migrate_relations(cursor: Any) -> None:
-    await cursor.execute(
-        """
-        update t_relations rel
-        set student_user_id = (
-                select user_id
-                from tk_users users
-                where lower(users.username) = lower(rel.student_user)
-                fetch next 1 rows only
-            ),
-            guardian_user_id = (
-                select user_id
-                from tk_users users
-                where lower(users.username) = lower(rel.guardian_user)
-                fetch next 1 rows only
-            )
-        where student_user_id is null
-           or guardian_user_id is null
-        """
-    )
-    await cursor.execute(
-        """
-        insert into tk_relations (parent_user_id, child_user_id, relation_type)
-        select guardian_user_id, student_user_id, relation_type
-        from t_relations rel
-        where guardian_user_id is not null
-          and student_user_id is not null
-          and not exists (
-              select 1
-              from tk_relations tk
-              where tk.parent_user_id = rel.guardian_user_id
-                and tk.child_user_id = rel.student_user_id
-                and tk.relation_type = rel.relation_type
-          )
-        """
-    )
+async def _migrate_relations(cursor: Any, *, legacy_relations_exists: bool) -> None:
+    if legacy_relations_exists:
+        await cursor.execute(
+            """
+            update t_relations rel
+            set student_user_id = (
+                    select user_id
+                    from tk_users users
+                    where lower(users.username) = lower(rel.student_user)
+                    fetch next 1 rows only
+                ),
+                guardian_user_id = (
+                    select user_id
+                    from tk_users users
+                    where lower(users.username) = lower(rel.guardian_user)
+                    fetch next 1 rows only
+                )
+            where student_user_id is null
+               or guardian_user_id is null
+            """
+        )
+        await cursor.execute(
+            """
+            insert into tk_relations (parent_user_id, child_user_id, relation_type)
+            select guardian_user_id, student_user_id, relation_type
+            from t_relations rel
+            where guardian_user_id is not null
+              and student_user_id is not null
+              and not exists (
+                  select 1
+                  from tk_relations tk
+                  where tk.parent_user_id = rel.guardian_user_id
+                    and tk.child_user_id = rel.student_user_id
+                    and tk.relation_type = rel.relation_type
+              )
+            """
+        )
     await cursor.execute(
         """
         update tk_users users
@@ -615,6 +635,36 @@ async def get_user_id_by_username(connection: oracledb.AsyncConnection, username
     )
     row = await cursor.fetchone()
     return int(row[0]) if row is not None else None
+
+
+async def append_requested_username_clause(
+    connection: oracledb.AsyncConnection,
+    clauses: list[str],
+    params: dict[str, Any],
+    auth_context: AuthContext,
+    username: str | None,
+    column: str,
+    *,
+    param_name: str = "requested_user_id",
+) -> None:
+    if not username or not username.strip():
+        return
+
+    requested_user_id = await get_user_id_by_username(connection, username)
+    if requested_user_id is None:
+        clauses.append("1 = 0")
+        return
+
+    if (
+        not auth_context.is_admin
+        and auth_context.visible_user_ids is not None
+        and requested_user_id not in auth_context.visible_user_ids
+    ):
+        clauses.append("1 = 0")
+        return
+
+    params[param_name] = requested_user_id
+    clauses.append(f"{column} = :{param_name}")
 
 
 def append_user_visibility_clause(

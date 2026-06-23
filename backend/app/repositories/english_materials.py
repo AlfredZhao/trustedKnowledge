@@ -3,7 +3,12 @@ from typing import Any
 import oracledb
 
 from app.db.oracle import acquire_connection
-from app.repositories.users import AuthContext, append_user_visibility_clause, user_id_for_write
+from app.repositories.users import (
+    AuthContext,
+    append_requested_username_clause,
+    append_user_visibility_clause,
+    user_id_for_write,
+)
 from app.schemas.english_materials import EnglishMaterialCreate, EnglishMaterialUpdate
 
 
@@ -59,7 +64,7 @@ def _build_filters(
     category: str | None,
     flag: int | None,
     auth_context: AuthContext,
-) -> tuple[str, dict[str, Any]]:
+) -> tuple[list[str], dict[str, Any]]:
     clauses: list[str] = []
     params: dict[str, Any] = {}
 
@@ -83,11 +88,7 @@ def _build_filters(
         params["flag"] = flag
 
     append_user_visibility_clause(clauses, params, auth_context, "material.user_id")
-
-    if not clauses:
-        return "", params
-
-    return " where " + " and ".join(clauses), params
+    return clauses, params
 
 
 async def list_english_materials(
@@ -95,26 +96,36 @@ async def list_english_materials(
     limit: int,
     offset: int,
     q: str | None = None,
+    username: str | None = None,
     category: str | None = None,
     flag: int | None = None,
     sort_by: str = "id",
     sort_dir: str = "desc",
     auth_context: AuthContext,
 ) -> tuple[list[dict[str, Any]], int]:
-    where_sql, params = _build_filters(q, category, flag, auth_context)
     sort_column = SORT_COLUMNS.get(sort_by, "id")
     sort_direction = "asc" if sort_dir == "asc" else "desc"
 
-    count_sql = f"select count(*) from t_douyin_details material{where_sql}"
-    list_sql = f"""
-        select {LIST_COLUMNS}
-        from t_douyin_details material
-        {where_sql}
-        order by {sort_column} {sort_direction} nulls last, material.id desc
-        offset :offset rows fetch next :limit rows only
-    """
-
     async with acquire_connection() as connection:
+        clauses, params = _build_filters(q, category, flag, auth_context)
+        await append_requested_username_clause(
+            connection,
+            clauses,
+            params,
+            auth_context,
+            username,
+            "material.user_id",
+        )
+        where_sql = f" where {' and '.join(clauses)}" if clauses else ""
+
+        count_sql = f"select count(*) from t_douyin_details material{where_sql}"
+        list_sql = f"""
+            select {LIST_COLUMNS}
+            from t_douyin_details material
+            {where_sql}
+            order by {sort_column} {sort_direction} nulls last, material.id desc
+            offset :offset rows fetch next :limit rows only
+        """
         cursor = connection.cursor()
         await cursor.execute(count_sql, params)
         count_row = await cursor.fetchone()

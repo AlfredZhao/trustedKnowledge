@@ -24,10 +24,16 @@ The format follows the common GitHub changelog convention inspired by
 - Added a subtle top-right signed-in user indicator so the current login username stays visible without competing with primary actions.
 - 在顶部栏右上角新增低干扰的当前登录用户名提示，持续显示“当前是谁登录”，但不抢占主要操作视觉。
 
+- Added per-user filters to Information Entry, Knowledge Processing, Blog Factory, Todo, and English Materials, with ordinary users defaulting to their own records instead of the combined visible-user scope.
+- 为信息录入、知识加工、博客工厂、待办事项和英语素材补充按用户筛选；普通用户默认先查看自己的数据，而不是直接落在“自己 + 可见孩子”的合并范围。
+
 #### Fixed / 修复
 
 - Allowed nullable `NEXT_RESET_AT` values in the LLM usage API so the AI Usage view no longer fails with HTTP 500 when `V_LLM_USAGE` contains samples without a reset timestamp.
 - 修复 `V_LLM_USAGE` 中 `NEXT_RESET_AT` 为空时 AI 用量接口响应模型校验失败的问题；用量视图不再因此报 HTTP 500。
+
+- Made backend startup tolerate a missing legacy `T_RELATIONS` table so service restarts no longer fail after that old migration source table is removed.
+- 修复删除旧兼容迁移表 `T_RELATIONS` 后后端启动直接失败的问题；启动阶段现在会在该表不存在时自动跳过旧关系迁移。
 
 ## 历史版本更新
 

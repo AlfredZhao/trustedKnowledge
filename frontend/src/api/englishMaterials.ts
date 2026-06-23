@@ -11,6 +11,7 @@ export interface EnglishMaterialListResponse {
 
 export interface EnglishMaterialQuery {
   query?: string;
+  username?: string;
   category?: string;
   flag?: string;
   sortBy?: "id" | "sequence_no" | "category" | "base_expression" | "title" | "flag";
@@ -63,8 +64,13 @@ export async function fetchEnglishMaterials(query: EnglishMaterialQuery): Promis
   return request<EnglishMaterialListResponse>(buildEnglishMaterialsPath(query));
 }
 
-export async function fetchNextEnglishMaterialSequence(): Promise<number> {
+export async function fetchNextEnglishMaterialSequence({
+  username,
+}: {
+  username?: string;
+} = {}): Promise<number> {
   const data = await fetchEnglishMaterials({
+    username,
     sortBy: "sequence_no",
     sortDir: "desc",
     limit: 1,
@@ -89,6 +95,7 @@ function buildEnglishMaterialsPath(query: EnglishMaterialQuery): string {
   });
 
   if (query.query?.trim()) params.set("q", query.query.trim());
+  if (query.username?.trim()) params.set("username", query.username.trim());
   if (query.category?.trim()) params.set("category", query.category.trim());
   if (query.flag?.trim()) params.set("flag", query.flag.trim());
 

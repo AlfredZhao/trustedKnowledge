@@ -79,41 +79,47 @@ async function readErrorDetail(response: Response): Promise<string | null> {
 
 export async function fetchKnowledge({
   query,
+  username,
   limit,
   offset,
   status,
 }: {
   query?: string;
+  username?: string;
   limit: number;
   offset: number;
   status?: KnowledgeStatus;
 }): Promise<KnowledgeListResponse> {
-  return request<KnowledgeListResponse>(buildKnowledgeListPath({ query, limit, offset, status }));
+  return request<KnowledgeListResponse>(buildKnowledgeListPath({ query, username, limit, offset, status }));
 }
 
 export function readCachedKnowledge({
   query,
+  username,
   limit,
   offset,
   status,
 }: {
   query?: string;
+  username?: string;
   limit: number;
   offset: number;
   status?: KnowledgeStatus;
 }): KnowledgeListResponse | null {
   return readCachedApiResponse<KnowledgeListResponse>(
-    buildApiCacheKey(buildKnowledgeListPath({ query, limit, offset, status }), readStoredApiKey()),
+    buildApiCacheKey(buildKnowledgeListPath({ query, username, limit, offset, status }), readStoredApiKey()),
   );
 }
 
 function buildKnowledgeListPath({
   query,
+  username,
   limit,
   offset,
   status,
 }: {
   query?: string;
+  username?: string;
   limit: number;
   offset: number;
   status?: KnowledgeStatus;
@@ -125,6 +131,9 @@ function buildKnowledgeListPath({
 
   if (query?.trim()) {
     params.set("q", query.trim());
+  }
+  if (username?.trim()) {
+    params.set("username", username.trim());
   }
   if (status) {
     params.set("status", status);
@@ -197,41 +206,47 @@ export async function mergeKnowledge(knowledgeIds: number[], draft: KnowledgeDra
 
 export async function fetchTodos({
   query,
+  username,
   limit,
   offset,
   status,
 }: {
   query?: string;
+  username?: string;
   limit: number;
   offset: number;
   status?: TodoStatus;
 }): Promise<TodoListResponse> {
-  return request<TodoListResponse>(buildTodoListPath({ query, limit, offset, status }));
+  return request<TodoListResponse>(buildTodoListPath({ query, username, limit, offset, status }));
 }
 
 export function readCachedTodos({
   query,
+  username,
   limit,
   offset,
   status,
 }: {
   query?: string;
+  username?: string;
   limit: number;
   offset: number;
   status?: TodoStatus;
 }): TodoListResponse | null {
   return readCachedApiResponse<TodoListResponse>(
-    buildApiCacheKey(buildTodoListPath({ query, limit, offset, status }), readStoredApiKey()),
+    buildApiCacheKey(buildTodoListPath({ query, username, limit, offset, status }), readStoredApiKey()),
   );
 }
 
 function buildTodoListPath({
   query,
+  username,
   limit,
   offset,
   status,
 }: {
   query?: string;
+  username?: string;
   limit: number;
   offset: number;
   status?: TodoStatus;
@@ -242,6 +257,7 @@ function buildTodoListPath({
   });
 
   if (query?.trim()) params.set("q", query.trim());
+  if (username?.trim()) params.set("username", username.trim());
   if (status) params.set("status", status);
 
   return `/api/todos?${params.toString()}`;
@@ -310,6 +326,7 @@ export async function createBlogFactoryItem({
 
 export async function fetchBlogFactoryItems({
   query,
+  username,
   limit,
   offset,
   factoryStatus,
@@ -319,6 +336,7 @@ export async function fetchBlogFactoryItems({
   sortDir,
 }: {
   query?: string;
+  username?: string;
   limit: number;
   offset: number;
   factoryStatus?: BlogFactoryStatus;
@@ -328,12 +346,13 @@ export async function fetchBlogFactoryItems({
   sortDir?: "asc" | "desc";
 }): Promise<BlogFactoryListResponse> {
   return request<BlogFactoryListResponse>(
-    buildBlogFactoryListPath({ query, limit, offset, factoryStatus, topic, knowledgeId, sortBy, sortDir }),
+    buildBlogFactoryListPath({ query, username, limit, offset, factoryStatus, topic, knowledgeId, sortBy, sortDir }),
   );
 }
 
 export function readCachedBlogFactoryItems({
   query,
+  username,
   limit,
   offset,
   factoryStatus,
@@ -343,6 +362,7 @@ export function readCachedBlogFactoryItems({
   sortDir,
 }: {
   query?: string;
+  username?: string;
   limit: number;
   offset: number;
   factoryStatus?: BlogFactoryStatus;
@@ -353,7 +373,7 @@ export function readCachedBlogFactoryItems({
 }): BlogFactoryListResponse | null {
   return readCachedApiResponse<BlogFactoryListResponse>(
     buildApiCacheKey(
-      buildBlogFactoryListPath({ query, limit, offset, factoryStatus, topic, knowledgeId, sortBy, sortDir }),
+      buildBlogFactoryListPath({ query, username, limit, offset, factoryStatus, topic, knowledgeId, sortBy, sortDir }),
       readStoredApiKey(),
     ),
   );
@@ -361,6 +381,7 @@ export function readCachedBlogFactoryItems({
 
 function buildBlogFactoryListPath({
   query,
+  username,
   limit,
   offset,
   factoryStatus,
@@ -370,6 +391,7 @@ function buildBlogFactoryListPath({
   sortDir,
 }: {
   query?: string;
+  username?: string;
   limit: number;
   offset: number;
   factoryStatus?: BlogFactoryStatus;
@@ -386,6 +408,7 @@ function buildBlogFactoryListPath({
   });
 
   if (query?.trim()) params.set("q", query.trim());
+  if (username?.trim()) params.set("username", username.trim());
   if (factoryStatus) params.set("factory_status", factoryStatus);
   if (topic?.trim()) params.set("topic", topic.trim());
   if (knowledgeId?.trim()) params.set("knowledge_id", knowledgeId.trim());

@@ -3,7 +3,12 @@ from typing import Any
 import oracledb
 
 from app.db.oracle import acquire_connection
-from app.repositories.users import AuthContext, append_user_visibility_clause, user_id_for_write
+from app.repositories.users import (
+    AuthContext,
+    append_requested_username_clause,
+    append_user_visibility_clause,
+    user_id_for_write,
+)
 from app.schemas.knowledge import KnowledgeCreate, KnowledgeMergeRequest, KnowledgeUpdate
 
 
@@ -36,7 +41,7 @@ def _build_filters(
     source: str | None,
     status: str | None,
     auth_context: AuthContext,
-) -> tuple[str, dict[str, Any]]:
+) -> tuple[list[str], dict[str, Any]]:
     clauses: list[str] = []
     params: dict[str, Any] = {}
 
@@ -62,11 +67,7 @@ def _build_filters(
         params["status"] = status
 
     append_user_visibility_clause(clauses, params, auth_context, "knowledge_record.user_id")
-
-    if not clauses:
-        return "", params
-
-    return " where " + " and ".join(clauses), params
+    return clauses, params
 
 
 async def list_knowledge(
@@ -74,23 +75,32 @@ async def list_knowledge(
     limit: int,
     offset: int,
     q: str | None = None,
+    username: str | None = None,
     topic: str | None = None,
     source: str | None = None,
     status: str | None = None,
     auth_context: AuthContext,
 ) -> tuple[list[dict[str, Any]], int]:
-    where_sql, params = _build_filters(q, topic, source, status, auth_context)
-
-    count_sql = f"select count(*) from ai_qa_lib knowledge_record{where_sql}"
-    list_sql = f"""
-        select {LIST_COLUMNS}
-        from ai_qa_lib knowledge_record
-        {where_sql}
-        order by knowledge_record.id desc
-        offset :offset rows fetch next :limit rows only
-    """
-
     async with acquire_connection() as connection:
+        clauses, params = _build_filters(q, topic, source, status, auth_context)
+        await append_requested_username_clause(
+            connection,
+            clauses,
+            params,
+            auth_context,
+            username,
+            "knowledge_record.user_id",
+        )
+        where_sql = f" where {' and '.join(clauses)}" if clauses else ""
+
+        count_sql = f"select count(*) from ai_qa_lib knowledge_record{where_sql}"
+        list_sql = f"""
+            select {LIST_COLUMNS}
+            from ai_qa_lib knowledge_record
+            {where_sql}
+            order by knowledge_record.id desc
+            offset :offset rows fetch next :limit rows only
+        """
         cursor = connection.cursor()
         await cursor.execute(count_sql, params)
         count_row = await cursor.fetchone()
