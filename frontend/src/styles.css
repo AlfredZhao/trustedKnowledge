@@ -192,4 +192,47 @@ button:disabled {
     text-decoration: underline;
     text-underline-offset: 3px;
   }
+
+  .markdown-preview .tk-table-wrapper {
+    overflow-x: auto;
+  }
+
+  .markdown-preview table {
+    width: 100%;
+    min-width: 100%;
+    border-collapse: collapse;
+    border-spacing: 0;
+    font-size: 0.92rem;
+  }
+
+  .markdown-preview thead {
+    background: rgba(148, 163, 184, 0.12);
+  }
+
+  .markdown-preview th,
+  .markdown-preview td {
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 0.6rem 0.75rem;
+    vertical-align: top;
+    text-align: left;
+  }
+
+  .markdown-preview th {
+    color: #f8fafc;
+    font-weight: 650;
+  }
+
+  .markdown-preview td {
+    color: #cbd5e1;
+  }
+
+  .markdown-preview th[data-align="center"],
+  .markdown-preview td[data-align="center"] {
+    text-align: center;
+  }
+
+  .markdown-preview th[data-align="right"],
+  .markdown-preview td[data-align="right"] {
+    text-align: right;
+  }
 }

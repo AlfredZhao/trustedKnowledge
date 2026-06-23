@@ -126,7 +126,12 @@ import {
   updateUserRelation,
 } from "./api/users";
 import { MarkdownPreview } from "./components/MarkdownPreview";
-import { copyMarkdownAsPlainText, copyMarkdownAsRichText, removeLeakedMarkdownCodePlaceholders } from "./utils/markdown";
+import {
+  copyMarkdownAsEnhancedRichText,
+  copyMarkdownAsPlainText,
+  copyMarkdownAsRichText,
+  removeLeakedMarkdownCodePlaceholders,
+} from "./utils/markdown";
 import type {
   AdminModuleAccessItem,
   AdminModuleAccessLevel,
@@ -294,6 +299,8 @@ type SortDirection = (typeof SORT_DIRECTIONS)[number];
 type HistoryVectorStatus = "all" | "0" | "1";
 type AiCodingNoticeStatus = "running" | "completed" | "failed";
 type MarkdownContentView = "rendered" | "raw";
+type BlogFactoryArticleCopyMode = "markdown" | "enhanced";
+type BlogFactoryTaskCopyMode = "rendered" | "enhanced" | "raw";
 
 interface StoredUiState {
   activeView: AppView;
@@ -581,7 +588,7 @@ function App() {
   const [blogFactoryArticleDraft, setBlogFactoryArticleDraft] = useState(restoredUiState.blogFactory.articleDraft);
   const [blogFactoryArticlePathDraft, setBlogFactoryArticlePathDraft] = useState(restoredUiState.blogFactory.articlePathDraft);
   const [blogFactoryArticleError, setBlogFactoryArticleError] = useState<string | null>(null);
-  const [hasCopiedBlogFactoryArticle, setHasCopiedBlogFactoryArticle] = useState(false);
+  const [blogFactoryArticleCopiedMode, setBlogFactoryArticleCopiedMode] = useState<BlogFactoryArticleCopyMode | null>(null);
   const [blogFactoryTaskCopyError, setBlogFactoryTaskCopyError] = useState<string | null>(null);
   const [hasCopiedBlogFactoryTask, setHasCopiedBlogFactoryTask] = useState(false);
   const [blogFactoryError, setBlogFactoryError] = useState<string | null>(null);
@@ -2208,7 +2215,7 @@ function App() {
     ) {
       restoredBlogFactoryArticleDraftRef.current = false;
       setBlogFactoryArticleError(null);
-      setHasCopiedBlogFactoryArticle(false);
+      setBlogFactoryArticleCopiedMode(null);
       return;
     }
 
@@ -2216,7 +2223,7 @@ function App() {
     setBlogFactoryArticleDraft(selectedBlogFactoryItem?.article_markdown ?? "");
     setBlogFactoryArticlePathDraft(selectedBlogFactoryItem?.article_file_path ?? "");
     setBlogFactoryArticleError(null);
-    setHasCopiedBlogFactoryArticle(false);
+    setBlogFactoryArticleCopiedMode(null);
   }, [selectedBlogFactoryItem?.id, selectedBlogFactoryItem?.article_markdown, selectedBlogFactoryItem?.article_file_path]);
 
   const trustScore = useMemo(() => {
@@ -2945,25 +2952,32 @@ function App() {
     }
   }
 
-  async function handleCopyBlogFactoryArticle() {
+  async function handleCopyBlogFactoryArticle(mode: BlogFactoryArticleCopyMode) {
     const markdown = selectedBlogFactoryItem?.article_markdown ?? blogFactoryArticleDraft;
     if (!markdown.trim()) return;
 
     try {
-      await copyText(markdown);
-      setHasCopiedBlogFactoryArticle(true);
-      window.setTimeout(() => setHasCopiedBlogFactoryArticle(false), 1600);
+      if (mode === "enhanced") {
+        await copyMarkdownAsEnhancedRichText(markdown);
+      } else {
+        await copyText(markdown);
+      }
+      setBlogFactoryArticleError(null);
+      setBlogFactoryArticleCopiedMode(mode);
+      window.setTimeout(() => setBlogFactoryArticleCopiedMode(null), 1600);
     } catch {
       setBlogFactoryArticleError("复制失败。请选中文本框内容后手动复制。");
     }
   }
 
-  async function handleCopyBlogFactoryTaskContent(view: MarkdownContentView) {
+  async function handleCopyBlogFactoryTaskContent(view: BlogFactoryTaskCopyMode) {
     const taskContent = removeLeakedMarkdownCodePlaceholders(selectedBlogFactoryItem?.task_content ?? "");
     if (!taskContent.trim()) return;
 
     try {
-      if (view === "rendered") {
+      if (view === "enhanced") {
+        await copyMarkdownAsEnhancedRichText(taskContent);
+      } else if (view === "rendered") {
         await copyMarkdownAsRichText(taskContent);
       } else {
         await copyMarkdownAsPlainText(taskContent);
@@ -2974,6 +2988,18 @@ function App() {
     } catch {
       setBlogFactoryTaskCopyError("复制失败。请选中任务内容后手动复制。");
     }
+  }
+
+  function handleUseBlogFactoryTaskAsArticle() {
+    const taskContent = removeLeakedMarkdownCodePlaceholders(blogFactoryEditDraft.taskContent);
+    if (!taskContent.trim()) {
+      setBlogFactoryArticleError("任务内容为空，无法载入到 Markdown 正文。");
+      return;
+    }
+
+    setBlogFactoryArticleDraft(taskContent);
+    setBlogFactoryArticleError(null);
+    setBlogFactoryArticleCopiedMode(null);
   }
 
   async function handleCreateCurrentRecord(event: React.FormEvent<HTMLFormElement>) {
@@ -3907,7 +3933,7 @@ function App() {
               editDraft={blogFactoryEditDraft}
               articleDraft={blogFactoryArticleDraft}
               articlePathDraft={blogFactoryArticlePathDraft}
-              hasCopiedArticle={hasCopiedBlogFactoryArticle}
+              articleCopiedMode={blogFactoryArticleCopiedMode}
               hasCopiedTask={hasCopiedBlogFactoryTask}
               filters={{
                 username: blogFactoryUsername,
@@ -3941,6 +3967,7 @@ function App() {
               onEditDraftChange={setBlogFactoryEditDraft}
               onArticleChange={setBlogFactoryArticleDraft}
               onArticlePathChange={setBlogFactoryArticlePathDraft}
+              onUseTaskAsArticle={handleUseBlogFactoryTaskAsArticle}
               onCopyArticle={handleCopyBlogFactoryArticle}
               onCopyTask={handleCopyBlogFactoryTaskContent}
               onDelete={handleRequestDeleteBlogFactoryItem}
@@ -6512,7 +6539,7 @@ function BlogFactoryRecords({
   editDraft,
   articleDraft,
   articlePathDraft,
-  hasCopiedArticle,
+  articleCopiedMode,
   hasCopiedTask,
   filters,
   onFilterChange,
@@ -6521,6 +6548,7 @@ function BlogFactoryRecords({
   onEditDraftChange,
   onArticleChange,
   onArticlePathChange,
+  onUseTaskAsArticle,
   onCopyArticle,
   onCopyTask,
   onDelete,
@@ -6552,7 +6580,7 @@ function BlogFactoryRecords({
   editDraft: BlogFactoryEditDraft;
   articleDraft: string;
   articlePathDraft: string;
-  hasCopiedArticle: boolean;
+  articleCopiedMode: BlogFactoryArticleCopyMode | null;
   hasCopiedTask: boolean;
   filters: BlogFactoryFilters;
   onFilterChange: (filters: Partial<BlogFactoryFilters>) => void;
@@ -6561,8 +6589,9 @@ function BlogFactoryRecords({
   onEditDraftChange: (draft: BlogFactoryEditDraft) => void;
   onArticleChange: (value: string) => void;
   onArticlePathChange: (value: string) => void;
-  onCopyArticle: () => void;
-  onCopyTask: (view: MarkdownContentView) => void;
+  onUseTaskAsArticle: () => void;
+  onCopyArticle: (mode: BlogFactoryArticleCopyMode) => void;
+  onCopyTask: (view: BlogFactoryTaskCopyMode) => void;
   onDelete: () => void;
   onCloseMobileDetail: () => void;
   onSaveItem: () => void;
@@ -6574,7 +6603,7 @@ function BlogFactoryRecords({
   const totalPages = Math.max(1, Math.ceil(total / BLOG_FACTORY_PAGE_SIZE));
   const rangeStart = total === 0 ? 0 : (page - 1) * BLOG_FACTORY_PAGE_SIZE + 1;
   const rangeEnd = Math.min(page * BLOG_FACTORY_PAGE_SIZE, total);
-  const [taskCopyView, setTaskCopyView] = useState<MarkdownContentView>("rendered");
+  const [taskCopyView, setTaskCopyView] = useState<BlogFactoryTaskCopyMode>("rendered");
   const visibleUsers = getVisibleUsers(authUser);
   const isAdminUser = authUser?.is_admin ?? false;
   const hasSingleVisibleUser = !isAdminUser && visibleUsers.length <= 1;
@@ -6768,19 +6797,36 @@ function BlogFactoryRecords({
                   <span>{selectedItem.article_saved_at ? formatHistoryDate(selectedItem.article_saved_at) : "未保存"}</span>
                 </div>
               </div>
-              <button
-                className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg border transition disabled:cursor-not-allowed disabled:text-slate-600 ${
-                  hasCopiedArticle
-                    ? "border-mint-300/30 bg-mint-300/14 text-mint-300"
-                    : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-mint-300/30 hover:text-mint-300"
-                }`}
-                disabled={!articleDraft.trim()}
-                title={hasCopiedArticle ? "已复制" : "复制 Markdown"}
-                type="button"
-                onClick={onCopyArticle}
-              >
-                {hasCopiedArticle ? <ClipboardCheck size={16} /> : <Copy size={16} />}
-              </button>
+              <div className="flex shrink-0 flex-wrap justify-end gap-2">
+                <button
+                  className={`flex h-9 items-center gap-2 rounded-lg border px-3 text-xs transition disabled:cursor-not-allowed disabled:text-slate-600 ${
+                    articleCopiedMode === "enhanced"
+                      ? "border-mint-300/30 bg-mint-300/14 text-mint-300"
+                      : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-mint-300/30 hover:text-mint-300"
+                  }`}
+                  disabled={!articleDraft.trim()}
+                  title={articleCopiedMode === "enhanced" ? "已复制增强美化" : "复制公众号增强美化"}
+                  type="button"
+                  onClick={() => onCopyArticle("enhanced")}
+                >
+                  {articleCopiedMode === "enhanced" ? <ClipboardCheck size={15} /> : <WandSparkles size={15} />}
+                  {articleCopiedMode === "enhanced" ? "已复制" : "增强美化"}
+                </button>
+                <button
+                  className={`flex h-9 items-center gap-2 rounded-lg border px-3 text-xs transition disabled:cursor-not-allowed disabled:text-slate-600 ${
+                    articleCopiedMode === "markdown"
+                      ? "border-mint-300/30 bg-mint-300/14 text-mint-300"
+                      : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-mint-300/30 hover:text-mint-300"
+                  }`}
+                  disabled={!articleDraft.trim()}
+                  title={articleCopiedMode === "markdown" ? "已复制 Markdown" : "复制 Markdown"}
+                  type="button"
+                  onClick={() => onCopyArticle("markdown")}
+                >
+                  {articleCopiedMode === "markdown" ? <ClipboardCheck size={15} /> : <Copy size={15} />}
+                  {articleCopiedMode === "markdown" ? "已复制" : "复制 Markdown"}
+                </button>
+              </div>
             </div>
 
             <Field label="文件路径" icon={<Database size={16} />}>
@@ -6791,6 +6837,19 @@ function BlogFactoryRecords({
                 placeholder="/home/alfred/projects/blogs/文章标题.md"
               />
             </Field>
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                className="flex h-9 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-xs text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600"
+                disabled={!editDraft.taskContent.trim()}
+                type="button"
+                onClick={onUseTaskAsArticle}
+              >
+                <FilePlus2 size={15} />
+                载入任务内容
+              </button>
+              <span className="self-center text-xs text-slate-500">将上方任务内容一键填入正文，便于继续编辑或保存。</span>
+            </div>
 
             <label className="mt-4 block">
               <span className="mb-2 flex items-center gap-2 text-sm text-slate-300">
@@ -6848,6 +6907,15 @@ function BlogFactoryRecords({
                   </button>
                   <button
                     className={`border-l border-white/10 px-3 text-xs transition ${
+                      taskCopyView === "enhanced" ? "bg-mint-300/14 text-mint-200" : "text-slate-400 hover:text-mint-200"
+                    }`}
+                    type="button"
+                    onClick={() => setTaskCopyView("enhanced")}
+                  >
+                    增强美化
+                  </button>
+                  <button
+                    className={`border-l border-white/10 px-3 text-xs transition ${
                       taskCopyView === "raw" ? "bg-mint-300/14 text-mint-200" : "text-slate-400 hover:text-mint-200"
                     }`}
                     type="button"
@@ -6863,12 +6931,26 @@ function BlogFactoryRecords({
                       : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-mint-300/30 hover:text-mint-300"
                   }`}
                   disabled={!selectedItem.task_content.trim()}
-                  title={hasCopiedTask ? "已复制" : taskCopyView === "rendered" ? "复制美化任务内容" : "复制裸文本任务内容"}
+                  title={
+                    hasCopiedTask
+                      ? "已复制"
+                      : taskCopyView === "enhanced"
+                        ? "复制增强美化任务内容"
+                        : taskCopyView === "rendered"
+                          ? "复制美化任务内容"
+                          : "复制裸文本任务内容"
+                  }
                   type="button"
                   onClick={() => onCopyTask(taskCopyView)}
                 >
                   {hasCopiedTask ? <ClipboardCheck size={15} /> : <Copy size={15} />}
-                  {hasCopiedTask ? "已复制" : taskCopyView === "rendered" ? "复制美化" : "复制裸文本"}
+                  {hasCopiedTask
+                    ? "已复制"
+                    : taskCopyView === "enhanced"
+                      ? "复制增强美化"
+                      : taskCopyView === "rendered"
+                        ? "复制美化"
+                        : "复制裸文本"}
                 </button>
               </div>
             }
