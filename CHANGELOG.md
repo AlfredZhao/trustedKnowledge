@@ -29,6 +29,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Fixed / 修复
 
+- Changed the Overview dashboard to always query the signed-in username for Todo, trusted knowledge, and English material cards, so it no longer mixes in other visible users' records.
+- 调整总览 Dashboard 的 Todo、可信知识和 English 素材查询，固定按当前登录用户名读取，不再混入其他可见用户的数据。
+
 - Allowed nullable `NEXT_RESET_AT` values in the LLM usage API so the AI Usage view no longer fails with HTTP 500 when `V_LLM_USAGE` contains samples without a reset timestamp.
 - 修复 `V_LLM_USAGE` 中 `NEXT_RESET_AT` 为空时 AI 用量接口响应模型校验失败的问题；用量视图不再因此报 HTTP 500。
 

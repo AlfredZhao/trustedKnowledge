@@ -84,10 +84,10 @@
 数据来源：
 
 - `fetchLlmUsage(USAGE_SAMPLE_LIMIT)`
-- `fetchTodos({ status: "处理中", limit: OVERVIEW_TODO_LIMIT, offset: 0 })`
-- `fetchKnowledge({ limit: OVERVIEW_KNOWLEDGE_LIMIT, offset: 0 })`
-- `fetchKnowledge({ status: "未发布", limit: OVERVIEW_KNOWLEDGE_LIMIT, offset: 0 })`
-- `fetchEnglishMaterials({ sortBy: "id", sortDir: "desc", limit: 1, offset: 0 })`
+- `fetchTodos({ username: authUser.username, status: "处理中", limit: OVERVIEW_TODO_LIMIT, offset: 0 })`
+- `fetchKnowledge({ username: authUser.username, limit: OVERVIEW_KNOWLEDGE_LIMIT, offset: 0 })`
+- `fetchKnowledge({ username: authUser.username, status: "未发布", limit: OVERVIEW_KNOWLEDGE_LIMIT, offset: 0 })`
+- `fetchEnglishMaterials({ username: authUser.username, sortBy: "id", sortDir: "desc", limit: 1, offset: 0 })`
 
 当前行为：
 
@@ -95,7 +95,7 @@
 - 总览 Todo 只显示 `处理中` 状态。
 - English 模块只显示最新 1 条。
 - 可信知识模块使用 `OVERVIEW_KNOWLEDGE_LIMIT` 控制最近知识卡片数量。
-- 总览数据会跟随后端用户权限过滤：`admin` 可见全部，普通用户只看到自己或可见孩子的知识、待办和英语素材。
+- 总览中的 Todo、可信知识和英语素材会固定收敛到当前登录用户名，只展示“我自己的数据”；不会再默认汇总其他可见用户的数据。
 - 分区失败会独立展示错误，一个数据源失败不会阻断整个总览。
 - 点击卡片会跳转到对应完整工作区，并在支持的页面中选中对应记录。
 

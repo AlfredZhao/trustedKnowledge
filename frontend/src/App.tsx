@@ -1984,26 +1984,31 @@ function App() {
   ]);
 
   useEffect(() => {
-    if (!apiKey || activeView !== "overview") return;
+    if (!apiKey || activeView !== "overview" || !authUser) return;
 
     let mounted = true;
     const isManualRefresh = overviewRefreshToken > 0;
     const usageLimit = USAGE_SAMPLE_LIMIT;
+    const overviewUsername = authUser.username.trim() || undefined;
     const todoQueryConfig = {
+      username: overviewUsername,
       status: "处理中" as const,
       limit: OVERVIEW_TODO_LIMIT,
       offset: 0,
     };
     const recentKnowledgeQueryConfig = {
+      username: overviewUsername,
       limit: OVERVIEW_KNOWLEDGE_LIMIT,
       offset: 0,
     };
     const unpublishedKnowledgeQueryConfig = {
+      username: overviewUsername,
       status: "未发布" as const,
       limit: OVERVIEW_KNOWLEDGE_LIMIT,
       offset: 0,
     };
     const latestEnglishMaterialQueryConfig = {
+      username: overviewUsername,
       sortBy: "id" as const,
       sortDir: "desc" as const,
       limit: 1,
@@ -2140,7 +2145,7 @@ function App() {
     return () => {
       mounted = false;
     };
-  }, [activeView, apiKey, overviewRefreshToken, canAccessUsage]);
+  }, [activeView, apiKey, authUser, overviewRefreshToken, canAccessUsage]);
 
   useEffect(() => {
     if (!apiKey || activeView !== "usage" || !canAccessUsage) return;
