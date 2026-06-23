@@ -9,11 +9,30 @@ import oracledb
 
 from app.core.config import settings
 from app.db.oracle import acquire_connection
-from app.schemas.users import ManagedUserCreate, ManagedUserPasswordReset, ManagedUserUpdate, UserRelationCreate, UserRelationUpdate
+from app.schemas.users import (
+    AdminModuleAccessLevel,
+    ManagedUserCreate,
+    ManagedUserPasswordReset,
+    ManagedUserUpdate,
+    UserRelationCreate,
+    UserRelationUpdate,
+)
 
 
 PBKDF2_ITERATIONS = 120_000
 SESSION_DAYS = 14
+SUPER_ADMIN_ONLY = "SUPER_ADMIN_ONLY"
+ADMIN_ROLE = "ADMIN_ROLE"
+ADMIN_MODULES: dict[str, dict[str, str]] = {
+    "aiCoding": {
+        "label": "AI 编程",
+        "description": "控制 AI 编程任务页面是否允许 admin 角色用户访问。",
+    },
+    "usage": {
+        "label": "AI 用量",
+        "description": "控制 AI 用量页面是否允许 admin 角色用户访问。",
+    },
+}
 
 _schema_ready = False
 
@@ -23,6 +42,7 @@ class AuthContext:
     user_id: int | None
     username: str
     is_admin: bool
+    is_admin_role: bool
     visible_user_ids: tuple[int, ...] | None = None
 
 
@@ -39,7 +59,13 @@ class UserConflictError(Exception):
 
 
 def admin_auth_context() -> AuthContext:
-    return AuthContext(user_id=None, username=settings.admin_username, is_admin=True, visible_user_ids=None)
+    return AuthContext(
+        user_id=None,
+        username=settings.admin_username,
+        is_admin=True,
+        is_admin_role=False,
+        visible_user_ids=None,
+    )
 
 
 def hash_password(password: str, *, salt: str | None = None) -> str:
@@ -94,12 +120,14 @@ async def ensure_user_schema_for_connection(connection: oracledb.AsyncConnection
             password_hash varchar2(255),
             status varchar2(20) default 'ACTIVE' not null,
             role_code varchar2(30) default 'USER' not null,
+            admin_enabled number(1) default 0 not null,
             created_at timestamp default systimestamp not null,
             updated_at timestamp default systimestamp not null,
             last_login_at timestamp,
             constraint tk_users_username_uk unique (username),
             constraint tk_users_status_ck check (status in ('ACTIVE', 'DISABLED')),
-            constraint tk_users_role_ck check (role_code in ('USER', 'PARENT', 'ADMIN'))
+            constraint tk_users_role_ck check (role_code in ('USER', 'PARENT')),
+            constraint tk_users_admin_enabled_ck check (admin_enabled in (0, 1))
         )
         """,
     )
@@ -137,7 +165,20 @@ async def ensure_user_schema_for_connection(connection: oracledb.AsyncConnection
     )
     await _execute_ddl(cursor, "create index tk_user_sessions_user_idx on tk_user_sessions (user_id, expires_at)")
     await _execute_ddl(cursor, "create index tk_relations_parent_idx on tk_relations (parent_user_id, status)")
+    await _execute_ddl(
+        cursor,
+        """
+        create table tk_module_access (
+            module_code varchar2(50) primary key,
+            access_level varchar2(30) default 'SUPER_ADMIN_ONLY' not null,
+            created_at timestamp default systimestamp not null,
+            updated_at timestamp default systimestamp not null,
+            constraint tk_module_access_level_ck check (access_level in ('SUPER_ADMIN_ONLY', 'ADMIN_ROLE'))
+        )
+        """,
+    )
 
+    await _add_column_if_missing(cursor, "tk_users", "admin_enabled number(1) default 0 not null")
     await _add_column_if_missing(cursor, "t_current", "user_id number")
     await _add_column_if_missing(cursor, "t_history", "user_id number")
     await _add_column_if_missing(cursor, "t_relations", "student_user_id number")
@@ -151,6 +192,8 @@ async def ensure_user_schema_for_connection(connection: oracledb.AsyncConnection
     await _backfill_fact_user_ids(cursor)
     await _backfill_owned_table_user_ids(cursor)
     await _migrate_relations(cursor)
+    await _migrate_admin_roles(cursor)
+    await _ensure_module_access_defaults(cursor)
     await connection.commit()
     _schema_ready = True
 
@@ -332,6 +375,61 @@ async def _migrate_relations(cursor: Any) -> None:
     )
 
 
+async def _migrate_admin_roles(cursor: Any) -> None:
+    await cursor.execute("update tk_users set admin_enabled = 0 where admin_enabled is null")
+    await cursor.execute(
+        """
+        update tk_users
+        set admin_enabled = 1
+        where role_code = 'ADMIN'
+        """
+    )
+    await cursor.execute(
+        """
+        update tk_users users
+        set role_code = case
+                when exists (
+                    select 1
+                    from tk_relations rel
+                    where rel.parent_user_id = users.user_id
+                      and rel.status = 'ACTIVE'
+                ) then 'PARENT'
+                else 'USER'
+            end,
+            updated_at = systimestamp
+        where role_code = 'ADMIN'
+        """
+    )
+
+
+async def _ensure_module_access_defaults(cursor: Any) -> None:
+    for module_code in ADMIN_MODULES:
+        await cursor.execute(
+            """
+            merge into tk_module_access target
+            using (
+                select :module_code as module_code, :access_level as access_level
+                from dual
+            ) source
+            on (target.module_code = source.module_code)
+            when matched then update set
+                target.updated_at = case
+                    when target.access_level is null then systimestamp
+                    else target.updated_at
+                end,
+                target.access_level = coalesce(target.access_level, source.access_level)
+            when not matched then insert (
+                module_code,
+                access_level
+            ) values (
+                source.module_code,
+                source.access_level
+            )
+            """,
+            {"module_code": module_code, "access_level": SUPER_ADMIN_ONLY},
+        )
+
+
 async def authenticate_user(username: str, password: str) -> tuple[str, AuthContext] | None:
     if hmac.compare_digest(username, settings.admin_username) and hmac.compare_digest(password, settings.admin_password):
         return settings.api_key, admin_auth_context()
@@ -341,7 +439,7 @@ async def authenticate_user(username: str, password: str) -> tuple[str, AuthCont
         cursor = connection.cursor()
         await cursor.execute(
             """
-            select user_id, username, password_hash, role_code
+            select user_id, username, password_hash, role_code, admin_enabled
             from tk_users
             where lower(username) = lower(:username)
               and status = 'ACTIVE'
@@ -371,7 +469,13 @@ async def authenticate_user(username: str, password: str) -> tuple[str, AuthCont
             {"user_id": row[0]},
         )
         await connection.commit()
-        context = await _build_auth_context(cursor, int(row[0]), str(row[1]), str(row[3] or "USER"))
+        context = await _build_auth_context(
+            cursor,
+            int(row[0]),
+            str(row[1]),
+            str(row[3] or "USER"),
+            bool(row[4]),
+        )
         return token, context
 
 
@@ -384,7 +488,7 @@ async def authenticate_token(token: str) -> AuthContext | None:
         cursor = connection.cursor()
         await cursor.execute(
             """
-            select users.user_id, users.username, users.role_code
+            select users.user_id, users.username, users.role_code, users.admin_enabled
             from tk_user_sessions sessions
             join tk_users users on users.user_id = sessions.user_id
             where sessions.token_hash = :token_hash
@@ -397,7 +501,13 @@ async def authenticate_token(token: str) -> AuthContext | None:
         row = await cursor.fetchone()
         if row is None:
             return None
-        return await _build_auth_context(cursor, int(row[0]), str(row[1]), str(row[2] or "USER"))
+        return await _build_auth_context(
+            cursor,
+            int(row[0]),
+            str(row[1]),
+            str(row[2] or "USER"),
+            bool(row[3]),
+        )
 
 
 async def list_visible_usernames(context: AuthContext) -> list[str]:
@@ -426,7 +536,13 @@ async def list_visible_usernames(context: AuthContext) -> list[str]:
         return [str(row[0]) for row in await cursor.fetchall()]
 
 
-async def _build_auth_context(cursor: Any, user_id: int, username: str, role_code: str) -> AuthContext:
+async def _build_auth_context(
+    cursor: Any,
+    user_id: int,
+    username: str,
+    role_code: str,
+    admin_enabled: bool,
+) -> AuthContext:
     await cursor.execute(
         """
         select child_user_id
@@ -438,7 +554,13 @@ async def _build_auth_context(cursor: Any, user_id: int, username: str, role_cod
     )
     child_ids = [int(row[0]) for row in await cursor.fetchall()]
     visible_ids = tuple(dict.fromkeys([user_id, *child_ids]))
-    return AuthContext(user_id=user_id, username=username, is_admin=role_code == "ADMIN", visible_user_ids=visible_ids)
+    return AuthContext(
+        user_id=user_id,
+        username=username,
+        is_admin=False,
+        is_admin_role=admin_enabled,
+        visible_user_ids=visible_ids,
+    )
 
 
 async def get_or_create_user_id(connection: oracledb.AsyncConnection, username: str) -> int:
@@ -524,13 +646,14 @@ def _managed_user_row_to_dict(row: Any) -> dict[str, Any]:
         "username": row[1],
         "display_name": row[2],
         "role_code": row[3],
-        "status": row[4],
-        "has_password": bool(row[5]),
-        "parent_count": int(row[6] or 0),
-        "child_count": int(row[7] or 0),
-        "created_at": row[8],
-        "updated_at": row[9],
-        "last_login_at": row[10],
+        "is_admin_role": bool(row[4]),
+        "status": row[5],
+        "has_password": bool(row[6]),
+        "parent_count": int(row[7] or 0),
+        "child_count": int(row[8] or 0),
+        "created_at": row[9],
+        "updated_at": row[10],
+        "last_login_at": row[11],
     }
 
 
@@ -567,6 +690,7 @@ async def list_managed_users(*, q: str | None = None) -> tuple[list[dict[str, An
                 users.username,
                 users.display_name,
                 users.role_code,
+                users.admin_enabled,
                 users.status,
                 case when users.password_hash is null then 0 else 1 end as has_password,
                 (select count(*) from tk_relations rel where rel.child_user_id = users.user_id and rel.status = 'ACTIVE') as parent_count,
@@ -596,6 +720,7 @@ async def get_managed_user(user_id: int) -> dict[str, Any] | None:
                 users.username,
                 users.display_name,
                 users.role_code,
+                users.admin_enabled,
                 users.status,
                 case when users.password_hash is null then 0 else 1 end as has_password,
                 (select count(*) from tk_relations rel where rel.child_user_id = users.user_id and rel.status = 'ACTIVE') as parent_count,
@@ -623,8 +748,8 @@ async def create_managed_user(payload: ManagedUserCreate) -> dict[str, Any]:
         new_id = cursor.var(oracledb.NUMBER)
         await cursor.execute(
             """
-            insert into tk_users (username, display_name, password_hash, role_code, status)
-            values (:username, :display_name, :password_hash, :role_code, 'ACTIVE')
+            insert into tk_users (username, display_name, password_hash, role_code, admin_enabled, status)
+            values (:username, :display_name, :password_hash, :role_code, :admin_enabled, 'ACTIVE')
             returning user_id into :new_id
             """,
             {
@@ -632,6 +757,7 @@ async def create_managed_user(payload: ManagedUserCreate) -> dict[str, Any]:
                 "display_name": payload.display_name or payload.username,
                 "password_hash": hash_password(payload.password),
                 "role_code": payload.role_code,
+                "admin_enabled": 1 if payload.is_admin_role else 0,
                 "new_id": new_id,
             },
         )
@@ -654,6 +780,8 @@ async def update_managed_user(user_id: int, payload: ManagedUserUpdate) -> dict[
 
     assignments = []
     params: dict[str, Any] = {"user_id": user_id}
+    if "is_admin_role" in values:
+        values["admin_enabled"] = 1 if values.pop("is_admin_role") else 0
     for key, value in values.items():
         assignments.append(f"{key} = :{key}")
         params[key] = value
@@ -843,3 +971,97 @@ async def _assert_user_exists(cursor: Any, user_id: int) -> None:
     await cursor.execute("select user_id from tk_users where user_id = :user_id", {"user_id": user_id})
     if await cursor.fetchone() is None:
         raise UserNotFoundError("User not found")
+
+
+async def list_admin_module_access() -> list[dict[str, str]]:
+    async with acquire_connection() as connection:
+        await ensure_user_schema_for_connection(connection)
+        cursor = connection.cursor()
+        await _ensure_module_access_defaults(cursor)
+        await cursor.execute(
+            """
+            select module_code, access_level
+            from tk_module_access
+            where module_code in (:module_code_0, :module_code_1)
+            order by module_code
+            """,
+            {"module_code_0": "aiCoding", "module_code_1": "usage"},
+        )
+        rows = {str(row[0]): str(row[1]) for row in await cursor.fetchall()}
+    return [
+        {
+            "module_code": module_code,
+            "label": meta["label"],
+            "description": meta["description"],
+            "access_level": rows.get(module_code, SUPER_ADMIN_ONLY),
+        }
+        for module_code, meta in ADMIN_MODULES.items()
+    ]
+
+
+async def update_admin_module_access(module_code: str, access_level: AdminModuleAccessLevel) -> dict[str, str]:
+    if module_code not in ADMIN_MODULES:
+        raise UserNotFoundError("Module not found")
+
+    async with acquire_connection() as connection:
+        await ensure_user_schema_for_connection(connection)
+        cursor = connection.cursor()
+        await cursor.execute(
+            """
+            merge into tk_module_access target
+            using (
+                select :module_code as module_code, :access_level as access_level
+                from dual
+            ) source
+            on (target.module_code = source.module_code)
+            when matched then update set
+                target.access_level = source.access_level,
+                target.updated_at = systimestamp
+            when not matched then insert (
+                module_code,
+                access_level
+            ) values (
+                source.module_code,
+                source.access_level
+            )
+            """,
+            {"module_code": module_code, "access_level": access_level},
+        )
+        await connection.commit()
+
+    for item in await list_admin_module_access():
+        if item["module_code"] == module_code:
+            return item
+    raise UserNotFoundError("Module not found")
+
+
+async def list_visible_admin_modules(context: AuthContext) -> list[str]:
+    if context.is_admin:
+        return list(ADMIN_MODULES)
+    if not context.is_admin_role:
+        return []
+
+    async with acquire_connection() as connection:
+        await ensure_user_schema_for_connection(connection)
+        cursor = connection.cursor()
+        await _ensure_module_access_defaults(cursor)
+        await cursor.execute(
+            """
+            select module_code
+            from tk_module_access
+            where access_level = :access_level
+            order by module_code
+            """,
+            {"access_level": ADMIN_ROLE},
+        )
+        return [str(row[0]) for row in await cursor.fetchall() if str(row[0]) in ADMIN_MODULES]
+
+
+async def has_admin_module_access(context: AuthContext, module_code: str) -> bool:
+    if module_code not in ADMIN_MODULES:
+        return False
+    if context.is_admin:
+        return True
+    if not context.is_admin_role:
+        return False
+    return module_code in await list_visible_admin_modules(context)

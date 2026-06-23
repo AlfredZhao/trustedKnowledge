@@ -11,12 +11,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 
 from app.core.config import settings
-from app.core.security import require_api_key
+from app.core.security import require_admin_module
 from app.repositories.skills import get_prompt_skills
 from app.schemas.codex import CodexJobSnapshot, CodexJobStatus, CodexRunRequest, CodexRunResponse
 
 
-router = APIRouter(prefix="/codex", tags=["codex"], dependencies=[Depends(require_api_key)])
+router = APIRouter(prefix="/codex", tags=["codex"], dependencies=[Depends(require_admin_module("aiCoding"))])
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 CODEX_TIMEOUT_SECONDS = 900

@@ -3,12 +3,12 @@ from typing import Annotated
 import oracledb
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from app.core.security import require_api_key
+from app.core.security import require_admin_module
 from app.repositories.usage import list_llm_usage
 from app.schemas.usage import LlmUsageResponse
 
 
-router = APIRouter(prefix="/llm-usage", tags=["llm-usage"], dependencies=[Depends(require_api_key)])
+router = APIRouter(prefix="/llm-usage", tags=["llm-usage"], dependencies=[Depends(require_admin_module("usage"))])
 
 
 @router.get("", response_model=LlmUsageResponse)

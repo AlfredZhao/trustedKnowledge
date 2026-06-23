@@ -1,4 +1,7 @@
 import type {
+  AdminModuleAccessItem,
+  AdminModuleAccessLevel,
+  AdminModuleAccessListResponse,
   ManagedUserCreateDraft,
   ManagedUserItem,
   ManagedUserListResponse,
@@ -60,7 +63,7 @@ export async function createManagedUser(draft: ManagedUserCreateDraft): Promise<
 
 export async function updateManagedUser(
   userId: number,
-  payload: { display_name?: string | null; role_code?: ManagedUserRole; status?: ManagedUserStatus },
+  payload: { display_name?: string | null; role_code?: ManagedUserRole; is_admin_role?: boolean; status?: ManagedUserStatus },
 ): Promise<ManagedUserItem> {
   return request<ManagedUserItem>(`/api/users/${userId}`, {
     method: "PATCH",
@@ -94,5 +97,19 @@ export async function updateUserRelation(relationId: number, status: ManagedUser
   return request<UserRelationItem>(`/api/users/relations/${relationId}`, {
     method: "PATCH",
     body: JSON.stringify({ status }),
+  });
+}
+
+export async function fetchAdminModuleAccess(): Promise<AdminModuleAccessListResponse> {
+  return request<AdminModuleAccessListResponse>("/api/users/admin-modules");
+}
+
+export async function updateAdminModuleAccess(
+  moduleCode: AdminModuleAccessItem["module_code"],
+  accessLevel: AdminModuleAccessLevel,
+): Promise<AdminModuleAccessItem> {
+  return request<AdminModuleAccessItem>(`/api/users/admin-modules/${moduleCode}`, {
+    method: "PATCH",
+    body: JSON.stringify({ access_level: accessLevel }),
   });
 }

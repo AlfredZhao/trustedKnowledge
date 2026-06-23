@@ -10,7 +10,7 @@ from fastapi.responses import RedirectResponse
 
 from app.core.config import settings
 from app.core.security import create_oauth_state, require_current_user, validate_oauth_state
-from app.repositories.users import AuthContext, authenticate_user, list_visible_usernames
+from app.repositories.users import AuthContext, authenticate_user, list_visible_admin_modules, list_visible_usernames
 from app.schemas.auth import AuthConfigResponse, AuthUserResponse, LoginRequest, LoginResponse, WeChatLoginStartResponse
 
 
@@ -32,7 +32,9 @@ async def login(payload: LoginRequest) -> LoginResponse:
         api_key=api_key,
         username=context.username,
         is_admin=context.is_admin,
+        is_admin_role=context.is_admin_role,
         visible_users=await list_visible_usernames(context),
+        visible_admin_modules=await list_visible_admin_modules(context),
     )
 
 
@@ -41,7 +43,9 @@ async def get_current_auth_user(context: AuthContext = Depends(require_current_u
     return AuthUserResponse(
         username=context.username,
         is_admin=context.is_admin,
+        is_admin_role=context.is_admin_role,
         visible_users=await list_visible_usernames(context),
+        visible_admin_modules=await list_visible_admin_modules(context),
     )
 
 

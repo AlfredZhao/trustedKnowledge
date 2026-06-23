@@ -6,14 +6,18 @@ export const AUTH_USER_STORAGE_KEY = "trustedKnowledge.authUser";
 export interface AuthUser {
   username: string;
   is_admin: boolean;
+  is_admin_role: boolean;
   visible_users: string[];
+  visible_admin_modules: string[];
 }
 
 interface LoginResponse {
   api_key: string;
   username: string;
   is_admin: boolean;
+  is_admin_role: boolean;
   visible_users: string[];
+  visible_admin_modules: string[];
 }
 
 interface AuthConfigResponse {
@@ -110,11 +114,21 @@ export function readStoredAuthUser(): AuthUser | null {
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as Partial<AuthUser>;
-    if (typeof parsed.username !== "string" || typeof parsed.is_admin !== "boolean") return null;
+    if (
+      typeof parsed.username !== "string" ||
+      typeof parsed.is_admin !== "boolean" ||
+      typeof parsed.is_admin_role !== "boolean"
+    ) {
+      return null;
+    }
     return {
       username: parsed.username,
       is_admin: parsed.is_admin,
+      is_admin_role: parsed.is_admin_role,
       visible_users: Array.isArray(parsed.visible_users) ? parsed.visible_users.filter((item) => typeof item === "string") : [],
+      visible_admin_modules: Array.isArray(parsed.visible_admin_modules)
+        ? parsed.visible_admin_modules.filter((item) => typeof item === "string")
+        : [],
     };
   } catch {
     return null;

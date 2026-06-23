@@ -9,7 +9,7 @@ class LlmUsageSample(BaseModel):
     total_budget: float
     remaining_budget: float
     budget_duration: str | None = None
-    next_reset_at: datetime
+    next_reset_at: datetime | None = None
 
 
 class LlmUsageResponse(BaseModel):

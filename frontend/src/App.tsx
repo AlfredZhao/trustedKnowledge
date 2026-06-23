@@ -115,17 +115,21 @@ import {
 import { clearApiResponseCache } from "./api/localCache";
 import { fetchLlmUsage, readCachedLlmUsage } from "./api/usage";
 import {
+  fetchAdminModuleAccess,
   createManagedUser,
   createUserRelation,
   fetchManagedUsers,
   fetchUserRelations,
   resetManagedUserPassword,
+  updateAdminModuleAccess,
   updateManagedUser,
   updateUserRelation,
 } from "./api/users";
 import { MarkdownPreview } from "./components/MarkdownPreview";
 import { copyMarkdownAsPlainText, copyMarkdownAsRichText, removeLeakedMarkdownCodePlaceholders } from "./utils/markdown";
 import type {
+  AdminModuleAccessItem,
+  AdminModuleAccessLevel,
   AppView,
   BlogFactoryItem,
   BlogFactoryStatus,
@@ -208,6 +212,7 @@ const emptyManagedUserDraft: ManagedUserCreateDraft = {
   display_name: "",
   password: "",
   role_code: "USER",
+  is_admin_role: false,
 };
 
 const emptyRelationDraft = {
@@ -272,6 +277,8 @@ const FUNCTION_NAV_ITEMS: FunctionNavItem[] = [
   { icon: WandSparkles, label: "AI 编程", view: "aiCoding" },
   { icon: Bot, label: "AI 用量", view: "usage" },
 ];
+const SUPER_ADMIN_ONLY_VIEWS: AppView[] = ["users"];
+const ADMIN_ROLE_MODULE_VIEWS: AppView[] = ["aiCoding", "usage"];
 const BLOG_FACTORY_SORT_FIELDS = ["copied_at", "id", "knowledge_id", "factory_status"] as const;
 const CURRENT_RECORD_SORT_FIELDS = ["id", "type", "week", "day", "username", "learn_level"] as const;
 const HISTORY_SORT_FIELDS = ["history_date", "id", "type", "username", "learn_level"] as const;
@@ -396,6 +403,16 @@ interface OverviewSectionErrors {
   todos: string | null;
   knowledge: string | null;
   english: string | null;
+}
+
+function canAccessView(view: AppView, authUser: AuthUser | null): boolean {
+  if (SUPER_ADMIN_ONLY_VIEWS.includes(view)) {
+    return Boolean(authUser?.is_admin);
+  }
+  if (ADMIN_ROLE_MODULE_VIEWS.includes(view)) {
+    return Boolean(authUser?.is_admin || authUser?.visible_admin_modules.includes(view));
+  }
+  return true;
 }
 
 interface AiCodingMessage {
@@ -684,6 +701,7 @@ function App() {
   const [debouncedManagedUserQuery, setDebouncedManagedUserQuery] = useState("");
   const [managedUserDraft, setManagedUserDraft] = useState<ManagedUserCreateDraft>(emptyManagedUserDraft);
   const [userRelations, setUserRelations] = useState<UserRelationItem[]>([]);
+  const [adminModuleItems, setAdminModuleItems] = useState<AdminModuleAccessItem[]>([]);
   const [relationDraft, setRelationDraft] = useState(emptyRelationDraft);
   const [isUserManagementLoading, setIsUserManagementLoading] = useState(false);
   const [isUserManagementSaving, setIsUserManagementSaving] = useState(false);
@@ -733,6 +751,13 @@ function App() {
   const [restartError, setRestartError] = useState<string | null>(null);
   const [isRestartingServices, setIsRestartingServices] = useState(false);
   const [githubSyncStatus, setGithubSyncStatus] = useState<GithubSyncResponse | null>(restoredUiState.aiCoding.githubSyncStatus);
+
+  const canAccessAiCoding = canAccessView("aiCoding", authUser);
+  const canAccessUsage = canAccessView("usage", authUser);
+  const availableFunctionNavItems = useMemo(
+    () => FUNCTION_NAV_ITEMS.filter((item) => canAccessView(item.view, authUser)),
+    [authUser],
+  );
   const [githubSyncError, setGithubSyncError] = useState<string | null>(null);
   const [isGithubSyncing, setIsGithubSyncing] = useState(false);
 
@@ -1040,7 +1065,7 @@ function App() {
   ]);
 
   useEffect(() => {
-    if (!apiKey || !activeCodexJobId) return;
+    if (!apiKey || !activeCodexJobId || !canAccessAiCoding) return;
 
     const jobId = activeCodexJobId;
     let cancelled = false;
@@ -1085,7 +1110,7 @@ function App() {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [activeCodexJobId, apiKey]);
+  }, [activeCodexJobId, apiKey, canAccessAiCoding]);
 
   useEffect(() => {
     if (!apiKey || !factoryCodexJobId) return;
@@ -1141,7 +1166,7 @@ function App() {
   }, [apiKey, factoryCodexJobId]);
 
   useEffect(() => {
-    if (!apiKey || activeCodexJobId || hasRestoredLatestCodexJobRef.current) return;
+    if (!apiKey || activeCodexJobId || hasRestoredLatestCodexJobRef.current || !canAccessAiCoding) return;
 
     hasRestoredLatestCodexJobRef.current = true;
     let cancelled = false;
@@ -1181,7 +1206,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [activeCodexJobId, apiKey]);
+  }, [activeCodexJobId, apiKey, canAccessAiCoding]);
 
   useEffect(() => {
     if (activeView === "aiCoding" && aiCodingNoticeStatus !== "running") {
@@ -1190,7 +1215,7 @@ function App() {
   }, [activeView, aiCodingNoticeStatus]);
 
   useEffect(() => {
-    if (activeView === "users" && authUser && !authUser.is_admin) {
+    if (authUser && !canAccessView(activeView, authUser)) {
       setActiveView("overview");
     }
   }, [activeView, authUser]);
@@ -1272,12 +1297,13 @@ function App() {
     let cancelled = false;
     setIsUserManagementLoading(true);
     setUserManagementError(null);
-    Promise.all([fetchManagedUsers(debouncedManagedUserQuery), fetchUserRelations()])
-      .then(([usersResponse, relationsResponse]) => {
+    Promise.all([fetchManagedUsers(debouncedManagedUserQuery), fetchUserRelations(), fetchAdminModuleAccess()])
+      .then(([usersResponse, relationsResponse, moduleResponse]) => {
         if (cancelled) return;
         setManagedUsers(usersResponse.items);
         setManagedUserTotal(usersResponse.total);
         setUserRelations(relationsResponse.items);
+        setAdminModuleItems(moduleResponse.items);
       })
       .catch((error: Error) => {
         if (cancelled) return;
@@ -1923,7 +1949,7 @@ function App() {
       offset: 0,
     };
 
-    const cachedUsage = readCachedLlmUsage(usageLimit);
+    const cachedUsage = canAccessUsage ? readCachedLlmUsage(usageLimit) : { items: [], total: 0 };
     const cachedTodos = readCachedTodos(todoQueryConfig);
     const cachedRecentKnowledge = readCachedKnowledge(recentKnowledgeQueryConfig);
     const cachedUnpublishedKnowledge = readCachedKnowledge(unpublishedKnowledgeQueryConfig);
@@ -1955,7 +1981,7 @@ function App() {
     }
 
     Promise.allSettled([
-      fetchLlmUsage(usageLimit),
+      canAccessUsage ? fetchLlmUsage(usageLimit) : Promise.resolve({ items: [], total: 0 }),
       fetchTodos(todoQueryConfig),
       fetchKnowledge(recentKnowledgeQueryConfig),
       fetchKnowledge(unpublishedKnowledgeQueryConfig),
@@ -2053,10 +2079,10 @@ function App() {
     return () => {
       mounted = false;
     };
-  }, [activeView, apiKey, overviewRefreshToken]);
+  }, [activeView, apiKey, overviewRefreshToken, canAccessUsage]);
 
   useEffect(() => {
-    if (!apiKey || activeView !== "usage") return;
+    if (!apiKey || activeView !== "usage" || !canAccessUsage) return;
 
     let mounted = true;
     const refreshOnly = usageRefreshToken > 0 && usageItems.length > 0;
@@ -2096,7 +2122,7 @@ function App() {
     return () => {
       mounted = false;
     };
-  }, [activeView, apiKey, usageRefreshToken]);
+  }, [activeView, apiKey, usageRefreshToken, canAccessUsage]);
 
   useEffect(() => {
     if (restoredBlogFactoryArticleDraftRef.current && !selectedBlogFactoryItem) return;
@@ -2341,11 +2367,20 @@ function App() {
     restoreMobileViewportScale();
   }
 
-  function handleLogin(result: { api_key: string; username: string; is_admin: boolean; visible_users: string[] }) {
+  function handleLogin(result: {
+    api_key: string;
+    username: string;
+    is_admin: boolean;
+    is_admin_role: boolean;
+    visible_users: string[];
+    visible_admin_modules: string[];
+  }) {
     const nextAuthUser = {
       username: result.username,
       is_admin: result.is_admin,
+      is_admin_role: result.is_admin_role,
       visible_users: result.visible_users,
+      visible_admin_modules: result.visible_admin_modules,
     };
     persistApiKey(result.api_key);
     persistAuthUser(nextAuthUser);
@@ -2376,6 +2411,7 @@ function App() {
     setFactoryTask("");
     setFactorySkillIds([]);
     setFactoryCodexJobId(null);
+    setAdminModuleItems([]);
     setFactoryCodexStatus("");
     setFactoryCodexErrorOutput("");
     setBlogFactoryItems([]);
@@ -3016,6 +3052,9 @@ function App() {
   }
 
   function handleOpenOverviewView(view: AppView) {
+    if (!canAccessView(view, authUser)) {
+      return;
+    }
     setActiveView(view);
   }
 
@@ -3194,7 +3233,7 @@ function App() {
 
   async function handleUpdateManagedUser(
     user: ManagedUserItem,
-    payload: { display_name?: string | null; role_code?: ManagedUserRole; status?: ManagedUserStatus },
+    payload: { display_name?: string | null; role_code?: ManagedUserRole; is_admin_role?: boolean; status?: ManagedUserStatus },
   ) {
     if (isUserManagementSaving) return;
     setIsUserManagementSaving(true);
@@ -3262,6 +3301,21 @@ function App() {
       markUserManagementSaved(status === "ACTIVE" ? "关系已启用" : "关系已停用");
     } catch (error) {
       setUserManagementError(error instanceof Error ? error.message : "关系更新失败，请稍后重试。");
+    } finally {
+      setIsUserManagementSaving(false);
+    }
+  }
+
+  async function handleUpdateAdminModuleAccess(moduleCode: AdminModuleAccessItem["module_code"], accessLevel: AdminModuleAccessLevel) {
+    if (isUserManagementSaving) return;
+    setIsUserManagementSaving(true);
+    setUserManagementError(null);
+    try {
+      const updated = await updateAdminModuleAccess(moduleCode, accessLevel);
+      setAdminModuleItems((current) => current.map((item) => (item.module_code === updated.module_code ? updated : item)));
+      markUserManagementSaved("模块权限已更新");
+    } catch (error) {
+      setUserManagementError(error instanceof Error ? error.message : "模块权限更新失败，请稍后重试。");
     } finally {
       setIsUserManagementSaving(false);
     }
@@ -3560,7 +3614,7 @@ function App() {
       >
         <Sidebar
           activeView={activeView}
-          isAdmin={authUser?.is_admin ?? false}
+          availableItems={availableFunctionNavItems}
           isExpanded={isSidebarExpanded}
           onToggleExpanded={() => setIsSidebarExpanded((expanded) => !expanded)}
           onViewChange={setActiveView}
@@ -3569,7 +3623,7 @@ function App() {
         <section className="flex min-w-0 flex-col">
           <Topbar
             activeView={activeView}
-            isAdmin={authUser?.is_admin ?? false}
+            availableItems={availableFunctionNavItems}
             query={
               activeView === "overview"
                 ? ""
@@ -3596,7 +3650,7 @@ function App() {
             statusFilter={activeView === "workbench" ? statusFilter : undefined}
             title={viewTitle}
             subtitle={viewSubtitle}
-            aiCodingNotice={activeView === "aiCoding" ? null : aiCodingNoticeStatus}
+            aiCodingNotice={activeView === "aiCoding" || !canAccessAiCoding ? null : aiCodingNoticeStatus}
             onLogout={handleLogout}
             onQueryChange={
               activeView === "factory"
@@ -3626,6 +3680,7 @@ function App() {
 
           {activeView === "overview" ? (
             <OverviewDashboard
+              canViewUsage={canAccessUsage}
               data={overviewData}
               isLoading={isOverviewLoading}
               isRefreshing={isOverviewRefreshing}
@@ -3668,6 +3723,7 @@ function App() {
             />
           ) : activeView === "users" ? (
             <UserManagementWorkspace
+              adminModules={adminModuleItems}
               users={managedUsers}
               total={managedUserTotal}
               relations={userRelations}
@@ -3687,6 +3743,7 @@ function App() {
               onUpdateUser={handleUpdateManagedUser}
               onResetPassword={handleResetManagedUserPassword}
               onCreateRelation={handleCreateUserRelation}
+              onUpdateAdminModule={handleUpdateAdminModuleAccess}
               onUpdateRelation={handleUpdateUserRelation}
             />
           ) : activeView === "historyAsk" ? (
@@ -4237,13 +4294,13 @@ function App() {
 
 function Sidebar({
   activeView,
-  isAdmin,
+  availableItems,
   isExpanded,
   onToggleExpanded,
   onViewChange,
 }: {
   activeView: AppView;
-  isAdmin: boolean;
+  availableItems: FunctionNavItem[];
   isExpanded: boolean;
   onToggleExpanded: () => void;
   onViewChange: (view: AppView) => void;
@@ -4257,7 +4314,6 @@ function Sidebar({
     { icon: ShieldCheck, label: "Review" },
     { icon: Database, label: "Sources" },
   ];
-  const availableItems = FUNCTION_NAV_ITEMS.filter((item) => isAdmin || item.view !== "users");
   const primaryItems = availableItems.filter((item) => item.view !== "usage");
   const usageItem = availableItems.find((item) => item.view === "usage");
   const usageActive = activeView === "usage";
@@ -4344,7 +4400,7 @@ function Sidebar({
 function Topbar({
   activeView,
   aiCodingNotice,
-  isAdmin,
+  availableItems,
   query,
   statusFilter,
   title,
@@ -4356,7 +4412,7 @@ function Topbar({
 }: {
   activeView: AppView;
   aiCodingNotice: AiCodingNoticeStatus | null;
-  isAdmin: boolean;
+  availableItems: FunctionNavItem[];
   query: string;
   statusFilter?: KnowledgeStatus | "all";
   title: string;
@@ -4373,7 +4429,6 @@ function Topbar({
     { label: "已发布", value: "已发布" },
     { label: "跳过", value: "跳过" },
   ];
-  const availableItems = FUNCTION_NAV_ITEMS.filter((item) => isAdmin || item.view !== "users");
   const activeLabel = statusOptions.find((option) => option.value === statusFilter)?.label ?? "全部状态";
   const aiCodingNoticeMeta =
     aiCodingNotice === "running"
@@ -4520,7 +4575,14 @@ function Topbar({
 function LoginScreen({
   onLogin,
 }: {
-  onLogin: (result: { api_key: string; username: string; is_admin: boolean; visible_users: string[] }) => void;
+  onLogin: (result: {
+    api_key: string;
+    username: string;
+    is_admin: boolean;
+    is_admin_role: boolean;
+    visible_users: string[];
+    visible_admin_modules: string[];
+  }) => void;
 }) {
   const [username, setUsername] = useState("admin");
   const [password, setPassword] = useState("");
@@ -8432,6 +8494,7 @@ function CurrentRecordEditDialog({
 }
 
 function UserManagementWorkspace({
+  adminModules,
   users,
   total,
   relations,
@@ -8451,8 +8514,10 @@ function UserManagementWorkspace({
   onUpdateUser,
   onResetPassword,
   onCreateRelation,
+  onUpdateAdminModule,
   onUpdateRelation,
 }: {
+  adminModules: AdminModuleAccessItem[];
   users: ManagedUserItem[];
   total: number;
   relations: UserRelationItem[];
@@ -8471,14 +8536,16 @@ function UserManagementWorkspace({
   onCreateUser: (event: React.FormEvent<HTMLFormElement>) => void;
   onUpdateUser: (
     user: ManagedUserItem,
-    payload: { display_name?: string | null; role_code?: ManagedUserRole; status?: ManagedUserStatus },
+    payload: { display_name?: string | null; role_code?: ManagedUserRole; is_admin_role?: boolean; status?: ManagedUserStatus },
   ) => void;
   onResetPassword: (event: React.FormEvent<HTMLFormElement>) => void;
   onCreateRelation: (event: React.FormEvent<HTMLFormElement>) => void;
+  onUpdateAdminModule: (moduleCode: AdminModuleAccessItem["module_code"], accessLevel: AdminModuleAccessLevel) => void;
   onUpdateRelation: (relation: UserRelationItem, status: ManagedUserStatus) => void;
 }) {
   const activeUsers = users.filter((user) => user.status === "ACTIVE").length;
   const parentUsers = users.filter((user) => user.role_code === "PARENT").length;
+  const adminRoleUsers = users.filter((user) => user.is_admin_role).length;
   const canCreateUser = createDraft.username.trim().length > 0 && createDraft.password.length >= 6 && !isSaving;
   const canCreateRelation = Boolean(relationDraft.parent_user_id && relationDraft.child_user_id) && !isSaving;
 
@@ -8493,10 +8560,11 @@ function UserManagementWorkspace({
             </div>
             <h2 className="text-xl font-semibold text-slate-50">用户管理</h2>
           </div>
-          <div className="grid grid-cols-3 gap-2 text-sm">
+          <div className="grid grid-cols-2 gap-2 text-sm lg:grid-cols-4">
             <MetricTile icon={<ShieldCheck size={17} />} label="用户" value={String(total)} detail="总数" />
             <MetricTile icon={<CheckCircle2 size={17} />} label="启用" value={String(activeUsers)} detail="ACTIVE" />
             <MetricTile icon={<UserCog size={17} />} label="家长" value={String(parentUsers)} detail="PARENT" />
+            <MetricTile icon={<LockKeyhole size={17} />} label="Admin 角色" value={String(adminRoleUsers)} detail="独立授权" />
           </div>
         </div>
 
@@ -8527,6 +8595,7 @@ function UserManagementWorkspace({
                     <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
                       <span>#{user.user_id}</span>
                       <span>{user.role_code}</span>
+                      <span>{user.is_admin_role ? "ADMIN_ROLE" : "NO_ADMIN_ROLE"}</span>
                       <span>{user.status}</span>
                       <span>孩子 {user.child_count}</span>
                       <span>家长 {user.parent_count}</span>
@@ -8555,7 +8624,7 @@ function UserManagementWorkspace({
                     </button>
                   </div>
                 </div>
-                <div className="grid gap-3 md:grid-cols-[1fr_160px]">
+                <div className="grid gap-3 md:grid-cols-[1fr_160px_180px]">
                   <Field label="显示名" icon={<Pencil size={16} />}>
                     <input
                       className="control"
@@ -8577,8 +8646,18 @@ function UserManagementWorkspace({
                     >
                       <option value="USER">USER</option>
                       <option value="PARENT">PARENT</option>
-                      <option value="ADMIN">ADMIN</option>
                     </select>
+                  </Field>
+                  <Field label="Admin 角色" icon={<LockKeyhole size={16} />}>
+                    <label className="flex h-11 items-center justify-between rounded-lg border border-white/10 bg-white/[0.035] px-3 text-sm text-slate-200">
+                      <span>{user.is_admin_role ? "已授予" : "未授予"}</span>
+                      <input
+                        checked={user.is_admin_role}
+                        className="h-4 w-4 accent-emerald-400"
+                        type="checkbox"
+                        onChange={(event) => onUpdateUser(user, { is_admin_role: event.target.checked })}
+                      />
+                    </label>
                   </Field>
                 </div>
               </article>
@@ -8627,9 +8706,20 @@ function UserManagementWorkspace({
               >
                 <option value="USER">USER</option>
                 <option value="PARENT">PARENT</option>
-                <option value="ADMIN">ADMIN</option>
               </select>
             </Field>
+            <label className="flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.035] px-3 py-3 text-sm text-slate-200">
+              <div>
+                <div className="font-medium">授予 Admin 角色</div>
+                <div className="text-xs text-slate-500">不影响 USER/PARENT 身份和家长关系。</div>
+              </div>
+              <input
+                checked={createDraft.is_admin_role}
+                className="h-4 w-4 accent-emerald-400"
+                type="checkbox"
+                onChange={(event) => onCreateDraftChange({ ...createDraft, is_admin_role: event.target.checked })}
+              />
+            </label>
             <button
               className="flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
               disabled={!canCreateUser}
@@ -8639,6 +8729,32 @@ function UserManagementWorkspace({
               创建用户
             </button>
           </form>
+        </section>
+
+        <section className="rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
+          <div className="mb-4 flex items-center gap-2 text-sm text-mint-300">
+            <LockKeyhole size={17} />
+            Admin 模块授权
+          </div>
+          <div className="space-y-3">
+            {adminModules.map((module) => (
+              <div key={module.module_code} className="rounded-lg border border-white/10 bg-white/[0.028] p-3">
+                <div className="mb-2 text-sm font-medium text-slate-100">{module.label}</div>
+                <div className="mb-3 text-xs leading-5 text-slate-500">{module.description}</div>
+                <select
+                  className="control"
+                  disabled={isSaving}
+                  value={module.access_level}
+                  onChange={(event) =>
+                    onUpdateAdminModule(module.module_code, event.target.value as AdminModuleAccessLevel)
+                  }
+                >
+                  <option value="SUPER_ADMIN_ONLY">仅 admin 用户</option>
+                  <option value="ADMIN_ROLE">admin 用户 + admin 角色</option>
+                </select>
+              </div>
+            ))}
+          </div>
         </section>
 
         <section className="rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
@@ -10502,6 +10618,7 @@ function HistoryDetailMetaTile({
 }
 
 function OverviewDashboard({
+  canViewUsage,
   data,
   isLoading,
   isRefreshing,
@@ -10514,6 +10631,7 @@ function OverviewDashboard({
   onOpenView,
   onRefresh,
 }: {
+  canViewUsage: boolean;
   data: OverviewData;
   isLoading: boolean;
   isRefreshing: boolean;
@@ -10526,7 +10644,7 @@ function OverviewDashboard({
   onOpenView: (view: AppView) => void;
   onRefresh: () => void;
 }) {
-  const latestUsage = data.usageItems.length > 0 ? data.usageItems[data.usageItems.length - 1] : null;
+  const latestUsage = canViewUsage && data.usageItems.length > 0 ? data.usageItems[data.usageItems.length - 1] : null;
   const usagePercent = latestUsage ? getUsagePercent(latestUsage) : 0;
   const latestEnglish = data.latestEnglishMaterial;
   const hasOverviewData =
@@ -10611,15 +10729,17 @@ function OverviewDashboard({
         </div>
       ) : null}
 
-      <div className="mb-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricTile
-          icon={<CircleGauge size={17} />}
-          label="LLM 用量"
-          value={latestUsage ? formatPercent(usagePercent) : "暂无"}
-          detail={latestUsage ? `${formatAmount(latestUsage.remaining_budget)} left` : "暂无采样"}
-          actionLabel="查看用量"
-          onAction={() => onOpenView("usage")}
-        />
+      <div className={`mb-4 grid gap-4 sm:grid-cols-2 ${canViewUsage ? "xl:grid-cols-4" : "xl:grid-cols-3"}`}>
+        {canViewUsage ? (
+          <MetricTile
+            icon={<CircleGauge size={17} />}
+            label="LLM 用量"
+            value={latestUsage ? formatPercent(usagePercent) : "暂无"}
+            detail={latestUsage ? `${formatAmount(latestUsage.remaining_budget)} left` : "暂无采样"}
+            actionLabel="查看用量"
+            onAction={() => onOpenView("usage")}
+          />
+        ) : null}
         <MetricTile
           icon={<ClipboardCheck size={17} />}
           label="处理中 Todo"
@@ -10640,7 +10760,7 @@ function OverviewDashboard({
         />
       </div>
 
-      {sectionErrors.usage ? <OverviewInlineError message={`LLM 用量读取失败：${sectionErrors.usage}`} /> : null}
+      {canViewUsage && sectionErrors.usage ? <OverviewInlineError message={`LLM 用量读取失败：${sectionErrors.usage}`} /> : null}
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(300px,0.58fr)]">
         <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">

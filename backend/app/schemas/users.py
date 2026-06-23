@@ -4,8 +4,10 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
-UserRole = Literal["USER", "PARENT", "ADMIN"]
+UserRole = Literal["USER", "PARENT"]
 UserStatus = Literal["ACTIVE", "DISABLED"]
+AdminModuleCode = Literal["aiCoding", "usage"]
+AdminModuleAccessLevel = Literal["SUPER_ADMIN_ONLY", "ADMIN_ROLE"]
 
 
 class ManagedUserItem(BaseModel):
@@ -13,6 +15,7 @@ class ManagedUserItem(BaseModel):
     username: str
     display_name: str | None = None
     role_code: UserRole
+    is_admin_role: bool = False
     status: UserStatus
     has_password: bool
     parent_count: int
@@ -34,6 +37,7 @@ class ManagedUserCreate(BaseModel):
     display_name: str | None = Field(default=None, max_length=100)
     password: str = Field(..., min_length=6, max_length=200)
     role_code: UserRole = "USER"
+    is_admin_role: bool = False
 
     @field_validator("username", "display_name", mode="before")
     @classmethod
@@ -47,6 +51,7 @@ class ManagedUserCreate(BaseModel):
 class ManagedUserUpdate(BaseModel):
     display_name: str | None = Field(default=None, max_length=100)
     role_code: UserRole | None = None
+    is_admin_role: bool | None = None
     status: UserStatus | None = None
 
     @field_validator("display_name", mode="before")
@@ -96,3 +101,18 @@ class UserRelationCreate(BaseModel):
 
 class UserRelationUpdate(BaseModel):
     status: UserStatus
+
+
+class AdminModuleAccessItem(BaseModel):
+    module_code: AdminModuleCode
+    label: str
+    description: str
+    access_level: AdminModuleAccessLevel
+
+
+class AdminModuleAccessListResponse(BaseModel):
+    items: list[AdminModuleAccessItem]
+
+
+class AdminModuleAccessUpdate(BaseModel):
+    access_level: AdminModuleAccessLevel

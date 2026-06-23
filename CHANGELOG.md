@@ -13,9 +13,18 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Added / 新增
 
+- Added an independent `admin_enabled` flag in `TK_USERS` plus frontend controls for granting existing users an admin role without changing their `USER` / `PARENT` identity.
+- 新增 `TK_USERS.admin_enabled` 独立管理员标记，并在前台用户管理中支持为现有用户授予 admin 角色，且不改变其 `USER` / `PARENT` 身份。
+
 #### Changed / 变更
 
+- Changed AI Coding and AI Usage to follow the same admin-only navigation rule as User Management by default, with super admin configurable access for admin-role users.
+- 调整 AI 编程与 AI 用量模块，默认与用户管理一样仅 admin 用户可见；超级管理员可在前台把它们授权给 admin 角色用户访问。
+
 #### Fixed / 修复
+
+- Allowed nullable `NEXT_RESET_AT` values in the LLM usage API so the AI Usage view no longer fails with HTTP 500 when `V_LLM_USAGE` contains samples without a reset timestamp.
+- 修复 `V_LLM_USAGE` 中 `NEXT_RESET_AT` 为空时 AI 用量接口响应模型校验失败的问题；用量视图不再因此报 HTTP 500。
 
 ## 历史版本更新
 

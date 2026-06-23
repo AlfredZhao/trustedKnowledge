@@ -75,14 +75,17 @@ export type AppView =
   | "aiCoding"
   | "usage";
 
-export type ManagedUserRole = "USER" | "PARENT" | "ADMIN";
+export type ManagedUserRole = "USER" | "PARENT";
 export type ManagedUserStatus = "ACTIVE" | "DISABLED";
+export type AdminModuleCode = "aiCoding" | "usage";
+export type AdminModuleAccessLevel = "SUPER_ADMIN_ONLY" | "ADMIN_ROLE";
 
 export interface ManagedUserItem {
   user_id: number;
   username: string;
   display_name: string | null;
   role_code: ManagedUserRole;
+  is_admin_role: boolean;
   status: ManagedUserStatus;
   has_password: boolean;
   parent_count: number;
@@ -102,6 +105,18 @@ export interface ManagedUserCreateDraft {
   display_name: string;
   password: string;
   role_code: ManagedUserRole;
+  is_admin_role: boolean;
+}
+
+export interface AdminModuleAccessItem {
+  module_code: AdminModuleCode;
+  label: string;
+  description: string;
+  access_level: AdminModuleAccessLevel;
+}
+
+export interface AdminModuleAccessListResponse {
+  items: AdminModuleAccessItem[];
 }
 
 export interface UserRelationItem {
@@ -168,7 +183,7 @@ export interface LlmUsageSample {
   total_budget: number;
   remaining_budget: number;
   budget_duration: string | null;
-  next_reset_at: string;
+  next_reset_at: string | null;
 }
 
 export interface HistoryItem {

@@ -8,7 +8,7 @@ from typing import Annotated
 from fastapi import Header, HTTPException, status
 
 from app.core.config import settings
-from app.repositories.users import AuthContext, authenticate_token
+from app.repositories.users import AuthContext, authenticate_token, has_admin_module_access
 
 
 ApiKeyHeader = Annotated[str | None, Header(alias="X-API-Key")]
@@ -45,6 +45,20 @@ async def require_admin_user(x_api_key: ApiKeyHeader = None) -> AuthContext:
         status_code=status.HTTP_403_FORBIDDEN,
         detail="Admin privileges are required",
     )
+
+
+def require_admin_module(module_code: str):
+    async def dependency(x_api_key: ApiKeyHeader = None) -> AuthContext:
+        context = await require_current_user(x_api_key)
+        if await has_admin_module_access(context, module_code):
+            return context
+
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have access to this admin module",
+        )
+
+    return dependency
 
 
 def validate_login(username: str, password: str) -> bool:

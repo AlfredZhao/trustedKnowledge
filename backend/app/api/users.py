@@ -11,13 +11,18 @@ from app.repositories.users import (
     UserNotFoundError,
     create_managed_user,
     create_user_relation,
+    list_admin_module_access,
     list_managed_users,
     list_user_relations,
     reset_managed_user_password,
+    update_admin_module_access,
     update_managed_user,
     update_user_relation,
 )
 from app.schemas.users import (
+    AdminModuleAccessItem,
+    AdminModuleAccessListResponse,
+    AdminModuleAccessUpdate,
     ManagedUserCreate,
     ManagedUserItem,
     ManagedUserListResponse,
@@ -136,6 +141,30 @@ async def patch_relation(
         raise _not_found(exc) from exc
     except oracledb.Error as exc:
         raise _oracle_error(exc, "Oracle rejected the relation update") from exc
+
+
+@router.get("/admin-modules", response_model=AdminModuleAccessListResponse)
+async def get_admin_modules(_: AuthContext = Depends(require_admin_user)) -> AdminModuleAccessListResponse:
+    try:
+        items = await list_admin_module_access()
+    except oracledb.Error as exc:
+        raise _oracle_error(exc, "Oracle rejected the admin module settings query") from exc
+    return AdminModuleAccessListResponse(items=[AdminModuleAccessItem.model_validate(item) for item in items])
+
+
+@router.patch("/admin-modules/{module_code}", response_model=AdminModuleAccessItem)
+async def patch_admin_module(
+    module_code: str,
+    payload: AdminModuleAccessUpdate,
+    _: AuthContext = Depends(require_admin_user),
+) -> AdminModuleAccessItem:
+    try:
+        item = await update_admin_module_access(module_code, payload.access_level)
+    except UserNotFoundError as exc:
+        raise _not_found(exc) from exc
+    except oracledb.Error as exc:
+        raise _oracle_error(exc, "Oracle rejected the admin module settings update") from exc
+    return AdminModuleAccessItem.model_validate(item)
 
 
 def _oracle_error(exc: oracledb.Error, prefix: str) -> HTTPException:
