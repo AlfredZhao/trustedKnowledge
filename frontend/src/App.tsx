@@ -487,6 +487,7 @@ const todoStatusStyles: Record<TodoStatus, string> = {
   处理中: "border-sky-300/30 bg-sky-300/10 text-sky-200",
   已完成: "border-mint-300/30 bg-mint-300/10 text-mint-300",
 };
+const todoStatuses: TodoStatus[] = ["待处理", "处理中", "已完成"];
 
 const englishMaterialFlagLabels: Record<EnglishMaterialDraft["flag"], string> = {
   "0": "草稿箱",
@@ -523,6 +524,7 @@ function App() {
   const [workbenchUsername, setWorkbenchUsername] = useState(restoredUiState.workbench.username);
   const [statusFilter, setStatusFilter] = useState<KnowledgeStatus | "all">(restoredUiState.workbench.statusFilter);
   const [isTodoEntry, setIsTodoEntry] = useState(false);
+  const [newTodoStatus, setNewTodoStatus] = useState<TodoStatus>("处理中");
   const [page, setPage] = useState(restoredUiState.workbench.page);
   const [totalItems, setTotalItems] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -2267,12 +2269,13 @@ function App() {
             content: draft.answer,
             source: draft.source,
             topic_tag: draft.topic_tag,
-            todo_status: "待处理",
+            todo_status: newTodoStatus,
           });
           clearApiResponseCache();
           setDraft(emptyDraft);
           clearStoredNewDraft();
           setIsTodoEntry(false);
+          setNewTodoStatus("处理中");
           setTodoDraft(todoItemToDraft(created));
           setSelectedTodoId(created.id);
           setTodoPage(1);
@@ -2453,6 +2456,7 @@ function App() {
     setIsMobileKnowledgeEditorOpen(false);
     setDraft(readStoredNewDraft() ?? emptyDraft);
     setIsTodoEntry(false);
+    setNewTodoStatus("处理中");
     setSaveError(null);
     restoreMobileViewportScale();
   }
@@ -2502,6 +2506,7 @@ function App() {
     setSelectedId(null);
     setIsMobileKnowledgeEditorOpen(false);
     setDraft(emptyDraft);
+    setNewTodoStatus("处理中");
     setFactoryItems([]);
     setFactorySelectedId(null);
     setFactoryUsername("");
@@ -4280,12 +4285,14 @@ function App() {
                 trustScore={trustScore}
                 hasSensitiveSignal={hasSensitiveSignal}
                 isTodoEntry={isTodoEntry}
+                todoStatus={newTodoStatus}
                 canSelectPrevious={canSelectPreviousKnowledge}
                 canSelectNext={canSelectNextKnowledge}
                 onDraftChange={setDraft}
                 onDelete={handleRequestDelete}
                 onConvertToTodo={handleConvertSelectedKnowledgeToTodo}
                 onTodoEntryChange={setIsTodoEntry}
+                onTodoStatusChange={setNewTodoStatus}
                 onNewEntry={handleNewEntry}
                 onSelectAdjacent={handleSelectAdjacentKnowledge}
                 onSubmit={handleSubmit}
@@ -4387,12 +4394,14 @@ function App() {
           trustScore={trustScore}
           hasSensitiveSignal={hasSensitiveSignal}
           isTodoEntry={isTodoEntry}
+          todoStatus={newTodoStatus}
           canSelectPrevious={canSelectPreviousKnowledge}
           canSelectNext={canSelectNextKnowledge}
           onDraftChange={setDraft}
           onDelete={handleRequestDelete}
           onConvertToTodo={handleConvertSelectedKnowledgeToTodo}
           onTodoEntryChange={setIsTodoEntry}
+          onTodoStatusChange={setNewTodoStatus}
           onNewEntry={handleNewEntry}
           onSelectAdjacent={handleSelectAdjacentKnowledge}
           onSubmit={handleSubmit}
@@ -5425,12 +5434,14 @@ function KnowledgeForm({
   trustScore,
   hasSensitiveSignal,
   isTodoEntry,
+  todoStatus,
   canSelectPrevious,
   canSelectNext,
   onDraftChange,
   onDelete,
   onConvertToTodo,
   onTodoEntryChange,
+  onTodoStatusChange,
   onNewEntry,
   onSelectAdjacent,
   onSubmit,
@@ -5446,12 +5457,14 @@ function KnowledgeForm({
   trustScore: number;
   hasSensitiveSignal: boolean;
   isTodoEntry: boolean;
+  todoStatus: TodoStatus;
   canSelectPrevious: boolean;
   canSelectNext: boolean;
   onDraftChange: (draft: KnowledgeDraft) => void;
   onDelete: () => void;
   onConvertToTodo: () => void;
   onTodoEntryChange: (isTodoEntry: boolean) => void;
+  onTodoStatusChange: (status: TodoStatus) => void;
   onNewEntry: () => void;
   onSelectAdjacent: (direction: "previous" | "next") => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
@@ -5578,14 +5591,18 @@ function KnowledgeForm({
               maxLength={100}
             />
           </Field>
-          {!isTodoEntry ? (
+          {isTodoEntry ? (
+            <Field label="待办状态" icon={<CheckCircle2 size={16} />}>
+              <TodoStatusSegmentedControl value={todoStatus} onChange={onTodoStatusChange} />
+            </Field>
+          ) : (
             <Field label="状态" icon={<CheckCircle2 size={16} />}>
               <StatusSegmentedControl
                 value={draft.blog_status}
                 onChange={(blog_status) => onDraftChange({ ...draft, blog_status })}
               />
             </Field>
-          ) : null}
+          )}
         </div>
 
         {hasSensitiveSignal ? (
@@ -5679,6 +5696,36 @@ function StatusSegmentedControl({
             className={`min-w-0 rounded-md border px-2 text-sm font-medium transition ${
               active
                 ? statusStyles[status]
+                : "border-transparent text-slate-500 hover:border-white/10 hover:bg-white/[0.035] hover:text-slate-200"
+            }`}
+            type="button"
+            onClick={() => onChange(status)}
+          >
+            {status}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function TodoStatusSegmentedControl({
+  value,
+  onChange,
+}: {
+  value: TodoStatus;
+  onChange: (status: TodoStatus) => void;
+}) {
+  return (
+    <div className="grid h-[46px] grid-cols-3 gap-1 rounded-lg border border-white/10 bg-white/[0.035] p-1">
+      {todoStatuses.map((status) => {
+        const active = status === value;
+        return (
+          <button
+            key={status}
+            className={`min-w-0 rounded-md border px-2 text-sm font-medium transition ${
+              active
+                ? todoStatusStyles[status]
                 : "border-transparent text-slate-500 hover:border-white/10 hover:bg-white/[0.035] hover:text-slate-200"
             }`}
             type="button"
@@ -7497,25 +7544,7 @@ function TodoWorkspace({
           </div>
 
           <Field label="状态" icon={<CheckCircle2 size={16} />}>
-            <div className="grid h-[46px] grid-cols-3 gap-1 rounded-lg border border-white/10 bg-white/[0.035] p-1">
-              {(["待处理", "处理中", "已完成"] as TodoStatus[]).map((nextStatus) => {
-                const active = draft.todo_status === nextStatus;
-                return (
-                  <button
-                    key={nextStatus}
-                    className={`min-w-0 rounded-md border px-2 text-sm font-medium transition ${
-                      active
-                        ? todoStatusStyles[nextStatus]
-                        : "border-transparent text-slate-500 hover:border-white/10 hover:bg-white/[0.035] hover:text-slate-200"
-                    }`}
-                    type="button"
-                    onClick={() => onDraftChange({ ...draft, todo_status: nextStatus })}
-                  >
-                    {nextStatus}
-                  </button>
-                );
-              })}
-            </div>
+            <TodoStatusSegmentedControl value={draft.todo_status} onChange={(todo_status) => onDraftChange({ ...draft, todo_status })} />
           </Field>
 
           {saveError ? (

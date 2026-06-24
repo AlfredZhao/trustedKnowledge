@@ -7,6 +7,13 @@ The format follows the common GitHub changelog convention inspired by
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 格式遵循 GitHub 常见变更日志规范，并参考 Keep a Changelog。
 
+## Unreleased
+
+### Changed / 变更
+
+- Changed the Information Entry todo creation flow so checking `这是待办事项` now shows a todo status selector, defaulting new todo entries to `处理中` while still allowing users to switch to other statuses before submit.
+- 调整信息录入中的待办创建流程：勾选 `这是待办事项` 后会显示待办状态选择器，新建待办默认落在 `处理中`，同时仍支持提交前切换为其他状态。
+
 ## 本次版本更新
 
 ### [0.2.7]
