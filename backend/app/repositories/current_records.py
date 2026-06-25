@@ -339,6 +339,7 @@ async def prepend_todo_to_current_content(
     current_type: str,
     week: str | None,
     day: str | None,
+    replace_existing_content: bool,
     todo_title: str,
     todo_content: str,
     auth_context: AuthContext,
@@ -376,12 +377,13 @@ async def prepend_todo_to_current_content(
         current = _row_to_dict(row)
         prepended = _format_todo_current_entry(todo_title, todo_content)
         existing_content = current["content"] or ""
-        next_content = prepended if not existing_content.strip() else f"{prepended}\n\n{existing_content}"
         next_payload = CurrentRecordUpdate(
             week=week or current["week"],
             day=day or current["day"],
-            content=next_content,
+            content=prepended,
         )
+        progress_changed = replace_existing_content or next_payload.week != current["week"] or next_payload.day != current["day"]
+        next_content = prepended if progress_changed or not existing_content.strip() else f"{prepended}\n\n{existing_content}"
         next_level = _resolve_next_level(current, next_payload)
 
         await cursor.execute(

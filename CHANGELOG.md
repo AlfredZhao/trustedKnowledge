@@ -14,9 +14,46 @@ The format follows the common GitHub changelog convention inspired by
 - Changed the Information Entry todo creation flow so checking `这是待办事项` now shows a todo status selector, defaulting new todo entries to `处理中` while still allowing users to switch to other statuses before submit.
 - 调整信息录入中的待办创建流程：勾选 `这是待办事项` 后会显示待办状态选择器，新建待办默认落在 `处理中`，同时仍支持提交前切换为其他状态。
 
+- Changed Knowledge Processing to request Codex final-only output for skill runs, so the result pane no longer shows leaked “read selected skill / analyze task” intermediary planning text.
+- 调整知识加工的 Codex 调用方式为读取最终消息输出，避免加工结果区域继续混入“读取所选 skill / 分析任务”等中间规划文本。
+
+- Changed Knowledge Processing prompts to elevate Markdown image preservation into a call-level hard rule, and updated Markdown preview rendering so relative image paths such as `media/...` can be preserved in rendered mode instead of being dropped from display parsing.
+- 调整知识加工提示词，将 Markdown 图片逐字保留提升为调用级硬约束；同时补齐 Markdown 预览对 `media/...` 等相对图片路径的渲染支持，避免展示链路把图片地址当作无效内容丢掉。
+
+- Changed Knowledge Processing final-mode prompting to inline selected skill content instead of asking Codex to first read `SKILL.md`, and added a deterministic cleanup step for leaked process-preface wording and banned “素材…” summary phrases before showing the result.
+- 调整知识加工 final 模式的提示构造：直接内联所选 Skill 内容，不再要求 Codex 先读取 `SKILL.md`；同时在结果展示前新增确定性清洗，去掉泄漏的过程前置说明以及被 Skill 禁止的“素材……”类总结话术。
+
+- Changed Blog Factory enhanced Markdown copy to try embedding accessible image references as base64 data URLs before writing HTML to the clipboard, so pasted content is less dependent on local relative image paths.
+- 调整博客工厂增强美化复制：写入剪贴板前会尝试把可访问的图片引用内联为 base64 data URL，降低外部编辑器粘贴时对本地相对图片路径的依赖。
+
+- Changed Blog Factory enhanced copy to also download a standalone `.html` file locally, so the exported article/task content can be opened directly in a browser on the same machine after copying.
+- 调整博客工厂增强美化复制：复制的同时会额外下载一个可独立打开的 `.html` 文件，便于在本机浏览器直接查看导出的文章或任务内容。
+
+- Added a local Markdown-to-HTML export script under `scripts/export-enhanced-html.mjs` that resolves image paths relative to the source Markdown file and inlines local images as base64, so MWeb-style articles with `media/...` assets can be exported as self-contained HTML outside the web UI.
+- 新增本地导出脚本 `scripts/export-enhanced-html.mjs`：会按源 Markdown 文件所在目录解析图片路径，并将本地图片内联为 base64，适合把 MWeb 风格 `media/...` 资源的文章导出为独立 HTML，而不依赖 Web 界面当前访问路径。
+
+- Fixed Todo completion append behavior so choosing a new `week/day` now follows Current Record progression semantics: advancing to a new record point clears prior content instead of prepending the old history into the new slot.
+- 修复待办事项完成后追加到当前记录的推进语义：当用户选择新的 `week/day` 时，现在会按“推进到新记录点”处理，清空旧内容后只写入新内容，不再把历史内容一并拼进新的记录点。
+
+- Fixed Todo completion confirmation flow so newly created or just-converted Todo items correctly detect the first transition into `已完成`, and the append dialog no longer overwrites a manually chosen `week/day` with late-loaded defaults.
+- 修复待办事项完成确认弹窗的触发与默认值回填：新建或刚转换出的 Todo 现在能正确识别第一次切到 `已完成` 的状态变化；同时追加弹窗不会再被异步加载的默认值覆盖掉用户手动选择的 `week/day`。
+
+- Changed Todo-to-current append requests to send an explicit “replace existing content” flag whenever the dialog selection advances to a new `week/day`, so backend writes can deterministically distinguish true progression from same-slot prepend behavior.
+- 调整待办事项追加到当前记录的请求协议：当弹窗选择推进到新的 `week/day` 时，会显式传递“覆盖旧内容”标记，让后端稳定区分“推进新记录点”和“同记录点前置追加”两种写入行为。
+
 ## 本次版本更新
 
-### [0.2.7]
+### [0.2.8]
+
+#### Added / 新增
+
+#### Changed / 变更
+
+#### Fixed / 修复
+
+## 历史版本更新
+
+### [0.2.7] - 2026-06-24
 
 #### Added / 新增
 
@@ -56,8 +93,6 @@ The format follows the common GitHub changelog convention inspired by
 
 - Made backend startup tolerate a missing legacy `T_RELATIONS` table so service restarts no longer fail after that old migration source table is removed.
 - 修复删除旧兼容迁移表 `T_RELATIONS` 后后端启动直接失败的问题；启动阶段现在会在该表不存在时自动跳过旧关系迁移。
-
-## 历史版本更新
 
 ### [0.2.6] - 2026-06-22
 

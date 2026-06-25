@@ -301,16 +301,18 @@ export async function appendTodoToCurrent({
   type,
   week,
   day,
+  replaceExistingContent,
 }: {
   id: number;
   username: string;
   type: string;
   week: CurrentWeek;
   day: CurrentDay;
+  replaceExistingContent: boolean;
 }): Promise<CurrentRecordItem> {
   return request<CurrentRecordItem>(`/api/todos/${id}/append-to-current`, {
     method: "POST",
-    body: JSON.stringify({ username, type, week, day }),
+    body: JSON.stringify({ username, type, week, day, replace_existing_content: replaceExistingContent }),
   });
 }
 

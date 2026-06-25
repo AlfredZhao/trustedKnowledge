@@ -1,3 +1,8 @@
+interface EnhancedCopyOptions {
+  downloadFileName?: string | null;
+  documentTitle?: string | null;
+}
+
 export function markdownToHtml(markdown: string) {
   const lines = removeLeakedMarkdownCodePlaceholders(markdown).replace(/\r\n/g, "\n").split("\n");
   const html: string[] = [];
@@ -143,27 +148,33 @@ export async function copyMarkdownAsRichText(markdown: string) {
   await copyMarkdownAsPlainText(markdown);
 }
 
-export async function copyMarkdownAsEnhancedRichText(markdown: string) {
-  const html = buildEnhancedRichClipboardHtml(markdownToHtml(markdown));
-  if (copyRichHtmlViaCopyEvent(html, markdown)) {
-    return;
-  }
+export async function copyMarkdownAsEnhancedRichText(markdown: string, options?: EnhancedCopyOptions) {
+  const html = await inlineClipboardImages(buildEnhancedRichClipboardHtml(markdownToHtml(markdown)));
+  const fullDocument = buildStandaloneClipboardDocument(html, options?.documentTitle);
 
-  if (navigator.clipboard?.write && typeof ClipboardItem !== "undefined") {
-    try {
-      await navigator.clipboard.write([
-        new ClipboardItem({
-          "text/html": new Blob([html], { type: "text/html" }),
-          "text/plain": new Blob([markdown], { type: "text/plain" }),
-        }),
-      ]);
+  try {
+    if (copyRichHtmlViaCopyEvent(html, markdown)) {
       return;
-    } catch {
-      // Fall back to plain Markdown when rich clipboard writes are blocked.
     }
-  }
 
-  await copyMarkdownAsPlainText(markdown);
+    if (navigator.clipboard?.write && typeof ClipboardItem !== "undefined") {
+      try {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            "text/html": new Blob([html], { type: "text/html" }),
+            "text/plain": new Blob([markdown], { type: "text/plain" }),
+          }),
+        ]);
+        return;
+      } catch {
+        // Fall back to plain Markdown when rich clipboard writes are blocked.
+      }
+    }
+
+    await copyMarkdownAsPlainText(markdown);
+  } finally {
+    triggerHtmlDownload(fullDocument, options?.downloadFileName);
+  }
 }
 
 export async function copyMarkdownAsPlainText(markdown: string) {
@@ -221,6 +232,21 @@ function buildEnhancedRichClipboardHtml(innerHtml: string) {
   ].join("");
 }
 
+function buildStandaloneClipboardDocument(bodyHtml: string, title: string | null | undefined) {
+  const safeTitle = escapeHtml(title?.trim() || "trustedKnowledge export");
+  return [
+    "<!DOCTYPE html>",
+    '<html lang="zh-CN">',
+    "<head>",
+    '<meta charset="utf-8" />',
+    '<meta name="viewport" content="width=device-width, initial-scale=1" />',
+    `<title>${safeTitle}</title>`,
+    "</head>",
+    `<body style="margin:0; padding:32px 20px; background:#f7f1ee;">${bodyHtml}</body>`,
+    "</html>",
+  ].join("");
+}
+
 function copyRichHtmlViaCopyEvent(html: string, text: string) {
   const handleCopy = (event: ClipboardEvent) => {
     event.preventDefault();
@@ -257,6 +283,7 @@ function inlineClipboardStyles(html: string) {
     .replace(/<td(?=[\s>])/g, '<td style="border: 1px solid #d1d5db; padding: 8px 10px; text-align: left; vertical-align: top;"')
     .replace(/<strong>/g, '<strong style="color: #000000; font-weight: 700;">')
     .replace(/<em>/g, '<em style="color: #000000;">')
+    .replace(/<img /g, '<img style="display: block; max-width: 100%; height: auto; margin: 14px 0; border-radius: 10px;" ')
     .replace(/<a /g, '<a style="color: #2563eb; text-decoration: underline;" ');
 }
 
@@ -300,7 +327,75 @@ function inlineEnhancedClipboardStyles(html: string) {
     .replace(/<pre([^>]*)><code([^>]*) style="([^"]*)">/g, '<pre$1><code$2 style="font-family: Consolas, Menlo, Monaco, monospace; background: transparent; color: #fdf4f1; padding: 0;">')
     .replace(/<strong>/g, '<strong style="color: #5f1d1d; font-weight: 700;">')
     .replace(/<em>/g, '<em style="color: #7c4a43;">')
+    .replace(/<img /g, '<img style="display: block; max-width: 100%; height: auto; margin: 18px auto; border-radius: 14px; box-shadow: 0 8px 24px rgba(95, 29, 29, 0.08);" ')
     .replace(/<a /g, '<a style="color: #8f2d2d; text-decoration: underline; text-decoration-color: #d6a79c; text-underline-offset: 3px;" ');
+}
+
+async function inlineClipboardImages(html: string) {
+  const container = document.createElement("div");
+  container.innerHTML = html;
+  const images = Array.from(container.querySelectorAll("img[src]"));
+
+  await Promise.all(
+    images.map(async (image) => {
+      const source = image.getAttribute("src")?.trim();
+      if (!source || source.startsWith("data:")) return;
+
+      const dataUrl = await readImageAsDataUrl(source);
+      if (dataUrl) {
+        image.setAttribute("src", dataUrl);
+      }
+    }),
+  );
+
+  return container.innerHTML;
+}
+
+async function readImageAsDataUrl(source: string) {
+  let resolvedUrl: URL;
+  try {
+    resolvedUrl = new URL(source, window.location.href);
+  } catch {
+    return null;
+  }
+
+  try {
+    const response = await fetch(resolvedUrl.toString());
+    if (!response.ok) return null;
+    const blob = await response.blob();
+    if (!blob.type.startsWith("image/")) return null;
+    return await blobToDataUrl(blob);
+  } catch {
+    return null;
+  }
+}
+
+function blobToDataUrl(blob: Blob) {
+  return new Promise<string | null>((resolve) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(typeof reader.result === "string" ? reader.result : null);
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(blob);
+  });
+}
+
+function triggerHtmlDownload(html: string, fileName: string | null | undefined) {
+  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+  const objectUrl = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = objectUrl;
+  anchor.download = normalizeHtmlDownloadName(fileName);
+  anchor.style.display = "none";
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+}
+
+function normalizeHtmlDownloadName(fileName: string | null | undefined) {
+  const trimmed = (fileName ?? "").trim();
+  if (!trimmed) return "trustedKnowledge-export.html";
+  return /\.html?$/i.test(trimmed) ? trimmed : `${trimmed}.html`;
 }
 
 function formatInlineMarkdown(value: string) {
@@ -311,6 +406,12 @@ function formatInlineMarkdown(value: string) {
   });
 
   html = html
+    .replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (_match, alt: string, src: string) => {
+      const safeSrc = sanitizeMarkdownUrl(src);
+      if (!safeSrc) return alt;
+      const safeAlt = escapeAttribute(alt);
+      return `<img src="${escapeAttribute(safeSrc)}" alt="${safeAlt}" loading="lazy" />`;
+    })
     .replace(/\[([^\]]+)]\(([^)\s]+)\)/g, (_match, label: string, href: string) => {
       const safeHref = sanitizeMarkdownUrl(href);
       return safeHref ? `<a href="${escapeAttribute(safeHref)}" target="_blank" rel="noreferrer">${label}</a>` : label;
@@ -411,6 +512,8 @@ function sanitizeMarkdownUrl(value: string) {
   const unescaped = value.replace(/&amp;/g, "&");
   if (/^(https?:|mailto:)/i.test(unescaped)) return unescaped;
   if (unescaped.startsWith("#") || unescaped.startsWith("/")) return unescaped;
+  if (unescaped.startsWith("./") || unescaped.startsWith("../")) return unescaped;
+  if (/^[^:/?#\s][^\s]*$/.test(unescaped)) return unescaped;
   return "";
 }
 

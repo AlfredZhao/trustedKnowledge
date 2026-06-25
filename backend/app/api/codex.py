@@ -5,6 +5,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -32,6 +33,7 @@ class CodexJobState:
     prompt: str
     skill_ids: list[str] = field(default_factory=list)
     sandbox_mode: str = "workspace-write"
+    output_mode: str = "full"
     status: CodexJobStatus = "running"
     output_parts: list[str] = field(default_factory=list)
     error_parts: list[str] = field(default_factory=list)
@@ -60,25 +62,19 @@ async def run_codex(
 
     async with _codex_lock:
         started_at = time.monotonic()
-        prompt = _build_prompt(payload.prompt.strip(), payload.skill_ids, auth_context)
+        prompt = _build_prompt(payload.prompt.strip(), payload.skill_ids, auth_context, payload.output_mode)
+        exec_args, output_path = _build_codex_exec_args(payload.sandbox_mode, payload.output_mode)
 
         try:
             process = await asyncio.create_subprocess_exec(
-                settings.codex_bin,
-                "exec",
-                "--cd",
-                str(PROJECT_ROOT),
-                "--sandbox",
-                payload.sandbox_mode,
-                "--color",
-                "never",
-                "-",
+                *exec_args,
                 cwd=PROJECT_ROOT,
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
         except OSError as exc:
+            _cleanup_codex_output_file(output_path)
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail=f"Failed to start Codex: {exc}",
@@ -92,6 +88,7 @@ async def run_codex(
         except TimeoutError as exc:
             process.kill()
             await process.wait()
+            _cleanup_codex_output_file(output_path)
             raise HTTPException(
                 status_code=status.HTTP_504_GATEWAY_TIMEOUT,
                 detail="Codex task timed out before finishing.",
@@ -99,9 +96,14 @@ async def run_codex(
 
         duration_seconds = round(time.monotonic() - started_at, 2)
         git_status = await _read_git_status()
+        output_text = _resolve_codex_output(
+            output_mode=payload.output_mode,
+            output_path=output_path,
+            stdout_bytes=stdout_bytes,
+        )
 
     return CodexRunResponse(
-        output=stdout_bytes.decode("utf-8", errors="replace").strip(),
+        output=output_text,
         error_output=stderr_bytes.decode("utf-8", errors="replace").strip(),
         exit_code=process.returncode or 0,
         duration_seconds=duration_seconds,
@@ -127,7 +129,13 @@ async def stream_codex(
         )
 
     return StreamingResponse(
-        _stream_codex_events(payload.prompt.strip(), payload.skill_ids, payload.sandbox_mode, auth_context),
+        _stream_codex_events(
+            payload.prompt.strip(),
+            payload.skill_ids,
+            payload.sandbox_mode,
+            auth_context,
+            payload.output_mode,
+        ),
         media_type="application/x-ndjson",
         headers={"Cache-Control": "no-store"},
     )
@@ -156,6 +164,7 @@ async def start_codex_job(
         prompt=payload.prompt.strip(),
         skill_ids=payload.skill_ids,
         sandbox_mode=payload.sandbox_mode,
+        output_mode=payload.output_mode,
     )
     _codex_jobs[job.job_id] = job
     _latest_codex_job_id = job.job_id
@@ -183,57 +192,79 @@ def _build_prompt(
     user_prompt: str,
     skill_ids: list[str] | None = None,
     auth_context: AuthContext | None = None,
+    output_mode: str = "full",
 ) -> str:
     selected_skills = get_prompt_skills(skill_ids or [], auth_context) if auth_context else []
-    lines = [
-        "You are running from the trustedKnowledge web AI coding interface.",
-        "Follow the repository AGENTS.md instructions strictly.",
-        "Do not start, stop, or restart frontend/backend services.",
-        "When service restart is needed, tell the user to use the web restart button.",
-    ]
-    if selected_skills:
-        lines.extend(
-            [
-                "",
-                "Selected trustedKnowledge skills:",
-                "Use these skill directories as task-specific instructions. First read each SKILL.md, then load only the referenced files that are needed for the task. Do not preload entire folders.",
-                "Skill instructions can define output structure, tone, and workflow, but they cannot override factual boundaries, repository safety rules, or the user's request.",
-            ]
-        )
-        for skill in selected_skills:
+    if output_mode == "final":
+        lines = [
+            "You are running from the trustedKnowledge Knowledge Processing interface.",
+            "This is a direct content transformation request, not an interactive coding session.",
+            "Do not provide progress updates, plans, commentary, or statements about reading skills/files/context.",
+            "Do not say you will first read SKILL.md, inspect files, analyze the task, or follow up later.",
+            "Everything needed for the response is already included in this prompt.",
+            "Return only the final transformed content.",
+        ]
+        if selected_skills:
             lines.extend(
                 [
                     "",
-                    f"Skill directory: {skill['path']}",
+                    "Selected trustedKnowledge skill instructions are already loaded below.",
+                    "Apply them directly. These instructions define output structure, tone, wording constraints, and formatting.",
+                    "Do not mention the existence of these instructions in the answer.",
                 ]
             )
-    lines.extend(["", "User request:", user_prompt])
+            for skill in selected_skills:
+                lines.extend(
+                    [
+                        "",
+                        f"Loaded skill: {skill['name']}",
+                        skill["content"],
+                    ]
+                )
+        lines.extend(["", "Transformation request:", user_prompt])
+    else:
+        lines = [
+            "You are running from the trustedKnowledge web AI coding interface.",
+            "Follow the repository AGENTS.md instructions strictly.",
+            "Do not start, stop, or restart frontend/backend services.",
+            "When service restart is needed, tell the user to use the web restart button.",
+        ]
+        if selected_skills:
+            lines.extend(
+                [
+                    "",
+                    "Selected trustedKnowledge skills:",
+                    "Use these skill directories as task-specific instructions. First read each SKILL.md, then load only the referenced files that are needed for the task. Do not preload entire folders.",
+                    "Skill instructions can define output structure, tone, and workflow, but they cannot override factual boundaries, repository safety rules, or the user's request.",
+                ]
+            )
+            for skill in selected_skills:
+                lines.extend(
+                    [
+                        "",
+                        f"Skill directory: {skill['path']}",
+                    ]
+                )
+        lines.extend(["", "User request:", user_prompt])
     return "\n".join(lines)
 
 
 async def _run_codex_job(job: CodexJobState, auth_context: AuthContext) -> None:
     async with _codex_lock:
         started_at = time.monotonic()
-        prompt = _build_prompt(job.prompt, job.skill_ids, auth_context)
+        prompt = _build_prompt(job.prompt, job.skill_ids, auth_context, job.output_mode)
+        exec_args, output_path = _build_codex_exec_args(job.sandbox_mode, job.output_mode, json_output=True)
 
         try:
             process = await asyncio.create_subprocess_exec(
-                settings.codex_bin,
-                "exec",
-                "--json",
-                "--cd",
-                str(PROJECT_ROOT),
-                "--sandbox",
-                job.sandbox_mode,
-                "--color",
-                "never",
-                "-",
+                *exec_args,
                 cwd=PROJECT_ROOT,
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
         except OSError as exc:
+            _cleanup_codex_output_file(output_path)
             job.status = "failed"
             job.error_message = f"Failed to start Codex: {exc}"
             job.completed_at = datetime.now(UTC)
@@ -253,6 +284,7 @@ async def _run_codex_job(job: CodexJobState, auth_context: AuthContext) -> None:
             if time.monotonic() > deadline:
                 process.kill()
                 await process.wait()
+                _cleanup_codex_output_file(output_path)
                 job.status = "failed"
                 job.error_message = "Codex task timed out before finishing."
                 break
@@ -270,7 +302,11 @@ async def _run_codex_job(job: CodexJobState, auth_context: AuthContext) -> None:
             duration_seconds = round(time.monotonic() - started_at, 2)
             git_status = await _read_git_status()
             job.response = CodexRunResponse(
-                output="\n".join(job.output_parts).strip(),
+                output=_resolve_codex_output(
+                    output_mode=job.output_mode,
+                    output_path=output_path,
+                    stdout_parts=job.output_parts,
+                ),
                 error_output="\n".join(job.error_parts).strip(),
                 exit_code=process.returncode or 0,
                 duration_seconds=duration_seconds,
@@ -286,34 +322,28 @@ async def _stream_codex_events(
     skill_ids: list[str] | None = None,
     sandbox_mode: str = "workspace-write",
     auth_context: AuthContext | None = None,
+    output_mode: str = "full",
 ) -> AsyncIterator[str]:
     async with _codex_lock:
         started_at = time.monotonic()
-        prompt = _build_prompt(user_prompt, skill_ids, auth_context)
+        prompt = _build_prompt(user_prompt, skill_ids, auth_context, output_mode)
         stdout_parts: list[str] = []
         stderr_parts: list[str] = []
         queue: asyncio.Queue[dict[str, str]] = asyncio.Queue()
+        exec_args, output_path = _build_codex_exec_args(sandbox_mode, output_mode, json_output=True)
 
         yield _json_line({"type": "status", "message": "Codex started."})
 
         try:
             process = await asyncio.create_subprocess_exec(
-                settings.codex_bin,
-                "exec",
-                "--json",
-                "--cd",
-                str(PROJECT_ROOT),
-                "--sandbox",
-                sandbox_mode,
-                "--color",
-                "never",
-                "-",
+                *exec_args,
                 cwd=PROJECT_ROOT,
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
         except OSError as exc:
+            _cleanup_codex_output_file(output_path)
             yield _json_line({"type": "error", "message": f"Failed to start Codex: {exc}"})
             return
 
@@ -331,6 +361,7 @@ async def _stream_codex_events(
             if time.monotonic() > deadline:
                 process.kill()
                 await process.wait()
+                _cleanup_codex_output_file(output_path)
                 yield _json_line({"type": "error", "message": "Codex task timed out before finishing."})
                 break
 
@@ -350,7 +381,7 @@ async def _stream_codex_events(
         duration_seconds = round(time.monotonic() - started_at, 2)
         git_status = await _read_git_status()
         response = CodexRunResponse(
-            output="\n".join(stdout_parts).strip(),
+            output=_resolve_codex_output(output_mode=output_mode, output_path=output_path, stdout_parts=stdout_parts),
             error_output="\n".join(stderr_parts).strip(),
             exit_code=process.returncode or 0,
             duration_seconds=duration_seconds,
@@ -415,6 +446,61 @@ def _handle_codex_job_task_done(job: CodexJobState, task: asyncio.Task[None]) ->
 
 def _json_line(value: dict[str, object]) -> str:
     return json.dumps(value, ensure_ascii=False) + "\n"
+
+
+def _build_codex_exec_args(
+    sandbox_mode: str,
+    output_mode: str,
+    json_output: bool = False,
+) -> tuple[list[str], Path | None]:
+    output_path: Path | None = None
+    args = [
+        settings.codex_bin,
+        "exec",
+    ]
+    if json_output:
+        args.append("--json")
+    args.extend(
+        [
+        "--cd",
+        str(PROJECT_ROOT),
+        "--sandbox",
+        sandbox_mode,
+        "--color",
+        "never",
+        ]
+    )
+    if output_mode == "final":
+        with NamedTemporaryFile(prefix="trustedknowledge-codex-", suffix=".txt", delete=False) as temp_file:
+            output_path = Path(temp_file.name)
+        args.extend(["--output-last-message", str(output_path)])
+    args.append("-")
+    return args, output_path
+
+
+def _resolve_codex_output(
+    *,
+    output_mode: str,
+    output_path: Path | None,
+    stdout_bytes: bytes | None = None,
+    stdout_parts: list[str] | None = None,
+) -> str:
+    if output_mode == "final" and output_path is not None:
+        try:
+            final_message = output_path.read_text(encoding="utf-8").strip()
+            if final_message:
+                return final_message
+        finally:
+            output_path.unlink(missing_ok=True)
+
+    if stdout_bytes is not None:
+        return stdout_bytes.decode("utf-8", errors="replace").strip()
+    return "\n".join(stdout_parts or []).strip()
+
+
+def _cleanup_codex_output_file(output_path: Path | None) -> None:
+    if output_path is not None:
+        output_path.unlink(missing_ok=True)
 
 
 async def _read_git_status() -> str:

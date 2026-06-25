@@ -68,6 +68,7 @@ class TodoCurrentAppendTarget(BaseModel):
     type: str = Field(..., min_length=1, max_length=40)
     week: WeekValue | None = None
     day: DayValue | None = None
+    replace_existing_content: bool = False
 
     @field_validator("username", "type")
     @classmethod

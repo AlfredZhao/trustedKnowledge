@@ -7,6 +7,7 @@ class CodexRunRequest(BaseModel):
     prompt: str = Field(..., min_length=2, max_length=50000)
     skill_ids: list[str] = Field(default_factory=list, max_length=8)
     sandbox_mode: Literal["read-only", "workspace-write"] = "workspace-write"
+    output_mode: Literal["full", "final"] = "full"
 
 
 class CodexRunResponse(BaseModel):

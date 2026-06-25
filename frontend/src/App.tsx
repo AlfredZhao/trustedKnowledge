@@ -469,6 +469,11 @@ interface CurrentAppendTarget {
   day: CurrentDay | "";
 }
 
+interface CurrentAppendMatchedPoint {
+  week: CurrentWeek | "";
+  day: CurrentDay | "";
+}
+
 const statusStyles: Record<KnowledgeStatus, string> = {
   未发布: "border-slate-500/30 bg-slate-400/10 text-slate-200",
   已发布: "border-mint-300/30 bg-mint-300/10 text-mint-300",
@@ -623,6 +628,10 @@ function App() {
   const [todoCurrentAppendTarget, setTodoCurrentAppendTarget] = useState<CurrentAppendTarget>({
     username: "",
     type: "",
+    week: "",
+    day: "",
+  });
+  const [todoCurrentAppendMatchedPoint, setTodoCurrentAppendMatchedPoint] = useState<CurrentAppendMatchedPoint>({
     week: "",
     day: "",
   });
@@ -2278,6 +2287,7 @@ function App() {
           setNewTodoStatus("处理中");
           setTodoDraft(todoItemToDraft(created));
           setSelectedTodoId(created.id);
+          selectedTodoSavedStatusRef.current = created.todo_status;
           setTodoPage(1);
           setTodoRefreshToken((current) => current + 1);
           setActiveView("todos");
@@ -2439,6 +2449,7 @@ function App() {
       setLastCreatedId(null);
       setTodoDraft(todoItemToDraft(converted));
       setSelectedTodoId(converted.id);
+      selectedTodoSavedStatusRef.current = converted.todo_status;
       setTodoPage(1);
       setTodoStatus("all");
       setTodoRefreshToken((current) => current + 1);
@@ -2573,7 +2584,7 @@ function App() {
 
     try {
       const prompt = buildFactorySkillPrompt(item);
-      const job = await startCodexJob(prompt, factorySkillIds, "read-only");
+      const job = await startCodexJob(prompt, factorySkillIds, "read-only", "final");
       setFactoryCodexJobId(job.job_id);
       setFactoryTask(job.output);
       setFactoryCodexErrorOutput(job.error_output);
@@ -2868,6 +2879,7 @@ function App() {
     todoCurrentAppendRequestRef.current += 1;
     setPendingTodoCurrentAppend(null);
     setTodoCurrentAppendTarget({ username: "", type: "", week: "", day: "" });
+    setTodoCurrentAppendMatchedPoint({ week: "", day: "" });
     setIsTodoCurrentAppendOptionsLoading(false);
   }
 
@@ -2894,6 +2906,7 @@ function App() {
 
       const matched = response.items[0];
       if (!matched) {
+        setTodoCurrentAppendMatchedPoint({ week: "", day: "" });
         setTodoCurrentAppendTarget((current) =>
           current.username === nextTarget.username && current.type === nextTarget.type ? { ...current, week: "", day: "" } : current,
         );
@@ -2901,9 +2914,14 @@ function App() {
         return;
       }
 
+      setTodoCurrentAppendMatchedPoint({ week: matched.week, day: matched.day });
       setTodoCurrentAppendTarget((current) =>
         current.username === nextTarget.username && current.type === nextTarget.type
-          ? { ...current, week: preferredWeek || matched.week, day: preferredDay || matched.day }
+          ? {
+              ...current,
+              week: current.week || preferredWeek || matched.week,
+              day: current.day || preferredDay || matched.day,
+            }
           : current,
       );
     } catch (error) {
@@ -2969,6 +2987,9 @@ function App() {
         type: todoCurrentAppendTarget.type,
         week: todoCurrentAppendTarget.week,
         day: todoCurrentAppendTarget.day,
+        replaceExistingContent:
+          todoCurrentAppendTarget.week !== todoCurrentAppendMatchedPoint.week ||
+          todoCurrentAppendTarget.day !== todoCurrentAppendMatchedPoint.day,
       });
       clearApiResponseCache();
       setCurrentRecordItems((current) => current.map((item) => (item.id === updated.id ? updated : item)));
@@ -3039,7 +3060,10 @@ function App() {
 
     try {
       if (mode === "enhanced") {
-        await copyMarkdownAsEnhancedRichText(markdown);
+        await copyMarkdownAsEnhancedRichText(markdown, {
+          downloadFileName: buildBlogFactoryArticleExportFileName(selectedBlogFactoryItem?.id ?? null, selectedBlogFactoryItem?.article_title, markdown),
+          documentTitle: selectedBlogFactoryItem?.article_title ?? extractMarkdownHeading(markdown) ?? "博客工厂文章",
+        });
       } else {
         await copyText(markdown);
       }
@@ -3057,7 +3081,16 @@ function App() {
 
     try {
       if (view === "enhanced") {
-        await copyMarkdownAsEnhancedRichText(taskContent);
+        await copyMarkdownAsEnhancedRichText(taskContent, {
+          downloadFileName: buildBlogFactoryTaskExportFileName(
+            selectedBlogFactoryItem?.id ?? null,
+            selectedBlogFactoryItem?.knowledge_id ?? null,
+          ),
+          documentTitle: buildBlogFactoryTaskDocumentTitle(
+            selectedBlogFactoryItem?.id ?? null,
+            selectedBlogFactoryItem?.knowledge_id ?? null,
+          ),
+        });
       } else if (view === "rendered") {
         await copyMarkdownAsRichText(taskContent);
       } else {
@@ -12154,6 +12187,8 @@ function buildFactorySkillPrompt(item: KnowledgeItem) {
 - 必须优先遵循所选 skill 对输出结构、语气、长度和格式的要求。
 - 只允许基于 Context 中给出的事实输出，不要补充未提供的版本、案例、数字或结论。
 - 如果所选 skill 与 Context 信息不足冲突，请在结果中保守处理，不要编造。
+- 如果原始素材中包含 Markdown 格式的图片链接，例如 \`![](media/path/image.jpg)\`，必须逐字原样保留，禁止删除、改写、重排链接地址或替换为其他格式。
+- 不要输出任何关于读取 skill、分析任务、执行过程、处理中间步骤的说明；结果必须直接从最终正文开始。
 - 只输出最终加工结果，不要输出执行过程、任务说明或额外解释。
 - 不要输出 @@CODE0@@、@@CODE_0@@ 或私有 Unicode 包裹的 CODE0 这类内部占位符；如需保留命令、路径或代码片段，直接使用 Markdown 反引号。
 
@@ -12172,7 +12207,8 @@ ${item.answer}`;
 }
 
 function normalizeFactoryTaskResult(value: string) {
-  return removeLeakedMarkdownCodePlaceholders(value);
+  const cleaned = removeLeakedMarkdownCodePlaceholders(value);
+  return rewriteFactoryBannedPhrases(stripFactoryMetaIntro(cleaned)).trim();
 }
 
 function buildMergedKnowledgeDraft(items: KnowledgeItem[]): KnowledgeDraft {
@@ -12969,6 +13005,92 @@ function dedupeLines(values: string[]) {
     result.push(value);
   }
   return result;
+}
+
+function stripFactoryMetaIntro(value: string) {
+  const normalized = value.replace(/\r\n/g, "\n").trim();
+  if (!normalized) return "";
+
+  const paragraphs = normalized.split(/\n\s*\n/);
+  let index = 0;
+
+  while (index < paragraphs.length && index < 3) {
+    const paragraph = paragraphs[index].replace(/\s+/g, " ").trim();
+    if (!paragraph) {
+      index += 1;
+      continue;
+    }
+    if (!isFactoryMetaParagraph(paragraph)) break;
+    index += 1;
+  }
+
+  return paragraphs.slice(index).join("\n\n");
+}
+
+function isFactoryMetaParagraph(value: string) {
+  if (/^#{1,6}\s/.test(value)) return false;
+  if (/^!\[[^\]]*\]\([^)]+\)$/.test(value)) return false;
+
+  return (
+    /(我会先|先读取|读取所选|读取.*SKILL\.md|读取.*skill|确认.*要求|分析任务|执行过程|处理中间步骤|所选 trustedKnowledge skill|只基于你提供的 Context|然后只基于)/i.test(
+      value,
+    ) ||
+    (value.length <= 140 && /(skill|SKILL\.md|Context|trustedKnowledge)/i.test(value))
+  );
+}
+
+function rewriteFactoryBannedPhrases(value: string) {
+  const replacements: Array<[RegExp, string]> = [
+    [/按现有素材来看/g, "按笔者环境来看"],
+    [/从现有素材来看/g, "按笔者环境来看"],
+    [/根据现有素材/g, "根据笔者环境"],
+    [/按素材来看/g, "按笔者环境来看"],
+    [/从素材来看/g, "按笔者环境来看"],
+    [/素材中的做法/g, "笔者环境中的做法"],
+    [/素材中的处理方式/g, "笔者环境中的处理方式"],
+    [/素材中说明/g, "笔者环境中说明"],
+    [/素材中提到/g, "笔者环境中提到"],
+    [/素材中给出/g, "笔者环境中给出"],
+    [/素材显示/g, "笔者环境显示"],
+    [/素材表明/g, "笔者环境表明"],
+  ];
+  return replacements.reduce((current, [pattern, replacement]) => current.replace(pattern, replacement), value);
+}
+
+function buildBlogFactoryArticleExportFileName(
+  itemId: number | null,
+  articleTitle: string | null | undefined,
+  markdown: string,
+) {
+  const resolvedTitle = articleTitle?.trim() || extractMarkdownHeading(markdown);
+  if (resolvedTitle) return `${sanitizeDownloadBaseName(resolvedTitle)}.html`;
+  return `blog-factory-article-${itemId ?? "article"}.html`;
+}
+
+function buildBlogFactoryTaskExportFileName(itemId: number | null, knowledgeId: number | null) {
+  return `blog-factory-task-${itemId ?? "task"}-knowledge-${knowledgeId ?? "knowledge"}.html`;
+}
+
+function buildBlogFactoryTaskDocumentTitle(itemId: number | null, knowledgeId: number | null) {
+  return `博客工厂任务 ${itemId ?? "任务"} / 知识 ${knowledgeId ?? "知识"}`;
+}
+
+function extractMarkdownHeading(markdown: string) {
+  for (const line of markdown.split("\n")) {
+    const match = line.trim().match(/^#\s+(.+)$/);
+    if (match) return match[1].trim();
+  }
+  return "";
+}
+
+function sanitizeDownloadBaseName(value: string) {
+  const sanitized = value
+    .trim()
+    .replace(/[\\/:*?"<>|]/g, "-")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  return sanitized || "trustedKnowledge-export";
 }
 
 function getCodexCompletionSummary(response: CodexRunResponse) {

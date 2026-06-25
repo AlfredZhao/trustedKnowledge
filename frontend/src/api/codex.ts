@@ -1,4 +1,4 @@
-import type { CodexJobSnapshot, CodexRunResponse, CodexStreamEvent } from "../types";
+import type { CodexJobSnapshot, CodexOutputMode, CodexRunResponse, CodexStreamEvent } from "../types";
 import { clearStoredApiKey, readStoredApiKey } from "./auth";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.trim() ?? "";
@@ -49,10 +49,11 @@ export async function startCodexJob(
   prompt: string,
   skillIds: string[] = [],
   sandboxMode: CodexSandboxMode = "workspace-write",
+  outputMode: CodexOutputMode = "full",
 ): Promise<CodexJobSnapshot> {
   return request<CodexJobSnapshot>("/api/codex/runs/jobs", {
     method: "POST",
-    body: JSON.stringify({ prompt, skill_ids: skillIds, sandbox_mode: sandboxMode }),
+    body: JSON.stringify({ prompt, skill_ids: skillIds, sandbox_mode: sandboxMode, output_mode: outputMode }),
   });
 }
 

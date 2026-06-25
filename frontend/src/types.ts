@@ -320,6 +320,8 @@ export interface CodexRunResponse {
   git_status: string;
 }
 
+export type CodexOutputMode = "full" | "final";
+
 export type CodexJobStatus = "running" | "completed" | "failed";
 
 export interface CodexJobSnapshot {
