@@ -7,9 +7,25 @@ The format follows the common GitHub changelog convention inspired by
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 格式遵循 GitHub 常见变更日志规范，并参考 Keep a Changelog。
 
-## Unreleased
+## 本次版本更新
 
-### Changed / 变更
+### [0.2.8]
+
+#### Added / 新增
+
+- Added an Alfred-only Oracle dry-run SQL helper for `T_CURRENT` type consolidation planning, so the current-record merge into `Work / Study / Life / Info` can be previewed safely before any data update.
+- 新增仅针对 Alfred 的 Oracle dry-run SQL 辅助脚本，用于预演 `T_CURRENT` 向 `Work / Study / Life / Info` 的类型收敛，先安全核对合并结果，再决定是否执行正式数据更新。
+
+- Added an Alfred-only formal Oracle migration SQL helper for `T_CURRENT` type consolidation, covering backup creation, keeper-row consolidation, contributor-row deletion, and post-run verification before manual commit.
+- 新增仅针对 Alfred 的正式 Oracle 迁移 SQL 辅助脚本，覆盖 `T_CURRENT` 收敛前备份、keeper 行合并、贡献行删除，以及手动提交前的结果校验。
+
+- Added a local Markdown-to-HTML export script under `scripts/export-enhanced-html.mjs` that resolves image paths relative to the source Markdown file and inlines local images as base64, so MWeb-style articles with `media/...` assets can be exported as self-contained HTML outside the web UI.
+- 新增本地导出脚本 `scripts/export-enhanced-html.mjs`：会按源 Markdown 文件所在目录解析图片路径，并将本地图片内联为 base64，适合把 MWeb 风格 `media/...` 资源的文章导出为独立 HTML，而不依赖 Web 界面当前访问路径。
+
+#### Changed / 变更
+
+- Changed current-record frontend defaults to prefer `Work / Study / Life / Info` in order when choosing append targets, and auto-clear stale cached type filters that no longer exist after Alfred's type consolidation.
+- 调整当前记录前端默认行为：追加目标会按 `Work / Study / Life / Info` 顺序优先选择；同时在 Alfred 分类收敛后，会自动清理本地缓存里已失效的旧类型筛选值。
 
 - Changed the Information Entry todo creation flow so checking `这是待办事项` now shows a todo status selector, defaulting new todo entries to `处理中` while still allowing users to switch to other statuses before submit.
 - 调整信息录入中的待办创建流程：勾选 `这是待办事项` 后会显示待办状态选择器，新建待办默认落在 `处理中`，同时仍支持提交前切换为其他状态。
@@ -29,27 +45,16 @@ The format follows the common GitHub changelog convention inspired by
 - Changed Blog Factory enhanced copy to also download a standalone `.html` file locally, so the exported article/task content can be opened directly in a browser on the same machine after copying.
 - 调整博客工厂增强美化复制：复制的同时会额外下载一个可独立打开的 `.html` 文件，便于在本机浏览器直接查看导出的文章或任务内容。
 
-- Added a local Markdown-to-HTML export script under `scripts/export-enhanced-html.mjs` that resolves image paths relative to the source Markdown file and inlines local images as base64, so MWeb-style articles with `media/...` assets can be exported as self-contained HTML outside the web UI.
-- 新增本地导出脚本 `scripts/export-enhanced-html.mjs`：会按源 Markdown 文件所在目录解析图片路径，并将本地图片内联为 base64，适合把 MWeb 风格 `media/...` 资源的文章导出为独立 HTML，而不依赖 Web 界面当前访问路径。
+- Changed Todo-to-current append requests to send an explicit “replace existing content” flag whenever the dialog selection advances to a new `week/day`, so backend writes can deterministically distinguish true progression from same-slot prepend behavior.
+- 调整待办事项追加到当前记录的请求协议：当弹窗选择推进到新的 `week/day` 时，会显式传递“覆盖旧内容”标记，让后端稳定区分“推进新记录点”和“同记录点前置追加”两种写入行为。
+
+#### Fixed / 修复
 
 - Fixed Todo completion append behavior so choosing a new `week/day` now follows Current Record progression semantics: advancing to a new record point clears prior content instead of prepending the old history into the new slot.
 - 修复待办事项完成后追加到当前记录的推进语义：当用户选择新的 `week/day` 时，现在会按“推进到新记录点”处理，清空旧内容后只写入新内容，不再把历史内容一并拼进新的记录点。
 
 - Fixed Todo completion confirmation flow so newly created or just-converted Todo items correctly detect the first transition into `已完成`, and the append dialog no longer overwrites a manually chosen `week/day` with late-loaded defaults.
 - 修复待办事项完成确认弹窗的触发与默认值回填：新建或刚转换出的 Todo 现在能正确识别第一次切到 `已完成` 的状态变化；同时追加弹窗不会再被异步加载的默认值覆盖掉用户手动选择的 `week/day`。
-
-- Changed Todo-to-current append requests to send an explicit “replace existing content” flag whenever the dialog selection advances to a new `week/day`, so backend writes can deterministically distinguish true progression from same-slot prepend behavior.
-- 调整待办事项追加到当前记录的请求协议：当弹窗选择推进到新的 `week/day` 时，会显式传递“覆盖旧内容”标记，让后端稳定区分“推进新记录点”和“同记录点前置追加”两种写入行为。
-
-## 本次版本更新
-
-### [0.2.8]
-
-#### Added / 新增
-
-#### Changed / 变更
-
-#### Fixed / 修复
 
 ## 历史版本更新
 

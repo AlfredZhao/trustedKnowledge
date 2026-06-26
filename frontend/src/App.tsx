@@ -1738,20 +1738,31 @@ function App() {
     fetchCurrentRecordOptions()
       .then((options) => {
         if (!mounted) return;
-        setCurrentRecordOptions({
-          ...options,
-          user_types: options.user_types ?? {},
-          weeks: options.weeks.length > 0 ? options.weeks : buildWeekOptions(),
-          days: options.days.length > 0 ? options.days : buildDayOptions(),
-          learn_levels: options.learn_levels.length > 0 ? options.learn_levels : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-        });
+        const normalizedOptions = normalizeCurrentRecordOptions(options);
+        setCurrentRecordOptions(normalizedOptions);
         setCurrentRecordDraft((current) => ({
           ...current,
-          username: current.username || options.users[0] || "",
+          username:
+            current.username && normalizedOptions.users.includes(current.username)
+              ? current.username
+              : normalizedOptions.users[0] || "",
         }));
-        if (!authUser?.is_admin && options.users.length === 1) {
-          setCurrentRecordUsername(options.users[0]);
-        }
+        setCurrentRecordUsername((current) => {
+          if (!authUser?.is_admin && normalizedOptions.users.length === 1) {
+            return normalizedOptions.users[0];
+          }
+          return current && normalizedOptions.users.includes(current) ? current : "";
+        });
+        setCurrentRecordTypeFilter((current) => {
+          const nextUsername =
+            !authUser?.is_admin && normalizedOptions.users.length === 1
+              ? normalizedOptions.users[0]
+              : currentRecordUsername && normalizedOptions.users.includes(currentRecordUsername)
+                ? currentRecordUsername
+                : "";
+          const nextTypeOptions = nextUsername ? normalizedOptions.user_types[nextUsername] ?? [] : normalizedOptions.types;
+          return current && nextTypeOptions.includes(current) ? current : "";
+        });
       })
       .catch((error: Error) => {
         if (!mounted) return;
@@ -12249,6 +12260,22 @@ function normalizeCurrentRecordOptions(options: CurrentRecordOptions): CurrentRe
   };
 }
 
+const preferredCurrentTypes = ["Work", "Study", "Life", "Info"] as const;
+
+function resolvePreferredCurrentType(typeOptions: string[], preferredType?: string): string {
+  if (preferredType && typeOptions.includes(preferredType)) {
+    return preferredType;
+  }
+
+  for (const type of preferredCurrentTypes) {
+    if (typeOptions.includes(type)) {
+      return type;
+    }
+  }
+
+  return typeOptions[0] || "";
+}
+
 function resolveCurrentAppendTarget(options: CurrentRecordOptions, preferred?: CurrentAppendTarget): CurrentAppendTarget {
   const usersWithTypes = options.users.filter((user) => (options.user_types[user] ?? []).length > 0);
   const preferredTypes = preferred?.username ? options.user_types[preferred.username] ?? [] : [];
@@ -12257,16 +12284,9 @@ function resolveCurrentAppendTarget(options: CurrentRecordOptions, preferred?: C
   const typeOptions = username ? options.user_types[username] ?? [] : [];
   const week = preferred?.week && options.weeks.includes(preferred.week) ? preferred.week : "";
   const day = preferred?.day && options.days.includes(preferred.day) ? preferred.day : "";
+  const type = resolvePreferredCurrentType(typeOptions, preferred?.type);
 
-  if (preferred?.type && typeOptions.includes(preferred.type)) {
-    return { username, type: preferred.type, week, day };
-  }
-
-  if (username === "Alfred" && typeOptions.includes("Work")) {
-    return { username, type: "Work", week, day };
-  }
-
-  return { username, type: typeOptions[0] || "", week, day };
+  return { username, type, week, day };
 }
 
 function getNextWeek(value: CurrentWeek): CurrentWeek {
