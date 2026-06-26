@@ -9,7 +9,26 @@ The format follows the common GitHub changelog convention inspired by
 
 ## 本次版本更新
 
-### [0.2.8]
+### [0.2.9]
+
+#### Added / 新增
+
+- Added a user-relation graph preview to User Management, including focus-user selection, relation-status filtering, full-graph or related-only scope, and an Oracle Property Graph rollout panel mapped from `TK_USERS` and `TK_RELATIONS`.
+- 新增用户管理中的用户关系图预览：支持焦点用户选择、关系状态筛选、完整图谱/仅相关节点范围切换，并附带基于 `TK_USERS` 与 `TK_RELATIONS` 的 Oracle Property Graph 落地建议面板。
+
+#### Changed / 变更
+
+- Changed the user-management frontend overview documentation to include the new graph panel placement, controls, and mobile stacking behavior.
+- 更新用户管理前端概览文档，补充新的关系图卡片位置、交互控件，以及移动端纵向堆叠行为说明。
+
+- Refined the User Management graph preview styling to match the existing glassmorphism UI more closely, with softer edge layering, external node labels, clearer status colors, and better graph-text contrast.
+- 优化用户管理关系图预览的视觉样式，使其更贴近现有玻璃态 UI：关系线分层更柔和，节点改为外置标签卡片，状态色更清晰，图中文字与背景对比也更稳定。
+
+#### Fixed / 修复
+
+## 历史版本更新
+
+### [0.2.8] - 2026-06-26
 
 #### Added / 新增
 
@@ -55,8 +74,6 @@ The format follows the common GitHub changelog convention inspired by
 
 - Fixed Todo completion confirmation flow so newly created or just-converted Todo items correctly detect the first transition into `已完成`, and the append dialog no longer overwrites a manually chosen `week/day` with late-loaded defaults.
 - 修复待办事项完成确认弹窗的触发与默认值回填：新建或刚转换出的 Todo 现在能正确识别第一次切到 `已完成` 的状态变化；同时追加弹窗不会再被异步加载的默认值覆盖掉用户手动选择的 `week/day`。
-
-## 历史版本更新
 
 ### [0.2.7] - 2026-06-24
 

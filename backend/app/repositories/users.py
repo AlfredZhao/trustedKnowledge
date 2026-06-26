@@ -918,6 +918,78 @@ async def list_user_relations() -> tuple[list[dict[str, Any]], int]:
     return [_relation_row_to_dict(row) for row in rows], int(count_row[0]) if count_row else 0
 
 
+def _build_user_relation_graph(
+    users: list[dict[str, Any]],
+    relations: list[dict[str, Any]],
+) -> dict[str, Any]:
+    nodes = []
+    edges = []
+    active_relation_count = 0
+
+    for relation in relations:
+        if relation["status"] == "ACTIVE":
+            active_relation_count += 1
+        edges.append(
+            {
+                "relation_id": relation["relation_id"],
+                "source_user_id": relation["parent_user_id"],
+                "source_username": relation["parent_username"],
+                "target_user_id": relation["child_user_id"],
+                "target_username": relation["child_username"],
+                "relation_type": relation["relation_type"],
+                "status": relation["status"],
+                "created_at": relation["created_at"],
+            }
+        )
+
+    for user in users:
+        degree = int(user["parent_count"] or 0) + int(user["child_count"] or 0)
+        nodes.append(
+            {
+                "user_id": user["user_id"],
+                "username": user["username"],
+                "display_name": user["display_name"],
+                "role_code": user["role_code"],
+                "is_admin_role": bool(user["is_admin_role"]),
+                "status": user["status"],
+                "parent_count": int(user["parent_count"] or 0),
+                "child_count": int(user["child_count"] or 0),
+                "degree": degree,
+                "is_isolated": degree == 0,
+            }
+        )
+
+    summary = {
+        "total_users": len(users),
+        "active_users": sum(1 for user in users if user["status"] == "ACTIVE"),
+        "parent_role_users": sum(1 for user in users if user["role_code"] == "PARENT"),
+        "admin_role_users": sum(1 for user in users if user["is_admin_role"]),
+        "isolated_users": sum(1 for node in nodes if node["is_isolated"]),
+        "total_relations": len(relations),
+        "active_relations": active_relation_count,
+    }
+
+    recommendation = {
+        "graph_name": "TK_USER_RELATION_PG",
+        "graph_type": "Oracle SQL Property Graph",
+        "implementation_status": "Preview on relational data; promote to database metadata graph on Oracle 23ai+",
+        "vertex_tables": ["TK_USERS"],
+        "edge_tables": ["TK_RELATIONS"],
+        "notes": [
+            "Keep TK_USERS as the vertex table and map USER/PARENT, admin_enabled, status, and display_name as vertex properties.",
+            "Keep TK_RELATIONS as the edge table and map parent_user_id -> child_user_id as directed edges with relation_type, status, and created_at as edge properties.",
+            "Use the current API preview to validate graph semantics first, then create a SQL Property Graph metadata layer in Oracle without copying user data.",
+        ],
+    }
+
+    return {
+        "nodes": sorted(nodes, key=lambda item: (item["status"] != "ACTIVE", item["username"].lower())),
+        "edges": sorted(edges, key=lambda item: (item["status"] != "ACTIVE", item["source_username"].lower(), item["target_username"].lower())),
+        "summary": summary,
+        "recommendation": recommendation,
+    }
+
+
 async def get_user_relation(relation_id: int) -> dict[str, Any] | None:
     async with acquire_connection() as connection:
         await ensure_user_schema_for_connection(connection)
@@ -942,6 +1014,12 @@ async def get_user_relation(relation_id: int) -> dict[str, Any] | None:
         )
         row = await cursor.fetchone()
     return _relation_row_to_dict(row) if row else None
+
+
+async def get_user_relation_graph() -> dict[str, Any]:
+    users, _ = await list_managed_users()
+    relations, _ = await list_user_relations()
+    return _build_user_relation_graph(users, relations)
 
 
 async def create_user_relation(payload: UserRelationCreate) -> dict[str, Any]:

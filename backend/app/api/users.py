@@ -11,6 +11,7 @@ from app.repositories.users import (
     UserNotFoundError,
     create_managed_user,
     create_user_relation,
+    get_user_relation_graph,
     list_admin_module_access,
     list_managed_users,
     list_user_relations,
@@ -28,6 +29,7 @@ from app.schemas.users import (
     ManagedUserListResponse,
     ManagedUserPasswordReset,
     ManagedUserUpdate,
+    UserRelationGraphResponse,
     UserRelationCreate,
     UserRelationItem,
     UserRelationListResponse,
@@ -110,6 +112,15 @@ async def get_relations(_: AuthContext = Depends(require_admin_user)) -> UserRel
     except oracledb.Error as exc:
         raise _oracle_error(exc, "Oracle rejected the relation list query") from exc
     return UserRelationListResponse(items=items, total=total)
+
+
+@router.get("/graph", response_model=UserRelationGraphResponse)
+async def get_relation_graph(_: AuthContext = Depends(require_admin_user)) -> UserRelationGraphResponse:
+    try:
+        graph = await get_user_relation_graph()
+    except oracledb.Error as exc:
+        raise _oracle_error(exc, "Oracle rejected the relation graph query") from exc
+    return UserRelationGraphResponse.model_validate(graph)
 
 
 @router.post("/relations", response_model=UserRelationItem, status_code=status.HTTP_201_CREATED)

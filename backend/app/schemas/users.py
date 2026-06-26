@@ -85,6 +85,56 @@ class UserRelationListResponse(BaseModel):
     total: int
 
 
+class UserRelationGraphNode(BaseModel):
+    user_id: int
+    username: str
+    display_name: str | None = None
+    role_code: UserRole
+    is_admin_role: bool = False
+    status: UserStatus
+    parent_count: int
+    child_count: int
+    degree: int
+    is_isolated: bool
+
+
+class UserRelationGraphEdge(BaseModel):
+    relation_id: int
+    source_user_id: int
+    source_username: str
+    target_user_id: int
+    target_username: str
+    relation_type: str
+    status: UserStatus
+    created_at: datetime | None = None
+
+
+class UserRelationGraphSummary(BaseModel):
+    total_users: int
+    active_users: int
+    parent_role_users: int
+    admin_role_users: int
+    isolated_users: int
+    total_relations: int
+    active_relations: int
+
+
+class UserRelationGraphRecommendation(BaseModel):
+    graph_name: str
+    graph_type: str
+    implementation_status: str
+    vertex_tables: list[str]
+    edge_tables: list[str]
+    notes: list[str]
+
+
+class UserRelationGraphResponse(BaseModel):
+    nodes: list[UserRelationGraphNode]
+    edges: list[UserRelationGraphEdge]
+    summary: UserRelationGraphSummary
+    recommendation: UserRelationGraphRecommendation
+
+
 class UserRelationCreate(BaseModel):
     parent_user_id: int = Field(..., ge=1)
     child_user_id: int = Field(..., ge=1)

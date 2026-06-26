@@ -135,6 +135,56 @@ export interface UserRelationListResponse {
   total: number;
 }
 
+export interface UserRelationGraphNode {
+  user_id: number;
+  username: string;
+  display_name: string | null;
+  role_code: ManagedUserRole;
+  is_admin_role: boolean;
+  status: ManagedUserStatus;
+  parent_count: number;
+  child_count: number;
+  degree: number;
+  is_isolated: boolean;
+}
+
+export interface UserRelationGraphEdge {
+  relation_id: number;
+  source_user_id: number;
+  source_username: string;
+  target_user_id: number;
+  target_username: string;
+  relation_type: string;
+  status: ManagedUserStatus;
+  created_at: string | null;
+}
+
+export interface UserRelationGraphSummary {
+  total_users: number;
+  active_users: number;
+  parent_role_users: number;
+  admin_role_users: number;
+  isolated_users: number;
+  total_relations: number;
+  active_relations: number;
+}
+
+export interface UserRelationGraphRecommendation {
+  graph_name: string;
+  graph_type: string;
+  implementation_status: string;
+  vertex_tables: string[];
+  edge_tables: string[];
+  notes: string[];
+}
+
+export interface UserRelationGraphResponse {
+  nodes: UserRelationGraphNode[];
+  edges: UserRelationGraphEdge[];
+  summary: UserRelationGraphSummary;
+  recommendation: UserRelationGraphRecommendation;
+}
+
 export interface CurrentRecordItem {
   id: number;
   type: string;

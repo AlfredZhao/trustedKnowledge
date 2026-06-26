@@ -8,6 +8,7 @@ import type {
   ManagedUserRole,
   ManagedUserStatus,
   UserRelationItem,
+  UserRelationGraphResponse,
   UserRelationListResponse,
 } from "../types";
 import { clearStoredApiKey, readStoredApiKey } from "./auth";
@@ -80,6 +81,10 @@ export async function resetManagedUserPassword(userId: number, password: string)
 
 export async function fetchUserRelations(): Promise<UserRelationListResponse> {
   return request<UserRelationListResponse>("/api/users/relations");
+}
+
+export async function fetchUserRelationGraph(): Promise<UserRelationGraphResponse> {
+  return request<UserRelationGraphResponse>("/api/users/graph");
 }
 
 export async function createUserRelation(payload: {

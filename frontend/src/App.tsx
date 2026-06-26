@@ -28,6 +28,7 @@ import {
   Loader2,
   LockKeyhole,
   KeyRound,
+  Network,
   Pencil,
   Plus,
   QrCode,
@@ -119,6 +120,7 @@ import {
   createManagedUser,
   createUserRelation,
   fetchManagedUsers,
+  fetchUserRelationGraph,
   fetchUserRelations,
   resetManagedUserPassword,
   updateAdminModuleAccess,
@@ -168,6 +170,7 @@ import type {
   TodoDraft,
   TodoItem,
   TodoStatus,
+  UserRelationGraphResponse,
   UserRelationItem,
 } from "./types";
 
@@ -765,6 +768,7 @@ function App() {
   const [debouncedManagedUserQuery, setDebouncedManagedUserQuery] = useState("");
   const [managedUserDraft, setManagedUserDraft] = useState<ManagedUserCreateDraft>(emptyManagedUserDraft);
   const [userRelations, setUserRelations] = useState<UserRelationItem[]>([]);
+  const [userRelationGraph, setUserRelationGraph] = useState<UserRelationGraphResponse | null>(null);
   const [adminModuleItems, setAdminModuleItems] = useState<AdminModuleAccessItem[]>([]);
   const [relationDraft, setRelationDraft] = useState(emptyRelationDraft);
   const [isUserManagementLoading, setIsUserManagementLoading] = useState(false);
@@ -924,6 +928,7 @@ function App() {
       setManagedUsers([]);
       setManagedUserTotal(0);
       setUserRelations([]);
+      setUserRelationGraph(null);
       setManagedUserDraft(emptyManagedUserDraft);
       setRelationDraft(emptyRelationDraft);
       setResetPasswordTarget(null);
@@ -1386,13 +1391,14 @@ function App() {
     let cancelled = false;
     setIsUserManagementLoading(true);
     setUserManagementError(null);
-    Promise.all([fetchManagedUsers(debouncedManagedUserQuery), fetchUserRelations(), fetchAdminModuleAccess()])
-      .then(([usersResponse, relationsResponse, moduleResponse]) => {
+    Promise.all([fetchManagedUsers(debouncedManagedUserQuery), fetchUserRelations(), fetchAdminModuleAccess(), fetchUserRelationGraph()])
+      .then(([usersResponse, relationsResponse, moduleResponse, graphResponse]) => {
         if (cancelled) return;
         setManagedUsers(usersResponse.items);
         setManagedUserTotal(usersResponse.total);
         setUserRelations(relationsResponse.items);
         setAdminModuleItems(moduleResponse.items);
+        setUserRelationGraph(graphResponse);
       })
       .catch((error: Error) => {
         if (cancelled) return;
@@ -3962,6 +3968,7 @@ function App() {
           ) : activeView === "users" ? (
             <UserManagementWorkspace
               adminModules={adminModuleItems}
+              graph={userRelationGraph}
               users={managedUsers}
               total={managedUserTotal}
               relations={userRelations}
@@ -9009,6 +9016,7 @@ function CurrentRecordEditDialog({
 
 function UserManagementWorkspace({
   adminModules,
+  graph,
   users,
   total,
   relations,
@@ -9032,6 +9040,7 @@ function UserManagementWorkspace({
   onUpdateRelation,
 }: {
   adminModules: AdminModuleAccessItem[];
+  graph: UserRelationGraphResponse | null;
   users: ManagedUserItem[];
   total: number;
   relations: UserRelationItem[];
@@ -9339,6 +9348,10 @@ function UserManagementWorkspace({
         </section>
       </aside>
 
+      <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/64 p-4 shadow-soft-glow backdrop-blur-xl xl:col-span-2">
+        <UserRelationGraphPanel graph={graph} isLoading={isLoading} />
+      </section>
+
       {resetTarget ? (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 px-4 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-lg border border-white/10 bg-ink-900 p-4 shadow-soft-glow">
@@ -9388,6 +9401,517 @@ function UserManagementWorkspace({
       ) : null}
     </div>
   );
+}
+
+function UserRelationGraphPanel({
+  graph,
+  isLoading,
+}: {
+  graph: UserRelationGraphResponse | null;
+  isLoading: boolean;
+}) {
+  const [focusUserId, setFocusUserId] = useState("");
+  const [relationFilter, setRelationFilter] = useState<"ACTIVE" | "ALL" | "DISABLED">("ACTIVE");
+  const [scopeMode, setScopeMode] = useState<"FULL" | "RELATED">("FULL");
+
+  const nodes = graph?.nodes ?? [];
+  const edges = graph?.edges ?? [];
+  const selectedUserId = focusUserId ? Number(focusUserId) : null;
+
+  useEffect(() => {
+    if (!focusUserId) return;
+    if (nodes.some((node) => String(node.user_id) === focusUserId)) return;
+    setFocusUserId("");
+  }, [focusUserId, nodes]);
+
+  const visibleEdges = useMemo(() => {
+    return edges.filter((edge) => {
+      if (relationFilter === "ACTIVE") return edge.status === "ACTIVE";
+      if (relationFilter === "DISABLED") return edge.status === "DISABLED";
+      return true;
+    });
+  }, [edges, relationFilter]);
+
+  const visibleNodeIds = useMemo(() => {
+    if (scopeMode === "FULL") {
+      return new Set(nodes.map((node) => node.user_id));
+    }
+
+    const relatedIds = new Set<number>();
+    for (const edge of visibleEdges) {
+      if (selectedUserId === null || edge.source_user_id === selectedUserId || edge.target_user_id === selectedUserId) {
+        relatedIds.add(edge.source_user_id);
+        relatedIds.add(edge.target_user_id);
+      }
+    }
+    if (selectedUserId !== null) relatedIds.add(selectedUserId);
+    return relatedIds;
+  }, [nodes, scopeMode, selectedUserId, visibleEdges]);
+
+  const visibleNodes = useMemo(() => {
+    return nodes.filter((node) => visibleNodeIds.has(node.user_id));
+  }, [nodes, visibleNodeIds]);
+
+  const orderedNodes = useMemo(() => {
+    return [...visibleNodes].sort((left, right) => {
+      if (selectedUserId !== null) {
+        if (left.user_id === selectedUserId) return -1;
+        if (right.user_id === selectedUserId) return 1;
+      }
+      return right.degree - left.degree || left.username.localeCompare(right.username, "zh-CN");
+    });
+  }, [selectedUserId, visibleNodes]);
+
+  const graphLayout = useMemo(() => {
+    const width = 960;
+    const height = 420;
+    const centerX = width / 2;
+    const centerY = height / 2;
+    const positions = new Map<number, { x: number; y: number }>();
+
+    if (orderedNodes.length === 0) {
+      return { width, height, positions };
+    }
+
+    if (orderedNodes.length === 1) {
+      positions.set(orderedNodes[0].user_id, { x: centerX, y: centerY });
+      return { width, height, positions };
+    }
+
+    if (selectedUserId !== null && orderedNodes.some((node) => node.user_id === selectedUserId)) {
+      positions.set(selectedUserId, { x: centerX, y: centerY });
+      const surrounding = orderedNodes.filter((node) => node.user_id !== selectedUserId);
+      const radiusX = Math.min(330, 180 + surrounding.length * 10);
+      const radiusY = Math.min(150, 96 + surrounding.length * 6);
+
+      surrounding.forEach((node, index) => {
+        const angle = -Math.PI / 2 + (2 * Math.PI * index) / surrounding.length;
+        positions.set(node.user_id, {
+          x: centerX + Math.cos(angle) * radiusX,
+          y: centerY + Math.sin(angle) * radiusY,
+        });
+      });
+      return { width, height, positions };
+    }
+
+    const radiusX = Math.min(340, 190 + orderedNodes.length * 9);
+    const radiusY = Math.min(160, 108 + orderedNodes.length * 4);
+    orderedNodes.forEach((node, index) => {
+      const angle = -Math.PI / 2 + (2 * Math.PI * index) / orderedNodes.length;
+      positions.set(node.user_id, {
+        x: centerX + Math.cos(angle) * radiusX,
+        y: centerY + Math.sin(angle) * radiusY,
+      });
+    });
+    return { width, height, positions };
+  }, [orderedNodes, selectedUserId]);
+
+  const focusNode =
+    orderedNodes.find((node) => node.user_id === selectedUserId) ??
+    orderedNodes[0] ??
+    null;
+
+  const visibleRelationCount = visibleEdges.filter(
+    (edge) => visibleNodeIds.has(edge.source_user_id) && visibleNodeIds.has(edge.target_user_id),
+  ).length;
+  const legendItems = [
+    { label: "焦点用户", tone: "border-mint-300/30 bg-mint-300/12 text-mint-200" },
+    { label: "家长用户", tone: "border-sky-300/25 bg-sky-300/12 text-sky-200" },
+    { label: "Admin 角色", tone: "border-amber-300/25 bg-amber-300/12 text-amber-100" },
+    { label: "停用用户 / 关系", tone: "border-white/10 bg-white/[0.04] text-slate-400" },
+  ];
+
+  if (isLoading && !graph) {
+    return (
+      <div>
+        <div className="mb-4 flex items-center gap-2 text-sm text-mint-300">
+          <Network size={17} />
+          用户关系图
+        </div>
+        <LoadingStack />
+      </div>
+    );
+  }
+
+  if (!graph || graph.nodes.length === 0) {
+    return (
+      <div>
+        <div className="mb-4 flex items-center gap-2 text-sm text-mint-300">
+          <Network size={17} />
+          用户关系图
+        </div>
+        <div className="rounded-lg border border-white/10 bg-white/[0.025] p-4 text-sm text-slate-400">
+          当前没有可展示的用户图谱数据。
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
+            <Network size={17} />
+            用户关系图
+          </div>
+          <h3 className="text-lg font-semibold text-slate-50">Property Graph 预览</h3>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
+            当前图谱预览直接映射 `TK_USERS` 顶点与 `TK_RELATIONS` 边，先用现有关系验证展示和筛选语义，再平滑升级到 Oracle
+            Property Graph 元数据层。
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-2 text-sm lg:grid-cols-4">
+          <MetricTile icon={<ShieldCheck size={17} />} label="顶点" value={String(graph.summary.total_users)} detail="TK_USERS" />
+          <MetricTile icon={<UserCog size={17} />} label="边" value={String(graph.summary.total_relations)} detail="TK_RELATIONS" />
+          <MetricTile icon={<CheckCircle2 size={17} />} label="启用边" value={String(graph.summary.active_relations)} detail="ACTIVE" />
+          <MetricTile icon={<LockKeyhole size={17} />} label="孤立用户" value={String(graph.summary.isolated_users)} detail="无有效关系" />
+        </div>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-3">
+        <Field label="焦点用户" icon={<ShieldCheck size={16} />}>
+          <select className="control" value={focusUserId} onChange={(event) => setFocusUserId(event.target.value)}>
+            <option value="">全量图谱</option>
+            {graph.nodes.map((node) => (
+              <option key={node.user_id} value={node.user_id}>
+                {node.username}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="关系状态" icon={<CheckCircle2 size={16} />}>
+          <select
+            className="control"
+            value={relationFilter}
+            onChange={(event) => setRelationFilter(event.target.value as "ACTIVE" | "ALL" | "DISABLED")}
+          >
+            <option value="ACTIVE">仅 ACTIVE</option>
+            <option value="ALL">全部关系</option>
+            <option value="DISABLED">仅 DISABLED</option>
+          </select>
+        </Field>
+        <Field label="展示范围" icon={<Filter size={16} />}>
+          <select className="control" value={scopeMode} onChange={(event) => setScopeMode(event.target.value as "FULL" | "RELATED")}>
+            <option value="FULL">完整图谱</option>
+            <option value="RELATED">仅相关节点</option>
+          </select>
+        </Field>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="rounded-xl border border-white/10 bg-white/[0.028] p-3">
+          <div className="mb-3 flex flex-wrap gap-2">
+            {legendItems.map((item) => (
+              <span key={item.label} className={`rounded-full border px-2.5 py-1 text-[11px] font-medium ${item.tone}`}>
+                {item.label}
+              </span>
+            ))}
+          </div>
+          {orderedNodes.length === 0 ? (
+            <div className="grid min-h-[420px] place-items-center text-center text-sm text-slate-500">
+              当前筛选条件下没有匹配的关系网络。
+            </div>
+          ) : (
+            <svg className="h-[420px] w-full" viewBox={`0 0 ${graphLayout.width} ${graphLayout.height}`}>
+              <defs>
+                <linearGradient id="user-graph-bg" x1="0%" x2="100%" y1="0%" y2="100%">
+                  <stop offset="0%" stopColor="rgba(12, 20, 33, 0.98)" />
+                  <stop offset="55%" stopColor="rgba(15, 23, 42, 0.94)" />
+                  <stop offset="100%" stopColor="rgba(10, 15, 26, 0.98)" />
+                </linearGradient>
+                <radialGradient id="user-graph-glow-left" cx="22%" cy="20%" r="48%">
+                  <stop offset="0%" stopColor="rgba(125, 211, 252, 0.16)" />
+                  <stop offset="100%" stopColor="rgba(125, 211, 252, 0)" />
+                </radialGradient>
+                <radialGradient id="user-graph-glow-right" cx="78%" cy="72%" r="52%">
+                  <stop offset="0%" stopColor="rgba(110, 231, 183, 0.14)" />
+                  <stop offset="100%" stopColor="rgba(110, 231, 183, 0)" />
+                </radialGradient>
+                <filter id="user-graph-soft-glow" x="-50%" y="-50%" width="200%" height="200%">
+                  <feGaussianBlur result="blur" stdDeviation="8" />
+                  <feMerge>
+                    <feMergeNode in="blur" />
+                    <feMergeNode in="SourceGraphic" />
+                  </feMerge>
+                </filter>
+                <marker
+                  id="user-graph-arrow-active"
+                  markerHeight="6"
+                  markerWidth="6"
+                  orient="auto-start-reverse"
+                  refX="5"
+                  refY="3"
+                >
+                  <path d="M0,0 L6,3 L0,6 z" fill="rgba(125, 211, 252, 0.72)" />
+                </marker>
+                <marker
+                  id="user-graph-arrow-muted"
+                  markerHeight="6"
+                  markerWidth="6"
+                  orient="auto-start-reverse"
+                  refX="5"
+                  refY="3"
+                >
+                  <path d="M0,0 L6,3 L0,6 z" fill="rgba(148, 163, 184, 0.4)" />
+                </marker>
+              </defs>
+
+              <rect fill="url(#user-graph-bg)" height={graphLayout.height} rx="18" width={graphLayout.width} />
+              <rect fill="url(#user-graph-glow-left)" height={graphLayout.height} rx="18" width={graphLayout.width} />
+              <rect fill="url(#user-graph-glow-right)" height={graphLayout.height} rx="18" width={graphLayout.width} />
+              <circle cx={graphLayout.width / 2} cy={graphLayout.height / 2} fill="none" r="78" stroke="rgba(110, 231, 183, 0.09)" />
+              <circle cx={graphLayout.width / 2} cy={graphLayout.height / 2} fill="none" r="156" stroke="rgba(148, 163, 184, 0.07)" />
+              <path
+                d={`M120 ${graphLayout.height / 2} H ${graphLayout.width - 120}`}
+                fill="none"
+                stroke="rgba(148, 163, 184, 0.06)"
+                strokeDasharray="5 8"
+              />
+              <path
+                d={`M${graphLayout.width / 2} 84 V ${graphLayout.height - 84}`}
+                fill="none"
+                stroke="rgba(148, 163, 184, 0.05)"
+                strokeDasharray="4 10"
+              />
+
+              {visibleEdges.map((edge) => {
+                const source = graphLayout.positions.get(edge.source_user_id);
+                const target = graphLayout.positions.get(edge.target_user_id);
+                if (!source || !target) return null;
+                const isActive = edge.status === "ACTIVE";
+                const isFocused =
+                  selectedUserId === null || edge.source_user_id === selectedUserId || edge.target_user_id === selectedUserId;
+                return (
+                  <g key={edge.relation_id}>
+                    <line
+                      stroke={isActive ? "rgba(125, 211, 252, 0.14)" : "rgba(148, 163, 184, 0.08)"}
+                      strokeWidth={isActive ? 7 : 4}
+                      x1={source.x}
+                      x2={target.x}
+                      y1={source.y}
+                      y2={target.y}
+                      opacity={isFocused ? 1 : 0.18}
+                      filter="url(#user-graph-soft-glow)"
+                    />
+                    <line
+                      markerEnd={isActive ? "url(#user-graph-arrow-active)" : "url(#user-graph-arrow-muted)"}
+                      stroke={isActive ? "rgba(125, 211, 252, 0.62)" : "rgba(148, 163, 184, 0.32)"}
+                      strokeWidth={isActive ? 2.2 : 1.4}
+                      strokeDasharray={isActive ? undefined : "5 6"}
+                      x1={source.x}
+                      x2={target.x}
+                      y1={source.y}
+                      y2={target.y}
+                      opacity={isFocused ? 0.95 : 0.28}
+                    />
+                  </g>
+                );
+              })}
+
+              {orderedNodes.map((node) => {
+                const position = graphLayout.positions.get(node.user_id);
+                if (!position) return null;
+                const isFocused = node.user_id === selectedUserId;
+                const radius = Math.min(18, 10 + Math.max(0, node.degree) * 1.2);
+                const badgeFill = isFocused
+                  ? "#7dd3c7"
+                  : node.status === "DISABLED"
+                    ? "#475569"
+                    : node.is_admin_role
+                      ? "#f59e0b"
+                      : node.role_code === "PARENT"
+                        ? "#38bdf8"
+                        : "#cbd5e1";
+                const ringStroke = isFocused
+                  ? "rgba(125, 211, 252, 0.72)"
+                  : node.status === "DISABLED"
+                    ? "rgba(148, 163, 184, 0.25)"
+                    : "rgba(255, 255, 255, 0.12)";
+                const labelWidth = estimateGraphNodeLabelWidth(node.username, node.display_name, node.is_admin_role);
+                const labelX = position.x - labelWidth / 2;
+                const labelY = position.y + radius + 12;
+                const titleColor = node.status === "DISABLED" ? "#cbd5e1" : "#f8fafc";
+                const subtitleColor = isFocused ? "#99f6e4" : "#94a3b8";
+                const relationLabel = [node.role_code, node.is_admin_role ? "ADMIN" : null].filter(Boolean).join(" · ");
+                const subtitle = node.display_name || relationLabel || "USER";
+
+                return (
+                  <g
+                    key={node.user_id}
+                    role="button"
+                    tabIndex={0}
+                    style={{ cursor: "pointer" }}
+                    onClick={() => setFocusUserId(String(node.user_id))}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setFocusUserId(String(node.user_id));
+                      }
+                    }}
+                  >
+                    <circle
+                      cx={position.x}
+                      cy={position.y}
+                      fill={isFocused ? "rgba(125, 211, 252, 0.16)" : "rgba(15, 23, 42, 0.6)"}
+                      r={radius + 10}
+                      opacity={isFocused ? 1 : 0.75}
+                      filter="url(#user-graph-soft-glow)"
+                    />
+                    <circle
+                      cx={position.x}
+                      cy={position.y}
+                      fill="rgba(15, 23, 42, 0.92)"
+                      r={radius}
+                      stroke={ringStroke}
+                      strokeWidth={isFocused ? 2.8 : 1.8}
+                    />
+                    <circle cx={position.x} cy={position.y} fill={badgeFill} r={Math.max(4, radius - 5)} opacity={0.98} />
+                    <rect
+                      x={labelX}
+                      y={labelY}
+                      width={labelWidth}
+                      height="42"
+                      rx="12"
+                      fill={isFocused ? "rgba(15, 23, 42, 0.96)" : "rgba(15, 23, 42, 0.86)"}
+                      stroke={isFocused ? "rgba(125, 211, 252, 0.42)" : "rgba(255, 255, 255, 0.1)"}
+                      strokeWidth={isFocused ? 1.6 : 1}
+                    />
+                    <text
+                      fill={titleColor}
+                      fontSize="12.5"
+                      fontWeight="600"
+                      textAnchor="middle"
+                      x={position.x}
+                      y={labelY + 17}
+                    >
+                      {truncateGraphNodeText(node.username, 16)}
+                    </text>
+                    <text
+                      fill={subtitleColor}
+                      fontSize="10.5"
+                      fontWeight="500"
+                      textAnchor="middle"
+                      x={position.x}
+                      y={labelY + 31}
+                    >
+                      {truncateGraphNodeText(subtitle, 20)}
+                    </text>
+                    {isFocused ? (
+                      <rect
+                        x={labelX + labelWidth - 44}
+                        y={labelY + 10}
+                        width="32"
+                        height="16"
+                        rx="8"
+                        fill="rgba(125, 211, 252, 0.16)"
+                        stroke="rgba(125, 211, 252, 0.22)"
+                      />
+                    ) : null}
+                    {isFocused ? (
+                      <text fill="#bae6fd" fontSize="9.5" fontWeight="600" textAnchor="middle" x={labelX + labelWidth - 28} y={labelY + 21}>
+                        Focus
+                      </text>
+                    ) : null}
+                  </g>
+                );
+              })}
+            </svg>
+          )}
+        </div>
+
+        <div className="space-y-3">
+          <div className="rounded-lg border border-white/10 bg-white/[0.028] p-4">
+            <div className="mb-3 text-sm font-medium text-slate-100">当前筛选</div>
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+                <div className="text-slate-500">可见节点</div>
+                <div className="mt-1 text-lg font-semibold text-slate-50">{orderedNodes.length}</div>
+              </div>
+              <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+                <div className="text-slate-500">可见边</div>
+                <div className="mt-1 text-lg font-semibold text-slate-50">{visibleRelationCount}</div>
+              </div>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-400">
+              <span className="rounded-full border border-white/10 bg-white/[0.03] px-2.5 py-1">图名 {graph.recommendation.graph_name}</span>
+              <span className="rounded-full border border-white/10 bg-white/[0.03] px-2.5 py-1">{graph.recommendation.graph_type}</span>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-white/10 bg-white/[0.028] p-4">
+            <div className="mb-3 text-sm font-medium text-slate-100">焦点用户</div>
+            {focusNode ? (
+              <div className="space-y-3 text-sm">
+                <div>
+                  <div className="font-semibold text-slate-50">{focusNode.username}</div>
+                  <div className="mt-1 text-xs text-slate-500">{focusNode.display_name || "未设置显示名"}</div>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+                    <div className="text-slate-500">角色</div>
+                    <div className="mt-1 text-slate-200">{focusNode.role_code}</div>
+                  </div>
+                  <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+                    <div className="text-slate-500">状态</div>
+                    <div className="mt-1 text-slate-200">{focusNode.status}</div>
+                  </div>
+                  <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+                    <div className="text-slate-500">家长数</div>
+                    <div className="mt-1 text-slate-200">{focusNode.parent_count}</div>
+                  </div>
+                  <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+                    <div className="text-slate-500">孩子数</div>
+                    <div className="mt-1 text-slate-200">{focusNode.child_count}</div>
+                  </div>
+                </div>
+                <button
+                  className="h-9 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-xs text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300"
+                  type="button"
+                  onClick={() => setFocusUserId("")}
+                >
+                  清除焦点
+                </button>
+              </div>
+            ) : (
+              <div className="text-sm text-slate-500">选择一个用户，查看局部关系和角色属性。</div>
+            )}
+          </div>
+
+          <div className="rounded-lg border border-white/10 bg-white/[0.028] p-4">
+            <div className="mb-3 text-sm font-medium text-slate-100">Oracle Property Graph 实施建议</div>
+            <div className="mb-3 text-xs leading-5 text-slate-400">{graph.recommendation.implementation_status}</div>
+            <div className="mb-3 grid gap-2 text-xs text-slate-300">
+              <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+                顶点表: {graph.recommendation.vertex_tables.join(", ")}
+              </div>
+              <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+                边表: {graph.recommendation.edge_tables.join(", ")}
+              </div>
+            </div>
+            <div className="space-y-2 text-xs leading-5 text-slate-400">
+              {graph.recommendation.notes.map((note) => (
+                <div key={note} className="rounded-lg border border-white/10 bg-white/[0.025] p-3">
+                  {note}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function truncateGraphNodeText(value: string, maxLength: number) {
+  if (value.length <= maxLength) return value;
+  return `${value.slice(0, Math.max(1, maxLength - 1))}…`;
+}
+
+function estimateGraphNodeLabelWidth(username: string, displayName: string | null, isAdminRole: boolean) {
+  const subtitle = displayName || (isAdminRole ? "ADMIN" : "USER");
+  const contentWidth = Math.max(username.length * 7.6, subtitle.length * 6.3);
+  return Math.min(170, Math.max(108, contentWidth + 28));
 }
 
 function SkillManager({
