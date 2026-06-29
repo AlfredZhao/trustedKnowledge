@@ -7873,9 +7873,26 @@ function CurrentRecordsWorkspace({
   const isAdminUser = authUser?.is_admin ?? false;
   const hasSingleVisibleUser = !isAdminUser && options.users.length <= 1;
   const allUsersLabel = isAdminUser ? "全部用户" : "全部可见用户";
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const wasCreateSavingRef = useRef(isSaving);
+
+  useEffect(() => {
+    if (
+      isCreateDialogOpen &&
+      wasCreateSavingRef.current &&
+      !isSaving &&
+      !saveError &&
+      !draft.type.trim() &&
+      !draft.content.trim()
+    ) {
+      setIsCreateDialogOpen(false);
+    }
+
+    wasCreateSavingRef.current = isSaving;
+  }, [draft.content, draft.type, isCreateDialogOpen, isSaving, saveError]);
 
   return (
-    <div className="grid flex-1 gap-4 px-4 pb-4 pt-2 xl:grid-cols-[minmax(440px,1fr)_340px_320px]">
+    <div className="grid flex-1 gap-4 px-4 pb-4 pt-2 xl:grid-cols-[minmax(440px,1fr)_320px]">
       <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/72 p-4 shadow-soft-glow backdrop-blur-xl">
         <div className="mb-5 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>
@@ -7885,8 +7902,18 @@ function CurrentRecordsWorkspace({
             </div>
             <h2 className="text-xl font-semibold text-slate-50">当前记录列表</h2>
           </div>
-          <div className="rounded-lg border border-white/10 bg-white/[0.035] px-3 py-2 text-sm text-slate-300">
-            {total} 条匹配
+          <div className="flex flex-wrap items-center gap-2 md:justify-end">
+            <button
+              className="flex h-10 items-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/12 px-4 text-sm font-medium text-mint-200 transition hover:bg-mint-300/18"
+              type="button"
+              onClick={() => setIsCreateDialogOpen(true)}
+            >
+              <Plus size={16} />
+              新增分类
+            </button>
+            <div className="rounded-lg border border-white/10 bg-white/[0.035] px-3 py-2 text-sm text-slate-300">
+              {total} 条匹配
+            </div>
           </div>
         </div>
 
@@ -8086,82 +8113,6 @@ function CurrentRecordsWorkspace({
         )}
       </section>
 
-      <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/72 p-4 shadow-soft-glow backdrop-blur-xl">
-        <div className="mb-5">
-          <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
-            <FilePlus2 size={17} />
-            T_CURRENT
-          </div>
-          <h2 className="text-xl font-semibold text-slate-50">新增当前分类</h2>
-        </div>
-
-        <form className="space-y-4" onSubmit={onSubmit}>
-          <Field label="用户" icon={<ShieldCheck size={16} />}>
-            <select
-              className="control"
-              disabled={isOptionsLoading || hasSingleVisibleUser}
-              value={draft.username}
-              onChange={(event) => onDraftChange({ ...draft, username: event.target.value })}
-            >
-              <option value="">选择用户</option>
-              {options.users.map((user) => (
-                <option key={user} value={user}>
-                  {user}
-                </option>
-              ))}
-            </select>
-          </Field>
-
-          <Field label="新类型" icon={<Tags size={16} />}>
-            <input
-              className="control"
-              list="current-record-type-options"
-              maxLength={40}
-              value={draft.type}
-              onChange={(event) => onDraftChange({ ...draft, type: event.target.value })}
-              placeholder="输入新的 type"
-            />
-            <datalist id="current-record-type-options">
-              {options.types.map((type) => (
-                <option key={type} value={type} />
-              ))}
-            </datalist>
-          </Field>
-
-          <div className="grid grid-cols-3 gap-3">
-            <MetricTile icon={<CalendarClock size={17} />} label="默认周" value="W1" detail="新增类型起点" />
-            <MetricTile icon={<CalendarClock size={17} />} label="默认天" value="D1" detail="第一天" />
-            <MetricTile icon={<CircleGauge size={17} />} label="等级" value="1" detail="初始级别" />
-          </div>
-
-          <Field label="内容" icon={<FileText size={16} />}>
-            <textarea
-              className="control min-h-[220px] resize-none leading-7"
-              maxLength={4000}
-              value={draft.content}
-              onChange={(event) => onDraftChange({ ...draft, content: event.target.value })}
-              placeholder="可留空，后续从列表中编辑当前记录补充。"
-            />
-          </Field>
-
-          {saveError ? (
-            <div className="flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100">
-              <TriangleAlert className="mt-0.5 shrink-0 text-red-300" size={17} />
-              <span>{saveError}</span>
-            </div>
-          ) : null}
-
-          <button
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
-            disabled={!canSubmit}
-            type="submit"
-          >
-            {isSaving ? <Loader2 className="animate-spin" size={18} /> : <Plus size={18} />}
-            {isSaving ? "写入中" : "新增到 T_CURRENT"}
-          </button>
-        </form>
-      </section>
-
       <aside className="min-w-0 rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
         <div className="mb-5">
           <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
@@ -8193,6 +8144,176 @@ function CurrentRecordsWorkspace({
         onCancel={onCloseEditor}
         onConfirm={onUpdate}
       />
+
+      <CurrentRecordCreateDialog
+        canSubmit={canSubmit}
+        draft={draft}
+        hasSingleVisibleUser={hasSingleVisibleUser}
+        isOpen={isCreateDialogOpen}
+        isOptionsLoading={isOptionsLoading}
+        isSaving={isSaving}
+        options={options}
+        saveError={saveError}
+        onClose={() => setIsCreateDialogOpen(false)}
+        onDraftChange={onDraftChange}
+        onSubmit={onSubmit}
+      />
+    </div>
+  );
+}
+
+function CurrentRecordCreateDialog({
+  isOpen,
+  options,
+  draft,
+  isOptionsLoading,
+  hasSingleVisibleUser,
+  isSaving,
+  canSubmit,
+  saveError,
+  onClose,
+  onDraftChange,
+  onSubmit,
+}: {
+  isOpen: boolean;
+  options: CurrentRecordOptions;
+  draft: { username: string; type: string; content: string };
+  isOptionsLoading: boolean;
+  hasSingleVisibleUser: boolean;
+  isSaving: boolean;
+  canSubmit: boolean;
+  saveError: string | null;
+  onClose: () => void;
+  onDraftChange: (draft: { username: string; type: string; content: string }) => void;
+  onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+}) {
+  useEffect(() => {
+    if (!isOpen) return;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape" && !isSaving) {
+        onClose();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, isSaving, onClose]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/62 px-3 py-4 backdrop-blur-sm sm:px-4 sm:py-6"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !isSaving) {
+          onClose();
+        }
+      }}
+    >
+      <section
+        aria-modal="true"
+        className="flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl flex-col overflow-hidden rounded-lg border border-mint-300/20 bg-ink-900 shadow-soft-glow sm:max-h-[92vh]"
+        role="dialog"
+      >
+        <div className="flex shrink-0 items-start justify-between gap-4 border-b border-white/10 p-4 sm:p-5">
+          <div>
+            <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
+              <FilePlus2 size={17} />
+              T_CURRENT
+            </div>
+            <h2 className="text-lg font-semibold text-slate-50">新增当前分类</h2>
+          </div>
+          <button
+            className="grid h-9 w-9 place-items-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-400 transition hover:border-white/20 hover:text-slate-100 disabled:cursor-not-allowed disabled:text-slate-600"
+            disabled={isSaving}
+            title="关闭"
+            type="button"
+            onClick={onClose}
+          >
+            <X size={17} />
+          </button>
+        </div>
+
+        <form className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5" onSubmit={onSubmit}>
+          <div className="space-y-4">
+            <Field label="用户" icon={<ShieldCheck size={16} />}>
+              <select
+                className="control"
+                disabled={isOptionsLoading || hasSingleVisibleUser}
+                value={draft.username}
+                onChange={(event) => onDraftChange({ ...draft, username: event.target.value })}
+              >
+                <option value="">选择用户</option>
+                {options.users.map((user) => (
+                  <option key={user} value={user}>
+                    {user}
+                  </option>
+                ))}
+              </select>
+            </Field>
+
+            <Field label="新类型" icon={<Tags size={16} />}>
+              <input
+                className="control"
+                list="current-record-type-options"
+                maxLength={40}
+                value={draft.type}
+                onChange={(event) => onDraftChange({ ...draft, type: event.target.value })}
+                placeholder="输入新的 type"
+              />
+              <datalist id="current-record-type-options">
+                {options.types.map((type) => (
+                  <option key={type} value={type} />
+                ))}
+              </datalist>
+            </Field>
+
+            <div className="grid grid-cols-3 gap-3">
+              <MetricTile icon={<CalendarClock size={17} />} label="默认周" value="W1" detail="新增类型起点" />
+              <MetricTile icon={<CalendarClock size={17} />} label="默认天" value="D1" detail="第一天" />
+              <MetricTile icon={<CircleGauge size={17} />} label="等级" value="1" detail="初始级别" />
+            </div>
+
+            <Field label="内容" icon={<FileText size={16} />}>
+              <textarea
+                className="control min-h-[220px] resize-none leading-7"
+                maxLength={4000}
+                value={draft.content}
+                onChange={(event) => onDraftChange({ ...draft, content: event.target.value })}
+                placeholder="可留空，后续从列表中编辑当前记录补充。"
+              />
+            </Field>
+
+            {saveError ? (
+              <div className="flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100">
+                <TriangleAlert className="mt-0.5 shrink-0 text-red-300" size={17} />
+                <span>{saveError}</span>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="mt-5 flex justify-end gap-3 border-t border-white/10 pt-4">
+            <button
+              className="h-11 rounded-lg border border-white/10 bg-white/[0.035] px-4 text-sm font-medium text-slate-300 transition hover:border-white/20 hover:text-slate-100 disabled:cursor-not-allowed disabled:text-slate-600"
+              disabled={isSaving}
+              type="button"
+              onClick={onClose}
+            >
+              取消
+            </button>
+            <button
+              className="flex h-11 items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
+              disabled={!canSubmit}
+              type="submit"
+            >
+              {isSaving ? <Loader2 className="animate-spin" size={18} /> : <Plus size={18} />}
+              {isSaving ? "写入中" : "新增到 T_CURRENT"}
+            </button>
+          </div>
+        </form>
+      </section>
     </div>
   );
 }

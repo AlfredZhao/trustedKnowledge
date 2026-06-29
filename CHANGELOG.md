@@ -24,6 +24,9 @@ The format follows the common GitHub changelog convention inspired by
 - Refined the User Management graph preview styling to match the existing glassmorphism UI more closely, with softer edge layering, external node labels, clearer status colors, and better graph-text contrast.
 - 优化用户管理关系图预览的视觉样式，使其更贴近现有玻璃态 UI：关系线分层更柔和，节点改为外置标签卡片，状态色更清晰，图中文字与背景对比也更稳定。
 
+- Changed Current Records so `新增当前分类` is no longer a permanently visible side panel; the action now lives as an `新增分类` button in the list area and opens a modal only when needed.
+- 调整“当前记录”模块：`新增当前分类` 不再常驻占用独立区域，改为放在列表区内的 `新增分类` 按钮，点击后按需弹窗录入。
+
 #### Fixed / 修复
 
 ## 历史版本更新
