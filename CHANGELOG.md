@@ -16,10 +16,22 @@ The format follows the common GitHub changelog convention inspired by
 - Added a user-relation graph preview to User Management, including focus-user selection, relation-status filtering, full-graph or related-only scope, and an Oracle Property Graph rollout panel mapped from `TK_USERS` and `TK_RELATIONS`.
 - 新增用户管理中的用户关系图预览：支持焦点用户选择、关系状态筛选、完整图谱/仅相关节点范围切换，并附带基于 `TK_USERS` 与 `TK_RELATIONS` 的 Oracle Property Graph 落地建议面板。
 
+- Added Metaweblog API blog publishing to Blog Factory, including per-user multi-config persistence, credential validation, default-config direct publish, and a publish dialog that can send the current Markdown article as either a draft or a published post.
+- 为博客工厂新增 Metaweblog API 博客发布能力：支持按用户持久化多套发布配置、账号校验、默认配置直接发布，以及可将当前 Markdown 文章按“草稿 / 正式发布”模式推送到博客的发布弹窗。
+
 #### Changed / 变更
 
 - Changed the user-management frontend overview documentation to include the new graph panel placement, controls, and mobile stacking behavior.
 - 更新用户管理前端概览文档，补充新的关系图卡片位置、交互控件，以及移动端纵向堆叠行为说明。
+
+- Changed the Blog Factory article panel to expose `配置API`, `发布博客`, and bottom `发布到博客` actions while keeping the existing Markdown editing flow intact; successful Metaweblog publishes now also sync the related knowledge and factory statuses to `已发布`.
+- 调整博客工厂文章面板：在保留现有 Markdown 编辑流程的前提下，新增 `配置API`、`发布博客` 以及底部 `发布到博客` 操作；Metaweblog 发布成功后会同步把关联知识和工厂状态更新为 `已发布`。
+
+- Refined the Blog Factory publish layout by moving Metaweblog configuration and publish actions out of the Markdown article editor into the task-content area, with cleaner desktop grouping and mobile-friendly stacked controls.
+- 优化博客工厂发布区布局：将 Metaweblog 配置与发布入口从 Markdown 文章编辑区迁移到任务内容区域，并针对桌面端分组与移动端纵向堆叠做了界面整理。
+
+- Simplified the Blog Factory detail layout further by removing the standalone `Markdown 文章` panel; blog publishing now publishes the saved article when present, otherwise falls back to task content.
+- 进一步精简博客工厂详情布局：移除了独立的 `Markdown 文章` 面板；博客发布时会优先使用已保存文章，如不存在则自动回退到任务内容。
 
 - Refined the User Management graph preview styling to match the existing glassmorphism UI more closely, with softer edge layering, external node labels, clearer status colors, and better graph-text contrast.
 - 优化用户管理关系图预览的视觉样式，使其更贴近现有玻璃态 UI：关系线分层更柔和，节点改为外置标签卡片，状态色更清晰，图中文字与背景对比也更稳定。
@@ -28,6 +40,21 @@ The format follows the common GitHub changelog convention inspired by
 - 调整“当前记录”模块：`新增当前分类` 不再常驻占用独立区域，改为放在列表区内的 `新增分类` 按钮，点击后按需弹窗录入。
 
 #### Fixed / 修复
+
+- Fixed Blog Factory publish-config routing so `/api/blog-factory/publish-configs` is matched before the `/{item_id}` detail route; saved Metaweblog configs now load again instead of failing with HTTP 422 on refresh.
+- 修复博客工厂发布配置路由顺序：`/api/blog-factory/publish-configs` 现在会优先于 `/{item_id}` 详情路由匹配；刷新界面时已保存的 Metaweblog 配置不再因 HTTP 422 而加载失败。
+
+- Fixed the Blog Factory `配置API` data refresh path so reopening the config or publish dialogs after a service restart now re-requests saved Metaweblog configs instead of leaving the desktop list stuck empty after an earlier failed load.
+- 修复博客工厂 `配置API` 的数据刷新链路：服务重启后重新打开配置弹窗或发布弹窗时，会重新请求已保存的 Metaweblog 配置，不再因为之前一次加载失败而让桌面端列表一直显示为空。
+
+- Fixed Blog Factory Metaweblog config ownership so the same login username now reads the same `配置API` data across devices; existing rows are backfilled to an explicit `owner_username` key instead of relying only on nullable `user_id`.
+- 修复博客工厂 Metaweblog 配置归属逻辑：同一登录用户名现在会在不同设备上读取同一套 `配置API` 数据；已有配置也会补回到显式的 `owner_username` 归属键，不再只依赖可为空的 `user_id`。
+
+- Fixed the Blog Factory publish feedback layout so draft/publish success messages now render below the action buttons instead of squeezing the four-button row on desktop.
+- 修复博客工厂发布反馈布局：草稿/正式发布成功提示现在会显示在操作按钮下方，不再挤压桌面端四个发布按钮的文字。
+
+- Fixed the mobile `配置API` dialog so the modal itself becomes scrollable on small screens and the saved config list keeps the form footer reachable.
+- 修复移动端 `配置API` 弹窗滚动：小屏设备上弹窗整体可滚动，已保存配置列表不会再把表单底部操作区卡出可视范围。
 
 ## 历史版本更新
 

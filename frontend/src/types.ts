@@ -60,6 +60,38 @@ export interface BlogFactoryItem {
   has_article: boolean;
 }
 
+export type BlogPublishType = "METAWEBLOG_API";
+
+export interface BlogPublishConfig {
+  id: number;
+  blog_type: BlogPublishType;
+  blog_url: string;
+  username: string;
+  api_url: string;
+  blog_name: string | null;
+  blog_id: string | null;
+  is_default: boolean;
+  has_password: boolean;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface BlogPublishValidationResult {
+  blog_id: string;
+  blog_name: string | null;
+  blog_url: string | null;
+  message: string;
+}
+
+export interface BlogFactoryPublishResult {
+  item: BlogFactoryItem;
+  config_id: number;
+  post_id: string;
+  blog_name: string | null;
+  blog_url: string | null;
+  published: boolean;
+}
+
 export type AppView =
   | "overview"
   | "workbench"

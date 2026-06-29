@@ -21,8 +21,10 @@ import {
   FlaskConical,
   Folder,
   FolderOpen,
+  Globe,
   Github,
   History,
+  Lock,
   Layers3,
   LogOut,
   Loader2,
@@ -32,9 +34,12 @@ import {
   Pencil,
   Plus,
   QrCode,
+  Radio,
   RefreshCw,
   Save,
   Search,
+  Send,
+  Settings2,
   ShieldCheck,
   Sparkles,
   Tags,
@@ -59,14 +64,17 @@ import {
 } from "./api/auth";
 import {
   appendTodoToCurrent,
+  createBlogPublishConfig,
   convertKnowledgeToTodo,
   convertTodoToKnowledge,
   createBlogFactoryItem,
   createKnowledge,
   createTodo,
+  deleteBlogPublishConfig,
   deleteBlogFactoryItem,
   deleteKnowledge,
   fetchBlogFactoryItems,
+  fetchBlogPublishConfigs,
   fetchKnowledge,
   fetchTodos,
   getBlogFactoryItem,
@@ -80,8 +88,11 @@ import {
   updateBlogFactoryContentStatus,
   updateBlogFactoryItem,
   updateBlogFactoryStatus,
+  updateBlogPublishConfig,
   updateKnowledge,
   updateTodo,
+  validateBlogPublishConfig,
+  publishBlogFactoryArticle,
 } from "./api/knowledge";
 import { fetchHistory, readCachedHistory } from "./api/history";
 import { askHistory, fetchHistoryAskLlmConfig, updateHistoryAskLlmConfig } from "./api/historyAsk";
@@ -139,7 +150,11 @@ import type {
   AdminModuleAccessLevel,
   AppView,
   BlogFactoryItem,
+  BlogFactoryPublishResult,
   BlogFactoryStatus,
+  BlogPublishConfig,
+  BlogPublishType,
+  BlogPublishValidationResult,
   CodexJobSnapshot,
   CodexRunResponse,
   CurrentDay,
@@ -214,6 +229,17 @@ const emptySkillDraft: SkillDraft = {
   content: "",
   enabled: true,
   published: false,
+};
+
+const emptyBlogPublishConfigDraft: BlogPublishConfigDraft = {
+  blogType: "METAWEBLOG_API",
+  blogUrl: "",
+  username: "",
+  password: "",
+  apiUrl: "",
+  blogName: "",
+  isDefault: false,
+  validation: null,
 };
 
 const emptyManagedUserDraft: ManagedUserCreateDraft = {
@@ -608,6 +634,24 @@ function App() {
   const [blogFactoryEditError, setBlogFactoryEditError] = useState<string | null>(null);
   const [blogFactoryDeleteTarget, setBlogFactoryDeleteTarget] = useState<BlogFactoryItem | null>(null);
   const [blogFactoryRefreshToken, setBlogFactoryRefreshToken] = useState(0);
+  const [blogPublishConfigs, setBlogPublishConfigs] = useState<BlogPublishConfig[]>([]);
+  const [isBlogPublishConfigsLoading, setIsBlogPublishConfigsLoading] = useState(false);
+  const [blogPublishConfigsError, setBlogPublishConfigsError] = useState<string | null>(null);
+  const [blogPublishConfigDraft, setBlogPublishConfigDraft] = useState<BlogPublishConfigDraft>(emptyBlogPublishConfigDraft);
+  const [selectedBlogPublishConfigId, setSelectedBlogPublishConfigId] = useState<number | null>(null);
+  const [isBlogPublishConfigDialogOpen, setIsBlogPublishConfigDialogOpen] = useState(false);
+  const [isBlogPublishConfigSaving, setIsBlogPublishConfigSaving] = useState(false);
+  const [isBlogPublishConfigValidating, setIsBlogPublishConfigValidating] = useState(false);
+  const [blogPublishConfigError, setBlogPublishConfigError] = useState<string | null>(null);
+  const [blogPublishConfigValidationMessage, setBlogPublishConfigValidationMessage] = useState<string | null>(null);
+  const [blogPublishConfigDeleteTarget, setBlogPublishConfigDeleteTarget] = useState<BlogPublishConfig | null>(null);
+  const [isBlogPublishConfigDeleting, setIsBlogPublishConfigDeleting] = useState(false);
+  const [isBlogPublishDialogOpen, setIsBlogPublishDialogOpen] = useState(false);
+  const [blogPublishDialogConfigId, setBlogPublishDialogConfigId] = useState<number | null>(null);
+  const [blogPublishDialogMode, setBlogPublishDialogMode] = useState<BlogPublishDialogMode>("publish");
+  const [isBlogPublishing, setIsBlogPublishing] = useState(false);
+  const [blogPublishError, setBlogPublishError] = useState<string | null>(null);
+  const [blogPublishSuccess, setBlogPublishSuccess] = useState<BlogFactoryPublishResult | null>(null);
   const [todoItems, setTodoItems] = useState<TodoItem[]>([]);
   const [todoTotal, setTodoTotal] = useState(0);
   const [todoPage, setTodoPage] = useState(restoredUiState.todos.page);
@@ -1650,6 +1694,42 @@ function App() {
   ]);
 
   useEffect(() => {
+    const shouldLoadBlogPublishConfigs =
+      Boolean(apiKey) && (activeView === "blogFactory" || isBlogPublishConfigDialogOpen || isBlogPublishDialogOpen);
+    if (!shouldLoadBlogPublishConfigs) return;
+
+    let mounted = true;
+    setIsBlogPublishConfigsLoading(true);
+    setBlogPublishConfigsError(null);
+    fetchBlogPublishConfigs()
+      .then((data) => {
+        if (!mounted) return;
+        setBlogPublishConfigs(data.items);
+        setBlogPublishConfigsError(null);
+        setSelectedBlogPublishConfigId((current) => {
+          if (current && data.items.some((item) => item.id === current)) return current;
+          return data.items.find((item) => item.is_default)?.id ?? data.items[0]?.id ?? null;
+        });
+        setBlogPublishDialogConfigId((current) => {
+          if (current && data.items.some((item) => item.id === current)) return current;
+          return data.items.find((item) => item.is_default)?.id ?? data.items[0]?.id ?? null;
+        });
+      })
+      .catch((error: Error) => {
+        if (!mounted) return;
+        setBlogPublishConfigsError(error.message);
+      })
+      .finally(() => {
+        if (!mounted) return;
+        setIsBlogPublishConfigsLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [activeView, apiKey, blogFactoryRefreshToken, isBlogPublishConfigDialogOpen, isBlogPublishDialogOpen]);
+
+  useEffect(() => {
     if (!apiKey) return;
     const nextQuery = todoQuery.trim();
     if (nextQuery === debouncedTodoQuery) return;
@@ -2250,6 +2330,8 @@ function App() {
     setBlogFactoryStatusError(null);
     setBlogFactoryTaskCopyError(null);
     setHasCopiedBlogFactoryTask(false);
+    setBlogPublishError(null);
+    setBlogPublishSuccess(null);
 
     if (
       restoredBlogFactoryArticleDraftRef.current &&
@@ -2802,6 +2884,236 @@ function App() {
       setBlogFactoryArticleError(error instanceof Error ? error.message : "Markdown 保存失败，请稍后重试。");
     } finally {
       setIsBlogFactoryArticleSaving(false);
+    }
+  }
+
+  function handleOpenBlogPublishConfigDialog() {
+    const preferredConfig = resolvePreferredBlogPublishConfig(blogPublishConfigs, selectedBlogPublishConfigId);
+    setSelectedBlogPublishConfigId(preferredConfig?.id ?? null);
+    setBlogPublishConfigDraft(preferredConfig ? blogPublishConfigToDraft(preferredConfig) : emptyBlogPublishConfigDraft);
+    setBlogPublishConfigError(null);
+    setBlogPublishConfigValidationMessage(null);
+    setIsBlogPublishConfigDialogOpen(true);
+  }
+
+  function handleCreateNewBlogPublishConfig() {
+    setSelectedBlogPublishConfigId(null);
+    setBlogPublishConfigDraft({
+      ...emptyBlogPublishConfigDraft,
+      isDefault: blogPublishConfigs.length === 0,
+    });
+    setBlogPublishConfigError(null);
+    setBlogPublishConfigValidationMessage(null);
+  }
+
+  function handleSelectBlogPublishConfigForEdit(configId: number) {
+    const config = blogPublishConfigs.find((item) => item.id === configId);
+    if (!config) return;
+    setSelectedBlogPublishConfigId(config.id);
+    setBlogPublishConfigDraft(blogPublishConfigToDraft(config));
+    setBlogPublishConfigError(null);
+    setBlogPublishConfigValidationMessage(null);
+  }
+
+  async function handleValidateCurrentBlogPublishConfig() {
+    if (isBlogPublishConfigValidating) return;
+    if (
+      !blogPublishConfigDraft.blogUrl.trim() ||
+      !blogPublishConfigDraft.username.trim() ||
+      !blogPublishConfigDraft.password.trim() ||
+      !blogPublishConfigDraft.apiUrl.trim()
+    ) {
+      setBlogPublishConfigError("博客网址、账号、密码和 API 地址不能为空。");
+      return;
+    }
+
+    setIsBlogPublishConfigValidating(true);
+    setBlogPublishConfigError(null);
+    setBlogPublishConfigValidationMessage(null);
+    try {
+      const result = await validateBlogPublishConfig({
+        blogType: blogPublishConfigDraft.blogType,
+        blogUrl: blogPublishConfigDraft.blogUrl,
+        username: blogPublishConfigDraft.username,
+        password: blogPublishConfigDraft.password,
+        apiUrl: blogPublishConfigDraft.apiUrl,
+        blogName: blogPublishConfigDraft.blogName,
+      });
+      setBlogPublishConfigDraft((current) => ({
+        ...current,
+        blogName: result.blog_name ?? current.blogName,
+        validation: result,
+      }));
+      setBlogPublishConfigValidationMessage(result.message);
+    } catch (error) {
+      setBlogPublishConfigError(error instanceof Error ? error.message : "Metaweblog 验证失败，请稍后重试。");
+    } finally {
+      setIsBlogPublishConfigValidating(false);
+    }
+  }
+
+  async function handleSaveBlogPublishConfig() {
+    if (isBlogPublishConfigSaving) return;
+    if (
+      !blogPublishConfigDraft.blogUrl.trim() ||
+      !blogPublishConfigDraft.username.trim() ||
+      !blogPublishConfigDraft.apiUrl.trim()
+    ) {
+      setBlogPublishConfigError("博客网址、账号和 API 地址不能为空。");
+      return;
+    }
+    if (selectedBlogPublishConfigId === null && !blogPublishConfigDraft.password.trim()) {
+      setBlogPublishConfigError("首次保存配置时必须填写密码。");
+      return;
+    }
+
+    setIsBlogPublishConfigSaving(true);
+    setBlogPublishConfigError(null);
+    try {
+      const saved =
+        selectedBlogPublishConfigId === null
+          ? await createBlogPublishConfig({
+              blogType: blogPublishConfigDraft.blogType,
+              blogUrl: blogPublishConfigDraft.blogUrl,
+              username: blogPublishConfigDraft.username,
+              password: blogPublishConfigDraft.password,
+              apiUrl: blogPublishConfigDraft.apiUrl,
+              blogName: blogPublishConfigDraft.blogName,
+              isDefault: blogPublishConfigDraft.isDefault,
+            })
+          : await updateBlogPublishConfig({
+              id: selectedBlogPublishConfigId,
+              blogType: blogPublishConfigDraft.blogType,
+              blogUrl: blogPublishConfigDraft.blogUrl,
+              username: blogPublishConfigDraft.username,
+              password: blogPublishConfigDraft.password,
+              apiUrl: blogPublishConfigDraft.apiUrl,
+              blogName: blogPublishConfigDraft.blogName,
+              isDefault: blogPublishConfigDraft.isDefault,
+            });
+      clearApiResponseCache();
+      setBlogPublishConfigs((current) => upsertBlogPublishConfig(current, saved));
+      setSelectedBlogPublishConfigId(saved.id);
+      setBlogPublishDialogConfigId(saved.id);
+      setBlogPublishConfigDraft(blogPublishConfigToDraft(saved));
+      setBlogPublishConfigValidationMessage("配置已保存。");
+      setBlogFactoryRefreshToken((current) => current + 1);
+      setIsBlogPublishConfigDialogOpen(false);
+    } catch (error) {
+      setBlogPublishConfigError(error instanceof Error ? error.message : "博客发布配置保存失败，请稍后重试。");
+    } finally {
+      setIsBlogPublishConfigSaving(false);
+    }
+  }
+
+  function handleRequestDeleteBlogPublishConfig() {
+    if (selectedBlogPublishConfigId === null || isBlogPublishConfigDeleting) return;
+    const target = blogPublishConfigs.find((item) => item.id === selectedBlogPublishConfigId);
+    if (!target) return;
+    setBlogPublishConfigDeleteTarget(target);
+  }
+
+  async function handleConfirmDeleteBlogPublishConfig() {
+    if (!blogPublishConfigDeleteTarget || isBlogPublishConfigDeleting) return;
+
+    setIsBlogPublishConfigDeleting(true);
+    setBlogPublishConfigError(null);
+    try {
+      await deleteBlogPublishConfig(blogPublishConfigDeleteTarget.id);
+      clearApiResponseCache();
+      setBlogPublishConfigs((current) => current.filter((item) => item.id !== blogPublishConfigDeleteTarget.id));
+      const remaining = blogPublishConfigs.filter((item) => item.id !== blogPublishConfigDeleteTarget.id);
+      const fallback = resolvePreferredBlogPublishConfig(remaining, null);
+      setSelectedBlogPublishConfigId(fallback?.id ?? null);
+      setBlogPublishDialogConfigId(fallback?.id ?? null);
+      setBlogPublishConfigDraft(fallback ? blogPublishConfigToDraft(fallback) : emptyBlogPublishConfigDraft);
+      setBlogPublishConfigDeleteTarget(null);
+      setBlogFactoryRefreshToken((current) => current + 1);
+    } catch (error) {
+      setBlogPublishConfigError(error instanceof Error ? error.message : "博客发布配置删除失败，请稍后重试。");
+    } finally {
+      setIsBlogPublishConfigDeleting(false);
+    }
+  }
+
+  function handleOpenBlogPublishDialog(mode: BlogPublishDialogMode) {
+    const preferredConfig = resolvePreferredBlogPublishConfig(blogPublishConfigs, blogPublishDialogConfigId ?? selectedBlogPublishConfigId);
+    setBlogPublishDialogMode(mode);
+    setBlogPublishDialogConfigId(preferredConfig?.id ?? null);
+    setBlogPublishError(null);
+    setBlogPublishSuccess(null);
+    setIsBlogPublishDialogOpen(true);
+  }
+
+  async function handleDirectPublishBlogFactoryArticle() {
+    if (!selectedBlogFactoryItem || isBlogPublishing) return;
+    const preferredConfig = resolvePreferredBlogPublishConfig(blogPublishConfigs, blogPublishDialogConfigId ?? selectedBlogPublishConfigId);
+    if (!preferredConfig) {
+      setBlogPublishError("请先配置至少一套 Metaweblog API。");
+      setIsBlogPublishConfigDialogOpen(true);
+      return;
+    }
+    const publishMarkdown = resolveBlogFactoryPublishMarkdown(selectedBlogFactoryItem, blogFactoryArticleDraft, blogFactoryEditDraft.taskContent);
+    if (!publishMarkdown) {
+      setBlogPublishError("没有可发布的正文内容：系统会优先使用已保存文章，否则回退到任务内容。");
+      return;
+    }
+
+    setIsBlogPublishing(true);
+    setBlogPublishError(null);
+    setBlogPublishSuccess(null);
+    try {
+      const result = await publishBlogFactoryArticle({
+        id: selectedBlogFactoryItem.id,
+        configId: preferredConfig.id,
+        articleMarkdown: publishMarkdown,
+        articleTitle: extractMarkdownHeading(publishMarkdown) || selectedBlogFactoryItem.article_title || undefined,
+        tags: splitBlogPublishTags(blogFactoryEditDraft.topicTagSnapshot || selectedBlogFactoryItem.topic_tag_snapshot),
+        publish: true,
+      });
+      clearApiResponseCache();
+      setSelectedBlogFactoryItem(result.item);
+      setBlogFactoryItems((current) => current.map((item) => (item.id === result.item.id ? result.item : item)));
+      setBlogPublishSuccess(result);
+      setBlogFactoryRefreshToken((current) => current + 1);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "博客发布失败，请稍后重试。";
+      setBlogPublishError(message);
+    } finally {
+      setIsBlogPublishing(false);
+    }
+  }
+
+  async function handleConfirmBlogPublishFromDialog() {
+    if (!selectedBlogFactoryItem || !blogPublishDialogConfigId || isBlogPublishing) return;
+    const publishMarkdown = resolveBlogFactoryPublishMarkdown(selectedBlogFactoryItem, blogFactoryArticleDraft, blogFactoryEditDraft.taskContent);
+    if (!publishMarkdown) {
+      setBlogPublishError("没有可发布的正文内容：系统会优先使用已保存文章，否则回退到任务内容。");
+      return;
+    }
+
+    setIsBlogPublishing(true);
+    setBlogPublishError(null);
+    setBlogPublishSuccess(null);
+    try {
+      const result = await publishBlogFactoryArticle({
+        id: selectedBlogFactoryItem.id,
+        configId: blogPublishDialogConfigId,
+        articleMarkdown: publishMarkdown,
+        articleTitle: extractMarkdownHeading(publishMarkdown) || selectedBlogFactoryItem.article_title || undefined,
+        tags: splitBlogPublishTags(blogFactoryEditDraft.topicTagSnapshot || selectedBlogFactoryItem.topic_tag_snapshot),
+        publish: blogPublishDialogMode === "publish",
+      });
+      clearApiResponseCache();
+      setSelectedBlogFactoryItem(result.item);
+      setBlogFactoryItems((current) => current.map((item) => (item.id === result.item.id ? result.item : item)));
+      setBlogPublishSuccess(result);
+      setBlogFactoryRefreshToken((current) => current + 1);
+      setIsBlogPublishDialogOpen(false);
+    } catch (error) {
+      setBlogPublishError(error instanceof Error ? error.message : "博客发布失败，请稍后重试。");
+    } finally {
+      setIsBlogPublishing(false);
     }
   }
 
@@ -4062,10 +4374,13 @@ function App() {
               editError={blogFactoryEditError}
               articleError={blogFactoryArticleError}
               taskCopyError={blogFactoryTaskCopyError}
+              publishConfigs={blogPublishConfigs}
+              isPublishConfigsLoading={isBlogPublishConfigsLoading}
+              publishConfigsError={blogPublishConfigsError}
+              publishError={blogPublishError}
+              publishSuccess={blogPublishSuccess}
+              isPublishing={isBlogPublishing}
               editDraft={blogFactoryEditDraft}
-              articleDraft={blogFactoryArticleDraft}
-              articlePathDraft={blogFactoryArticlePathDraft}
-              articleCopiedMode={blogFactoryArticleCopiedMode}
               hasCopiedTask={hasCopiedBlogFactoryTask}
               filters={{
                 username: blogFactoryUsername,
@@ -4097,15 +4412,13 @@ function App() {
               }}
               onPageChange={setBlogFactoryPage}
               onEditDraftChange={setBlogFactoryEditDraft}
-              onArticleChange={setBlogFactoryArticleDraft}
-              onArticlePathChange={setBlogFactoryArticlePathDraft}
-              onUseTaskAsArticle={handleUseBlogFactoryTaskAsArticle}
-              onCopyArticle={handleCopyBlogFactoryArticle}
               onCopyTask={handleCopyBlogFactoryTaskContent}
+              onOpenPublishConfig={handleOpenBlogPublishConfigDialog}
+              onDirectPublish={handleDirectPublishBlogFactoryArticle}
+              onOpenPublishDialog={handleOpenBlogPublishDialog}
               onDelete={handleRequestDeleteBlogFactoryItem}
               onCloseMobileDetail={() => setIsMobileBlogFactoryDetailOpen(false)}
               onSaveItem={handleSaveBlogFactoryItem}
-              onSaveArticle={handleSaveBlogFactoryArticle}
               onContentStatusChange={handleUpdateBlogFactoryContentStatus}
               onSelect={handleSelectBlogFactoryItem}
               onStatusChange={handleUpdateBlogFactoryStatus}
@@ -4521,6 +4834,63 @@ function App() {
           void confirmTodoCurrentAppend();
         }}
         onTargetChange={handleTodoCurrentAppendTargetChange}
+      />
+      <BlogPublishConfigDialog
+        configs={blogPublishConfigs}
+        selectedConfigId={selectedBlogPublishConfigId}
+        draft={blogPublishConfigDraft}
+        error={blogPublishConfigError}
+        validationMessage={blogPublishConfigValidationMessage}
+        isOpen={isBlogPublishConfigDialogOpen}
+        isSaving={isBlogPublishConfigSaving}
+        isValidating={isBlogPublishConfigValidating}
+        onDraftChange={setBlogPublishConfigDraft}
+        onSelectConfig={handleSelectBlogPublishConfigForEdit}
+        onCreateNew={handleCreateNewBlogPublishConfig}
+        onDelete={handleRequestDeleteBlogPublishConfig}
+        onValidate={handleValidateCurrentBlogPublishConfig}
+        onSave={handleSaveBlogPublishConfig}
+        onClose={() => {
+          if (!isBlogPublishConfigSaving && !isBlogPublishConfigValidating) setIsBlogPublishConfigDialogOpen(false);
+        }}
+      />
+      <BlogPublishDialog
+        articleTitle={
+          selectedBlogFactoryItem
+            ? extractMarkdownHeading(
+                resolveBlogFactoryPublishMarkdown(selectedBlogFactoryItem, blogFactoryArticleDraft, blogFactoryEditDraft.taskContent),
+              ) || selectedBlogFactoryItem.article_title || ""
+            : ""
+        }
+        configs={blogPublishConfigs}
+        error={blogPublishError}
+        isOpen={isBlogPublishDialogOpen}
+        isPending={isBlogPublishing}
+        mode={blogPublishDialogMode}
+        selectedConfigId={blogPublishDialogConfigId}
+        tags={splitBlogPublishTags(blogFactoryEditDraft.topicTagSnapshot || selectedBlogFactoryItem?.topic_tag_snapshot)}
+        onClose={() => {
+          if (!isBlogPublishing) setIsBlogPublishDialogOpen(false);
+        }}
+        onConfigChange={setBlogPublishDialogConfigId}
+        onConfirm={handleConfirmBlogPublishFromDialog}
+        onModeChange={setBlogPublishDialogMode}
+      />
+      <AppConfirmDialog
+        confirmLabel={isBlogPublishConfigDeleting ? "删除中" : "确认删除"}
+        description="删除后将不再保留这套博客发布配置；如果它是默认配置，系统会自动把剩余配置中的一套补为默认。"
+        icon={<Trash2 size={19} />}
+        isOpen={blogPublishConfigDeleteTarget !== null}
+        isPending={isBlogPublishConfigDeleting}
+        target={blogPublishConfigDeleteTarget ? `${blogPublishConfigDeleteTarget.blog_name || "未命名博客"} / ${blogPublishConfigDeleteTarget.blog_url}` : ""}
+        title="确认删除博客发布配置"
+        tone="danger"
+        onCancel={() => {
+          if (!isBlogPublishConfigDeleting) setBlogPublishConfigDeleteTarget(null);
+        }}
+        onConfirm={() => {
+          void handleConfirmDeleteBlogPublishConfig();
+        }}
       />
       <AppConfirmDialog
         confirmLabel={isBlogFactoryDeleting ? "删除中" : "确认删除"}
@@ -5228,6 +5598,400 @@ function AppConfirmDialog({
           >
             {isPending ? <Loader2 className="animate-spin" size={17} /> : icon}
             {confirmLabel}
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function BlogPublishConfigDialog({
+  configs,
+  selectedConfigId,
+  draft,
+  error,
+  validationMessage,
+  isOpen,
+  isSaving,
+  isValidating,
+  onDraftChange,
+  onSelectConfig,
+  onCreateNew,
+  onDelete,
+  onValidate,
+  onSave,
+  onClose,
+}: {
+  configs: BlogPublishConfig[];
+  selectedConfigId: number | null;
+  draft: BlogPublishConfigDraft;
+  error: string | null;
+  validationMessage: string | null;
+  isOpen: boolean;
+  isSaving: boolean;
+  isValidating: boolean;
+  onDraftChange: (draft: BlogPublishConfigDraft) => void;
+  onSelectConfig: (configId: number) => void;
+  onCreateNew: () => void;
+  onDelete: () => void;
+  onValidate: () => void;
+  onSave: () => void;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    if (!isOpen) return;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape" && !isSaving && !isValidating) {
+        onClose();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, isSaving, isValidating, onClose]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 overflow-y-auto bg-black/62 px-4 py-4 backdrop-blur-sm sm:grid sm:place-items-center sm:py-6"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !isSaving && !isValidating) onClose();
+      }}
+    >
+      <section
+        aria-modal="true"
+        className="mx-auto grid max-h-[calc(100dvh-2rem)] w-full max-w-5xl gap-4 overflow-y-auto rounded-xl border border-white/10 bg-ink-900 p-4 shadow-soft-glow sm:p-5 lg:max-h-[min(92vh,820px)] lg:grid-cols-[280px_minmax(0,1fr)] lg:overflow-hidden"
+        role="dialog"
+      >
+        <aside className="min-h-0 rounded-lg border border-white/10 bg-white/[0.03] p-4 lg:flex lg:flex-col">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <div className="mb-1 flex items-center gap-2 text-sm text-mint-300">
+                <Settings2 size={16} />
+                Metaweblog API 博客发布
+              </div>
+              <h2 className="text-lg font-semibold text-slate-50">配置API</h2>
+            </div>
+            <button
+              className="flex h-9 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-xs text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300"
+              type="button"
+              onClick={onCreateNew}
+            >
+              <Plus size={14} />
+              新增
+            </button>
+          </div>
+
+          <div className="space-y-2 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+            {configs.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-white/10 bg-white/[0.02] p-4 text-sm leading-6 text-slate-500">
+                还没有保存的博客发布配置。点击右上角“新增”开始录入。
+              </div>
+            ) : (
+              configs.map((config) => (
+                <button
+                  key={config.id}
+                  className={`block w-full rounded-lg border p-3 text-left transition ${
+                    selectedConfigId === config.id
+                      ? "border-mint-300/40 bg-mint-300/10"
+                      : "border-white/10 bg-white/[0.02] hover:border-mint-300/25"
+                  }`}
+                  type="button"
+                  onClick={() => onSelectConfig(config.id)}
+                >
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <span className="truncate text-sm font-medium text-slate-100">{config.blog_name || config.blog_url}</span>
+                    {config.is_default ? (
+                      <span className="rounded-full border border-mint-300/30 bg-mint-300/10 px-2 py-0.5 text-[11px] text-mint-200">
+                        默认
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="truncate text-xs text-slate-500">{config.username}</div>
+                  <div className="mt-1 truncate text-xs text-slate-600">{config.api_url}</div>
+                </button>
+              ))
+            )}
+          </div>
+        </aside>
+
+        <div className="min-h-0 rounded-lg border border-white/10 bg-white/[0.028] p-4 lg:overflow-y-auto">
+          <div className="mb-4 flex items-start justify-between gap-3">
+            <div>
+              <div className="mb-1 text-sm text-slate-400">界面配置面板</div>
+              <h3 className="text-lg font-semibold text-slate-50">
+                {selectedConfigId === null ? "新增博客发布配置" : "编辑博客发布配置"}
+              </h3>
+            </div>
+            {selectedConfigId !== null ? (
+              <button
+                className="flex h-9 items-center gap-2 rounded-lg border border-red-300/20 bg-red-400/10 px-3 text-xs text-red-200 transition hover:bg-red-400/16"
+                disabled={isSaving || isValidating}
+                type="button"
+                onClick={onDelete}
+              >
+                <Trash2 size={14} />
+                删除
+              </button>
+            ) : null}
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <Field label="博客类型" icon={<Radio size={16} />}>
+              <select
+                className="control"
+                value={draft.blogType}
+                onChange={(event) => onDraftChange({ ...draft, blogType: event.target.value as BlogPublishType })}
+              >
+                <option value="METAWEBLOG_API">Metaweblog API</option>
+              </select>
+            </Field>
+            <Field label="博客名称" icon={<FileText size={16} />}>
+              <input
+                className="control"
+                value={draft.blogName}
+                onChange={(event) => onDraftChange({ ...draft, blogName: event.target.value, validation: null })}
+                placeholder="验证后自动带出，也可手工填写"
+              />
+            </Field>
+            <Field label="博客网址" icon={<Globe size={16} />}>
+              <input
+                className="control"
+                value={draft.blogUrl}
+                onChange={(event) => onDraftChange({ ...draft, blogUrl: event.target.value, validation: null })}
+                placeholder="https://www.cnblogs.com/jyzhao"
+              />
+            </Field>
+            <Field label="API地址" icon={<Database size={16} />}>
+              <input
+                className="control"
+                value={draft.apiUrl}
+                onChange={(event) => onDraftChange({ ...draft, apiUrl: event.target.value, validation: null })}
+                placeholder="https://rpc.cnblogs.com/metaweblog/博客后缀"
+              />
+            </Field>
+            <Field label="账号" icon={<ShieldCheck size={16} />}>
+              <input
+                className="control"
+                value={draft.username}
+                onChange={(event) => onDraftChange({ ...draft, username: event.target.value, validation: null })}
+                placeholder="博客登录用户名"
+              />
+            </Field>
+            <Field label="密码" icon={<Lock size={16} />}>
+              <input
+                className="control"
+                type="password"
+                value={draft.password}
+                onChange={(event) => onDraftChange({ ...draft, password: event.target.value, validation: null })}
+                placeholder={selectedConfigId === null ? "请输入博客密码" : "留空则保持现有密码"}
+              />
+            </Field>
+          </div>
+
+          <label className="mt-4 flex items-center gap-2 text-sm text-slate-300">
+            <input
+              checked={draft.isDefault}
+              className="h-4 w-4 rounded border-white/15 bg-white/[0.03]"
+              type="checkbox"
+              onChange={(event) => onDraftChange({ ...draft, isDefault: event.target.checked })}
+            />
+            设为默认发布配置
+          </label>
+
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <button
+              className="flex h-10 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-4 text-sm text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300"
+              disabled={isSaving || isValidating}
+              type="button"
+              onClick={onValidate}
+            >
+              {isValidating ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle2 size={16} />}
+              {isValidating ? "验证中" : "验证"}
+            </button>
+            <span className="text-xs text-slate-500">博客园标准 RPC 模板：`https://rpc.cnblogs.com/metaweblog/博客后缀`</span>
+          </div>
+
+          {validationMessage ? (
+            <div className="mt-4 rounded-lg border border-mint-300/25 bg-mint-300/10 px-3 py-3 text-sm text-mint-100">
+              {validationMessage}
+            </div>
+          ) : null}
+
+          {error ? (
+            <div className="mt-4 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100">
+              {error}
+            </div>
+          ) : null}
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            <button
+              className="h-11 rounded-lg border border-white/10 bg-white/[0.035] px-4 font-medium text-slate-300 transition hover:border-white/20 hover:text-slate-100"
+              disabled={isSaving || isValidating}
+              type="button"
+              onClick={onClose}
+            >
+              取消
+            </button>
+            <button
+              className="flex h-11 items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
+              disabled={isSaving || isValidating}
+              type="button"
+              onClick={onSave}
+            >
+              {isSaving ? <Loader2 className="animate-spin" size={17} /> : <Save size={17} />}
+              {selectedConfigId === null ? "确定并保存" : "确定并更新"}
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function BlogPublishDialog({
+  articleTitle,
+  configs,
+  error,
+  isOpen,
+  isPending,
+  mode,
+  selectedConfigId,
+  tags,
+  onClose,
+  onConfigChange,
+  onConfirm,
+  onModeChange,
+}: {
+  articleTitle: string;
+  configs: BlogPublishConfig[];
+  error: string | null;
+  isOpen: boolean;
+  isPending: boolean;
+  mode: BlogPublishDialogMode;
+  selectedConfigId: number | null;
+  tags: string[];
+  onClose: () => void;
+  onConfigChange: (configId: number) => void;
+  onConfirm: () => void;
+  onModeChange: (mode: BlogPublishDialogMode) => void;
+}) {
+  useEffect(() => {
+    if (!isOpen) return;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape" && !isPending) {
+        onClose();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, isPending, onClose]);
+
+  if (!isOpen) return null;
+
+  const selectedConfig = configs.find((item) => item.id === selectedConfigId) ?? null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/62 px-4 backdrop-blur-sm"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !isPending) onClose();
+      }}
+    >
+      <section
+        aria-modal="true"
+        className="w-full max-w-lg rounded-lg border border-white/10 bg-ink-900 p-5 shadow-soft-glow"
+        role="dialog"
+      >
+        <div className="mb-4 flex items-start gap-3">
+          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-mint-300/25 bg-mint-300/10 text-mint-300">
+            <Send size={18} />
+          </div>
+          <div className="min-w-0">
+            <div className="mb-1 text-sm font-medium text-mint-300">Metaweblog API 博客发布</div>
+            <h2 className="line-clamp-2 text-lg font-semibold text-slate-50">发布到博客</h2>
+          </div>
+        </div>
+
+        <div className="mb-4 rounded-lg border border-white/10 bg-white/[0.035] px-3 py-3 text-sm leading-6 text-slate-400">
+          <div className="mb-1 text-xs uppercase tracking-[0.18em] text-slate-600">Article</div>
+          <div className="text-slate-200">{articleTitle || "未识别标题"}</div>
+          <div className="mt-2 text-xs text-slate-500">{tags.length > 0 ? `标签：${tags.join(" / ")}` : "标签：未设置"}</div>
+        </div>
+
+        <div className="mb-4 grid gap-4 sm:grid-cols-2">
+          <Field label="发布配置" icon={<Settings2 size={16} />}>
+            <select
+              className="control"
+              disabled={configs.length === 0 || isPending}
+              value={selectedConfigId ?? ""}
+              onChange={(event) => onConfigChange(Number(event.target.value))}
+            >
+              {configs.length === 0 ? <option value="">暂无可用配置</option> : null}
+              {configs.map((config) => (
+                <option key={config.id} value={config.id}>
+                  {config.blog_name || config.blog_url}
+                  {config.is_default ? "（默认）" : ""}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="发布状态" icon={<Radio size={16} />}>
+            <div className="flex h-11 overflow-hidden rounded-lg border border-white/10 bg-white/[0.03]">
+              <button
+                className={`flex-1 text-sm transition ${mode === "draft" ? "bg-mint-300/14 text-mint-200" : "text-slate-400 hover:text-mint-200"}`}
+                type="button"
+                onClick={() => onModeChange("draft")}
+              >
+                存为草稿
+              </button>
+              <button
+                className={`flex-1 border-l border-white/10 text-sm transition ${
+                  mode === "publish" ? "bg-mint-300/14 text-mint-200" : "text-slate-400 hover:text-mint-200"
+                }`}
+                type="button"
+                onClick={() => onModeChange("publish")}
+              >
+                直接发布
+              </button>
+            </div>
+          </Field>
+        </div>
+
+        {selectedConfig ? (
+          <div className="mb-4 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-3 text-xs leading-6 text-slate-500">
+            <div>{selectedConfig.username}</div>
+            <div className="truncate">{selectedConfig.api_url}</div>
+          </div>
+        ) : null}
+
+        {error ? (
+          <div className="mb-4 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100">{error}</div>
+        ) : null}
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <button
+            className="h-11 rounded-lg border border-white/10 bg-white/[0.035] px-4 font-medium text-slate-300 transition hover:border-white/20 hover:text-slate-100"
+            disabled={isPending}
+            type="button"
+            onClick={onClose}
+          >
+            取消
+          </button>
+          <button
+            className="flex h-11 items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
+            disabled={!selectedConfigId || configs.length === 0 || isPending}
+            type="button"
+            onClick={onConfirm}
+          >
+            {isPending ? <Loader2 className="animate-spin" size={17} /> : <Send size={17} />}
+            {isPending ? "发布中" : mode === "publish" ? "确认发布" : "保存草稿"}
           </button>
         </div>
       </section>
@@ -6703,6 +7467,19 @@ type BlogFactoryEditDraft = {
   topicTagSnapshot: string;
 };
 
+type BlogPublishConfigDraft = {
+  blogType: BlogPublishType;
+  blogUrl: string;
+  username: string;
+  password: string;
+  apiUrl: string;
+  blogName: string;
+  isDefault: boolean;
+  validation: BlogPublishValidationResult | null;
+};
+
+type BlogPublishDialogMode = "publish" | "draft";
+
 type CurrentRecordFilters = {
   username: string;
   type: string;
@@ -6740,25 +7517,26 @@ function BlogFactoryRecords({
   editError,
   articleError,
   taskCopyError,
+  publishConfigs,
+  isPublishConfigsLoading,
+  publishConfigsError,
+  publishError,
+  publishSuccess,
+  isPublishing,
   editDraft,
-  articleDraft,
-  articlePathDraft,
-  articleCopiedMode,
   hasCopiedTask,
   filters,
   onFilterChange,
   onClearFilters,
   onPageChange,
   onEditDraftChange,
-  onArticleChange,
-  onArticlePathChange,
-  onUseTaskAsArticle,
-  onCopyArticle,
   onCopyTask,
+  onOpenPublishConfig,
+  onDirectPublish,
+  onOpenPublishDialog,
   onDelete,
   onCloseMobileDetail,
   onSaveItem,
-  onSaveArticle,
   onContentStatusChange,
   onSelect,
   onStatusChange,
@@ -6781,25 +7559,26 @@ function BlogFactoryRecords({
   editError: string | null;
   articleError: string | null;
   taskCopyError: string | null;
+  publishConfigs: BlogPublishConfig[];
+  isPublishConfigsLoading: boolean;
+  publishConfigsError: string | null;
+  publishError: string | null;
+  publishSuccess: BlogFactoryPublishResult | null;
+  isPublishing: boolean;
   editDraft: BlogFactoryEditDraft;
-  articleDraft: string;
-  articlePathDraft: string;
-  articleCopiedMode: BlogFactoryArticleCopyMode | null;
   hasCopiedTask: boolean;
   filters: BlogFactoryFilters;
   onFilterChange: (filters: Partial<BlogFactoryFilters>) => void;
   onClearFilters: () => void;
   onPageChange: (page: number) => void;
   onEditDraftChange: (draft: BlogFactoryEditDraft) => void;
-  onArticleChange: (value: string) => void;
-  onArticlePathChange: (value: string) => void;
-  onUseTaskAsArticle: () => void;
-  onCopyArticle: (mode: BlogFactoryArticleCopyMode) => void;
   onCopyTask: (view: BlogFactoryTaskCopyMode) => void;
+  onOpenPublishConfig: () => void;
+  onDirectPublish: () => void;
+  onOpenPublishDialog: (mode: BlogPublishDialogMode) => void;
   onDelete: () => void;
   onCloseMobileDetail: () => void;
   onSaveItem: () => void;
-  onSaveArticle: () => void;
   onContentStatusChange: (status: KnowledgeStatus) => void;
   onSelect: (item: BlogFactoryItem) => void;
   onStatusChange: (status: BlogFactoryStatus) => void;
@@ -6808,6 +7587,9 @@ function BlogFactoryRecords({
   const rangeStart = total === 0 ? 0 : (page - 1) * BLOG_FACTORY_PAGE_SIZE + 1;
   const rangeEnd = Math.min(page * BLOG_FACTORY_PAGE_SIZE, total);
   const [taskCopyView, setTaskCopyView] = useState<BlogFactoryTaskCopyMode>("rendered");
+  const publishMarkdown = selectedItem ? resolveBlogFactoryPublishMarkdown(selectedItem, selectedItem.article_markdown, editDraft.taskContent) : "";
+  const publishTitle = selectedItem ? extractMarkdownHeading(publishMarkdown) || selectedItem.article_title || "" : "";
+  const canPublish = publishMarkdown.trim().length > 0 && publishConfigs.length > 0 && !isPublishing;
   const visibleUsers = getVisibleUsers(authUser);
   const isAdminUser = authUser?.is_admin ?? false;
   const hasSingleVisibleUser = !isAdminUser && visibleUsers.length <= 1;
@@ -6990,175 +7772,150 @@ function BlogFactoryRecords({
           </div>
 
           <div className="rounded-lg border border-white/10 bg-white/[0.025] p-4">
-            <div className="mb-4 flex items-start justify-between gap-3">
+            <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0">
-                <div className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-300">
-                  <FileText size={16} />
-                  Markdown 文章
-                </div>
+                <div className="mb-2 text-sm font-medium text-slate-300">任务内容</div>
                 <div className="flex flex-wrap gap-2 text-xs text-slate-500">
-                  <span>{selectedItem.article_title || "标题待写入"}</span>
-                  <span>{selectedItem.article_saved_at ? formatHistoryDate(selectedItem.article_saved_at) : "未保存"}</span>
+                  <span>{publishConfigs.length > 0 ? `已保存 ${publishConfigs.length} 套博客配置` : "未配置博客 API"}</span>
+                  {isPublishConfigsLoading ? <span>读取配置中…</span> : null}
+                  {publishConfigsError ? <span className="text-red-200">{publishConfigsError}</span> : null}
                 </div>
               </div>
-              <div className="flex shrink-0 flex-wrap justify-end gap-2">
-                <button
-                  className={`flex h-9 items-center gap-2 rounded-lg border px-3 text-xs transition disabled:cursor-not-allowed disabled:text-slate-600 ${
-                    articleCopiedMode === "enhanced"
-                      ? "border-mint-300/30 bg-mint-300/14 text-mint-300"
-                      : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-mint-300/30 hover:text-mint-300"
-                  }`}
-                  disabled={!articleDraft.trim()}
-                  title={articleCopiedMode === "enhanced" ? "已复制增强美化" : "复制公众号增强美化"}
-                  type="button"
-                  onClick={() => onCopyArticle("enhanced")}
-                >
-                  {articleCopiedMode === "enhanced" ? <ClipboardCheck size={15} /> : <WandSparkles size={15} />}
-                  {articleCopiedMode === "enhanced" ? "已复制" : "增强美化"}
-                </button>
-                <button
-                  className={`flex h-9 items-center gap-2 rounded-lg border px-3 text-xs transition disabled:cursor-not-allowed disabled:text-slate-600 ${
-                    articleCopiedMode === "markdown"
-                      ? "border-mint-300/30 bg-mint-300/14 text-mint-300"
-                      : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-mint-300/30 hover:text-mint-300"
-                  }`}
-                  disabled={!articleDraft.trim()}
-                  title={articleCopiedMode === "markdown" ? "已复制 Markdown" : "复制 Markdown"}
-                  type="button"
-                  onClick={() => onCopyArticle("markdown")}
-                >
-                  {articleCopiedMode === "markdown" ? <ClipboardCheck size={15} /> : <Copy size={15} />}
-                  {articleCopiedMode === "markdown" ? "已复制" : "复制 Markdown"}
-                </button>
-              </div>
-            </div>
-
-            <Field label="文件路径" icon={<Database size={16} />}>
-              <input
-                className="control"
-                value={articlePathDraft}
-                onChange={(event) => onArticlePathChange(event.target.value)}
-                placeholder="/home/alfred/projects/blogs/文章标题.md"
-              />
-            </Field>
-
-            <div className="mt-4 flex flex-wrap gap-2">
-              <button
-                className="flex h-9 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-xs text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600"
-                disabled={!editDraft.taskContent.trim()}
-                type="button"
-                onClick={onUseTaskAsArticle}
-              >
-                <FilePlus2 size={15} />
-                载入任务内容
-              </button>
-              <span className="self-center text-xs text-slate-500">将上方任务内容一键填入正文，便于继续编辑或保存。</span>
-            </div>
-
-            <label className="mt-4 block">
-              <span className="mb-2 flex items-center gap-2 text-sm text-slate-300">
-                <span className="text-slate-500">
-                  <FileText size={16} />
-                </span>
-                Markdown 正文
-              </span>
-              <textarea
-                className="control min-h-[260px] resize-none font-mono text-xs leading-6 text-slate-200"
-                value={articleDraft}
-                onChange={(event) => onArticleChange(event.target.value)}
-                placeholder="# 文章标题&#10;&#10;把 blog skill 生成的 Markdown 粘贴到这里。"
-              />
-            </label>
-
-            {selectedItem.article_checksum ? (
-              <div className="mt-3 truncate text-xs text-slate-600" title={selectedItem.article_checksum}>
-                SHA-256 {selectedItem.article_checksum}
-              </div>
-            ) : null}
-
-            {articleError ? (
-              <div className="mt-4 flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100">
-                <TriangleAlert className="mt-0.5 shrink-0 text-red-300" size={17} />
-                <span>{articleError}</span>
-              </div>
-            ) : null}
-
-            <button
-              className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
-              disabled={isArticleSaving || !articleDraft.trim()}
-              type="button"
-              onClick={onSaveArticle}
-            >
-              {isArticleSaving ? <Loader2 className="animate-spin" size={17} /> : <ClipboardCheck size={17} />}
-              {isArticleSaving ? "保存中" : "保存 Markdown"}
-            </button>
-          </div>
-
-          <DetailBlock
-            title="任务内容"
-            value={selectedItem.task_content}
-            action={
-              <div className="flex flex-wrap justify-end gap-2">
-                <div className="flex h-9 overflow-hidden rounded-lg border border-white/10 bg-white/[0.035]">
+              <div className="flex flex-col gap-2 sm:items-end">
+                <div className="flex flex-wrap gap-2 sm:justify-end">
+                  <div className="flex h-9 overflow-hidden rounded-lg border border-white/10 bg-white/[0.035]">
+                    <button
+                      className={`px-3 text-xs transition ${
+                        taskCopyView === "rendered" ? "bg-mint-300/14 text-mint-200" : "text-slate-400 hover:text-mint-200"
+                      }`}
+                      type="button"
+                      onClick={() => setTaskCopyView("rendered")}
+                    >
+                      美化
+                    </button>
+                    <button
+                      className={`border-l border-white/10 px-3 text-xs transition ${
+                        taskCopyView === "enhanced" ? "bg-mint-300/14 text-mint-200" : "text-slate-400 hover:text-mint-200"
+                      }`}
+                      type="button"
+                      onClick={() => setTaskCopyView("enhanced")}
+                    >
+                      增强美化
+                    </button>
+                    <button
+                      className={`border-l border-white/10 px-3 text-xs transition ${
+                        taskCopyView === "raw" ? "bg-mint-300/14 text-mint-200" : "text-slate-400 hover:text-mint-200"
+                      }`}
+                      type="button"
+                      onClick={() => setTaskCopyView("raw")}
+                    >
+                      裸文本
+                    </button>
+                  </div>
                   <button
-                    className={`px-3 text-xs transition ${
-                      taskCopyView === "rendered" ? "bg-mint-300/14 text-mint-200" : "text-slate-400 hover:text-mint-200"
+                    className={`flex h-9 items-center gap-2 rounded-lg border px-3 text-xs transition disabled:cursor-not-allowed disabled:text-slate-600 ${
+                      hasCopiedTask
+                        ? "border-mint-300/30 bg-mint-300/14 text-mint-300"
+                        : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-mint-300/30 hover:text-mint-300"
                     }`}
+                    disabled={!selectedItem.task_content.trim()}
+                    title={
+                      hasCopiedTask
+                        ? "已复制"
+                        : taskCopyView === "enhanced"
+                          ? "复制增强美化任务内容"
+                          : taskCopyView === "rendered"
+                            ? "复制美化任务内容"
+                            : "复制裸文本任务内容"
+                    }
                     type="button"
-                    onClick={() => setTaskCopyView("rendered")}
+                    onClick={() => onCopyTask(taskCopyView)}
                   >
-                    美化
-                  </button>
-                  <button
-                    className={`border-l border-white/10 px-3 text-xs transition ${
-                      taskCopyView === "enhanced" ? "bg-mint-300/14 text-mint-200" : "text-slate-400 hover:text-mint-200"
-                    }`}
-                    type="button"
-                    onClick={() => setTaskCopyView("enhanced")}
-                  >
-                    增强美化
-                  </button>
-                  <button
-                    className={`border-l border-white/10 px-3 text-xs transition ${
-                      taskCopyView === "raw" ? "bg-mint-300/14 text-mint-200" : "text-slate-400 hover:text-mint-200"
-                    }`}
-                    type="button"
-                    onClick={() => setTaskCopyView("raw")}
-                  >
-                    裸文本
-                  </button>
-                </div>
-                <button
-                  className={`flex h-9 items-center gap-2 rounded-lg border px-3 text-xs transition disabled:cursor-not-allowed disabled:text-slate-600 ${
-                    hasCopiedTask
-                      ? "border-mint-300/30 bg-mint-300/14 text-mint-300"
-                      : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-mint-300/30 hover:text-mint-300"
-                  }`}
-                  disabled={!selectedItem.task_content.trim()}
-                  title={
-                    hasCopiedTask
+                    {hasCopiedTask ? <ClipboardCheck size={15} /> : <Copy size={15} />}
+                    {hasCopiedTask
                       ? "已复制"
                       : taskCopyView === "enhanced"
-                        ? "复制增强美化任务内容"
+                        ? "复制增强美化"
                         : taskCopyView === "rendered"
-                          ? "复制美化任务内容"
-                          : "复制裸文本任务内容"
-                  }
-                  type="button"
-                  onClick={() => onCopyTask(taskCopyView)}
-                >
-                  {hasCopiedTask ? <ClipboardCheck size={15} /> : <Copy size={15} />}
-                  {hasCopiedTask
-                    ? "已复制"
-                    : taskCopyView === "enhanced"
-                      ? "复制增强美化"
-                      : taskCopyView === "rendered"
-                        ? "复制美化"
-                        : "复制裸文本"}
-                </button>
+                          ? "复制美化"
+                          : "复制裸文本"}
+                  </button>
+                </div>
               </div>
-            }
-          />
+            </div>
+
+            <p className="whitespace-pre-wrap break-words text-sm leading-7 text-slate-400 [overflow-wrap:anywhere]">
+              {selectedItem.task_content || "未记录"}
+            </p>
+
+            <div className="mt-4 rounded-lg border border-mint-300/18 bg-mint-300/[0.06] p-4">
+              <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                <div className="min-w-0">
+                  <div className="mb-2 flex items-center gap-2 text-sm font-medium text-mint-200">
+                    <Send size={16} />
+                    博客发布
+                  </div>
+                  <div className="text-xs leading-6 text-slate-300/85">
+                    <span>
+                      {publishConfigs.length > 0
+                        ? publishTitle
+                          ? `当前将发布：${publishTitle}`
+                          : "将优先发布已保存文章；没有已保存文章时回退到任务内容"
+                        : "请先配置 Metaweblog API"}
+                    </span>
+                  </div>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2 xl:w-[420px]">
+                  <button
+                    className="flex h-10 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-sm text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300"
+                    type="button"
+                    onClick={onOpenPublishConfig}
+                  >
+                    <Settings2 size={15} />
+                    配置API
+                  </button>
+                  <button
+                    className="flex h-10 items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-3 text-sm text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
+                    disabled={!canPublish}
+                    type="button"
+                    onClick={onDirectPublish}
+                  >
+                    {isPublishing ? <Loader2 className="animate-spin" size={15} /> : <Send size={15} />}
+                    {isPublishing ? "发布中" : "发布博客"}
+                  </button>
+                  <button
+                    className="flex h-10 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-sm text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-500"
+                    disabled={!canPublish}
+                    type="button"
+                    onClick={() => onOpenPublishDialog("draft")}
+                  >
+                    <Radio size={15} />
+                    发布到博客（草稿）
+                  </button>
+                  <button
+                    className="flex h-10 items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-3 text-sm text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
+                    disabled={!canPublish}
+                    type="button"
+                    onClick={() => onOpenPublishDialog("publish")}
+                  >
+                    <Send size={15} />
+                    发布到博客
+                  </button>
+                </div>
+              </div>
+              {publishSuccess ? (
+                <div className="mt-3 rounded-lg border border-mint-300/20 bg-mint-300/10 px-3 py-2 text-xs leading-6 text-mint-100">
+                  已{publishSuccess.published ? "发布" : "保存草稿"}到 {publishSuccess.blog_name || "目标博客"}，文章 ID{" "}
+                  {publishSuccess.post_id}
+                </div>
+              ) : null}
+              {publishError ? (
+                <div className="mt-3 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-2 text-xs leading-6 text-red-100">
+                  {publishError}
+                </div>
+              ) : null}
+            </div>
+          </div>
           {taskCopyError ? (
             <div className="flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100">
               <TriangleAlert className="mt-0.5 shrink-0 text-red-300" size={17} />
@@ -7171,7 +7928,7 @@ function BlogFactoryRecords({
           <div>
             <ClipboardList className="mx-auto mb-3 text-slate-600" size={36} />
             <div className="mb-1 font-medium text-slate-300">选择一条任务</div>
-            <p className="text-sm leading-6 text-slate-500">详情中可编辑任务内容、更新状态、保存文章或删除任务。</p>
+            <p className="text-sm leading-6 text-slate-500">详情中可编辑任务内容、更新状态、发布博客或删除任务。</p>
           </div>
         </div>
       )}
@@ -12986,6 +13743,64 @@ function blogFactoryItemToEditDraft(item: BlogFactoryItem | null): BlogFactoryEd
     sourceSnapshot: item?.source_snapshot ?? "",
     topicTagSnapshot: item?.topic_tag_snapshot ?? "",
   };
+}
+
+function blogPublishConfigToDraft(config: BlogPublishConfig): BlogPublishConfigDraft {
+  return {
+    blogType: config.blog_type,
+    blogUrl: config.blog_url,
+    username: config.username,
+    password: "",
+    apiUrl: config.api_url,
+    blogName: config.blog_name ?? "",
+    isDefault: config.is_default,
+    validation: null,
+  };
+}
+
+function resolvePreferredBlogPublishConfig(configs: BlogPublishConfig[], preferredId: number | null) {
+  if (preferredId !== null) {
+    const matched = configs.find((item) => item.id === preferredId);
+    if (matched) return matched;
+  }
+  return configs.find((item) => item.is_default) ?? configs[0] ?? null;
+}
+
+function upsertBlogPublishConfig(configs: BlogPublishConfig[], next: BlogPublishConfig) {
+  const base = configs.filter((item) => item.id !== next.id).map((item) => ({
+    ...item,
+    is_default: next.is_default ? false : item.is_default,
+  }));
+  return [next, ...base].sort((left, right) => {
+    if (left.is_default !== right.is_default) return left.is_default ? -1 : 1;
+    return right.id - left.id;
+  });
+}
+
+function splitBlogPublishTags(value: string | null | undefined) {
+  if (!value) return [];
+  return Array.from(
+    new Set(
+      value
+        .split(/[,，\n]+/)
+        .map((tag) => tag.trim())
+      .filter(Boolean),
+    ),
+  );
+}
+
+function resolveBlogFactoryPublishMarkdown(
+  item: BlogFactoryItem,
+  articleDraft: string | null | undefined,
+  taskContentDraft: string | null | undefined,
+) {
+  const savedArticle = item.article_markdown?.trim() ?? "";
+  if (savedArticle) return savedArticle;
+
+  const draftArticle = (articleDraft ?? "").trim();
+  if (draftArticle) return draftArticle;
+
+  return removeLeakedMarkdownCodePlaceholders(taskContentDraft ?? item.task_content ?? "").trim();
 }
 
 function readStoredNewDraft(): KnowledgeDraft | null {

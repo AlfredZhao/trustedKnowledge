@@ -1,7 +1,10 @@
 import type {
+  BlogFactoryPublishResult,
   BlogFactoryItem,
   CurrentDay,
   BlogFactoryStatus,
+  BlogPublishConfig,
+  BlogPublishValidationResult,
   CurrentRecordItem,
   CurrentWeek,
   KnowledgeDraft,
@@ -26,6 +29,11 @@ export interface BlogFactoryListResponse {
   total: number;
   limit: number;
   offset: number;
+}
+
+export interface BlogPublishConfigListResponse {
+  items: BlogPublishConfig[];
+  total: number;
 }
 
 export interface TodoListResponse {
@@ -494,5 +502,134 @@ export async function updateBlogFactoryArticle({
 export async function deleteBlogFactoryItem(id: number): Promise<void> {
   await request<void>(`/api/blog-factory/${id}`, {
     method: "DELETE",
+  });
+}
+
+export async function fetchBlogPublishConfigs(): Promise<BlogPublishConfigListResponse> {
+  return request<BlogPublishConfigListResponse>("/api/blog-factory/publish-configs");
+}
+
+export async function createBlogPublishConfig({
+  blogType,
+  blogUrl,
+  username,
+  password,
+  apiUrl,
+  blogName,
+  isDefault,
+}: {
+  blogType: "METAWEBLOG_API";
+  blogUrl: string;
+  username: string;
+  password: string;
+  apiUrl: string;
+  blogName?: string;
+  isDefault?: boolean;
+}): Promise<BlogPublishConfig> {
+  return request<BlogPublishConfig>("/api/blog-factory/publish-configs", {
+    method: "POST",
+    body: JSON.stringify({
+      blog_type: blogType,
+      blog_url: blogUrl,
+      username,
+      password,
+      api_url: apiUrl,
+      blog_name: blogName || null,
+      is_default: Boolean(isDefault),
+    }),
+  });
+}
+
+export async function updateBlogPublishConfig({
+  id,
+  blogType,
+  blogUrl,
+  username,
+  password,
+  apiUrl,
+  blogName,
+  isDefault,
+}: {
+  id: number;
+  blogType?: "METAWEBLOG_API";
+  blogUrl?: string;
+  username?: string;
+  password?: string;
+  apiUrl?: string;
+  blogName?: string;
+  isDefault?: boolean;
+}): Promise<BlogPublishConfig> {
+  return request<BlogPublishConfig>(`/api/blog-factory/publish-configs/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      ...(blogType ? { blog_type: blogType } : {}),
+      ...(blogUrl !== undefined ? { blog_url: blogUrl } : {}),
+      ...(username !== undefined ? { username } : {}),
+      ...(password !== undefined ? { password: password || null } : {}),
+      ...(apiUrl !== undefined ? { api_url: apiUrl } : {}),
+      ...(blogName !== undefined ? { blog_name: blogName || null } : {}),
+      ...(isDefault !== undefined ? { is_default: isDefault } : {}),
+    }),
+  });
+}
+
+export async function deleteBlogPublishConfig(id: number): Promise<void> {
+  await request<void>(`/api/blog-factory/publish-configs/${id}`, {
+    method: "DELETE",
+  });
+}
+
+export async function validateBlogPublishConfig({
+  blogType,
+  blogUrl,
+  username,
+  password,
+  apiUrl,
+  blogName,
+}: {
+  blogType: "METAWEBLOG_API";
+  blogUrl: string;
+  username: string;
+  password: string;
+  apiUrl: string;
+  blogName?: string;
+}): Promise<BlogPublishValidationResult> {
+  return request<BlogPublishValidationResult>("/api/blog-factory/publish-configs/validate", {
+    method: "POST",
+    body: JSON.stringify({
+      blog_type: blogType,
+      blog_url: blogUrl,
+      username,
+      password,
+      api_url: apiUrl,
+      blog_name: blogName || null,
+    }),
+  });
+}
+
+export async function publishBlogFactoryArticle({
+  id,
+  configId,
+  articleMarkdown,
+  articleTitle,
+  tags,
+  publish,
+}: {
+  id: number;
+  configId?: number;
+  articleMarkdown: string;
+  articleTitle?: string;
+  tags?: string[];
+  publish: boolean;
+}): Promise<BlogFactoryPublishResult> {
+  return request<BlogFactoryPublishResult>(`/api/blog-factory/${id}/publish`, {
+    method: "POST",
+    body: JSON.stringify({
+      config_id: configId ?? null,
+      article_markdown: articleMarkdown,
+      article_title: articleTitle || null,
+      tags: tags ?? [],
+      publish,
+    }),
   });
 }
