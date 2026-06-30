@@ -12719,7 +12719,7 @@ function OverviewDashboard({
         </div>
       ) : null}
 
-      <div className={`mb-4 grid gap-4 sm:grid-cols-2 ${canViewUsage ? "xl:grid-cols-4" : "xl:grid-cols-3"}`}>
+      <div className={`mb-4 grid grid-cols-2 gap-4 ${canViewUsage ? "xl:grid-cols-4" : "xl:grid-cols-3"}`}>
         {canViewUsage ? (
           <MetricTile
             icon={<CircleGauge size={17} />}

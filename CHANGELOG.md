@@ -9,7 +9,20 @@ The format follows the common GitHub changelog convention inspired by
 
 ## 本次版本更新
 
-### [0.2.9]
+### [0.2.10]
+
+#### Added / 新增
+
+#### Changed / 变更
+
+- Changed the Overview dashboard metric tiles so the four key-status cards now render in a two-column grid on mobile PWA screens instead of stacking one per row.
+- 调整总览 Dashboard 的顶部指标卡片布局：手机端 PWA 中“关键状态”下的 4 张卡片改为每行 2 张显示，不再单列纵向堆叠。
+
+#### Fixed / 修复
+
+## 历史版本更新
+
+### [0.2.9] - 2026-06-30
 
 #### Added / 新增
 
@@ -55,8 +68,6 @@ The format follows the common GitHub changelog convention inspired by
 
 - Fixed the mobile `配置API` dialog so the modal itself becomes scrollable on small screens and the saved config list keeps the form footer reachable.
 - 修复移动端 `配置API` 弹窗滚动：小屏设备上弹窗整体可滚动，已保存配置列表不会再把表单底部操作区卡出可视范围。
-
-## 历史版本更新
 
 ### [0.2.8] - 2026-06-26
 
