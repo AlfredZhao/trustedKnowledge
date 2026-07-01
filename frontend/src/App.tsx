@@ -5596,7 +5596,7 @@ function AppConfirmDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 grid place-items-center bg-black/62 px-4 backdrop-blur-sm"
+      className="tk-confirm-overlay fixed inset-0 z-50 grid place-items-center bg-black/62 px-4 backdrop-blur-sm"
       role="presentation"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget && !isPending) {
@@ -5606,7 +5606,7 @@ function AppConfirmDialog({
     >
       <section
         aria-modal="true"
-        className="w-full max-w-md rounded-lg border border-white/10 bg-ink-900 p-5 shadow-soft-glow"
+        className="tk-confirm-panel w-full max-w-md rounded-lg border border-white/10 bg-ink-900 p-5 shadow-soft-glow"
         role="dialog"
       >
         <div className="mb-4 flex items-start gap-3">
@@ -13382,13 +13382,13 @@ function TrustPanel({
 
 function LoadingStack() {
   return (
-    <div className="space-y-3">
+    <div className="tk-loading-stack space-y-3">
       {[0, 1, 2, 3].map((item) => (
-        <div key={item} className="relative overflow-hidden rounded-lg border border-white/10 bg-white/[0.025] p-4">
-          <div className="absolute inset-y-0 w-1/2 bg-gradient-to-r from-transparent via-white/[0.055] to-transparent animate-scan" />
-          <div className="mb-4 h-4 w-2/3 rounded bg-white/10" />
-          <div className="mb-3 h-3 w-full rounded bg-white/7" />
-          <div className="h-3 w-1/2 rounded bg-white/7" />
+        <div key={item} className="tk-loading-card relative overflow-hidden rounded-lg border border-white/10 bg-white/[0.025] p-4">
+          <div className="tk-loading-scan absolute inset-y-0 w-1/2 bg-gradient-to-r from-transparent via-white/[0.055] to-transparent animate-scan" />
+          <div className="tk-loading-block mb-4 h-4 w-2/3 rounded bg-white/10" />
+          <div className="tk-loading-line mb-3 h-3 w-full rounded bg-white/7" />
+          <div className="tk-loading-line h-3 w-1/2 rounded bg-white/7" />
         </div>
       ))}
     </div>

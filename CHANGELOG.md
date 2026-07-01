@@ -13,21 +13,36 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Added / 新增
 
+- Added a user-controlled mobile navigation toggle in the top bar so the PWA grid menu can be collapsed or expanded on demand instead of always occupying vertical space.
+- 为 PWA 顶部栏新增移动端导航显隐开关，功能网格菜单可由用户按需折叠或展开，不再始终占用首屏高度。
+
+- Added a light theme option alongside the existing dark workspace theme, with a top-bar sun/moon toggle that persists the user's choice.
+- 在现有深色工作台主题之外新增浅色主题，并提供顶部栏太阳/月亮一键切换，用户选择会持久化保存。
+
 #### Changed / 变更
 
 #### Fixed / 修复
+
+- Fixed low-contrast light-theme action buttons by strengthening the light-only secondary and amber action styles, so controls such as Todo `转为知识` remain legible without changing dark-theme visuals.
+- 修复浅色主题下部分操作按钮对比度过低的问题：增强仅作用于浅色主题的次级按钮与琥珀色操作按钮样式，使待办事项中的 `转为知识` 一类控件更清晰，同时不改动深色主题视觉。
+
+- Further refined light-theme contrast for utility chips, empty-state cards, dashed hint panels, and Markdown preview surfaces so non-button UI elements stay readable under the new light palette.
+- 继续优化浅色主题下的可读性：提高工具标签、空状态卡片、虚线提示框和 Markdown 预览面板的对比度，避免非按钮控件在浅色配色中继续显得发灰发淡。
+
+- Fixed light-theme Todo `处理中` status chips and confirmation dialogs so the processing badge uses darker sky tones and the `转为知识` confirmation popup no longer keeps a dim dark panel.
+- 修复浅色主题下 Todo `处理中` 状态标签和确认弹窗的可读性：处理中徽标改用更深的 sky 色阶，`转为知识` 确认弹窗不再沿用偏暗且不清晰的深色面板。
+
+- Fixed the light-theme refresh loading state so the skeleton cards and scan shimmer use light-mode colors immediately on reload instead of flashing the old dark loading surface first.
+- 修复浅色主题下页面刷新时的加载态：骨架卡片与扫光效果会在重载瞬间直接使用浅色模式配色，不再先闪回旧的深色加载界面。
+
+- Fixed the static `Trusted Knowledge / 加载中...` boot screen in `index.html` so manual page refreshes now honor the saved light theme before React mounts, instead of always showing the dark startup background first.
+- 修复 `index.html` 中静态 `Trusted Knowledge / 加载中...` 启动页的主题同步：手工刷新页面时会在 React 挂载前先读取并应用已保存的浅色主题，不再固定先显示深色启动背景。
 
 ## 历史版本更新
 
 ### [0.3.0] - 2026-07-01
 
 #### Added / 新增
-
-- Added a user-controlled mobile navigation toggle in the top bar so the PWA grid menu can be collapsed or expanded on demand instead of always occupying vertical space.
-- 为 PWA 顶部栏新增移动端导航显隐开关，功能网格菜单可由用户按需折叠或展开，不再始终占用首屏高度。
-
-- Added a light theme option alongside the existing dark workspace theme, with a top-bar sun/moon toggle that persists the user's choice.
-- 在现有深色工作台主题之外新增浅色主题，并提供顶部栏太阳/月亮一键切换，用户选择会持久化保存。
 
 #### Changed / 变更
 
@@ -38,12 +53,6 @@ The format follows the common GitHub changelog convention inspired by
 - 调整博客工厂发布操作区：保留单一 `发布到博客` 入口并沿用现有发布弹窗，移除重复的直接发布和草稿快捷按钮。
 
 #### Fixed / 修复
-
-- Fixed low-contrast light-theme action buttons by strengthening the light-only secondary and amber action styles, so controls such as Todo `转为知识` remain legible without changing dark-theme visuals.
-- 修复浅色主题下部分操作按钮对比度过低的问题：增强仅作用于浅色主题的次级按钮与琥珀色操作按钮样式，使待办事项中的 `转为知识` 一类控件更清晰，同时不改动深色主题视觉。
-
-- Further refined light-theme contrast for utility chips, empty-state cards, dashed hint panels, and Markdown preview surfaces so non-button UI elements stay readable under the new light palette.
-- 继续优化浅色主题下的可读性：提高工具标签、空状态卡片、虚线提示框和 Markdown 预览面板的对比度，避免非按钮控件在浅色配色中继续显得发灰发淡。
 
 - Fixed Blog Factory Metaweblog publishing for CNBlogs-oriented setups so posts default to Markdown delivery, and the published body now strips the leading H1 that is already used as the article title.
 - 修复博客工厂 Metaweblog 发布到博客园一类目标时的正文格式：默认按 Markdown 方式发送内容，并在发布正文中去掉已作为文章标题使用的首个一级标题，避免页面重复显示主标题。

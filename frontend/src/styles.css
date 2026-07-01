@@ -378,6 +378,16 @@ button:disabled {
     linear-gradient(180deg, var(--page-overlay-secondary), transparent 22%);
 }
 
+.tk-loading-card {
+  border-color: var(--border-soft);
+  background-color: var(--surface-soft);
+}
+
+.tk-loading-block,
+.tk-loading-line {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
 html[data-theme="light"] ::placeholder {
   color: var(--text-faint);
   opacity: 1;
@@ -439,6 +449,10 @@ html[data-theme="light"] .text-slate-600 {
 html[data-theme="light"] .text-mint-100,
 html[data-theme="light"] .text-mint-200 {
   color: #0f766e !important;
+}
+
+html[data-theme="light"] .text-sky-200 {
+  color: #0f4c81 !important;
 }
 
 html[data-theme="light"] .text-red-50,
@@ -536,6 +550,11 @@ html[data-theme="light"] .border-dashed.border-white\/10.bg-white\/\[0\.02\] {
   background-color: rgba(248, 250, 252, 0.82) !important;
 }
 
+html[data-theme="light"] .border-sky-300\/30.bg-sky-300\/10 {
+  border-color: rgba(14, 116, 144, 0.28) !important;
+  background-color: rgba(14, 165, 233, 0.14) !important;
+}
+
 html[data-theme="light"] .border-amberline\/25.bg-amberline\/10 {
   border-color: rgba(217, 119, 6, 0.3) !important;
 }
@@ -544,4 +563,38 @@ html[data-theme="light"] .markdown-preview.rounded-lg.border-white\/8.bg-black\/
   background-color: rgba(255, 255, 255, 0.96) !important;
   border-color: rgba(148, 163, 184, 0.24) !important;
   color: #334155 !important;
+}
+
+html[data-theme="light"] .tk-confirm-overlay {
+  background-color: rgba(148, 163, 184, 0.32) !important;
+}
+
+html[data-theme="light"] .tk-confirm-panel {
+  background-color: rgba(255, 255, 255, 0.98) !important;
+  border-color: rgba(148, 163, 184, 0.28) !important;
+}
+
+html[data-theme="light"] .tk-confirm-panel h2 {
+  color: #0f172a !important;
+}
+
+html[data-theme="light"] .tk-confirm-panel .bg-white\/\[0\.035\] {
+  background-color: rgba(248, 250, 252, 0.96) !important;
+}
+
+html[data-theme="light"] .tk-loading-card {
+  background-color: rgba(255, 255, 255, 0.94) !important;
+  border-color: rgba(148, 163, 184, 0.2) !important;
+}
+
+html[data-theme="light"] .tk-loading-block {
+  background-color: rgba(148, 163, 184, 0.34) !important;
+}
+
+html[data-theme="light"] .tk-loading-line {
+  background-color: rgba(148, 163, 184, 0.22) !important;
+}
+
+html[data-theme="light"] .tk-loading-scan {
+  background: linear-gradient(90deg, transparent, rgba(79, 195, 181, 0.16), transparent) !important;
 }
