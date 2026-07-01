@@ -9,7 +9,17 @@ The format follows the common GitHub changelog convention inspired by
 
 ## 本次版本更新
 
-### [0.3.0]
+### [0.3.1]
+
+#### Added / 新增
+
+#### Changed / 变更
+
+#### Fixed / 修复
+
+## 历史版本更新
+
+### [0.3.0] - 2026-07-01
 
 #### Added / 新增
 
@@ -29,6 +39,12 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Fixed / 修复
 
+- Fixed low-contrast light-theme action buttons by strengthening the light-only secondary and amber action styles, so controls such as Todo `转为知识` remain legible without changing dark-theme visuals.
+- 修复浅色主题下部分操作按钮对比度过低的问题：增强仅作用于浅色主题的次级按钮与琥珀色操作按钮样式，使待办事项中的 `转为知识` 一类控件更清晰，同时不改动深色主题视觉。
+
+- Further refined light-theme contrast for utility chips, empty-state cards, dashed hint panels, and Markdown preview surfaces so non-button UI elements stay readable under the new light palette.
+- 继续优化浅色主题下的可读性：提高工具标签、空状态卡片、虚线提示框和 Markdown 预览面板的对比度，避免非按钮控件在浅色配色中继续显得发灰发淡。
+
 - Fixed Blog Factory Metaweblog publishing for CNBlogs-oriented setups so posts default to Markdown delivery, and the published body now strips the leading H1 that is already used as the article title.
 - 修复博客工厂 Metaweblog 发布到博客园一类目标时的正文格式：默认按 Markdown 方式发送内容，并在发布正文中去掉已作为文章标题使用的首个一级标题，避免页面重复显示主标题。
 
@@ -40,8 +56,6 @@ The format follows the common GitHub changelog convention inspired by
 
 - Fixed AI Coding Codex job ownership and recovery so running-task locks now apply per signed-in user instead of globally, and the frontend auto-restores the current user's latest task when a stale `already running` conflict is encountered.
 - 修复 AI 编程 Codex 任务归属与恢复链路：运行中任务锁现在按当前登录用户隔离，不再全局互相阻塞；当前端遇到残留的 `already running` 冲突时，也会自动恢复当前用户最近一次任务状态。
-
-## 历史版本更新
 
 ### [0.2.9] - 2026-06-30
 

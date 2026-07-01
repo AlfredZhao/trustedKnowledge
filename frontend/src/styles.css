@@ -396,6 +396,7 @@ html[data-theme="light"] .bg-ink-900\/78 {
 html[data-theme="light"] .bg-white\/\[0\.025\],
 html[data-theme="light"] .bg-white\/\[0\.028\],
 html[data-theme="light"] .bg-white\/\[0\.035\],
+html[data-theme="light"] .bg-white\/\[0\.03\],
 html[data-theme="light"] .bg-white\/\[0\.04\],
 html[data-theme="light"] .bg-white\/\[0\.06\] {
   background-color: var(--surface-soft-strong) !important;
@@ -445,6 +446,102 @@ html[data-theme="light"] .text-red-100 {
   color: #991b1b !important;
 }
 
+html[data-theme="light"] .text-amber-100 {
+  color: #92400e !important;
+}
+
+html[data-theme="light"] .text-amber-100\/80 {
+  color: #a16207 !important;
+}
+
 html[data-theme="light"] .shadow-soft-glow {
   box-shadow: var(--shadow-soft-glow) !important;
+}
+
+html[data-theme="light"] button.border-white\/10.bg-white\/\[0\.035\],
+html[data-theme="light"] button.border-white\/10.bg-white\/\[0\.04\] {
+  background-color: rgba(255, 255, 255, 0.96) !important;
+  border-color: rgba(148, 163, 184, 0.34) !important;
+  color: #334155 !important;
+}
+
+html[data-theme="light"] button.border-white\/10.bg-white\/\[0\.035\]:hover,
+html[data-theme="light"] button.border-white\/10.bg-white\/\[0\.04\]:hover {
+  background-color: #ffffff !important;
+  border-color: rgba(15, 118, 110, 0.34) !important;
+}
+
+html[data-theme="light"] button.border-white\/10.bg-white\/\[0\.035\].disabled\:text-slate-500:disabled,
+html[data-theme="light"] button.border-white\/10.bg-white\/\[0\.035\].disabled\:text-slate-600:disabled,
+html[data-theme="light"] button.border-white\/10.bg-white\/\[0\.04\].disabled\:text-slate-500:disabled,
+html[data-theme="light"] button.border-white\/10.bg-white\/\[0\.04\].disabled\:text-slate-600:disabled {
+  background-color: rgba(241, 245, 249, 0.9) !important;
+  border-color: rgba(203, 213, 225, 0.9) !important;
+  color: #94a3b8 !important;
+}
+
+html[data-theme="light"] button.border-amberline\/25.bg-amberline\/10 {
+  background-color: rgba(245, 158, 11, 0.16) !important;
+  border-color: rgba(217, 119, 6, 0.3) !important;
+  color: #92400e !important;
+}
+
+html[data-theme="light"] button.border-amberline\/25.bg-amberline\/10:hover {
+  background-color: rgba(245, 158, 11, 0.22) !important;
+  border-color: rgba(180, 83, 9, 0.42) !important;
+  color: #78350f !important;
+}
+
+html[data-theme="light"] button.border-amberline\/25.bg-amberline\/10.disabled\:border-white\/10:disabled {
+  background-color: rgba(241, 245, 249, 0.9) !important;
+  border-color: rgba(203, 213, 225, 0.9) !important;
+  color: #94a3b8 !important;
+}
+
+html[data-theme="light"] div.border-white\/10.bg-white\/\[0\.025\],
+html[data-theme="light"] div.border-white\/10.bg-white\/\[0\.028\],
+html[data-theme="light"] div.border-white\/10.bg-white\/\[0\.03\],
+html[data-theme="light"] div.border-white\/10.bg-white\/\[0\.035\],
+html[data-theme="light"] div.border-white\/8.bg-white\/\[0\.025\],
+html[data-theme="light"] div.border-white\/8.bg-white\/\[0\.028\],
+html[data-theme="light"] div.border-white\/8.bg-white\/\[0\.035\] {
+  border-color: rgba(148, 163, 184, 0.24) !important;
+}
+
+html[data-theme="light"] span.border-white\/10.bg-white\/\[0\.035\],
+html[data-theme="light"] span.border-white\/8.bg-white\/\[0\.035\],
+html[data-theme="light"] span.border-white\/10.bg-white\/\[0\.028\],
+html[data-theme="light"] span.border-white\/10.bg-white\/\[0\.03\],
+html[data-theme="light"] span.border-white\/8.bg-white\/\[0\.028\] {
+  background-color: rgba(248, 250, 252, 0.98) !important;
+  border-color: rgba(148, 163, 184, 0.28) !important;
+}
+
+html[data-theme="light"] span.border-white\/10.bg-white\/\[0\.035\].text-slate-500,
+html[data-theme="light"] span.border-white\/10.bg-white\/\[0\.028\].text-slate-500,
+html[data-theme="light"] span.border-white\/8.bg-white\/\[0\.035\].text-slate-500,
+html[data-theme="light"] span.border-white\/10.bg-white\/\[0\.03\].text-slate-500 {
+  color: #475569 !important;
+}
+
+html[data-theme="light"] span.border-white\/10.bg-white\/\[0\.035\].text-slate-400,
+html[data-theme="light"] span.border-white\/10.bg-white\/\[0\.028\].text-slate-400,
+html[data-theme="light"] span.border-white\/8.bg-white\/\[0\.035\].text-slate-400,
+html[data-theme="light"] span.border-white\/8.bg-white\/\[0\.028\].text-slate-400 {
+  color: #64748b !important;
+}
+
+html[data-theme="light"] .border-dashed.border-white\/10.bg-white\/\[0\.02\] {
+  border-color: rgba(148, 163, 184, 0.34) !important;
+  background-color: rgba(248, 250, 252, 0.82) !important;
+}
+
+html[data-theme="light"] .border-amberline\/25.bg-amberline\/10 {
+  border-color: rgba(217, 119, 6, 0.3) !important;
+}
+
+html[data-theme="light"] .markdown-preview.rounded-lg.border-white\/8.bg-black\/10 {
+  background-color: rgba(255, 255, 255, 0.96) !important;
+  border-color: rgba(148, 163, 184, 0.24) !important;
+  color: #334155 !important;
 }
