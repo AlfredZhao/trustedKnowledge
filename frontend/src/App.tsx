@@ -31,6 +31,8 @@ import {
   LockKeyhole,
   KeyRound,
   Network,
+  Menu,
+  Moon,
   Pencil,
   Plus,
   QrCode,
@@ -42,6 +44,7 @@ import {
   Settings2,
   ShieldCheck,
   Sparkles,
+  Sun,
   Tags,
   TriangleAlert,
   Trash2,
@@ -327,6 +330,7 @@ type EnglishMaterialSortBy = (typeof ENGLISH_MATERIAL_SORT_FIELDS)[number];
 type SortDirection = (typeof SORT_DIRECTIONS)[number];
 type HistoryVectorStatus = "all" | "0" | "1";
 type AiCodingNoticeStatus = "running" | "completed" | "failed";
+type ThemeMode = "dark" | "light";
 type MarkdownContentView = "rendered" | "raw";
 type BlogFactoryArticleCopyMode = "markdown" | "enhanced";
 type BlogFactoryTaskCopyMode = "rendered" | "enhanced" | "raw";
@@ -334,6 +338,8 @@ type BlogFactoryTaskCopyMode = "rendered" | "enhanced" | "raw";
 interface StoredUiState {
   activeView: AppView;
   sidebarExpanded: boolean;
+  mobileNavVisible: boolean;
+  themeMode: ThemeMode;
   workbench: {
     query: string;
     username: string;
@@ -557,6 +563,8 @@ function App() {
   const [authUser, setAuthUser] = useState<AuthUser | null>(() => readStoredAuthUser());
   const [activeView, setActiveView] = useState<AppView>(restoredUiState.activeView);
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(restoredUiState.sidebarExpanded);
+  const [isMobileNavVisible, setIsMobileNavVisible] = useState(restoredUiState.mobileNavVisible);
+  const [themeMode, setThemeMode] = useState<ThemeMode>(restoredUiState.themeMode);
   const [items, setItems] = useState<KnowledgeItem[]>([]);
   const [draft, setDraft] = useState<KnowledgeDraft>(() => restoredUiState.workbench.draft ?? readStoredNewDraft() ?? emptyDraft);
   const [query, setQuery] = useState(restoredUiState.workbench.query);
@@ -1067,11 +1075,25 @@ function App() {
   }, [activeView]);
 
   useEffect(() => {
+    const root = document.documentElement;
+    root.dataset.theme = themeMode;
+    root.style.colorScheme = themeMode;
+
+    const themeColor = themeMode === "light" ? "#f4f7f9" : "#0f766e";
+    const themeColorMeta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    if (themeColorMeta) {
+      themeColorMeta.setAttribute("content", themeColor);
+    }
+  }, [themeMode]);
+
+  useEffect(() => {
     if (!apiKey) return;
 
     writeStoredUiState({
       activeView,
       sidebarExpanded: isSidebarExpanded,
+      mobileNavVisible: isMobileNavVisible,
+      themeMode,
       workbench: {
         query,
         username: workbenchUsername,
@@ -1216,6 +1238,7 @@ function App() {
     historyUsername,
     historyVectorStatus,
     historyWeek,
+    isMobileNavVisible,
     isSidebarExpanded,
     page,
     query,
@@ -1223,6 +1246,7 @@ function App() {
     selectedEnglishMaterial?.id,
     selectedId,
     statusFilter,
+    themeMode,
     workbenchUsername,
     todoDraft,
     todoPage,
@@ -4141,8 +4165,8 @@ function App() {
     !isTodoNavigationBlocked;
 
   return (
-    <main className="min-h-screen bg-ink-950 text-slate-100">
-      <div className="fixed inset-0 pointer-events-none bg-[radial-gradient(circle_at_top_left,rgba(125,211,199,0.09),transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.035),transparent_22%)]" />
+    <main className="tk-app-shell min-h-screen bg-ink-950 text-slate-100">
+      <div className="tk-app-backdrop fixed inset-0 pointer-events-none bg-[radial-gradient(circle_at_top_left,rgba(125,211,199,0.09),transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.035),transparent_22%)]" />
       <div
         className={`relative grid min-h-screen grid-cols-1 transition-[grid-template-columns] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-[grid-template-columns] motion-reduce:transition-none ${
           isSidebarExpanded ? "lg:grid-cols-[220px_minmax(0,1fr)]" : "lg:grid-cols-[76px_minmax(0,1fr)]"
@@ -4188,7 +4212,10 @@ function App() {
             title={viewTitle}
             subtitle={viewSubtitle}
             aiCodingNotice={activeView === "aiCoding" || !canAccessAiCoding ? null : aiCodingNoticeStatus}
+            isMobileNavVisible={isMobileNavVisible}
+            themeMode={themeMode}
             onLogout={handleLogout}
+            onMobileNavVisibilityChange={setIsMobileNavVisible}
             onQueryChange={
               activeView === "factory"
                 ? setFactoryQuery
@@ -4208,6 +4235,7 @@ function App() {
                       ? setHistoryQuery
                       : setQuery
             }
+            onToggleTheme={() => setThemeMode((current) => (current === "dark" ? "light" : "dark"))}
             onViewChange={setActiveView}
             onStatusFilterChange={(nextStatus) => {
               setStatusFilter(nextStatus);
@@ -5031,12 +5059,16 @@ function Topbar({
   aiCodingNotice,
   availableItems,
   currentUsername,
+  isMobileNavVisible,
   query,
   statusFilter,
+  themeMode,
   title,
   subtitle,
+  onMobileNavVisibilityChange,
   onLogout,
   onQueryChange,
+  onToggleTheme,
   onViewChange,
   onStatusFilterChange,
 }: {
@@ -5044,12 +5076,16 @@ function Topbar({
   aiCodingNotice: AiCodingNoticeStatus | null;
   availableItems: FunctionNavItem[];
   currentUsername: string;
+  isMobileNavVisible: boolean;
   query: string;
   statusFilter?: KnowledgeStatus | "all";
+  themeMode: ThemeMode;
   title: string;
   subtitle: string;
+  onMobileNavVisibilityChange: (visible: boolean) => void;
   onLogout: () => void;
   onQueryChange: (value: string) => void;
+  onToggleTheme: () => void;
   onViewChange: (view: AppView) => void;
   onStatusFilterChange?: (status: KnowledgeStatus | "all") => void;
 }) {
@@ -5094,27 +5130,48 @@ function Topbar({
         </div>
         <h1 className="text-2xl font-semibold tracking-normal text-slate-50">{title}</h1>
       </div>
-      <nav className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:hidden" aria-label="功能页面">
-        {availableItems.map((item) => {
-          const active = item.view === activeView;
-          return (
-            <button
-              key={item.view}
-              className={`flex h-11 min-w-0 items-center justify-center gap-2 rounded-lg border px-3 text-sm font-medium transition ${
-                active
-                  ? "border-mint-300/25 bg-mint-300/10 text-mint-300"
-                  : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-white/16 hover:bg-white/[0.06] hover:text-slate-50"
-              }`}
-              type="button"
-              aria-current={active ? "page" : undefined}
-              onClick={() => onViewChange(item.view)}
-            >
-              <item.icon size={17} className="shrink-0" />
-              <span className="truncate">{item.label}</span>
-            </button>
-          );
-        })}
-      </nav>
+      <div className="flex items-center gap-2 lg:hidden">
+        <button
+          className={`flex h-11 items-center gap-2 rounded-lg border px-3 text-sm font-medium transition ${
+            isMobileNavVisible
+              ? "border-mint-300/25 bg-mint-300/10 text-mint-300"
+              : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-white/16 hover:bg-white/[0.06] hover:text-slate-50"
+          }`}
+          type="button"
+          aria-expanded={isMobileNavVisible}
+          aria-controls="mobile-function-nav"
+          onClick={() => onMobileNavVisibilityChange(!isMobileNavVisible)}
+        >
+          <Menu size={17} />
+          <span>{isMobileNavVisible ? "隐藏导航" : "显示导航"}</span>
+        </button>
+      </div>
+      {isMobileNavVisible ? (
+        <nav id="mobile-function-nav" className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:hidden" aria-label="功能页面">
+          {availableItems.map((item) => {
+            const active = item.view === activeView;
+            return (
+              <button
+                key={item.view}
+                className={`flex h-11 min-w-0 items-center justify-center gap-2 rounded-lg border px-3 text-sm font-medium transition ${
+                  active
+                    ? "border-mint-300/25 bg-mint-300/10 text-mint-300"
+                    : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-white/16 hover:bg-white/[0.06] hover:text-slate-50"
+                }`}
+                type="button"
+                aria-current={active ? "page" : undefined}
+                onClick={() => {
+                  onViewChange(item.view);
+                  onMobileNavVisibilityChange(false);
+                }}
+              >
+                <item.icon size={17} className="shrink-0" />
+                <span className="truncate">{item.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+      ) : null}
       <div className="flex min-w-0 flex-wrap items-center gap-2">
         {activeView !== "overview" && activeView !== "usage" && activeView !== "historyAsk" && activeView !== "aiCoding" ? (
           <label className="flex h-11 min-w-[180px] flex-1 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-slate-400 md:w-80">
@@ -5139,6 +5196,15 @@ function Topbar({
             />
           </label>
         ) : null}
+        <button
+          className="flex h-11 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-sm text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300"
+          title={themeMode === "dark" ? "切换到浅色主题" : "切换到深色主题"}
+          type="button"
+          onClick={onToggleTheme}
+        >
+          {themeMode === "dark" ? <Sun size={17} /> : <Moon size={17} />}
+          <span className="hidden sm:inline">{themeMode === "dark" ? "浅色" : "深色"}</span>
+        </button>
         {aiCodingNoticeMeta ? (
           <button
             className={`flex h-11 max-w-full shrink-0 items-center gap-2 rounded-lg border px-3 text-sm font-medium transition ${aiCodingNoticeMeta.className}`}
@@ -13880,6 +13946,9 @@ function readStoredUiState(): StoredUiState {
     return {
       activeView: readAppView(stored.activeView, defaults.activeView),
       sidebarExpanded: typeof stored.sidebarExpanded === "boolean" ? stored.sidebarExpanded : defaults.sidebarExpanded,
+      mobileNavVisible:
+        typeof stored.mobileNavVisible === "boolean" ? stored.mobileNavVisible : defaults.mobileNavVisible,
+      themeMode: readThemeMode(stored.themeMode, defaults.themeMode),
       workbench: {
         query: readString(workbench.query),
         username: readString(workbench.username),
@@ -13993,6 +14062,8 @@ function buildDefaultUiState(): StoredUiState {
   return {
     activeView: "overview",
     sidebarExpanded: false,
+    mobileNavVisible: true,
+    themeMode: "dark",
     workbench: {
       query: "",
       username: "",
@@ -14190,6 +14261,10 @@ function readAiCodingMessages(value: unknown): AiCodingMessage[] {
 
 function readAiCodingNoticeStatus(value: unknown): AiCodingNoticeStatus | null {
   return value === "running" || value === "completed" || value === "failed" ? value : null;
+}
+
+function readThemeMode(value: unknown, fallback: ThemeMode): ThemeMode {
+  return value === "dark" || value === "light" ? value : fallback;
 }
 
 function readCodexRunResponse(value: unknown): CodexRunResponse | null {

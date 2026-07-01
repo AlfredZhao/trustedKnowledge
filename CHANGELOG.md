@@ -9,9 +9,15 @@ The format follows the common GitHub changelog convention inspired by
 
 ## 本次版本更新
 
-### [0.2.10]
+### [0.3.0]
 
 #### Added / 新增
+
+- Added a user-controlled mobile navigation toggle in the top bar so the PWA grid menu can be collapsed or expanded on demand instead of always occupying vertical space.
+- 为 PWA 顶部栏新增移动端导航显隐开关，功能网格菜单可由用户按需折叠或展开，不再始终占用首屏高度。
+
+- Added a light theme option alongside the existing dark workspace theme, with a top-bar sun/moon toggle that persists the user's choice.
+- 在现有深色工作台主题之外新增浅色主题，并提供顶部栏太阳/月亮一键切换，用户选择会持久化保存。
 
 #### Changed / 变更
 
