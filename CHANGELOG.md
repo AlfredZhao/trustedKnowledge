@@ -38,6 +38,15 @@ The format follows the common GitHub changelog convention inspired by
 - Fixed the static `Trusted Knowledge / 加载中...` boot screen in `index.html` so manual page refreshes now honor the saved light theme before React mounts, instead of always showing the dark startup background first.
 - 修复 `index.html` 中静态 `Trusted Knowledge / 加载中...` 启动页的主题同步：手工刷新页面时会在 React 挂载前先读取并应用已保存的浅色主题，不再固定先显示深色启动背景。
 
+- Fixed the AI Coding `服务重启` warning copy in light theme by using the already-supported amber text contrast, so the `scripts/restart-all.sh` downtime notice no longer appears washed out.
+- 修复 AI 编程页 `服务重启` 提示文案在浅色主题下的对比度：改用项目已适配的 amber 警示文字色阶，`scripts/restart-all.sh` 的停机说明不再发灰难辨。
+
+- Fixed the Blog Factory `博客发布` helper copy in light theme by using the light-theme-supported slate text tone, so the line under the publish button remains readable.
+- 修复博客工厂 `博客发布` 按钮下方说明文案在浅色主题下的对比度：改用浅色主题已适配的 slate 文字色阶，按钮下的提示信息不再发灰难读。
+
+- Fixed light-theme modal surfaces so Blog Factory `博客工厂记录` actions like `配置API` and `发布到博客`, along with other button-triggered dialogs, no longer keep dark `ink` panels or overly dim overlays.
+- 修复浅色主题下的弹窗表面配色：博客工厂 `博客工厂记录` 中的 `配置API`、`发布到博客` 以及其它按钮触发的对话框不再保留深色 `ink` 面板和过暗遮罩。
+
 ## 历史版本更新
 
 ### [0.3.0] - 2026-07-01

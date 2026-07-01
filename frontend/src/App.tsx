@@ -7909,7 +7909,7 @@ function BlogFactoryRecords({
                     <Send size={16} />
                     博客发布
                   </div>
-                  <div className="text-xs leading-6 text-slate-300/85">
+                  <div className="text-xs leading-6 text-slate-300">
                     <span>
                       {publishConfigs.length > 0
                         ? publishTitle
@@ -11970,7 +11970,7 @@ function AiCodingWorkspace({
                 <div className="text-xs leading-5 text-slate-500">人工确认后调用服务端重启脚本。</div>
               </div>
 
-              <div className="rounded-lg border border-amberline/25 bg-amberline/10 p-3 text-sm leading-6 text-amber-100/85">
+              <div className="rounded-lg border border-amberline/25 bg-amberline/10 p-3 text-sm leading-6 text-amber-100">
                 该操作会调用服务端 `scripts/restart-all.sh`，前端和后端会短暂不可用。
               </div>
 
