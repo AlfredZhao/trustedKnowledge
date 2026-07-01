@@ -26,6 +26,9 @@ The format follows the common GitHub changelog convention inspired by
 - Fixed Blog Factory Metaweblog publishing for CNBlogs-oriented setups so posts default to Markdown delivery, and the published body now strips the leading H1 that is already used as the article title.
 - 修复博客工厂 Metaweblog 发布到博客园一类目标时的正文格式：默认按 Markdown 方式发送内容，并在发布正文中去掉已作为文章标题使用的首个一级标题，避免页面重复显示主标题。
 
+- Fixed AI Coding task recovery after Codex failures so stale in-memory running jobs are reconciled before new submissions, timed-out orphan jobs are marked failed instead of blocking later runs, and refreshes now keep the failed-task snapshot visible.
+- 修复 AI 编程在 Codex 失败后的恢复链路：新任务提交前会先对账并清理残留的运行中任务，超时失联的孤儿任务会改记为失败而不是持续阻塞，页面刷新后也会继续显示最近一次失败任务快照。
+
 - Fixed Blog Factory task-content Markdown rendering and rich-copy output so `$$...$$` LaTeX formula blocks now render as styled formula cards instead of leaking raw delimiter text in preview, standard beautified copy, and enhanced beautified copy.
 - 修复博客工厂任务内容的 Markdown 渲染与富文本复制链路：`$$...$$` LaTeX 公式块现在会以公式卡片样式展示，不再在详情预览、普通美化复制和增强美化复制中直接泄漏原始定界符文本。
 

@@ -480,6 +480,12 @@ interface AiCodingMessage {
   id: number;
   jobId?: string;
   prompt: string;
+  status: AiCodingNoticeStatus;
+  output: string;
+  errorOutput: string;
+  errorMessage: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
   response: CodexRunResponse | null;
   archivedKnowledgeId?: number;
 }
@@ -1005,6 +1011,7 @@ function App() {
       setUserManagementError(null);
       setAiCodingMessages([]);
       setActiveCodexJobId(null);
+      setIsCodexRunning(false);
       setLiveCodexOutput("");
       setLiveCodexErrorOutput("");
       setLiveCodexStatus("");
@@ -3971,6 +3978,12 @@ function App() {
           id: Date.now(),
           jobId: job.job_id,
           prompt,
+          status: job.status,
+          output: job.output,
+          errorOutput: job.error_output,
+          errorMessage: job.error_message,
+          startedAt: job.started_at,
+          completedAt: job.completed_at,
           response: job.response,
         },
         ...current,
@@ -11945,6 +11958,7 @@ function AiCodingMessageCard({
   onArchiveMessage: (message: AiCodingMessage) => void;
 }) {
   const resultText = message.response ? extractCodexResultText(message.response) : "";
+  const failedWithoutResponse = message.status === "failed" && !message.response;
 
   return (
     <article className="rounded-lg border border-white/10 bg-white/[0.025] p-4">
@@ -11960,6 +11974,28 @@ function AiCodingMessageCard({
         <div className="mb-2 text-xs font-medium uppercase tracking-[0.18em] text-mint-300/80">Prompt</div>
         <div className="whitespace-pre-wrap text-sm leading-6 text-slate-200">{message.prompt}</div>
       </div>
+
+      {failedWithoutResponse ? (
+        <div className="space-y-3">
+          <div className="rounded-lg border border-red-400/25 bg-red-400/10 p-3">
+            <div className="mb-2 flex items-center gap-2 text-sm font-medium text-red-100">
+              <TriangleAlert size={17} />
+              任务执行失败
+            </div>
+            <div className="text-sm leading-6 text-red-50">
+              {message.errorMessage || "Codex 任务未能完成，请稍后重试。"}
+            </div>
+            <div className="mt-2 text-xs leading-5 text-red-100/75">
+              {formatDateTime(message.completedAt ?? message.startedAt)}
+            </div>
+          </div>
+
+          {message.output ? <CodexOutputBlock title="Raw Output" value={message.output} /> : null}
+          {message.errorOutput ? (
+            <CodexOutputBlock title="Error Output" value={message.errorOutput} tone="warning" />
+          ) : null}
+        </div>
+      ) : null}
 
       {message.response ? (
         <div className="space-y-3">
@@ -14126,18 +14162,34 @@ function readAiCodingMessages(value: unknown): AiCodingMessage[] {
     if (!isPlainRecord(item)) return [];
     const response = readCodexRunResponse(item.response);
     const prompt = readString(item.prompt);
-    if (!prompt && !response) return [];
+    const status = readAiCodingNoticeStatus(item.status) ?? (response ? "completed" : "failed");
+    const output = readString(item.output);
+    const errorOutput = readString(item.errorOutput);
+    const errorMessage = readNullableString(item.errorMessage);
+    const startedAt = readNullableString(item.startedAt);
+    const completedAt = readNullableString(item.completedAt);
+    if (!prompt && !response && !errorMessage && !output && !errorOutput) return [];
 
     return [
       {
         id: readPositiveInteger(item.id, Date.now()),
         jobId: readNullableString(item.jobId) ?? undefined,
         prompt,
+        status,
+        output,
+        errorOutput,
+        errorMessage,
+        startedAt,
+        completedAt,
         response,
         archivedKnowledgeId: readNullablePositiveInteger(item.archivedKnowledgeId) ?? undefined,
       },
     ];
   });
+}
+
+function readAiCodingNoticeStatus(value: unknown): AiCodingNoticeStatus | null {
+  return value === "running" || value === "completed" || value === "failed" ? value : null;
 }
 
 function readCodexRunResponse(value: unknown): CodexRunResponse | null {
@@ -14262,6 +14314,12 @@ function upsertCodexJobMessage(messages: AiCodingMessage[], job: CodexJobSnapsho
     id: Date.parse(job.started_at) || Date.now(),
     jobId: job.job_id,
     prompt: job.prompt,
+    status: job.status,
+    output: job.output,
+    errorOutput: job.error_output,
+    errorMessage: job.error_message,
+    startedAt: job.started_at,
+    completedAt: job.completed_at,
     response: job.response,
   };
   const index = messages.findIndex((message) => message.jobId === job.job_id);
@@ -14272,6 +14330,12 @@ function upsertCodexJobMessage(messages: AiCodingMessage[], job: CodexJobSnapsho
       ? {
           ...message,
           prompt: job.prompt,
+          status: job.status,
+          output: job.output,
+          errorOutput: job.error_output,
+          errorMessage: job.error_message,
+          startedAt: job.started_at,
+          completedAt: job.completed_at,
           response: job.response,
         }
       : message,
