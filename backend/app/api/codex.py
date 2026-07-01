@@ -22,14 +22,15 @@ router = APIRouter(prefix="/codex", tags=["codex"], dependencies=[Depends(requir
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 CODEX_TIMEOUT_SECONDS = 900
-_codex_lock = asyncio.Lock()
+_codex_locks: dict[str, asyncio.Lock] = {}
 _codex_jobs: dict[str, "CodexJobState"] = {}
-_latest_codex_job_id: str | None = None
+_latest_codex_job_ids: dict[str, str] = {}
 
 
 @dataclass
 class CodexJobState:
     job_id: str
+    owner_username: str
     prompt: str
     skill_ids: list[str] = field(default_factory=list)
     sandbox_mode: str = "workspace-write"
@@ -54,13 +55,14 @@ async def run_codex(
             detail="Web Codex is disabled. Set TRUSTED_KNOWLEDGE_ALLOW_WEB_CODEX=true to enable it.",
         )
 
-    if _codex_lock.locked() or _has_running_codex_job():
+    codex_lock = _get_codex_lock(auth_context.username)
+    if codex_lock.locked() or _has_running_codex_job(auth_context.username):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="A Codex task is already running. Wait for it to finish before starting another.",
         )
 
-    async with _codex_lock:
+    async with codex_lock:
         started_at = time.monotonic()
         prompt = _build_prompt(payload.prompt.strip(), payload.skill_ids, auth_context, payload.output_mode)
         exec_args, output_path = _build_codex_exec_args(payload.sandbox_mode, payload.output_mode)
@@ -122,7 +124,8 @@ async def stream_codex(
             detail="Web Codex is disabled. Set TRUSTED_KNOWLEDGE_ALLOW_WEB_CODEX=true to enable it.",
         )
 
-    if _codex_lock.locked() or _has_running_codex_job():
+    codex_lock = _get_codex_lock(auth_context.username)
+    if codex_lock.locked() or _has_running_codex_job(auth_context.username):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="A Codex task is already running. Wait for it to finish before starting another.",
@@ -135,6 +138,7 @@ async def stream_codex(
             payload.sandbox_mode,
             auth_context,
             payload.output_mode,
+            codex_lock,
         ),
         media_type="application/x-ndjson",
         headers={"Cache-Control": "no-store"},
@@ -152,38 +156,40 @@ async def start_codex_job(
             detail="Web Codex is disabled. Set TRUSTED_KNOWLEDGE_ALLOW_WEB_CODEX=true to enable it.",
         )
 
-    if _codex_lock.locked() or _has_running_codex_job():
+    codex_lock = _get_codex_lock(auth_context.username)
+    if codex_lock.locked() or _has_running_codex_job(auth_context.username):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="A Codex task is already running. Wait for it to finish before starting another.",
         )
 
-    global _latest_codex_job_id
     job = CodexJobState(
         job_id=uuid4().hex,
+        owner_username=auth_context.username,
         prompt=payload.prompt.strip(),
         skill_ids=payload.skill_ids,
         sandbox_mode=payload.sandbox_mode,
         output_mode=payload.output_mode,
     )
     _codex_jobs[job.job_id] = job
-    _latest_codex_job_id = job.job_id
+    _latest_codex_job_ids[auth_context.username] = job.job_id
     task = asyncio.create_task(_run_codex_job(job, auth_context))
     task.add_done_callback(lambda completed_task: _handle_codex_job_task_done(job, completed_task))
     return _snapshot_codex_job(job)
 
 
 @router.get("/runs/jobs/latest", response_model=CodexJobSnapshot)
-async def get_latest_codex_job() -> CodexJobSnapshot:
-    if _latest_codex_job_id is None:
+async def get_latest_codex_job(auth_context: AuthContext = Depends(require_current_user)) -> CodexJobSnapshot:
+    job = _get_latest_codex_job(auth_context.username)
+    if job is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No Codex task has been started.")
-    return _snapshot_codex_job(_codex_jobs[_latest_codex_job_id])
+    return _snapshot_codex_job(job)
 
 
 @router.get("/runs/jobs/{job_id}", response_model=CodexJobSnapshot)
-async def get_codex_job(job_id: str) -> CodexJobSnapshot:
+async def get_codex_job(job_id: str, auth_context: AuthContext = Depends(require_current_user)) -> CodexJobSnapshot:
     job = _codex_jobs.get(job_id)
-    if job is None:
+    if job is None or job.owner_username != auth_context.username:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Codex task not found.")
     return _snapshot_codex_job(job)
 
@@ -250,7 +256,7 @@ def _build_prompt(
 
 
 async def _run_codex_job(job: CodexJobState, auth_context: AuthContext) -> None:
-    async with _codex_lock:
+    async with _get_codex_lock(auth_context.username):
         started_at = time.monotonic()
         prompt = _build_prompt(job.prompt, job.skill_ids, auth_context, job.output_mode)
         exec_args, output_path = _build_codex_exec_args(job.sandbox_mode, job.output_mode, json_output=True)
@@ -323,8 +329,10 @@ async def _stream_codex_events(
     sandbox_mode: str = "workspace-write",
     auth_context: AuthContext | None = None,
     output_mode: str = "full",
+    codex_lock: asyncio.Lock | None = None,
 ) -> AsyncIterator[str]:
-    async with _codex_lock:
+    lock = codex_lock or _get_codex_lock((auth_context.username if auth_context else "").strip())
+    async with lock:
         started_at = time.monotonic()
         prompt = _build_prompt(user_prompt, skill_ids, auth_context, output_mode)
         stdout_parts: list[str] = []
@@ -425,8 +433,34 @@ def _snapshot_codex_job(job: CodexJobState) -> CodexJobSnapshot:
     )
 
 
-def _has_running_codex_job() -> bool:
-    return any(job.status == "running" for job in _codex_jobs.values())
+def _get_codex_lock(username: str) -> asyncio.Lock:
+    owner_key = username or "__anonymous__"
+    lock = _codex_locks.get(owner_key)
+    if lock is None:
+        lock = asyncio.Lock()
+        _codex_locks[owner_key] = lock
+    return lock
+
+
+def _get_latest_codex_job(username: str) -> CodexJobState | None:
+    latest_job_id = _latest_codex_job_ids.get(username)
+    if latest_job_id:
+        latest_job = _codex_jobs.get(latest_job_id)
+        if latest_job is not None and latest_job.owner_username == username:
+            return latest_job
+        _latest_codex_job_ids.pop(username, None)
+
+    user_jobs = [job for job in _codex_jobs.values() if job.owner_username == username]
+    if not user_jobs:
+        return None
+
+    latest_job = max(user_jobs, key=lambda job: job.started_at)
+    _latest_codex_job_ids[username] = latest_job.job_id
+    return latest_job
+
+
+def _has_running_codex_job(username: str) -> bool:
+    return any(job.status == "running" for job in _codex_jobs.values() if job.owner_username == username)
 
 
 def _handle_codex_job_task_done(job: CodexJobState, task: asyncio.Task[None]) -> None:

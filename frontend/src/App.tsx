@@ -873,6 +873,31 @@ function App() {
   const [githubSyncError, setGithubSyncError] = useState<string | null>(null);
   const [isGithubSyncing, setIsGithubSyncing] = useState(false);
 
+  function applyAiCodingJobSnapshot(job: CodexJobSnapshot) {
+    setLiveCodexOutput(job.output);
+    setLiveCodexErrorOutput(job.error_output);
+    setAiCodingMessages((current) => upsertCodexJobMessage(current, job));
+
+    if (job.status === "running") {
+      setActiveCodexJobId(job.job_id);
+      setIsCodexRunning(true);
+      setCodexError(null);
+      setAiCodingNoticeStatus("running");
+      setLiveCodexStatus("Codex 正在运行，离开页面后仍可回来查看结果...");
+      return;
+    }
+
+    setIsCodexRunning(false);
+    setActiveCodexJobId(null);
+    setAiCodingNoticeStatus(job.status === "completed" ? "completed" : "failed");
+    setLiveCodexStatus(job.status === "completed" ? "Codex 执行完成。" : "Codex 执行出现错误。");
+    setCodexError(job.status === "failed" ? job.error_message ?? "Codex 执行失败，请稍后重试。" : null);
+  }
+
+  async function restoreLatestAiCodingJob() {
+    return getLatestCodexJob();
+  }
+
   useEffect(() => {
     if (!isMobileViewport()) return;
 
@@ -1212,25 +1237,11 @@ function App() {
       try {
         const job = await getCodexJob(jobId);
         if (cancelled) return;
-
-        setLiveCodexOutput(job.output);
-        setLiveCodexErrorOutput(job.error_output);
-        setAiCodingMessages((current) => upsertCodexJobMessage(current, job));
+        applyAiCodingJobSnapshot(job);
 
         if (job.status === "running") {
-          setIsCodexRunning(true);
-          setAiCodingNoticeStatus("running");
-          setLiveCodexStatus("Codex 正在运行，离开页面后仍可回来查看结果...");
           timer = window.setTimeout(pollCodexJob, 1500);
           return;
-        }
-
-        setIsCodexRunning(false);
-        setActiveCodexJobId(null);
-        setAiCodingNoticeStatus(job.status === "completed" ? "completed" : "failed");
-        setLiveCodexStatus(job.status === "completed" ? "Codex 执行完成。" : "Codex 执行出现错误。");
-        if (job.status === "failed") {
-          setCodexError(job.error_message ?? "Codex 执行失败，请稍后重试。");
         }
       } catch (error) {
         if (cancelled) return;
@@ -1310,26 +1321,12 @@ function App() {
 
     async function restoreLatestCodexJob() {
       try {
-        const job = await getLatestCodexJob();
+        const job = await restoreLatestAiCodingJob();
         if (cancelled) return;
-
-        setLiveCodexOutput(job.output);
-        setLiveCodexErrorOutput(job.error_output);
-        setAiCodingMessages((current) => upsertCodexJobMessage(current, job));
+        applyAiCodingJobSnapshot(job);
 
         if (job.status === "running") {
-          setActiveCodexJobId(job.job_id);
-          setIsCodexRunning(true);
-          setAiCodingNoticeStatus("running");
-          setLiveCodexStatus("Codex 正在运行，离开页面后仍可回来查看结果...");
           return;
-        }
-
-        setIsCodexRunning(false);
-        setAiCodingNoticeStatus(job.status === "completed" ? "completed" : "failed");
-        setLiveCodexStatus(job.status === "completed" ? "Codex 执行完成。" : "Codex 执行出现错误。");
-        if (job.status === "failed") {
-          setCodexError(job.error_message ?? "Codex 执行失败，请稍后重试。");
         }
       } catch (error) {
         if (cancelled) return;
@@ -3984,6 +3981,18 @@ function App() {
       setLiveCodexStatus("Codex 任务已提交，正在运行...");
       setAiCodingPrompt("");
     } catch (error) {
+      if (error instanceof Error && error.message.includes("A Codex task is already running")) {
+        try {
+          const latestJob = await restoreLatestAiCodingJob();
+          applyAiCodingJobSnapshot(latestJob);
+          if (latestJob.status === "running") {
+            setLiveCodexStatus("检测到当前账号已有进行中的 Codex 任务，已恢复任务状态。");
+            return;
+          }
+        } catch {
+          // Fall through to the original error if the latest job cannot be restored.
+        }
+      }
       setCodexError(error instanceof Error ? error.message : "Codex 执行失败，请稍后重试。");
       setIsCodexRunning(false);
       setAiCodingNoticeStatus(null);
@@ -7802,9 +7811,17 @@ function BlogFactoryRecords({
               </div>
             </div>
 
-            <p className="whitespace-pre-wrap break-words text-sm leading-7 text-slate-400 [overflow-wrap:anywhere]">
-              {selectedItem.task_content || "未记录"}
-            </p>
+            {selectedItem.task_content.trim() ? (
+              taskCopyView === "raw" ? (
+                <p className="whitespace-pre-wrap break-words text-sm leading-7 text-slate-400 [overflow-wrap:anywhere]">
+                  {removeLeakedMarkdownCodePlaceholders(selectedItem.task_content)}
+                </p>
+              ) : (
+                <MarkdownPreview markdown={selectedItem.task_content} />
+              )
+            ) : (
+              <p className="whitespace-pre-wrap break-words text-sm leading-7 text-slate-400 [overflow-wrap:anywhere]">未记录</p>
+            )}
 
             <div className="mt-4 rounded-lg border border-mint-300/18 bg-mint-300/[0.06] p-4">
               <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
