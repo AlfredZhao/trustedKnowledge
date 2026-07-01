@@ -18,7 +18,13 @@ The format follows the common GitHub changelog convention inspired by
 - Changed the Overview dashboard metric tiles so the four key-status cards now render in a two-column grid on mobile PWA screens instead of stacking one per row.
 - 调整总览 Dashboard 的顶部指标卡片布局：手机端 PWA 中“关键状态”下的 4 张卡片改为每行 2 张显示，不再单列纵向堆叠。
 
+- Changed the Blog Factory publish controls to keep a single `发布到博客` entry that opens the existing publish dialog, removing the redundant direct-publish and draft shortcut buttons.
+- 调整博客工厂发布操作区：保留单一 `发布到博客` 入口并沿用现有发布弹窗，移除重复的直接发布和草稿快捷按钮。
+
 #### Fixed / 修复
+
+- Fixed Blog Factory Metaweblog publishing for CNBlogs-oriented setups so posts default to Markdown delivery, and the published body now strips the leading H1 that is already used as the article title.
+- 修复博客工厂 Metaweblog 发布到博客园一类目标时的正文格式：默认按 Markdown 方式发送内容，并在发布正文中去掉已作为文章标题使用的首个一级标题，避免页面重复显示主标题。
 
 ## 历史版本更新
 

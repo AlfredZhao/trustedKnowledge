@@ -82,12 +82,19 @@ async def publish_metaweblog_post(
         preferred_blog_name=blog_name,
         preferred_blog_id=blog_id,
     )
+    publish_as_markdown = _should_publish_as_markdown(api_url=api_url, blog_url=resolved.blog_url or blog_url)
     content = {
         "title": title,
-        "description": markdown_to_html(markdown),
+        "description": markdown if publish_as_markdown else markdown_to_html(markdown),
     }
     cleaned_tags = [tag for tag in dict.fromkeys(_clean_tag(tag) for tag in tags) if tag]
-    if cleaned_tags:
+    if publish_as_markdown:
+        categories = ["[Markdown]", *[tag for tag in cleaned_tags if tag != "[Markdown]"]]
+        content["categories"] = categories
+        keyword_tags = [tag for tag in cleaned_tags if tag != "[Markdown]"]
+        if keyword_tags:
+            content["mt_keywords"] = ", ".join(keyword_tags)
+    elif cleaned_tags:
         content["categories"] = cleaned_tags
         content["mt_keywords"] = ", ".join(cleaned_tags)
 
@@ -246,6 +253,18 @@ def remove_leaked_markdown_code_placeholders(markdown: str) -> str:
 
     cleaned = pattern.sub(replace, markdown)
     return re.sub(r"[ \t]{2,}", " ", cleaned)
+
+
+def _should_publish_as_markdown(*, api_url: str, blog_url: str | None) -> bool:
+    return _is_cnblogs_endpoint(api_url) or _is_cnblogs_endpoint(blog_url)
+
+
+def _is_cnblogs_endpoint(value: str | None) -> bool:
+    if not value:
+        return False
+    parsed = urlparse(value)
+    hostname = (parsed.hostname or "").lower()
+    return hostname == "cnblogs.com" or hostname.endswith(".cnblogs.com")
 
 
 async def _resolve_blog(

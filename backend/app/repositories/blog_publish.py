@@ -284,13 +284,14 @@ async def publish_blog_factory_article(
         if not title:
             raise ValueError("Markdown 正文缺少一级标题，请先补充文章标题。")
         tags = payload.tags or _split_tags(topic_tag_snapshot)
+        publish_markdown = _strip_leading_markdown_title(payload.article_markdown)
 
         publish_result = await publish_metaweblog_post(
             api_url=config["api_url"],
             username=config["username"],
             password=config["password_value"],
             title=title,
-            markdown=payload.article_markdown,
+            markdown=publish_markdown,
             tags=tags,
             publish=payload.publish,
             blog_url=config["blog_url"],
@@ -629,6 +630,25 @@ def _resolve_article_title(article_title: str | None, markdown: str) -> str:
         if match:
             return match.group(1).strip()[:300]
     return ""
+
+
+def _strip_leading_markdown_title(markdown: str) -> str:
+    lines = markdown.replace("\r\n", "\n").split("\n")
+    first_content_index: int | None = None
+    for index, line in enumerate(lines):
+        if line.strip():
+            first_content_index = index
+            break
+    if first_content_index is None:
+        return markdown.strip()
+
+    if not re.match(r"^#\s+.+$", lines[first_content_index].strip()):
+        return markdown.strip()
+
+    next_index = first_content_index + 1
+    while next_index < len(lines) and not lines[next_index].strip():
+        next_index += 1
+    return "\n".join(lines[next_index:]).strip()
 
 
 def _split_tags(value: str | None) -> list[str]:

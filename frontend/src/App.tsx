@@ -3045,45 +3045,6 @@ function App() {
     setIsBlogPublishDialogOpen(true);
   }
 
-  async function handleDirectPublishBlogFactoryArticle() {
-    if (!selectedBlogFactoryItem || isBlogPublishing) return;
-    const preferredConfig = resolvePreferredBlogPublishConfig(blogPublishConfigs, blogPublishDialogConfigId ?? selectedBlogPublishConfigId);
-    if (!preferredConfig) {
-      setBlogPublishError("请先配置至少一套 Metaweblog API。");
-      setIsBlogPublishConfigDialogOpen(true);
-      return;
-    }
-    const publishMarkdown = resolveBlogFactoryPublishMarkdown(selectedBlogFactoryItem, blogFactoryArticleDraft, blogFactoryEditDraft.taskContent);
-    if (!publishMarkdown) {
-      setBlogPublishError("没有可发布的正文内容：系统会优先使用已保存文章，否则回退到任务内容。");
-      return;
-    }
-
-    setIsBlogPublishing(true);
-    setBlogPublishError(null);
-    setBlogPublishSuccess(null);
-    try {
-      const result = await publishBlogFactoryArticle({
-        id: selectedBlogFactoryItem.id,
-        configId: preferredConfig.id,
-        articleMarkdown: publishMarkdown,
-        articleTitle: extractMarkdownHeading(publishMarkdown) || selectedBlogFactoryItem.article_title || undefined,
-        tags: splitBlogPublishTags(blogFactoryEditDraft.topicTagSnapshot || selectedBlogFactoryItem.topic_tag_snapshot),
-        publish: true,
-      });
-      clearApiResponseCache();
-      setSelectedBlogFactoryItem(result.item);
-      setBlogFactoryItems((current) => current.map((item) => (item.id === result.item.id ? result.item : item)));
-      setBlogPublishSuccess(result);
-      setBlogFactoryRefreshToken((current) => current + 1);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "博客发布失败，请稍后重试。";
-      setBlogPublishError(message);
-    } finally {
-      setIsBlogPublishing(false);
-    }
-  }
-
   async function handleConfirmBlogPublishFromDialog() {
     if (!selectedBlogFactoryItem || !blogPublishDialogConfigId || isBlogPublishing) return;
     const publishMarkdown = resolveBlogFactoryPublishMarkdown(selectedBlogFactoryItem, blogFactoryArticleDraft, blogFactoryEditDraft.taskContent);
@@ -4414,7 +4375,6 @@ function App() {
               onEditDraftChange={setBlogFactoryEditDraft}
               onCopyTask={handleCopyBlogFactoryTaskContent}
               onOpenPublishConfig={handleOpenBlogPublishConfigDialog}
-              onDirectPublish={handleDirectPublishBlogFactoryArticle}
               onOpenPublishDialog={handleOpenBlogPublishDialog}
               onDelete={handleRequestDeleteBlogFactoryItem}
               onCloseMobileDetail={() => setIsMobileBlogFactoryDetailOpen(false)}
@@ -7532,7 +7492,6 @@ function BlogFactoryRecords({
   onEditDraftChange,
   onCopyTask,
   onOpenPublishConfig,
-  onDirectPublish,
   onOpenPublishDialog,
   onDelete,
   onCloseMobileDetail,
@@ -7574,7 +7533,6 @@ function BlogFactoryRecords({
   onEditDraftChange: (draft: BlogFactoryEditDraft) => void;
   onCopyTask: (view: BlogFactoryTaskCopyMode) => void;
   onOpenPublishConfig: () => void;
-  onDirectPublish: () => void;
   onOpenPublishDialog: (mode: BlogPublishDialogMode) => void;
   onDelete: () => void;
   onCloseMobileDetail: () => void;
@@ -7878,28 +7836,10 @@ function BlogFactoryRecords({
                     className="flex h-10 items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-3 text-sm text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
                     disabled={!canPublish}
                     type="button"
-                    onClick={onDirectPublish}
-                  >
-                    {isPublishing ? <Loader2 className="animate-spin" size={15} /> : <Send size={15} />}
-                    {isPublishing ? "发布中" : "发布博客"}
-                  </button>
-                  <button
-                    className="flex h-10 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-sm text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-500"
-                    disabled={!canPublish}
-                    type="button"
-                    onClick={() => onOpenPublishDialog("draft")}
-                  >
-                    <Radio size={15} />
-                    发布到博客（草稿）
-                  </button>
-                  <button
-                    className="flex h-10 items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-3 text-sm text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
-                    disabled={!canPublish}
-                    type="button"
                     onClick={() => onOpenPublishDialog("publish")}
                   >
-                    <Send size={15} />
-                    发布到博客
+                    {isPublishing ? <Loader2 className="animate-spin" size={15} /> : <Send size={15} />}
+                    {isPublishing ? "发布中" : "发布到博客"}
                   </button>
                 </div>
               </div>
@@ -7928,7 +7868,7 @@ function BlogFactoryRecords({
           <div>
             <ClipboardList className="mx-auto mb-3 text-slate-600" size={36} />
             <div className="mb-1 font-medium text-slate-300">选择一条任务</div>
-            <p className="text-sm leading-6 text-slate-500">详情中可编辑任务内容、更新状态、发布博客或删除任务。</p>
+            <p className="text-sm leading-6 text-slate-500">详情中可编辑任务内容、更新状态、发布到博客或删除任务。</p>
           </div>
         </div>
       )}
