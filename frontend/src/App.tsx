@@ -2182,11 +2182,6 @@ function App() {
       limit: OVERVIEW_TODO_LIMIT,
       offset: 0,
     };
-    const recentKnowledgeQueryConfig = {
-      username: overviewUsername,
-      limit: OVERVIEW_KNOWLEDGE_LIMIT,
-      offset: 0,
-    };
     const unpublishedKnowledgeQueryConfig = {
       username: overviewUsername,
       status: "未发布" as const,
@@ -2203,11 +2198,10 @@ function App() {
 
     const cachedUsage = canAccessUsage ? readCachedLlmUsage(usageLimit) : { items: [], total: 0 };
     const cachedTodos = readCachedTodos(todoQueryConfig);
-    const cachedRecentKnowledge = readCachedKnowledge(recentKnowledgeQueryConfig);
     const cachedUnpublishedKnowledge = readCachedKnowledge(unpublishedKnowledgeQueryConfig);
     const cachedEnglishMaterial = readCachedEnglishMaterials(latestEnglishMaterialQueryConfig);
     const hasCompleteCache =
-      cachedUsage && cachedTodos && cachedRecentKnowledge && cachedUnpublishedKnowledge && cachedEnglishMaterial;
+      cachedUsage && cachedTodos && cachedUnpublishedKnowledge && cachedEnglishMaterial;
 
     if (isManualRefresh) {
       setIsOverviewRefreshing(true);
@@ -2218,8 +2212,8 @@ function App() {
         usageTotal: cachedUsage.total,
         processingTodos: cachedTodos.items,
         processingTodoTotal: cachedTodos.total,
-        recentKnowledge: cachedRecentKnowledge.items,
-        knowledgeTotal: cachedRecentKnowledge.total,
+        recentKnowledge: cachedUnpublishedKnowledge.items,
+        knowledgeTotal: cachedUnpublishedKnowledge.total,
         unpublishedKnowledgeTotal: cachedUnpublishedKnowledge.total,
         latestEnglishMaterial: cachedEnglishMaterial.items[0] ?? null,
         englishMaterialTotal: cachedEnglishMaterial.total,
@@ -2235,21 +2229,16 @@ function App() {
     Promise.allSettled([
       canAccessUsage ? fetchLlmUsage(usageLimit) : Promise.resolve({ items: [], total: 0 }),
       fetchTodos(todoQueryConfig),
-      fetchKnowledge(recentKnowledgeQueryConfig),
       fetchKnowledge(unpublishedKnowledgeQueryConfig),
       fetchEnglishMaterials(latestEnglishMaterialQueryConfig),
     ])
-      .then(([usageResult, todoResult, recentKnowledgeResult, unpublishedKnowledgeResult, englishMaterialResult]) => {
+      .then(([usageResult, todoResult, unpublishedKnowledgeResult, englishMaterialResult]) => {
         if (!mounted) return;
 
         const nextErrors: OverviewSectionErrors = { ...emptyOverviewSectionErrors };
-        const successCount = [
-          usageResult,
-          todoResult,
-          recentKnowledgeResult,
-          unpublishedKnowledgeResult,
-          englishMaterialResult,
-        ].filter((result) => result.status === "fulfilled").length;
+        const successCount = [usageResult, todoResult, unpublishedKnowledgeResult, englishMaterialResult].filter(
+          (result) => result.status === "fulfilled",
+        ).length;
 
         if (usageResult.status === "rejected") {
           nextErrors.usage = readOverviewRefreshError(usageResult.reason);
@@ -2257,14 +2246,8 @@ function App() {
         if (todoResult.status === "rejected") {
           nextErrors.todos = readOverviewRefreshError(todoResult.reason);
         }
-        if (recentKnowledgeResult.status === "rejected") {
-          nextErrors.knowledge = readOverviewRefreshError(recentKnowledgeResult.reason);
-        }
         if (unpublishedKnowledgeResult.status === "rejected") {
-          const unpublishedError = readOverviewRefreshError(unpublishedKnowledgeResult.reason);
-          nextErrors.knowledge = nextErrors.knowledge
-            ? `${nextErrors.knowledge}; ${unpublishedError}`
-            : unpublishedError;
+          nextErrors.knowledge = readOverviewRefreshError(unpublishedKnowledgeResult.reason);
         }
         if (englishMaterialResult.status === "rejected") {
           nextErrors.english = readOverviewRefreshError(englishMaterialResult.reason);
@@ -2289,17 +2272,11 @@ function App() {
             };
           }
 
-          if (recentKnowledgeResult.status === "fulfilled") {
-            next = {
-              ...next,
-              recentKnowledge: recentKnowledgeResult.value.items,
-              knowledgeTotal: recentKnowledgeResult.value.total,
-            };
-          }
-
           if (unpublishedKnowledgeResult.status === "fulfilled") {
             next = {
               ...next,
+              recentKnowledge: unpublishedKnowledgeResult.value.items,
+              knowledgeTotal: unpublishedKnowledgeResult.value.total,
               unpublishedKnowledgeTotal: unpublishedKnowledgeResult.value.total,
             };
           }
@@ -12893,7 +12870,7 @@ function OverviewDashboard({
           icon={<BookOpenCheck size={17} />}
           label="未发布知识"
           value={formatAmount(data.unpublishedKnowledgeTotal)}
-          detail={`${formatAmount(data.knowledgeTotal)} 条可信知识`}
+          detail={`${formatAmount(data.recentKnowledge.length)} 条已载入`}
         />
         <MetricTile
           icon={<FileText size={17} />}

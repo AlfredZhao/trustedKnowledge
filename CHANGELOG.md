@@ -21,6 +21,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Changed / 变更
 
+- Changed the Overview trusted-knowledge panel to display only `未发布` knowledge items, and aligned the summary count with the same unpublished dataset.
+- 调整总览中的可信知识面板为仅显示 `未发布` 状态记录，并让顶部摘要计数与该未发布数据集保持一致。
+
 #### Fixed / 修复
 
 - Fixed Todo editor switching so unsaved changes are now preserved per item while navigating the Todo list; users can switch away and return without losing local edits, and the editor shows an explicit unsaved-change reminder until saved.
