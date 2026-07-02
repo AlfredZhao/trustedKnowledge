@@ -23,6 +23,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Fixed / 修复
 
+- Fixed Todo editor switching so unsaved changes are now preserved per item while navigating the Todo list; users can switch away and return without losing local edits, and the editor shows an explicit unsaved-change reminder until saved.
+- 修复待办事项编辑区的切换丢稿问题：现在每条 Todo 都会单独保留本地未保存草稿，用户切换到别的事项后再返回也不会丢失输入；编辑区同时增加未保存提示，避免误以为已落库。
+
 - Fixed low-contrast light-theme action buttons by strengthening the light-only secondary and amber action styles, so controls such as Todo `转为知识` remain legible without changing dark-theme visuals.
 - 修复浅色主题下部分操作按钮对比度过低的问题：增强仅作用于浅色主题的次级按钮与琥珀色操作按钮样式，使待办事项中的 `转为知识` 一类控件更清晰，同时不改动深色主题视觉。
 

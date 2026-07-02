@@ -676,6 +676,11 @@ function App() {
   const [selectedTodoId, setSelectedTodoId] = useState<number | null>(restoredUiState.todos.selectedId);
   const [isMobileTodoEditorOpen, setIsMobileTodoEditorOpen] = useState(false);
   const [todoDraft, setTodoDraft] = useState<TodoDraft>(restoredUiState.todos.draft ?? emptyTodoDraft);
+  const [todoDraftsById, setTodoDraftsById] = useState<Record<number, TodoDraft>>(() => {
+    const restoredDraft = restoredUiState.todos.draft;
+    const restoredSelectedId = restoredUiState.todos.selectedId;
+    return restoredDraft && restoredSelectedId ? { [restoredSelectedId]: restoredDraft } : {};
+  });
   const [isTodoLoading, setIsTodoLoading] = useState(false);
   const [isTodoDetailLoading, setIsTodoDetailLoading] = useState(false);
   const [isTodoSaving, setIsTodoSaving] = useState(false);
@@ -705,8 +710,12 @@ function App() {
     week: "",
     day: "",
   });
+  const todoDraftsByIdRef = useRef<Record<number, TodoDraft>>(todoDraftsById);
+  todoDraftsByIdRef.current = todoDraftsById;
+  const todoDetailRequestRef = useRef(0);
   const pendingTodoNavigationRef = useRef<"previous" | "next" | null>(null);
   const selectedTodoSavedStatusRef = useRef<TodoStatus | null>(restoredUiState.todos.draft?.todo_status ?? null);
+  const selectedTodoSavedDraftRef = useRef<TodoDraft>(restoredUiState.todos.draft ?? emptyTodoDraft);
   const [conversionTarget, setConversionTarget] = useState<ConversionTarget | null>(null);
   const [currentRecordItems, setCurrentRecordItems] = useState<CurrentRecordItem[]>([]);
   const [currentRecordTotal, setCurrentRecordTotal] = useState(0);
@@ -963,10 +972,12 @@ function App() {
       setTodoTotal(0);
       setSelectedTodoId(null);
       selectedTodoSavedStatusRef.current = null;
+      selectedTodoSavedDraftRef.current = emptyTodoDraft;
       setIsMobileTodoEditorOpen(false);
       setTodoCopyError(null);
       setHasCopiedTodoContent(false);
       setIsConvertingTodoToKnowledge(false);
+      setTodoDraftsById({});
       resetTodoCurrentAppendState();
       setIsAppendingTodoToCurrent(false);
       setConversionTarget(null);
@@ -1792,7 +1803,9 @@ function App() {
         pendingTodoNavigationRef.current = null;
         const navigatedItem = pendingNavigation === "previous" ? cached.items[cached.items.length - 1] : cached.items[0];
         setSelectedTodoId(navigatedItem?.id ?? null);
-        setTodoDraft(navigatedItem ? todoItemToDraft(navigatedItem) : emptyTodoDraft);
+        selectedTodoSavedStatusRef.current = navigatedItem?.todo_status ?? null;
+        selectedTodoSavedDraftRef.current = navigatedItem ? todoItemToDraft(navigatedItem) : emptyTodoDraft;
+        setTodoDraft(resolveTodoEditorDraft(navigatedItem ?? null, todoDraftsByIdRef.current));
       }
     }
 
@@ -1809,13 +1822,26 @@ function App() {
           if (pendingNavigation) {
             pendingTodoNavigationRef.current = null;
             const navigatedItem = pendingNavigation === "previous" ? data.items[data.items.length - 1] : data.items[0];
-            setTodoDraft(navigatedItem ? todoItemToDraft(navigatedItem) : emptyTodoDraft);
+            selectedTodoSavedStatusRef.current = navigatedItem?.todo_status ?? null;
+            selectedTodoSavedDraftRef.current = navigatedItem ? todoItemToDraft(navigatedItem) : emptyTodoDraft;
+            setTodoDraft(resolveTodoEditorDraft(navigatedItem ?? null, todoDraftsByIdRef.current));
             return navigatedItem?.id ?? null;
           }
 
-          if (currentSelectedId && data.items.some((item) => item.id === currentSelectedId)) return currentSelectedId;
+          if (currentSelectedId) {
+            const selectedItem = data.items.find((item) => item.id === currentSelectedId);
+            if (selectedItem) {
+              selectedTodoSavedStatusRef.current = selectedItem.todo_status;
+              selectedTodoSavedDraftRef.current = todoItemToDraft(selectedItem);
+              setTodoDraft(resolveTodoEditorDraft(selectedItem, todoDraftsByIdRef.current));
+              return currentSelectedId;
+            }
+          }
+
           const nextItem = data.items[0] ?? null;
-          setTodoDraft(nextItem ? todoItemToDraft(nextItem) : emptyTodoDraft);
+          selectedTodoSavedStatusRef.current = nextItem?.todo_status ?? null;
+          selectedTodoSavedDraftRef.current = nextItem ? todoItemToDraft(nextItem) : emptyTodoDraft;
+          setTodoDraft(resolveTodoEditorDraft(nextItem, todoDraftsByIdRef.current));
           return nextItem?.id ?? null;
         });
       })
@@ -2412,9 +2438,16 @@ function App() {
           clearStoredNewDraft();
           setIsTodoEntry(false);
           setNewTodoStatus("处理中");
+          selectedTodoSavedDraftRef.current = todoItemToDraft(created);
           setTodoDraft(todoItemToDraft(created));
           setSelectedTodoId(created.id);
           selectedTodoSavedStatusRef.current = created.todo_status;
+          setTodoDraftsById((current) => {
+            if (!(created.id in current)) return current;
+            const next = { ...current };
+            delete next[created.id];
+            return next;
+          });
           setTodoPage(1);
           setTodoRefreshToken((current) => current + 1);
           setActiveView("todos");
@@ -2574,9 +2607,16 @@ function App() {
       setIsMobileKnowledgeEditorOpen(false);
       setDraft(emptyDraft);
       setLastCreatedId(null);
+      selectedTodoSavedDraftRef.current = todoItemToDraft(converted);
       setTodoDraft(todoItemToDraft(converted));
       setSelectedTodoId(converted.id);
       selectedTodoSavedStatusRef.current = converted.todo_status;
+      setTodoDraftsById((current) => {
+        if (!(converted.id in current)) return current;
+        const next = { ...current };
+        delete next[converted.id];
+        return next;
+      });
       setTodoPage(1);
       setTodoStatus("all");
       setTodoRefreshToken((current) => current + 1);
@@ -2663,8 +2703,10 @@ function App() {
     setTodoUsername("");
     setSelectedTodoId(null);
     selectedTodoSavedStatusRef.current = null;
+    selectedTodoSavedDraftRef.current = emptyTodoDraft;
     setIsMobileTodoEditorOpen(false);
     setTodoDraft(emptyTodoDraft);
+    setTodoDraftsById({});
     setTodoCopyError(null);
     setHasCopiedTodoContent(false);
     resetTodoCurrentAppendState();
@@ -3107,10 +3149,12 @@ function App() {
   }
 
   async function handleSelectTodo(item: TodoItem) {
+    const requestId = ++todoDetailRequestRef.current;
     setSelectedTodoId(item.id);
+    selectedTodoSavedDraftRef.current = todoItemToDraft(item);
     selectedTodoSavedStatusRef.current = item.todo_status;
     setIsMobileTodoEditorOpen(true);
-    setTodoDraft(todoItemToDraft(item));
+    setTodoDraft(resolveTodoEditorDraft(item, todoDraftsByIdRef.current));
     setTodoSaveError(null);
     setTodoCopyError(null);
     setHasCopiedTodoContent(false);
@@ -3118,14 +3162,20 @@ function App() {
 
     try {
       const detail = await getTodo(item.id);
+      if (requestId !== todoDetailRequestRef.current) return;
+      const savedDraft = todoItemToDraft(detail);
+      selectedTodoSavedDraftRef.current = savedDraft;
       selectedTodoSavedStatusRef.current = detail.todo_status;
-      setTodoDraft(todoItemToDraft(detail));
+      setTodoDraft(resolveTodoEditorDraft(detail, todoDraftsByIdRef.current));
       setTodoItems((current) => current.map((entry) => (entry.id === detail.id ? detail : entry)));
       setTodoError(null);
     } catch (error) {
+      if (requestId !== todoDetailRequestRef.current) return;
       setTodoError(error instanceof Error ? error.message : "读取待办事项失败，请稍后重试。");
     } finally {
-      setIsTodoDetailLoading(false);
+      if (requestId === todoDetailRequestRef.current) {
+        setIsTodoDetailLoading(false);
+      }
     }
   }
 
@@ -3179,8 +3229,16 @@ function App() {
     setTodoCopyError(null);
     try {
       const updated = await updateTodo(selectedTodoId, todoDraft);
+      const savedDraft = todoItemToDraft(updated);
+      selectedTodoSavedDraftRef.current = savedDraft;
       selectedTodoSavedStatusRef.current = updated.todo_status;
-      setTodoDraft(todoItemToDraft(updated));
+      setTodoDraft(savedDraft);
+      setTodoDraftsById((current) => {
+        if (!(selectedTodoId in current)) return current;
+        const next = { ...current };
+        delete next[selectedTodoId];
+        return next;
+      });
       setTodoItems((current) => current.map((item) => (item.id === updated.id ? updated : item)));
       setTodoRefreshToken((current) => current + 1);
       if (previousTodoStatus !== "已完成" && updated.todo_status === "已完成") {
@@ -3336,6 +3394,22 @@ function App() {
     }
   }
 
+  function handleTodoDraftChange(nextDraft: TodoDraft) {
+    setTodoDraft(nextDraft);
+    if (selectedTodoId === null) return;
+
+    setTodoDraftsById((current) => {
+      if (areTodoDraftsEqual(nextDraft, selectedTodoSavedDraftRef.current)) {
+        if (!(selectedTodoId in current)) return current;
+        const next = { ...current };
+        delete next[selectedTodoId];
+        return next;
+      }
+
+      return { ...current, [selectedTodoId]: nextDraft };
+    });
+  }
+
   function handleConvertSelectedTodoToKnowledge() {
     if (selectedTodoId === null || isConvertingTodoToKnowledge || isTodoSaving) return;
     setConversionTarget("todoToKnowledge");
@@ -3354,8 +3428,15 @@ function App() {
       setTodoTotal((current) => Math.max(0, current - 1));
       setSelectedTodoId(null);
       selectedTodoSavedStatusRef.current = null;
+      selectedTodoSavedDraftRef.current = emptyTodoDraft;
       setIsMobileTodoEditorOpen(false);
       setTodoDraft(emptyTodoDraft);
+      setTodoDraftsById((current) => {
+        if (!(selectedTodoId in current)) return current;
+        const next = { ...current };
+        delete next[selectedTodoId];
+        return next;
+      });
       setTodoCopyError(null);
       setHasCopiedTodoContent(false);
       setDraft(itemToDraft(converted));
@@ -3597,8 +3678,9 @@ function App() {
 
   function handleOpenOverviewTodo(item: TodoItem) {
     setSelectedTodoId(item.id);
+    selectedTodoSavedDraftRef.current = todoItemToDraft(item);
     selectedTodoSavedStatusRef.current = item.todo_status;
-    setTodoDraft(todoItemToDraft(item));
+    setTodoDraft(resolveTodoEditorDraft(item, todoDraftsByIdRef.current));
     setActiveView("todos");
   }
 
@@ -4157,6 +4239,8 @@ function App() {
     !isKnowledgeNavigationBlocked;
   const selectedTodoIndex = selectedTodoId === null ? -1 : todoItems.findIndex((item) => item.id === selectedTodoId);
   const isTodoNavigationBlocked = isTodoDetailLoading || isTodoSaving || isConvertingTodoToKnowledge;
+  const hasUnsavedSelectedTodoChanges =
+    selectedTodoId !== null && !areTodoDraftsEqual(todoDraft, selectedTodoSavedDraftRef.current);
   const canSelectPreviousTodo =
     (selectedTodoIndex > 0 || (selectedTodoIndex === 0 && todoPage > 1)) && !isTodoNavigationBlocked;
   const canSelectNextTodo =
@@ -4450,6 +4534,7 @@ function App() {
               isConvertingToKnowledge={isConvertingTodoToKnowledge}
               loadError={todoError}
               saveError={todoSaveError || todoCopyError}
+              hasUnsavedChanges={hasUnsavedSelectedTodoChanges}
               hasCopiedContent={hasCopiedTodoContent}
               canSelectPrevious={canSelectPreviousTodo}
               canSelectNext={canSelectNextTodo}
@@ -4461,7 +4546,7 @@ function App() {
                 setTodoStatus("all");
               }}
               onCloseMobileEditor={() => setIsMobileTodoEditorOpen(false)}
-              onDraftChange={setTodoDraft}
+              onDraftChange={handleTodoDraftChange}
               onPageChange={setTodoPage}
               onSelect={handleSelectTodo}
               onSelectAdjacent={handleSelectAdjacentTodo}
@@ -8245,6 +8330,7 @@ function TodoWorkspace({
   isConvertingToKnowledge,
   loadError,
   saveError,
+  hasUnsavedChanges,
   hasCopiedContent,
   canSelectPrevious,
   canSelectNext,
@@ -8275,6 +8361,7 @@ function TodoWorkspace({
   isConvertingToKnowledge: boolean;
   loadError: string | null;
   saveError: string | null;
+  hasUnsavedChanges: boolean;
   hasCopiedContent: boolean;
   canSelectPrevious: boolean;
   canSelectNext: boolean;
@@ -8344,6 +8431,13 @@ function TodoWorkspace({
           {isDetailLoading ? <Loader2 className="shrink-0 animate-spin text-mint-300" size={17} /> : null}
         </div>
       </div>
+
+      {selectedId !== null && hasUnsavedChanges ? (
+        <div className="mb-4 flex items-start gap-2 rounded-lg border border-amberline/25 bg-amberline/10 px-3 py-3 text-sm text-amber-100">
+          <TriangleAlert className="mt-0.5 shrink-0 text-amberline" size={17} />
+          <span>当前修改尚未保存。你可以先切换到其他待办，未保存内容会按事项暂存在本地，返回后可继续编辑。</span>
+        </div>
+      ) : null}
 
       {selectedId !== null ? (
         <form className="space-y-4" onSubmit={onSubmit}>
@@ -13792,6 +13886,21 @@ function todoItemToDraft(item: TodoItem): TodoDraft {
     topic_tag: item.topic_tag ?? "",
     todo_status: item.todo_status,
   };
+}
+
+function areTodoDraftsEqual(left: TodoDraft, right: TodoDraft) {
+  return (
+    left.title === right.title &&
+    left.content === right.content &&
+    left.source === right.source &&
+    left.topic_tag === right.topic_tag &&
+    left.todo_status === right.todo_status
+  );
+}
+
+function resolveTodoEditorDraft(item: TodoItem | null, draftsById: Record<number, TodoDraft>) {
+  if (!item) return emptyTodoDraft;
+  return draftsById[item.id] ?? todoItemToDraft(item);
 }
 
 function blogFactoryItemToEditDraft(item: BlogFactoryItem | null): BlogFactoryEditDraft {
