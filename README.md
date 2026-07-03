@@ -198,6 +198,7 @@ TRUSTED_KNOWLEDGE_WECHAT_ALLOWED_UNIONIDS=unionid1,unionid2
 TRUSTED_KNOWLEDGE_ALLOW_WEB_RESTART=true
 TRUSTED_KNOWLEDGE_ALLOW_WEB_CODEX=true
 TRUSTED_KNOWLEDGE_CODEX_BIN=codex
+TRUSTED_KNOWLEDGE_WEB_CODEX_USER_CONCURRENCY=2
 ```
 
 这些能力会触发本机命令执行，应只在可信环境中开启，并保留人工确认流程。
@@ -416,6 +417,7 @@ Web-triggered service restart and web-triggered Codex execution are disabled by 
 TRUSTED_KNOWLEDGE_ALLOW_WEB_RESTART=true
 TRUSTED_KNOWLEDGE_ALLOW_WEB_CODEX=true
 TRUSTED_KNOWLEDGE_CODEX_BIN=codex
+TRUSTED_KNOWLEDGE_WEB_CODEX_USER_CONCURRENCY=2
 ```
 
 These features execute local commands. Enable them only in a trusted environment and keep the manual confirmation flow.

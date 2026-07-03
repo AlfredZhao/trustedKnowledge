@@ -30,6 +30,14 @@ COMMON_COLUMNS = """
     factory_item.article_file_path,
     factory_item.article_checksum,
     factory_item.article_saved_at,
+    factory_item.remote_post_id,
+    factory_item.remote_publish_config_id,
+    factory_item.remote_publish_state,
+    factory_item.remote_submission_option,
+    factory_item.remote_categories_snapshot,
+    factory_item.remote_tags_snapshot,
+    factory_item.remote_published_at,
+    factory_item.remote_last_synced_at,
     case when factory_item.article_markdown is null then 0 else 1 end
 """
 
@@ -65,8 +73,16 @@ def _row_to_dict(row: Any) -> dict[str, Any]:
         "article_file_path": row[11],
         "article_checksum": row[12],
         "article_saved_at": row[13],
-        "has_article": bool(row[14]),
-        "article_markdown": row[15] if len(row) > 15 else None,
+        "remote_post_id": row[14],
+        "remote_publish_config_id": row[15],
+        "remote_publish_state": row[16],
+        "remote_submission_option": row[17],
+        "remote_categories_snapshot": row[18],
+        "remote_tags_snapshot": row[19],
+        "remote_published_at": row[20],
+        "remote_last_synced_at": row[21],
+        "has_article": bool(row[22]),
+        "article_markdown": row[23] if len(row) > 23 else None,
     }
 
 
@@ -124,6 +140,14 @@ async def _ensure_blog_factory_table(connection: oracledb.AsyncConnection) -> No
     await _add_column_if_missing(cursor, "article_checksum varchar2(64)")
     await _add_column_if_missing(cursor, "article_saved_at timestamp")
     await _add_column_if_missing(cursor, "user_id number")
+    await _add_column_if_missing(cursor, "remote_post_id varchar2(100)")
+    await _add_column_if_missing(cursor, "remote_publish_config_id number")
+    await _add_column_if_missing(cursor, "remote_publish_state varchar2(20)")
+    await _add_column_if_missing(cursor, "remote_submission_option varchar2(30)")
+    await _add_column_if_missing(cursor, "remote_categories_snapshot varchar2(2000)")
+    await _add_column_if_missing(cursor, "remote_tags_snapshot varchar2(2000)")
+    await _add_column_if_missing(cursor, "remote_published_at timestamp")
+    await _add_column_if_missing(cursor, "remote_last_synced_at timestamp")
     _table_ready = True
 
 

@@ -77,6 +77,7 @@ import {
   deleteBlogFactoryItem,
   deleteKnowledge,
   fetchBlogFactoryItems,
+  fetchBlogPublishCategories,
   fetchBlogPublishConfigs,
   fetchKnowledge,
   fetchTodos,
@@ -85,6 +86,7 @@ import {
   getTodo,
   mergeKnowledge,
   readCachedBlogFactoryItems,
+  readCachedBlogPublishCategories,
   readCachedKnowledge,
   readCachedTodos,
   updateBlogFactoryArticle,
@@ -99,7 +101,7 @@ import {
 } from "./api/knowledge";
 import { fetchHistory, readCachedHistory } from "./api/history";
 import { askHistory, fetchHistoryAskLlmConfig, updateHistoryAskLlmConfig } from "./api/historyAsk";
-import { getCodexJob, getLatestCodexJob, startCodexJob } from "./api/codex";
+import { getCodexJob, getLatestCodexJobByOutputMode, startCodexJob } from "./api/codex";
 import {
   createCurrentRecord,
   fetchCurrentRecordOptions,
@@ -152,10 +154,12 @@ import type {
   AdminModuleAccessItem,
   AdminModuleAccessLevel,
   AppView,
+  BlogPublishCategory,
   BlogFactoryItem,
   BlogFactoryPublishResult,
   BlogFactoryStatus,
   BlogPublishConfig,
+  BlogPublishSubmissionOption,
   BlogPublishType,
   BlogPublishValidationResult,
   CodexJobSnapshot,
@@ -259,6 +263,142 @@ const emptyRelationDraft = {
   relation_type: "GUARDIAN",
 };
 
+function buildLocalDraftId(prefix: string) {
+  return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function createEmptyBlogFactoryKeywordReplacement(): BlogFactoryKeywordReplacement {
+  return {
+    id: buildLocalDraftId("mask-keyword"),
+    keyword: "",
+    replacement: "",
+  };
+}
+
+function createEmptyBlogFactoryMaskRule(): BlogFactoryMaskRule {
+  return {
+    id: buildLocalDraftId("mask-rule"),
+    name: "",
+    description: "",
+    keywordReplacements: [createEmptyBlogFactoryKeywordReplacement()],
+    maskPhone: false,
+    maskEmail: false,
+    maskIdCard: false,
+    maskBankCard: false,
+    maskUrl: false,
+    maskIp: false,
+  };
+}
+
+function cloneBlogFactoryMaskRule(rule: BlogFactoryMaskRule): BlogFactoryMaskRule {
+  return {
+    ...rule,
+    keywordReplacements: rule.keywordReplacements.map((item) => ({ ...item })),
+  };
+}
+
+function normalizeBlogFactoryMaskRule(rule: BlogFactoryMaskRule): BlogFactoryMaskRule {
+  const keywordReplacements = rule.keywordReplacements
+    .map((item) => ({
+      id: item.id || buildLocalDraftId("mask-keyword"),
+      keyword: item.keyword.trim(),
+      replacement: item.replacement,
+    }))
+    .filter((item) => item.keyword.length > 0);
+
+  return {
+    ...rule,
+    id: rule.id || buildLocalDraftId("mask-rule"),
+    name: rule.name.trim(),
+    description: rule.description.trim(),
+    keywordReplacements,
+  };
+}
+
+function resolveBlogFactoryMaskRuleId(rules: BlogFactoryMaskRule[], preferredId: string | null) {
+  if (preferredId && rules.some((rule) => rule.id === preferredId)) return preferredId;
+  return rules[0]?.id ?? null;
+}
+
+function countBlogFactoryMaskKeywords(rule: BlogFactoryMaskRule) {
+  return rule.keywordReplacements.filter((item) => item.keyword.trim().length > 0).length;
+}
+
+function hasEnabledBlogFactoryMaskRule(rule: BlogFactoryMaskRule) {
+  return (
+    countBlogFactoryMaskKeywords(rule) > 0 ||
+    BLOG_FACTORY_MASK_TOGGLE_OPTIONS.some(({ key }) => rule[key])
+  );
+}
+
+function describeBlogFactoryMaskRule(rule: BlogFactoryMaskRule) {
+  const parts: string[] = [];
+  const keywordCount = countBlogFactoryMaskKeywords(rule);
+  if (keywordCount > 0) {
+    parts.push(`关键词 ${keywordCount} 项`);
+  }
+
+  BLOG_FACTORY_MASK_TOGGLE_OPTIONS.forEach(({ key, label }) => {
+    if (rule[key]) parts.push(label);
+  });
+
+  return parts.length > 0 ? parts.join(" / ") : "未启用脱敏项";
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function maskMiddle(value: string, prefixLength: number, suffixLength: number, maskChar = "*") {
+  if (value.length <= prefixLength + suffixLength) {
+    return maskChar.repeat(Math.max(4, value.length));
+  }
+  return `${value.slice(0, prefixLength)}${maskChar.repeat(value.length - prefixLength - suffixLength)}${value.slice(-suffixLength)}`;
+}
+
+function maskPhoneNumber(value: string) {
+  const digits = value.replace(/\D/g, "");
+  if (digits.length < 7) return value;
+  return `${digits.slice(0, 3)}****${digits.slice(-4)}`;
+}
+
+function maskEmailAddress(value: string) {
+  const [localPart, domain = ""] = value.split("@");
+  if (!localPart || !domain) return "[已脱敏邮箱]";
+  if (localPart.length <= 2) return `${localPart[0] ?? "*"}***@${domain}`;
+  return `${localPart.slice(0, 1)}***${localPart.slice(-1)}@${domain}`;
+}
+
+function applyBlogFactoryMaskRule(content: string, rawRule: BlogFactoryMaskRule) {
+  const rule = normalizeBlogFactoryMaskRule(rawRule);
+  let nextContent = content;
+
+  rule.keywordReplacements.forEach((item) => {
+    nextContent = nextContent.replace(new RegExp(escapeRegExp(item.keyword), "g"), item.replacement);
+  });
+
+  if (rule.maskPhone) {
+    nextContent = nextContent.replace(/(?:\+?86[- ]?)?1[3-9]\d{9}\b/g, (match) => maskPhoneNumber(match));
+  }
+  if (rule.maskEmail) {
+    nextContent = nextContent.replace(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, (match) => maskEmailAddress(match));
+  }
+  if (rule.maskIdCard) {
+    nextContent = nextContent.replace(/\b\d{17}[\dXx]\b|\b\d{15}\b/g, (match) => maskMiddle(match, 6, 4));
+  }
+  if (rule.maskBankCard) {
+    nextContent = nextContent.replace(/\b\d{14,19}\b/g, (match) => maskMiddle(match, 4, 4));
+  }
+  if (rule.maskUrl) {
+    nextContent = nextContent.replace(/\b(?:https?:\/\/|www\.)[^\s<>"'）)]+/gi, "[已脱敏链接]");
+  }
+  if (rule.maskIp) {
+    nextContent = nextContent.replace(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, "[已脱敏IP]");
+  }
+
+  return nextContent;
+}
+
 const PAGE_SIZE = 5;
 const FACTORY_PAGE_SIZE = 6;
 const BLOG_FACTORY_PAGE_SIZE = 8;
@@ -334,6 +474,39 @@ type ThemeMode = "dark" | "light";
 type MarkdownContentView = "rendered" | "raw";
 type BlogFactoryArticleCopyMode = "markdown" | "enhanced";
 type BlogFactoryTaskCopyMode = "rendered" | "enhanced" | "raw";
+type BlogFactoryMaskToggleKey = "maskPhone" | "maskEmail" | "maskIdCard" | "maskBankCard" | "maskUrl" | "maskIp";
+
+type BlogFactoryKeywordReplacement = {
+  id: string;
+  keyword: string;
+  replacement: string;
+};
+
+type BlogFactoryMaskRule = {
+  id: string;
+  name: string;
+  description: string;
+  keywordReplacements: BlogFactoryKeywordReplacement[];
+  maskPhone: boolean;
+  maskEmail: boolean;
+  maskIdCard: boolean;
+  maskBankCard: boolean;
+  maskUrl: boolean;
+  maskIp: boolean;
+};
+
+const BLOG_FACTORY_MASK_TOGGLE_OPTIONS: Array<{
+  key: BlogFactoryMaskToggleKey;
+  label: string;
+  description: string;
+}> = [
+  { key: "maskPhone", label: "手机号", description: "保留前三后四位" },
+  { key: "maskEmail", label: "邮箱", description: "保留邮箱结构" },
+  { key: "maskIdCard", label: "身份证", description: "保留前六后四位" },
+  { key: "maskBankCard", label: "银行卡", description: "保留前四后四位" },
+  { key: "maskUrl", label: "URL", description: "替换为统一占位符" },
+  { key: "maskIp", label: "IP", description: "替换为统一占位符" },
+];
 
 interface StoredUiState {
   activeView: AppView;
@@ -369,6 +542,8 @@ interface StoredUiState {
     selectedItemId: number | null;
     articleDraft: string;
     articlePathDraft: string;
+    maskRules: BlogFactoryMaskRule[];
+    selectedMaskRuleId: string | null;
   };
   todos: {
     query: string;
@@ -637,6 +812,21 @@ function App() {
     sourceSnapshot: "",
     topicTagSnapshot: "",
   });
+  const [blogFactoryMaskRules, setBlogFactoryMaskRules] = useState<BlogFactoryMaskRule[]>(() => restoredUiState.blogFactory.maskRules);
+  const [selectedBlogFactoryMaskRuleId, setSelectedBlogFactoryMaskRuleId] = useState<string | null>(() =>
+    resolveBlogFactoryMaskRuleId(restoredUiState.blogFactory.maskRules, restoredUiState.blogFactory.selectedMaskRuleId),
+  );
+  const [isBlogFactoryMaskDialogOpen, setIsBlogFactoryMaskDialogOpen] = useState(false);
+  const [blogFactoryMaskRuleDraft, setBlogFactoryMaskRuleDraft] = useState<BlogFactoryMaskRule>(() => {
+    const selectedRuleId = resolveBlogFactoryMaskRuleId(
+      restoredUiState.blogFactory.maskRules,
+      restoredUiState.blogFactory.selectedMaskRuleId,
+    );
+    const selectedRule = restoredUiState.blogFactory.maskRules.find((item) => item.id === selectedRuleId);
+    return selectedRule ? cloneBlogFactoryMaskRule(selectedRule) : createEmptyBlogFactoryMaskRule();
+  });
+  const [blogFactoryMaskError, setBlogFactoryMaskError] = useState<string | null>(null);
+  const [blogFactoryMaskNotice, setBlogFactoryMaskNotice] = useState<string | null>(null);
   const [blogFactoryArticleDraft, setBlogFactoryArticleDraft] = useState(restoredUiState.blogFactory.articleDraft);
   const [blogFactoryArticlePathDraft, setBlogFactoryArticlePathDraft] = useState(restoredUiState.blogFactory.articlePathDraft);
   const [blogFactoryArticleError, setBlogFactoryArticleError] = useState<string | null>(null);
@@ -663,6 +853,12 @@ function App() {
   const [isBlogPublishDialogOpen, setIsBlogPublishDialogOpen] = useState(false);
   const [blogPublishDialogConfigId, setBlogPublishDialogConfigId] = useState<number | null>(null);
   const [blogPublishDialogMode, setBlogPublishDialogMode] = useState<BlogPublishDialogMode>("publish");
+  const [blogPublishSubmissionOption, setBlogPublishSubmissionOption] = useState<BlogPublishSubmissionOption>("CNBLOGS_HOME");
+  const [blogPublishCategories, setBlogPublishCategories] = useState<BlogPublishCategory[]>([]);
+  const [blogPublishSelectedCategories, setBlogPublishSelectedCategories] = useState<string[]>([]);
+  const [blogPublishTagDraft, setBlogPublishTagDraft] = useState("");
+  const [isBlogPublishCategoriesLoading, setIsBlogPublishCategoriesLoading] = useState(false);
+  const [blogPublishCategoriesError, setBlogPublishCategoriesError] = useState<string | null>(null);
   const [isBlogPublishing, setIsBlogPublishing] = useState(false);
   const [blogPublishError, setBlogPublishError] = useState<string | null>(null);
   const [blogPublishSuccess, setBlogPublishSuccess] = useState<BlogFactoryPublishResult | null>(null);
@@ -918,7 +1114,7 @@ function App() {
   }
 
   async function restoreLatestAiCodingJob() {
-    return getLatestCodexJob();
+    return getLatestCodexJobByOutputMode("full");
   }
 
   useEffect(() => {
@@ -967,6 +1163,12 @@ function App() {
       setBlogFactoryUsername("");
       setBlogFactoryTotal(0);
       setSelectedBlogFactoryItem(null);
+      setBlogFactoryMaskRules([]);
+      setSelectedBlogFactoryMaskRuleId(null);
+      setIsBlogFactoryMaskDialogOpen(false);
+      setBlogFactoryMaskRuleDraft(createEmptyBlogFactoryMaskRule());
+      setBlogFactoryMaskError(null);
+      setBlogFactoryMaskNotice(null);
       setTodoItems([]);
       setTodoUsername("");
       setTodoTotal(0);
@@ -1134,6 +1336,8 @@ function App() {
         selectedItemId: selectedBlogFactoryItem?.id ?? restoredBlogFactorySelectionRef.current,
         articleDraft: blogFactoryArticleDraft,
         articlePathDraft: blogFactoryArticlePathDraft,
+        maskRules: blogFactoryMaskRules,
+        selectedMaskRuleId: selectedBlogFactoryMaskRuleId,
       },
       todos: {
         query: todoQuery,
@@ -1200,6 +1404,7 @@ function App() {
     apiKey,
     blogFactoryArticleDraft,
     blogFactoryArticlePathDraft,
+    blogFactoryMaskRules,
     blogFactoryKnowledgeId,
     blogFactoryPage,
     blogFactoryQuery,
@@ -1254,6 +1459,7 @@ function App() {
     page,
     query,
     selectedBlogFactoryItem?.id,
+    selectedBlogFactoryMaskRuleId,
     selectedEnglishMaterial?.id,
     selectedId,
     statusFilter,
@@ -1767,6 +1973,80 @@ function App() {
       mounted = false;
     };
   }, [activeView, apiKey, blogFactoryRefreshToken, isBlogPublishConfigDialogOpen, isBlogPublishDialogOpen]);
+
+  useEffect(() => {
+    if (!apiKey) return;
+    const preferredConfig = resolvePreferredBlogPublishConfig(blogPublishConfigs, blogPublishDialogConfigId ?? selectedBlogPublishConfigId);
+    if (!preferredConfig || !isCnblogsPublishConfig(preferredConfig)) return;
+    if (readCachedBlogPublishCategories(preferredConfig.id)) return;
+    fetchBlogPublishCategories(preferredConfig.id).catch(() => {
+      // Best-effort prefetch only; dialog fetch path will handle errors explicitly.
+    });
+  }, [apiKey, blogPublishConfigs, blogPublishDialogConfigId, selectedBlogPublishConfigId]);
+
+  useEffect(() => {
+    if (!isBlogPublishDialogOpen || !blogPublishDialogConfigId) {
+      setBlogPublishCategories([]);
+      setBlogPublishSelectedCategories([]);
+      setBlogPublishCategoriesError(null);
+      setIsBlogPublishCategoriesLoading(false);
+      return;
+    }
+
+    const selectedConfig = blogPublishConfigs.find((item) => item.id === blogPublishDialogConfigId) ?? null;
+    if (!selectedConfig || !isCnblogsPublishConfig(selectedConfig)) {
+      setBlogPublishCategories([]);
+      setBlogPublishSelectedCategories([]);
+      setBlogPublishCategoriesError(null);
+      setIsBlogPublishCategoriesLoading(false);
+      return;
+    }
+
+    let mounted = true;
+    const cachedCategories = readCachedBlogPublishCategories(blogPublishDialogConfigId);
+    if (cachedCategories) {
+      const filteredCategories = filterCnblogsPublishCategories(cachedCategories.items);
+      setBlogPublishCategories(filteredCategories);
+      setBlogPublishSelectedCategories(
+        resolveDefaultBlogPublishCategories(filteredCategories, selectedBlogFactoryItem, blogFactoryEditDraft.topicTagSnapshot),
+      );
+      setIsBlogPublishCategoriesLoading(false);
+    } else {
+      setBlogPublishCategories([]);
+      setBlogPublishSelectedCategories([]);
+      setIsBlogPublishCategoriesLoading(true);
+    }
+    setBlogPublishCategoriesError(null);
+    fetchBlogPublishCategories(blogPublishDialogConfigId)
+      .then((data) => {
+        if (!mounted) return;
+        const filteredCategories = filterCnblogsPublishCategories(data.items);
+        setBlogPublishCategories(filteredCategories);
+        setBlogPublishSelectedCategories(
+          resolveDefaultBlogPublishCategories(filteredCategories, selectedBlogFactoryItem, blogFactoryEditDraft.topicTagSnapshot),
+        );
+      })
+      .catch((error: Error) => {
+        if (!mounted) return;
+        setBlogPublishCategories([]);
+        setBlogPublishSelectedCategories([]);
+        setBlogPublishCategoriesError(error.message);
+      })
+      .finally(() => {
+        if (!mounted) return;
+        setIsBlogPublishCategoriesLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [
+    blogFactoryEditDraft.topicTagSnapshot,
+    blogPublishConfigs,
+    blogPublishDialogConfigId,
+    isBlogPublishDialogOpen,
+    selectedBlogFactoryItem,
+  ]);
 
   useEffect(() => {
     if (!apiKey) return;
@@ -2360,6 +2640,8 @@ function App() {
     setBlogFactoryEditError(null);
     setBlogFactoryStatusError(null);
     setBlogFactoryTaskCopyError(null);
+    setBlogFactoryMaskError(null);
+    setBlogFactoryMaskNotice(null);
     setHasCopiedBlogFactoryTask(false);
     setBlogPublishError(null);
     setBlogPublishSuccess(null);
@@ -2380,6 +2662,10 @@ function App() {
     setBlogFactoryArticleError(null);
     setBlogFactoryArticleCopiedMode(null);
   }, [selectedBlogFactoryItem?.id, selectedBlogFactoryItem?.article_markdown, selectedBlogFactoryItem?.article_file_path]);
+
+  useEffect(() => {
+    setSelectedBlogFactoryMaskRuleId((current) => resolveBlogFactoryMaskRuleId(blogFactoryMaskRules, current));
+  }, [blogFactoryMaskRules]);
 
   const trustScore = useMemo(() => {
     let score = 38;
@@ -2675,6 +2961,12 @@ function App() {
     setBlogFactoryTotal(0);
     setBlogFactoryUsername("");
     setSelectedBlogFactoryItem(null);
+    setBlogFactoryMaskRules([]);
+    setSelectedBlogFactoryMaskRuleId(null);
+    setIsBlogFactoryMaskDialogOpen(false);
+    setBlogFactoryMaskRuleDraft(createEmptyBlogFactoryMaskRule());
+    setBlogFactoryMaskError(null);
+    setBlogFactoryMaskNotice(null);
     setTodoItems([]);
     setTodoTotal(0);
     setTodoUsername("");
@@ -2861,6 +3153,81 @@ function App() {
     } finally {
       setIsBlogFactoryItemSaving(false);
     }
+  }
+
+  function handleOpenBlogFactoryMaskDialog() {
+    const selectedRule = blogFactoryMaskRules.find((item) => item.id === selectedBlogFactoryMaskRuleId) ?? null;
+    setBlogFactoryMaskRuleDraft(selectedRule ? cloneBlogFactoryMaskRule(selectedRule) : createEmptyBlogFactoryMaskRule());
+    setBlogFactoryMaskError(null);
+    setIsBlogFactoryMaskDialogOpen(true);
+  }
+
+  function handleCreateBlogFactoryMaskRule() {
+    setBlogFactoryMaskRuleDraft(createEmptyBlogFactoryMaskRule());
+    setBlogFactoryMaskError(null);
+  }
+
+  function handleSelectBlogFactoryMaskRule(ruleId: string) {
+    const selectedRule = blogFactoryMaskRules.find((item) => item.id === ruleId);
+    if (!selectedRule) return;
+    setSelectedBlogFactoryMaskRuleId(ruleId);
+    setBlogFactoryMaskRuleDraft(cloneBlogFactoryMaskRule(selectedRule));
+    setBlogFactoryMaskError(null);
+  }
+
+  function handleSaveBlogFactoryMaskRule() {
+    const normalizedRule = normalizeBlogFactoryMaskRule(blogFactoryMaskRuleDraft);
+    if (!normalizedRule.name) {
+      setBlogFactoryMaskError("规则名称不能为空。");
+      return;
+    }
+    if (!hasEnabledBlogFactoryMaskRule(normalizedRule)) {
+      setBlogFactoryMaskError("至少配置一个关键词替换或开启一个通用脱敏项。");
+      return;
+    }
+
+    setBlogFactoryMaskRules((current) => {
+      const nextRule = cloneBlogFactoryMaskRule(normalizedRule);
+      return current.some((item) => item.id === nextRule.id)
+        ? current.map((item) => (item.id === nextRule.id ? nextRule : item))
+        : [nextRule, ...current];
+    });
+    setSelectedBlogFactoryMaskRuleId(normalizedRule.id);
+    setBlogFactoryMaskRuleDraft(cloneBlogFactoryMaskRule(normalizedRule));
+    setBlogFactoryMaskError(null);
+    setBlogFactoryMaskNotice(`已保存脱敏规则“${normalizedRule.name}”。`);
+  }
+
+  function handleApplyBlogFactoryMaskRule(ruleId: string | null = selectedBlogFactoryMaskRuleId) {
+    if (!blogFactoryEditDraft.taskContent.trim()) {
+      setBlogFactoryMaskError("当前任务内容为空，无法执行脱敏。");
+      return;
+    }
+
+    const selectedRule = blogFactoryMaskRules.find((item) => item.id === ruleId);
+    if (!selectedRule) {
+      setBlogFactoryMaskError("请先保存并选择一套脱敏规则。");
+      return;
+    }
+
+    const normalizedRule = normalizeBlogFactoryMaskRule(selectedRule);
+    if (!hasEnabledBlogFactoryMaskRule(normalizedRule)) {
+      setBlogFactoryMaskError("所选规则未启用任何脱敏项。");
+      return;
+    }
+
+    const nextTaskContent = applyBlogFactoryMaskRule(blogFactoryEditDraft.taskContent, normalizedRule);
+    setBlogFactoryEditDraft((current) => ({
+      ...current,
+      taskContent: nextTaskContent,
+    }));
+    setBlogFactoryEditError(null);
+    setBlogFactoryMaskError(null);
+    setBlogFactoryMaskNotice(
+      nextTaskContent === blogFactoryEditDraft.taskContent
+        ? `已应用规则“${normalizedRule.name}”，当前内容未命中可脱敏片段。`
+        : `已按规则“${normalizedRule.name}”更新当前任务内容。`,
+    );
   }
 
   async function handleUpdateBlogFactoryContentStatus(status: KnowledgeStatus) {
@@ -3084,12 +3451,30 @@ function App() {
   }
 
   function handleOpenBlogPublishDialog(mode: BlogPublishDialogMode) {
-    const preferredConfig = resolvePreferredBlogPublishConfig(blogPublishConfigs, blogPublishDialogConfigId ?? selectedBlogPublishConfigId);
+    const preferredConfig = resolvePreferredBlogPublishConfig(
+      blogPublishConfigs,
+      selectedBlogFactoryItem?.remote_publish_config_id ?? blogPublishDialogConfigId ?? selectedBlogPublishConfigId,
+    );
     setBlogPublishDialogMode(mode);
     setBlogPublishDialogConfigId(preferredConfig?.id ?? null);
+    setBlogPublishSubmissionOption(selectedBlogFactoryItem?.remote_submission_option ?? "CNBLOGS_HOME");
+    setBlogPublishCategories([]);
+    setBlogPublishSelectedCategories([]);
+    setBlogPublishTagDraft(
+      selectedBlogFactoryItem?.remote_tags_snapshot ?? blogFactoryEditDraft.topicTagSnapshot ?? selectedBlogFactoryItem?.topic_tag_snapshot ?? "",
+    );
+    setBlogPublishCategoriesError(null);
     setBlogPublishError(null);
     setBlogPublishSuccess(null);
     setIsBlogPublishDialogOpen(true);
+  }
+
+  function handleBlogPublishDialogConfigChange(configId: number) {
+    setBlogPublishDialogConfigId(configId);
+    setBlogPublishSubmissionOption("CNBLOGS_HOME");
+    setBlogPublishCategories([]);
+    setBlogPublishSelectedCategories([]);
+    setBlogPublishCategoriesError(null);
   }
 
   async function handleConfirmBlogPublishFromDialog() {
@@ -3109,7 +3494,9 @@ function App() {
         configId: blogPublishDialogConfigId,
         articleMarkdown: publishMarkdown,
         articleTitle: extractMarkdownHeading(publishMarkdown) || selectedBlogFactoryItem.article_title || undefined,
-        tags: splitBlogPublishTags(blogFactoryEditDraft.topicTagSnapshot || selectedBlogFactoryItem.topic_tag_snapshot),
+        categories: blogPublishSelectedCategories,
+        tags: splitBlogPublishTags(blogPublishTagDraft),
+        submissionOption: blogPublishSubmissionOption,
         publish: blogPublishDialogMode === "publish",
       });
       clearApiResponseCache();
@@ -4453,6 +4840,10 @@ function App() {
               publishSuccess={blogPublishSuccess}
               isPublishing={isBlogPublishing}
               editDraft={blogFactoryEditDraft}
+              maskRules={blogFactoryMaskRules}
+              selectedMaskRuleId={selectedBlogFactoryMaskRuleId}
+              maskError={blogFactoryMaskError}
+              maskNotice={blogFactoryMaskNotice}
               hasCopiedTask={hasCopiedBlogFactoryTask}
               filters={{
                 username: blogFactoryUsername,
@@ -4484,6 +4875,9 @@ function App() {
               }}
               onPageChange={setBlogFactoryPage}
               onEditDraftChange={setBlogFactoryEditDraft}
+              onMaskRuleChange={setSelectedBlogFactoryMaskRuleId}
+              onOpenMaskDialog={handleOpenBlogFactoryMaskDialog}
+              onApplyMaskRule={handleApplyBlogFactoryMaskRule}
               onCopyTask={handleCopyBlogFactoryTaskContent}
               onOpenPublishConfig={handleOpenBlogPublishConfigDialog}
               onOpenPublishDialog={handleOpenBlogPublishDialog}
@@ -4938,15 +5332,40 @@ function App() {
         error={blogPublishError}
         isOpen={isBlogPublishDialogOpen}
         isPending={isBlogPublishing}
+        isCategoriesLoading={isBlogPublishCategoriesLoading}
         mode={blogPublishDialogMode}
+        categoryOptions={blogPublishCategories}
+        categoriesError={blogPublishCategoriesError}
+        selectedCategories={blogPublishSelectedCategories}
+        submissionOption={blogPublishSubmissionOption}
         selectedConfigId={blogPublishDialogConfigId}
-        tags={splitBlogPublishTags(blogFactoryEditDraft.topicTagSnapshot || selectedBlogFactoryItem?.topic_tag_snapshot)}
+        tags={blogPublishTagDraft}
         onClose={() => {
           if (!isBlogPublishing) setIsBlogPublishDialogOpen(false);
         }}
-        onConfigChange={setBlogPublishDialogConfigId}
+        onCategoryToggle={(categoryTitle) =>
+          setBlogPublishSelectedCategories((current) =>
+            current.includes(categoryTitle) ? current.filter((item) => item !== categoryTitle) : [...current, categoryTitle],
+          )
+        }
+        onConfigChange={handleBlogPublishDialogConfigChange}
         onConfirm={handleConfirmBlogPublishFromDialog}
         onModeChange={setBlogPublishDialogMode}
+        onSubmissionOptionChange={setBlogPublishSubmissionOption}
+        onTagsChange={setBlogPublishTagDraft}
+      />
+      <BlogFactoryMaskRuleDialog
+        draft={blogFactoryMaskRuleDraft}
+        error={blogFactoryMaskError}
+        isOpen={isBlogFactoryMaskDialogOpen}
+        notice={blogFactoryMaskNotice}
+        rules={blogFactoryMaskRules}
+        selectedRuleId={selectedBlogFactoryMaskRuleId}
+        onClose={() => setIsBlogFactoryMaskDialogOpen(false)}
+        onCreateRule={handleCreateBlogFactoryMaskRule}
+        onDraftChange={setBlogFactoryMaskRuleDraft}
+        onSave={handleSaveBlogFactoryMaskRule}
+        onSelectRule={handleSelectBlogFactoryMaskRule}
       />
       <AppConfirmDialog
         confirmLabel={isBlogPublishConfigDeleting ? "删除中" : "确认删除"}
@@ -5715,6 +6134,252 @@ function AppConfirmDialog({
   );
 }
 
+function BlogFactoryMaskRuleDialog({
+  draft,
+  error,
+  isOpen,
+  notice,
+  rules,
+  selectedRuleId,
+  onClose,
+  onCreateRule,
+  onDraftChange,
+  onSave,
+  onSelectRule,
+}: {
+  draft: BlogFactoryMaskRule;
+  error: string | null;
+  isOpen: boolean;
+  notice: string | null;
+  rules: BlogFactoryMaskRule[];
+  selectedRuleId: string | null;
+  onClose: () => void;
+  onCreateRule: () => void;
+  onDraftChange: (draft: BlogFactoryMaskRule) => void;
+  onSave: () => void;
+  onSelectRule: (ruleId: string) => void;
+}) {
+  useEffect(() => {
+    if (!isOpen) return;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 overflow-y-auto bg-black/62 px-4 py-4 backdrop-blur-sm sm:grid sm:place-items-center sm:py-6"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <section
+        aria-modal="true"
+        className="mx-auto grid max-h-[calc(100dvh-2rem)] w-full max-w-5xl gap-4 overflow-y-auto rounded-xl border border-white/10 bg-ink-900 p-4 shadow-soft-glow sm:p-5 lg:max-h-[min(92vh,820px)] lg:grid-cols-[280px_minmax(0,1fr)] lg:overflow-hidden"
+        role="dialog"
+      >
+        <aside className="min-h-0 rounded-lg border border-white/10 bg-white/[0.03] p-4 lg:flex lg:flex-col">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <div className="mb-1 flex items-center gap-2 text-sm text-mint-300">
+                <LockKeyhole size={16} />
+                Blog Factory 脱敏
+              </div>
+              <h2 className="text-lg font-semibold text-slate-50">脱敏规则</h2>
+            </div>
+            <button
+              className="flex h-9 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-xs text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300"
+              type="button"
+              onClick={onCreateRule}
+            >
+              <Plus size={14} />
+              新增
+            </button>
+          </div>
+
+          <div className="space-y-2 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+            {rules.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-white/10 bg-white/[0.02] p-4 text-sm leading-6 text-slate-500">
+                还没有保存的脱敏规则。可以先新增一套规则，保存后回到任务内容中直接应用。
+              </div>
+            ) : (
+              rules.map((rule) => (
+                <button
+                  key={rule.id}
+                  className={`block w-full rounded-lg border p-3 text-left transition ${
+                    selectedRuleId === rule.id ? "border-mint-300/40 bg-mint-300/10" : "border-white/10 bg-white/[0.02] hover:border-mint-300/25"
+                  }`}
+                  type="button"
+                  onClick={() => onSelectRule(rule.id)}
+                >
+                  <div className="mb-1 truncate text-sm font-medium text-slate-100">{rule.name || "未命名规则"}</div>
+                  <div className="text-xs leading-5 text-slate-500">{describeBlogFactoryMaskRule(rule)}</div>
+                </button>
+              ))
+            )}
+          </div>
+        </aside>
+
+        <div className="min-h-0 rounded-lg border border-white/10 bg-white/[0.028] p-4 lg:overflow-y-auto">
+          <div className="mb-4 flex items-start justify-between gap-3">
+            <div>
+              <div className="mb-1 text-sm text-slate-400">当前配置</div>
+              <h3 className="text-lg font-semibold text-slate-50">{draft.name.trim() ? draft.name : "新增脱敏规则"}</h3>
+            </div>
+            <div className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-slate-400">
+              {describeBlogFactoryMaskRule(draft)}
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field label="规则名称" icon={<FileText size={16} />}>
+                <input
+                  className="control"
+                  maxLength={40}
+                  value={draft.name}
+                  onChange={(event) => onDraftChange({ ...draft, name: event.target.value })}
+                  placeholder="如：客户信息脱敏"
+                />
+              </Field>
+              <Field label="规则说明" icon={<Tags size={16} />}>
+                <input
+                  className="control"
+                  maxLength={120}
+                  value={draft.description}
+                  onChange={(event) => onDraftChange({ ...draft, description: event.target.value })}
+                  placeholder="记录适用场景，便于复用"
+                />
+              </Field>
+            </div>
+
+            <div className="rounded-lg border border-white/10 bg-white/[0.025] p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm font-medium text-slate-100">关键词替换</div>
+                  <div className="text-xs text-slate-500">支持多组“原词 {"->"} 替换词”，按顺序应用。</div>
+                </div>
+                <button
+                  className="flex h-9 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-xs text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300"
+                  type="button"
+                  onClick={() =>
+                    onDraftChange({
+                      ...draft,
+                      keywordReplacements: [...draft.keywordReplacements, createEmptyBlogFactoryKeywordReplacement()],
+                    })
+                  }
+                >
+                  <Plus size={14} />
+                  添加替换
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                {draft.keywordReplacements.map((item, index) => (
+                  <div key={item.id} className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+                    <input
+                      className="control"
+                      value={item.keyword}
+                      onChange={(event) =>
+                        onDraftChange({
+                          ...draft,
+                          keywordReplacements: draft.keywordReplacements.map((entry) =>
+                            entry.id === item.id ? { ...entry, keyword: event.target.value } : entry,
+                          ),
+                        })
+                      }
+                      placeholder={`原词 ${index + 1}`}
+                    />
+                    <input
+                      className="control"
+                      value={item.replacement}
+                      onChange={(event) =>
+                        onDraftChange({
+                          ...draft,
+                          keywordReplacements: draft.keywordReplacements.map((entry) =>
+                            entry.id === item.id ? { ...entry, replacement: event.target.value } : entry,
+                          ),
+                        })
+                      }
+                      placeholder="替换为"
+                    />
+                    <button
+                      className="grid h-11 w-11 place-items-center rounded-lg border border-red-300/20 bg-red-400/10 text-red-200 transition hover:bg-red-400/16"
+                      disabled={draft.keywordReplacements.length <= 1}
+                      type="button"
+                      onClick={() =>
+                        onDraftChange({
+                          ...draft,
+                          keywordReplacements:
+                            draft.keywordReplacements.length <= 1
+                              ? [createEmptyBlogFactoryKeywordReplacement()]
+                              : draft.keywordReplacements.filter((entry) => entry.id !== item.id),
+                        })
+                      }
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-white/10 bg-white/[0.025] p-4">
+              <div className="mb-3 text-sm font-medium text-slate-100">通用脱敏项</div>
+              <div className="grid gap-3 md:grid-cols-2">
+                {BLOG_FACTORY_MASK_TOGGLE_OPTIONS.map((option) => (
+                  <label key={option.key} className="flex items-start gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-3">
+                    <input
+                      checked={draft[option.key]}
+                      className="mt-1 h-4 w-4 rounded border-white/15 bg-white/[0.03]"
+                      type="checkbox"
+                      onChange={(event) => onDraftChange({ ...draft, [option.key]: event.target.checked })}
+                    />
+                    <span>
+                      <span className="block text-sm text-slate-200">{option.label}</span>
+                      <span className="block text-xs leading-5 text-slate-500">{option.description}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {notice ? <div className="mt-4 rounded-lg border border-mint-300/20 bg-mint-300/10 px-3 py-3 text-sm text-mint-100">{notice}</div> : null}
+          {error ? <div className="mt-4 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100">{error}</div> : null}
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            <button
+              className="h-11 rounded-lg border border-white/10 bg-white/[0.035] px-4 font-medium text-slate-300 transition hover:border-white/20 hover:text-slate-100"
+              type="button"
+              onClick={onClose}
+            >
+              关闭
+            </button>
+            <button
+              className="flex h-11 items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 font-medium text-mint-300 transition hover:bg-mint-300/20"
+              type="button"
+              onClick={onSave}
+            >
+              <Save size={17} />
+              保存规则
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function BlogPublishConfigDialog({
   configs,
   selectedConfigId,
@@ -5964,30 +6629,46 @@ function BlogPublishConfigDialog({
 
 function BlogPublishDialog({
   articleTitle,
+  categoryOptions,
+  categoriesError,
   configs,
   error,
+  isCategoriesLoading,
   isOpen,
   isPending,
   mode,
+  submissionOption,
   selectedConfigId,
+  selectedCategories,
   tags,
+  onCategoryToggle,
   onClose,
   onConfigChange,
   onConfirm,
   onModeChange,
+  onSubmissionOptionChange,
+  onTagsChange,
 }: {
   articleTitle: string;
+  categoryOptions: BlogPublishCategory[];
+  categoriesError: string | null;
   configs: BlogPublishConfig[];
   error: string | null;
+  isCategoriesLoading: boolean;
   isOpen: boolean;
   isPending: boolean;
   mode: BlogPublishDialogMode;
+  submissionOption: BlogPublishSubmissionOption;
   selectedConfigId: number | null;
-  tags: string[];
+  selectedCategories: string[];
+  tags: string;
+  onCategoryToggle: (categoryTitle: string) => void;
   onClose: () => void;
   onConfigChange: (configId: number) => void;
   onConfirm: () => void;
   onModeChange: (mode: BlogPublishDialogMode) => void;
+  onSubmissionOptionChange: (option: BlogPublishSubmissionOption) => void;
+  onTagsChange: (value: string) => void;
 }) {
   useEffect(() => {
     if (!isOpen) return;
@@ -6005,10 +6686,12 @@ function BlogPublishDialog({
   if (!isOpen) return null;
 
   const selectedConfig = configs.find((item) => item.id === selectedConfigId) ?? null;
+  const isCnblogsConfig = selectedConfig ? isCnblogsPublishConfig(selectedConfig) : false;
+  const parsedTags = splitBlogPublishTags(tags);
 
   return (
     <div
-      className="fixed inset-0 z-50 grid place-items-center bg-black/62 px-4 backdrop-blur-sm"
+      className="fixed inset-0 z-50 overflow-y-auto bg-black/62 px-4 py-4 backdrop-blur-sm sm:grid sm:place-items-center sm:py-6"
       role="presentation"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget && !isPending) onClose();
@@ -6016,7 +6699,7 @@ function BlogPublishDialog({
     >
       <section
         aria-modal="true"
-        className="w-full max-w-lg rounded-lg border border-white/10 bg-ink-900 p-5 shadow-soft-glow"
+        className="mx-auto w-full max-w-2xl rounded-lg border border-white/10 bg-ink-900 p-5 shadow-soft-glow"
         role="dialog"
       >
         <div className="mb-4 flex items-start gap-3">
@@ -6032,7 +6715,10 @@ function BlogPublishDialog({
         <div className="mb-4 rounded-lg border border-white/10 bg-white/[0.035] px-3 py-3 text-sm leading-6 text-slate-400">
           <div className="mb-1 text-xs uppercase tracking-[0.18em] text-slate-600">Article</div>
           <div className="text-slate-200">{articleTitle || "未识别标题"}</div>
-          <div className="mt-2 text-xs text-slate-500">{tags.length > 0 ? `标签：${tags.join(" / ")}` : "标签：未设置"}</div>
+          <div className="mt-2 text-xs text-slate-500">
+            {selectedCategories.length > 0 ? `个人分类：${selectedCategories.join(" / ")}` : "个人分类：未设置"}
+          </div>
+          <div className="mt-1 text-xs text-slate-500">{parsedTags.length > 0 ? `Tag：${parsedTags.join(" / ")}` : "Tag：未设置"}</div>
         </div>
 
         <div className="mb-4 grid gap-4 sm:grid-cols-2">
@@ -6052,6 +6738,19 @@ function BlogPublishDialog({
               ))}
             </select>
           </Field>
+          {isCnblogsConfig ? (
+            <Field label="投稿选项" icon={<Send size={16} />}>
+              <select
+                className="control"
+                disabled={isPending}
+                value={submissionOption}
+                onChange={(event) => onSubmissionOptionChange(event.target.value as BlogPublishSubmissionOption)}
+              >
+                <option value="CNBLOGS_HOME">投稿至博客园首页</option>
+                <option value="PERSONAL_ONLY">仅发布到个人博客</option>
+              </select>
+            </Field>
+          ) : null}
           <Field label="发布状态" icon={<Radio size={16} />}>
             <div className="flex h-11 overflow-hidden rounded-lg border border-white/10 bg-white/[0.03]">
               <button
@@ -6072,6 +6771,66 @@ function BlogPublishDialog({
               </button>
             </div>
           </Field>
+        </div>
+
+        {isCnblogsConfig ? (
+          <div className="mb-4 rounded-lg border border-white/10 bg-white/[0.03] p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <div className="text-sm font-medium text-slate-200">博客园个人分类</div>
+                <div className="text-xs text-slate-500">首页是否投稿由上方“投稿选项”控制；这里仅保留可勾选的随笔分类。</div>
+              </div>
+              {isCategoriesLoading ? <Loader2 className="animate-spin text-mint-300" size={16} /> : null}
+            </div>
+            {categoriesError ? <div className="mb-3 text-sm text-red-200">{categoriesError}</div> : null}
+            {categoryOptions.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-white/10 px-3 py-3 text-sm text-slate-500">
+                {isCategoriesLoading ? "正在读取随笔分类…" : "当前博客未返回可用的随笔分类，可继续发布但不会自动附带分类。"}
+              </div>
+            ) : (
+              <div className="grid gap-2 sm:grid-cols-2">
+                {categoryOptions.map((category) => {
+                  const checked = selectedCategories.includes(category.title);
+                  return (
+                    <label
+                      key={`${category.category_id ?? "title"}-${category.title}`}
+                      className={`flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-3 text-sm transition ${
+                        checked
+                          ? "border-mint-300/35 bg-mint-300/10 text-mint-100"
+                          : "border-white/10 bg-white/[0.02] text-slate-300 hover:border-mint-300/25"
+                      }`}
+                    >
+                      <input
+                        checked={checked}
+                        className="mt-0.5 h-4 w-4 rounded border-white/15 bg-white/[0.03]"
+                        disabled={isPending}
+                        type="checkbox"
+                        onChange={() => onCategoryToggle(category.title)}
+                      />
+                      <span className="min-w-0">
+                        <span className="block truncate">{category.title}</span>
+                        {category.description ? <span className="mt-1 block text-xs text-slate-500">{category.description}</span> : null}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        ) : null}
+
+        <div className="mb-4 rounded-lg border border-white/10 bg-white/[0.03] p-4">
+          <div className="mb-3">
+            <div className="text-sm font-medium text-slate-200">Tag 标签</div>
+            <div className="text-xs text-slate-500">用于写入博客标签；默认取任务记录中的主题标签，可按逗号分隔单独调整。</div>
+          </div>
+          <input
+            className="control"
+            disabled={isPending}
+            placeholder="例如：AI, Oracle, APEX"
+            value={tags}
+            onChange={(event) => onTagsChange(event.target.value)}
+          />
         </div>
 
         {selectedConfig ? (
@@ -7634,12 +8393,19 @@ function BlogFactoryRecords({
   publishSuccess,
   isPublishing,
   editDraft,
+  maskRules,
+  selectedMaskRuleId,
+  maskError,
+  maskNotice,
   hasCopiedTask,
   filters,
   onFilterChange,
   onClearFilters,
   onPageChange,
   onEditDraftChange,
+  onMaskRuleChange,
+  onOpenMaskDialog,
+  onApplyMaskRule,
   onCopyTask,
   onOpenPublishConfig,
   onOpenPublishDialog,
@@ -7675,12 +8441,19 @@ function BlogFactoryRecords({
   publishSuccess: BlogFactoryPublishResult | null;
   isPublishing: boolean;
   editDraft: BlogFactoryEditDraft;
+  maskRules: BlogFactoryMaskRule[];
+  selectedMaskRuleId: string | null;
+  maskError: string | null;
+  maskNotice: string | null;
   hasCopiedTask: boolean;
   filters: BlogFactoryFilters;
   onFilterChange: (filters: Partial<BlogFactoryFilters>) => void;
   onClearFilters: () => void;
   onPageChange: (page: number) => void;
   onEditDraftChange: (draft: BlogFactoryEditDraft) => void;
+  onMaskRuleChange: (ruleId: string | null) => void;
+  onOpenMaskDialog: () => void;
+  onApplyMaskRule: (ruleId?: string | null) => void;
   onCopyTask: (view: BlogFactoryTaskCopyMode) => void;
   onOpenPublishConfig: () => void;
   onOpenPublishDialog: (mode: BlogPublishDialogMode) => void;
@@ -7698,6 +8471,14 @@ function BlogFactoryRecords({
   const publishMarkdown = selectedItem ? resolveBlogFactoryPublishMarkdown(selectedItem, selectedItem.article_markdown, editDraft.taskContent) : "";
   const publishTitle = selectedItem ? extractMarkdownHeading(publishMarkdown) || selectedItem.article_title || "" : "";
   const canPublish = publishMarkdown.trim().length > 0 && publishConfigs.length > 0 && !isPublishing;
+  const selectedMaskRule = maskRules.find((item) => item.id === selectedMaskRuleId) ?? null;
+  const canApplyMaskRule =
+    selectedItem !== null &&
+    editDraft.taskContent.trim().length > 0 &&
+    selectedMaskRule !== null &&
+    hasEnabledBlogFactoryMaskRule(selectedMaskRule) &&
+    !isItemSaving &&
+    !isDeleting;
   const visibleUsers = getVisibleUsers(authUser);
   const isAdminUser = authUser?.is_admin ?? false;
   const hasSingleVisibleUser = !isAdminUser && visibleUsers.length <= 1;
@@ -7820,11 +8601,59 @@ function BlogFactoryRecords({
             </div>
             <div className="space-y-4">
               <Field label="任务内容" icon={<FileText size={16} />}>
-                <textarea
-                  className="control min-h-[180px] resize-none font-mono text-xs leading-6 text-slate-200"
-                  value={editDraft.taskContent}
-                  onChange={(event) => onEditDraftChange({ ...editDraft, taskContent: event.target.value })}
-                />
+                <div className="space-y-3">
+                  <div className="grid gap-2 xl:grid-cols-[minmax(0,1fr)_auto_auto]">
+                    <select
+                      className="control"
+                      value={selectedMaskRuleId ?? ""}
+                      onChange={(event) => onMaskRuleChange(event.target.value || null)}
+                    >
+                      <option value="">{maskRules.length > 0 ? "选择脱敏规则" : "暂无已保存规则"}</option>
+                      {maskRules.map((rule) => (
+                        <option key={rule.id} value={rule.id}>
+                          {rule.name}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      className="flex h-11 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-4 text-sm text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300"
+                      type="button"
+                      onClick={onOpenMaskDialog}
+                    >
+                      <LockKeyhole size={16} />
+                      脱敏规则
+                    </button>
+                    <button
+                      className="flex h-11 items-center justify-center gap-2 rounded-lg border border-amberline/25 bg-amberline/10 px-4 text-sm text-amber-100 transition hover:bg-amberline/15 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
+                      disabled={!canApplyMaskRule}
+                      type="button"
+                      onClick={() => onApplyMaskRule(selectedMaskRuleId)}
+                    >
+                      <ShieldCheck size={16} />
+                      应用脱敏
+                    </button>
+                  </div>
+                  {selectedMaskRule ? (
+                    <div className="rounded-lg border border-white/10 bg-white/[0.025] px-3 py-2 text-xs leading-6 text-slate-400">
+                      {describeBlogFactoryMaskRule(selectedMaskRule)}
+                    </div>
+                  ) : null}
+                  <textarea
+                    className="control min-h-[180px] resize-none font-mono text-xs leading-6 text-slate-200"
+                    value={editDraft.taskContent}
+                    onChange={(event) => onEditDraftChange({ ...editDraft, taskContent: event.target.value })}
+                  />
+                  {maskNotice ? (
+                    <div className="rounded-lg border border-mint-300/20 bg-mint-300/10 px-3 py-2 text-xs leading-6 text-mint-100">
+                      {maskNotice}
+                    </div>
+                  ) : null}
+                  {maskError ? (
+                    <div className="rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-2 text-xs leading-6 text-red-100">
+                      {maskError}
+                    </div>
+                  ) : null}
+                </div>
               </Field>
               <Field label="问题快照" icon={<Sparkles size={16} />}>
                 <textarea
@@ -7850,7 +8679,7 @@ function BlogFactoryRecords({
                     onChange={(event) => onEditDraftChange({ ...editDraft, sourceSnapshot: event.target.value })}
                   />
                 </Field>
-                <Field label="标签" icon={<Tags size={16} />}>
+                <Field label="主题标签" icon={<Tags size={16} />}>
                   <input
                     className="control"
                     maxLength={100}
@@ -11552,7 +12381,7 @@ function HistoryAskPanel({
                     {(answer.selected_skills ?? []).map((skill) => (
                       <span
                         key={skill.id}
-                        className="rounded-md border border-sky-300/25 bg-sky-300/10 px-2 py-1 text-sky-100"
+                        className="rounded-md border border-sky-300/25 bg-sky-300/10 px-2 py-1 text-sky-200"
                       >
                         {skill.name}
                       </span>
@@ -13934,6 +14763,49 @@ function splitBlogPublishTags(value: string | null | undefined) {
   );
 }
 
+function isCnblogsPublishConfig(config: BlogPublishConfig) {
+  return /(?:^|\.)cnblogs\.com$/i.test(safeHostname(config.api_url)) || /(?:^|\.)cnblogs\.com$/i.test(safeHostname(config.blog_url));
+}
+
+function safeHostname(value: string | null | undefined) {
+  if (!value) return "";
+  try {
+    return new URL(value).hostname.toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+function resolveDefaultBlogPublishCategories(
+  options: BlogPublishCategory[],
+  selectedItem: BlogFactoryItem | null,
+  draftTopicTags: string,
+) {
+  const preferredTitles = new Set(
+    splitBlogPublishTags(selectedItem?.remote_categories_snapshot || draftTopicTags || selectedItem?.topic_tag_snapshot)
+      .map((tag) => normalizeCnblogsCategoryLabel(tag))
+      .filter(Boolean),
+  );
+  return options
+    .map((item) => item.title)
+    .filter((title) => preferredTitles.has(normalizeCnblogsCategoryLabel(title)));
+}
+
+function normalizeCnblogsCategoryLabel(value: string | null | undefined) {
+  return (value ?? "")
+    .toLowerCase()
+    .replace(/^[\[(（「【]\s*(随笔分类|文章分类|网站分类)\s*[\])）」】]\s*/u, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function filterCnblogsPublishCategories(options: BlogPublishCategory[]) {
+  return options.filter((item) => {
+    const haystack = normalizeCnblogsCategoryLabel(`${item.title} ${item.description ?? ""}`);
+    return haystack.includes("随笔分类");
+  });
+}
+
 function resolveBlogFactoryPublishMarkdown(
   item: BlogFactoryItem,
   articleDraft: string | null | undefined,
@@ -14026,6 +14898,7 @@ function readStoredUiState(): StoredUiState {
     const aiCoding = readRecord(stored.aiCoding);
     const workbenchDraft = readKnowledgeDraft(workbench.draft);
     const todoDraft = readTodoDraft(todos.draft);
+    const blogFactoryMaskRules = readBlogFactoryMaskRules(blogFactory.maskRules);
     const currentRecordDraft = readRecord(currentRecords.draft);
     const englishMaterialDraft = readEnglishMaterialDraft(englishMaterials.draft);
 
@@ -14064,6 +14937,8 @@ function readStoredUiState(): StoredUiState {
         selectedItemId: readNullablePositiveInteger(blogFactory.selectedItemId),
         articleDraft: readString(blogFactory.articleDraft),
         articlePathDraft: readString(blogFactory.articlePathDraft),
+        maskRules: blogFactoryMaskRules,
+        selectedMaskRuleId: resolveBlogFactoryMaskRuleId(blogFactoryMaskRules, readNullableString(blogFactory.selectedMaskRuleId)),
       },
       todos: {
         query: readString(todos.query),
@@ -14179,6 +15054,8 @@ function buildDefaultUiState(): StoredUiState {
       selectedItemId: null,
       articleDraft: "",
       articlePathDraft: "",
+      maskRules: [],
+      selectedMaskRuleId: null,
     },
     todos: {
       query: "",
@@ -14263,6 +15140,46 @@ function readTodoDraft(value: unknown): TodoDraft | null {
   };
 
   return nextDraft;
+}
+
+function readBlogFactoryMaskRules(value: unknown): BlogFactoryMaskRule[] {
+  if (!Array.isArray(value)) return [];
+
+  return value.flatMap((item) => {
+    const record = readRecord(item);
+    const id = readString(record.id);
+    if (!id) return [];
+
+    const keywordReplacements = Array.isArray(record.keywordReplacements)
+      ? record.keywordReplacements.flatMap((entry) => {
+          const replacement = readRecord(entry);
+          const keyword = readString(replacement.keyword);
+          if (!keyword.trim()) return [];
+          return [
+            {
+              id: readString(replacement.id) || buildLocalDraftId("mask-keyword"),
+              keyword: keyword.trim(),
+              replacement: readString(replacement.replacement),
+            },
+          ];
+        })
+      : [];
+
+    return [
+      {
+        id,
+        name: readString(record.name),
+        description: readString(record.description),
+        keywordReplacements,
+        maskPhone: typeof record.maskPhone === "boolean" ? record.maskPhone : false,
+        maskEmail: typeof record.maskEmail === "boolean" ? record.maskEmail : false,
+        maskIdCard: typeof record.maskIdCard === "boolean" ? record.maskIdCard : false,
+        maskBankCard: typeof record.maskBankCard === "boolean" ? record.maskBankCard : false,
+        maskUrl: typeof record.maskUrl === "boolean" ? record.maskUrl : false,
+        maskIp: typeof record.maskIp === "boolean" ? record.maskIp : false,
+      },
+    ];
+  });
 }
 
 function readEnglishMaterialDraft(value: unknown): EnglishMaterialDraft {

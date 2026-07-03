@@ -1,6 +1,8 @@
 import type {
+  BlogPublishCategory,
   BlogFactoryPublishResult,
   BlogFactoryItem,
+  BlogPublishSubmissionOption,
   CurrentDay,
   BlogFactoryStatus,
   BlogPublishConfig,
@@ -33,6 +35,11 @@ export interface BlogFactoryListResponse {
 
 export interface BlogPublishConfigListResponse {
   items: BlogPublishConfig[];
+  total: number;
+}
+
+export interface BlogPublishCategoryListResponse {
+  items: BlogPublishCategory[];
   total: number;
 }
 
@@ -607,19 +614,34 @@ export async function validateBlogPublishConfig({
   });
 }
 
+export async function fetchBlogPublishCategories(configId: number): Promise<BlogPublishCategoryListResponse> {
+  return request<BlogPublishCategoryListResponse>(`/api/blog-factory/publish-configs/${configId}/categories`);
+}
+
+export function readCachedBlogPublishCategories(configId: number): BlogPublishCategoryListResponse | null {
+  return readCachedApiResponse<BlogPublishCategoryListResponse>(
+    buildApiCacheKey(`/api/blog-factory/publish-configs/${configId}/categories`, readStoredApiKey()),
+    10 * 60 * 1000,
+  );
+}
+
 export async function publishBlogFactoryArticle({
   id,
   configId,
   articleMarkdown,
   articleTitle,
+  categories,
   tags,
+  submissionOption,
   publish,
 }: {
   id: number;
   configId?: number;
   articleMarkdown: string;
   articleTitle?: string;
+  categories?: string[];
   tags?: string[];
+  submissionOption?: BlogPublishSubmissionOption;
   publish: boolean;
 }): Promise<BlogFactoryPublishResult> {
   return request<BlogFactoryPublishResult>(`/api/blog-factory/${id}/publish`, {
@@ -628,7 +650,9 @@ export async function publishBlogFactoryArticle({
       config_id: configId ?? null,
       article_markdown: articleMarkdown,
       article_title: articleTitle || null,
+      categories: categories ?? [],
       tags: tags ?? [],
+      submission_option: submissionOption ?? "CNBLOGS_HOME",
       publish,
     }),
   });

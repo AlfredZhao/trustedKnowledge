@@ -35,6 +35,11 @@ class Settings(BaseSettings):
     allow_web_restart: bool = Field(False, validation_alias="TRUSTED_KNOWLEDGE_ALLOW_WEB_RESTART")
     allow_web_codex: bool = Field(False, validation_alias="TRUSTED_KNOWLEDGE_ALLOW_WEB_CODEX")
     codex_bin: str = Field("codex", validation_alias="TRUSTED_KNOWLEDGE_CODEX_BIN")
+    web_codex_user_concurrency: int = Field(
+        1,
+        validation_alias="TRUSTED_KNOWLEDGE_WEB_CODEX_USER_CONCURRENCY",
+        ge=1,
+    )
     history_ask_llm_api_key: str = Field("", validation_alias="TRUSTED_KNOWLEDGE_HISTORY_ASK_LLM_API_KEY")
     skill_storage_dir: str = Field("data/skills", validation_alias="TRUSTED_KNOWLEDGE_SKILL_STORAGE_DIR")
     skill_max_zip_mb: int = Field(20, validation_alias="TRUSTED_KNOWLEDGE_SKILL_MAX_ZIP_MB", ge=1)

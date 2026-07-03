@@ -19,6 +19,7 @@ from app.repositories.blog_publish import (
     BlogPublishConfigNotFoundError,
     create_blog_publish_config,
     delete_blog_publish_config,
+    list_blog_publish_categories,
     list_blog_publish_configs,
     publish_blog_factory_article,
     update_blog_publish_config,
@@ -38,6 +39,7 @@ from app.schemas.blog_publish import (
     BlogFactoryPublishRequest,
     BlogFactoryPublishResponse,
     BlogPublishConfig,
+    BlogPublishCategoryListResponse,
     BlogPublishConfigCreate,
     BlogPublishConfigListResponse,
     BlogPublishConfigUpdate,
@@ -195,6 +197,27 @@ async def post_blog_publish_config_validation(
     except MetaWeblogError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return BlogPublishConfigValidationResponse.model_validate(result)
+
+
+@router.get("/publish-configs/{config_id}/categories", response_model=BlogPublishCategoryListResponse)
+async def get_blog_publish_categories(
+    config_id: int,
+    auth_context: AuthContext = Depends(require_current_user),
+) -> BlogPublishCategoryListResponse:
+    try:
+        items = await list_blog_publish_categories(config_id, auth_context)
+    except BlogPublishConfigNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blog publish config not found") from exc
+    except MetaWeblogError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except oracledb.Error as exc:
+        error = exc.args[0] if exc.args else exc
+        message = getattr(error, "message", str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Oracle rejected the blog publish category query: {message}",
+        ) from exc
+    return BlogPublishCategoryListResponse.model_validate({"items": items, "total": len(items)})
 
 
 @router.get("/{item_id}", response_model=BlogFactoryItem)

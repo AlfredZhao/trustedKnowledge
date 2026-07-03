@@ -10,7 +10,7 @@ from app.db.oracle import acquire_connection
 from app.repositories.blog_factory import get_blog_factory_item
 from app.repositories.users import AuthContext, user_id_for_write
 from app.schemas.blog_publish import BlogFactoryPublishRequest, BlogPublishConfigCreate, BlogPublishConfigUpdate
-from app.services.metaweblog import publish_metaweblog_post, validate_metaweblog_config
+from app.services.metaweblog import list_metaweblog_categories, publish_metaweblog_post, validate_metaweblog_config
 
 
 CONFIG_COLUMNS = """
@@ -250,6 +250,47 @@ async def validate_blog_publish_config(
     }
 
 
+async def list_blog_publish_categories(config_id: int, auth_context: AuthContext) -> list[dict[str, Any]]:
+    async with acquire_connection() as connection:
+        await _ensure_blog_publish_table(connection)
+        cursor = connection.cursor()
+        config = await _get_blog_publish_config_with_password(cursor, config_id, auth_context)
+        if config is None:
+            raise BlogPublishConfigNotFoundError
+
+        resolved_blog, categories = await list_metaweblog_categories(
+            api_url=config["api_url"],
+            username=config["username"],
+            password=config["password_value"],
+            blog_url=config["blog_url"],
+            blog_name=config["blog_name"],
+            blog_id=config["blog_id"],
+        )
+        await cursor.execute(
+            """
+            update tk_blog_publish_configs
+            set blog_name = :blog_name,
+                blog_id = :blog_id,
+                updated_at = systimestamp
+            where config_id = :config_id
+            """,
+            {
+                "config_id": config["id"],
+                "blog_name": resolved_blog.blog_name,
+                "blog_id": resolved_blog.blog_id,
+            },
+        )
+        await connection.commit()
+    return [
+        {
+            "category_id": item.category_id,
+            "title": item.title,
+            "description": item.description,
+        }
+        for item in categories
+    ]
+
+
 async def publish_blog_factory_article(
     item_id: int,
     payload: BlogFactoryPublishRequest,
@@ -265,7 +306,7 @@ async def publish_blog_factory_article(
         item_owner_match, item_owner_params = _item_owner_params(config["user_id"])
         await cursor.execute(
             f"""
-            select knowledge_id, user_id, topic_tag_snapshot
+            select knowledge_id, user_id, topic_tag_snapshot, remote_post_id, nvl(factory_status, '待处理')
             from ai_blog_factory
             where id = :item_id
               and {item_owner_match}
@@ -280,9 +321,12 @@ async def publish_blog_factory_article(
         knowledge_id = row[0]
         item_user_id = row[1]
         topic_tag_snapshot = row[2]
+        remote_post_id = row[3]
+        current_factory_status = row[4]
         title = _resolve_article_title(payload.article_title, payload.article_markdown)
         if not title:
             raise ValueError("Markdown 正文缺少一级标题，请先补充文章标题。")
+        categories = payload.categories
         tags = payload.tags or _split_tags(topic_tag_snapshot)
         publish_markdown = _strip_leading_markdown_title(payload.article_markdown)
 
@@ -292,8 +336,11 @@ async def publish_blog_factory_article(
             password=config["password_value"],
             title=title,
             markdown=publish_markdown,
+            categories=categories,
             tags=tags,
+            submission_option=payload.submission_option,
             publish=payload.publish,
+            post_id=remote_post_id,
             blog_url=config["blog_url"],
             blog_name=config["blog_name"],
             blog_id=config["blog_id"],
@@ -313,7 +360,19 @@ async def publish_blog_factory_article(
                 "blog_id": publish_result.blog_id,
             },
         )
-        await _mark_factory_item_published(cursor, knowledge_id, item_user_id)
+        await _update_factory_publish_metadata(
+            cursor,
+            item_id=item_id,
+            config_id=config["id"],
+            post_id=publish_result.post_id,
+            publish=payload.publish,
+            submission_option=payload.submission_option,
+            categories=categories,
+            tags=tags,
+            current_factory_status=current_factory_status,
+        )
+        if payload.publish:
+            await _mark_factory_item_published(cursor, knowledge_id, item_user_id)
         await connection.commit()
 
     item = await get_blog_factory_item(item_id, auth_context)
@@ -546,6 +605,47 @@ async def _ensure_blog_publish_table(connection: oracledb.AsyncConnection) -> No
         end;
         """
     )
+
+
+async def _update_factory_publish_metadata(
+    cursor: Any,
+    *,
+    item_id: int,
+    config_id: int,
+    post_id: str,
+    publish: bool,
+    submission_option: str,
+    categories: list[str],
+    tags: list[str],
+    current_factory_status: str,
+) -> None:
+    factory_status = "已发布" if publish else ("已发布" if current_factory_status == "已发布" else "已处理")
+    remote_published_at_sql = "systimestamp" if publish else "remote_published_at"
+    await cursor.execute(
+        f"""
+        update ai_blog_factory
+        set remote_post_id = :post_id,
+            remote_publish_config_id = :config_id,
+            remote_publish_state = :publish_state,
+            remote_submission_option = :submission_option,
+            remote_categories_snapshot = :categories_snapshot,
+            remote_tags_snapshot = :tags_snapshot,
+            remote_last_synced_at = systimestamp,
+            remote_published_at = {remote_published_at_sql},
+            factory_status = :factory_status
+        where id = :item_id
+        """,
+        {
+            "item_id": item_id,
+            "config_id": config_id,
+            "post_id": post_id,
+            "publish_state": "published" if publish else "draft",
+            "submission_option": submission_option,
+            "categories_snapshot": _join_tags(categories),
+            "tags_snapshot": _join_tags(tags),
+            "factory_status": factory_status,
+        },
+    )
     await _add_column_if_missing(cursor, "owner_username varchar2(100)")
     await cursor.execute(
         """
@@ -655,6 +755,11 @@ def _split_tags(value: str | None) -> list[str]:
     if not value:
         return []
     return [tag[:100] for tag in re.split(r"[,，\n]+", value) if tag.strip()]
+
+
+def _join_tags(values: list[str]) -> str | None:
+    compact = [value.strip()[:100] for value in values if value.strip()]
+    return ",".join(compact) if compact else None
 
 
 def _item_owner_params(owner_id: int | None) -> tuple[str, dict[str, Any]]:

@@ -19,12 +19,36 @@ The format follows the common GitHub changelog convention inspired by
 - Added a light theme option alongside the existing dark workspace theme, with a top-bar sun/moon toggle that persists the user's choice.
 - 在现有深色工作台主题之外新增浅色主题，并提供顶部栏太阳/月亮一键切换，用户选择会持久化保存。
 
+- Added task-content masking rules to Blog Factory, including a pop-up rule editor, per-browser local rule persistence, multi-keyword replacements, and built-in masking for phone numbers, emails, ID cards, bank cards, URLs, and IP addresses.
+- 为博客工厂新增任务内容脱敏规则能力：支持弹出式规则配置、本地持久化保存多套规则、多关键词替换，以及手机号、邮箱、身份证、银行卡、URL、IP 等常见信息的内置脱敏。
+
 #### Changed / 变更
 
 - Changed the Overview trusted-knowledge panel to display only `未发布` knowledge items, and aligned the summary count with the same unpublished dataset.
 - 调整总览中的可信知识面板为仅显示 `未发布` 状态记录，并让顶部摘要计数与该未发布数据集保持一致。
 
 #### Fixed / 修复
+
+- Fixed Codex per-user scheduling so AI Coding and Knowledge Processing no longer share a hard single-task lock; web Codex concurrency is now configurable per user, and AI Coding restores only the latest `full` mode job to avoid cross-restoring Knowledge Processing runs.
+- 修复 Codex 的按用户调度限制：AI 编程与知识加工不再共享硬编码的单任务锁；网页 Codex 现支持按用户配置并发上限，且 AI 编程只会恢复最近一次 `full` 模式任务，避免把知识加工任务误恢复到编程工作台。
+
+- Fixed Blog Factory CNBlogs publishing so the publish dialog now exposes a `投稿选项` selector that defaults to `投稿至博客园首页`, and CNBlogs publish requests pass that choice through instead of silently omitting homepage submission.
+- 修复博客工厂发布到博客园时缺少 `投稿选项` 的问题：发布弹窗现在提供 `投稿选项` 选择，并默认设为 `投稿至博客园首页`；博客园发布请求也会把该选择一并提交，不再静默遗漏首页投稿设置。
+
+- Fixed Blog Factory CNBlogs category selection so the publish dialog now loads the current blog's个人分类列表 for selection, replacing the previous free-form tag entry behavior during发布.
+- 修复博客工厂发布到博客园时的分类选择方式：发布弹窗现在会读取当前博客的个人分类列表供用户勾选，替代之前依赖自由标签文本的发布行为。
+
+- Fixed Blog Factory CNBlogs category filtering so the publish dialog now treats `投稿选项` as the sole homepage-submission control and only keeps `随笔分类` entries in the category checklist, removing the confusing duplicate `发布至博客园首页` pseudo-category.
+- 修复博客工厂发布到博客园时的个人分类筛选：发布弹窗现在以 `投稿选项` 作为唯一的首页投稿开关，分类勾选区只保留 `随笔分类` 条目，移除容易引起误解的 `发布至博客园首页` 伪分类。
+
+- Fixed Blog Factory CNBlogs homepage submission so `投稿选项` now also auto-syncs the special `发布至博客园首页` category during Metaweblog publish requests, matching CNBlogs'实际投稿行为 instead of relying on `inSiteHome` alone.
+- 修复博客工厂发布到博客园首页投稿的实际生效问题：`投稿选项` 现在会在 Metaweblog 发布时自动同步特殊的 `发布至博客园首页` 分类，不再只依赖 `inSiteHome` 字段，从而更贴近博客园真实投稿行为。
+
+- Fixed Blog Factory Metaweblog publishing so CNBlogs personal categories no longer leak into `Tag` labels; the publish dialog now submits `随笔分类` as categories and keeps `Tag 标签` as a separate editable field sourced from the task's主题标签, while caching CNBlogs category lists to reduce repeat wait time.
+- 修复博客工厂 Metaweblog 发布时的分类/标签串线问题：博客园个人分类不再写入 `Tag` 标签；发布弹窗现在将 `随笔分类` 单独作为分类提交，并把 `Tag 标签` 独立为可编辑字段，默认取任务记录中的主题标签；同时为博客园分类列表增加缓存，减少重复打开时的等待时间。
+
+- Fixed Blog Factory Metaweblog draft/update behavior so saved drafts now persist the remote `post_id` and publish settings, letting later `保存草稿` update the same post, `确认发布` upgrade the draft in place, and the dialog reopen with the last-used config, categories, tags, and submission option restored.
+- 修复博客工厂 Metaweblog 的草稿/更新链路：已保存的草稿现在会持久化远端 `post_id` 和发布参数，后续再次 `保存草稿` 会更新同一篇文章，`确认发布` 会在原草稿上原地转为正式发布；重新打开弹窗时也会自动回填上次使用的配置、分类、标签和投稿选项。
 
 - Fixed Todo editor switching so unsaved changes are now preserved per item while navigating the Todo list; users can switch away and return without losing local edits, and the editor shows an explicit unsaved-change reminder until saved.
 - 修复待办事项编辑区的切换丢稿问题：现在每条 Todo 都会单独保留本地未保存草稿，用户切换到别的事项后再返回也不会丢失输入；编辑区同时增加未保存提示，避免误以为已落库。
@@ -52,6 +76,9 @@ The format follows the common GitHub changelog convention inspired by
 
 - Fixed light-theme modal surfaces so Blog Factory `博客工厂记录` actions like `配置API` and `发布到博客`, along with other button-triggered dialogs, no longer keep dark `ink` panels or overly dim overlays.
 - 修复浅色主题下的弹窗表面配色：博客工厂 `博客工厂记录` 中的 `配置API`、`发布到博客` 以及其它按钮触发的对话框不再保留深色 `ink` 面板和过暗遮罩。
+
+- Fixed the AI Ask result skill chips in light theme so selected skill names such as `自动化原始周报清洗规整` remain readable above the answer card.
+- 修复 AI 问数结果区的已选 Skill 标签在浅色主题下的可见性：像 `自动化原始周报清洗规整` 这类名称现在会在答案卡片上方保持清晰可读。
 
 ## 历史版本更新
 

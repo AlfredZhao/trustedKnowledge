@@ -7,9 +7,10 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import NamedTemporaryFile
+from typing import Literal
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 
 from app.core.config import settings
@@ -23,7 +24,8 @@ router = APIRouter(prefix="/codex", tags=["codex"], dependencies=[Depends(requir
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 CODEX_TIMEOUT_SECONDS = 900
-_codex_locks: dict[str, asyncio.Lock] = {}
+_codex_state_locks: dict[str, asyncio.Lock] = {}
+_codex_active_run_counts: dict[str, int] = {}
 _codex_jobs: dict[str, "CodexJobState"] = {}
 _latest_codex_job_ids: dict[str, str] = {}
 _codex_job_tasks: dict[str, asyncio.Task[None]] = {}
@@ -45,6 +47,7 @@ class CodexJobState:
     error_message: str | None = None
     started_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     completed_at: datetime | None = None
+    slot_reserved: bool = False
 
 
 @router.post("/runs", response_model=CodexRunResponse)
@@ -59,14 +62,10 @@ async def run_codex(
         )
 
     await _reconcile_codex_jobs(auth_context.username)
-    codex_lock = _get_codex_lock(auth_context.username)
-    if codex_lock.locked() or _has_running_codex_job(auth_context.username):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="A Codex task is already running. Wait for it to finish before starting another.",
-        )
+    if not await _try_reserve_codex_slot(auth_context.username):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_codex_concurrency_conflict_detail())
 
-    async with codex_lock:
+    try:
         started_at = time.monotonic()
         prompt = _build_prompt(payload.prompt.strip(), payload.skill_ids, auth_context, payload.output_mode)
         exec_args, output_path = _build_codex_exec_args(payload.sandbox_mode, payload.output_mode)
@@ -107,6 +106,8 @@ async def run_codex(
             output_path=output_path,
             stdout_bytes=stdout_bytes,
         )
+    finally:
+        await _release_codex_slot(auth_context.username)
 
     return CodexRunResponse(
         output=output_text,
@@ -129,12 +130,8 @@ async def stream_codex(
         )
 
     await _reconcile_codex_jobs(auth_context.username)
-    codex_lock = _get_codex_lock(auth_context.username)
-    if codex_lock.locked() or _has_running_codex_job(auth_context.username):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="A Codex task is already running. Wait for it to finish before starting another.",
-        )
+    if not await _try_reserve_codex_slot(auth_context.username):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_codex_concurrency_conflict_detail())
 
     return StreamingResponse(
         _stream_codex_events(
@@ -143,7 +140,6 @@ async def stream_codex(
             payload.sandbox_mode,
             auth_context,
             payload.output_mode,
-            codex_lock,
         ),
         media_type="application/x-ndjson",
         headers={"Cache-Control": "no-store"},
@@ -162,12 +158,8 @@ async def start_codex_job(
         )
 
     await _reconcile_codex_jobs(auth_context.username)
-    codex_lock = _get_codex_lock(auth_context.username)
-    if codex_lock.locked() or _has_running_codex_job(auth_context.username):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="A Codex task is already running. Wait for it to finish before starting another.",
-        )
+    if not await _try_reserve_codex_slot(auth_context.username):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_codex_concurrency_conflict_detail())
 
     job = CodexJobState(
         job_id=uuid4().hex,
@@ -176,19 +168,27 @@ async def start_codex_job(
         skill_ids=payload.skill_ids,
         sandbox_mode=payload.sandbox_mode,
         output_mode=payload.output_mode,
+        slot_reserved=True,
     )
     _codex_jobs[job.job_id] = job
     _latest_codex_job_ids[auth_context.username] = job.job_id
-    task = asyncio.create_task(_run_codex_job(job, auth_context))
+    try:
+        task = asyncio.create_task(_run_codex_job(job, auth_context))
+    except Exception:
+        await _release_job_slot(job)
+        raise
     _codex_job_tasks[job.job_id] = task
     task.add_done_callback(lambda completed_task: _handle_codex_job_task_done(job, completed_task))
     return _snapshot_codex_job(job)
 
 
 @router.get("/runs/jobs/latest", response_model=CodexJobSnapshot)
-async def get_latest_codex_job(auth_context: AuthContext = Depends(require_current_user)) -> CodexJobSnapshot:
+async def get_latest_codex_job(
+    output_mode: Literal["full", "final"] | None = Query(default=None),
+    auth_context: AuthContext = Depends(require_current_user),
+) -> CodexJobSnapshot:
     await _reconcile_codex_jobs(auth_context.username)
-    job = _get_latest_codex_job(auth_context.username)
+    job = _get_latest_codex_job(auth_context.username, output_mode)
     if job is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No Codex task has been started.")
     return _snapshot_codex_job(job)
@@ -265,7 +265,7 @@ def _build_prompt(
 
 
 async def _run_codex_job(job: CodexJobState, auth_context: AuthContext) -> None:
-    async with _get_codex_lock(auth_context.username):
+    try:
         started_at = time.monotonic()
         prompt = _build_prompt(job.prompt, job.skill_ids, auth_context, job.output_mode)
         exec_args, output_path = _build_codex_exec_args(job.sandbox_mode, job.output_mode, json_output=True)
@@ -343,6 +343,8 @@ async def _run_codex_job(job: CodexJobState, auth_context: AuthContext) -> None:
         elif job.completed_at is None:
             job.completed_at = datetime.now(UTC)
         _codex_job_processes.pop(job.job_id, None)
+    finally:
+        await _release_job_slot(job)
 
 
 async def _stream_codex_events(
@@ -351,10 +353,9 @@ async def _stream_codex_events(
     sandbox_mode: str = "workspace-write",
     auth_context: AuthContext | None = None,
     output_mode: str = "full",
-    codex_lock: asyncio.Lock | None = None,
 ) -> AsyncIterator[str]:
-    lock = codex_lock or _get_codex_lock((auth_context.username if auth_context else "").strip())
-    async with lock:
+    owner_username = (auth_context.username if auth_context else "").strip()
+    try:
         started_at = time.monotonic()
         prompt = _build_prompt(user_prompt, skill_ids, auth_context, output_mode)
         stdout_parts: list[str] = []
@@ -418,6 +419,8 @@ async def _stream_codex_events(
             git_status=git_status,
         )
         yield _json_line({"type": "complete", "response": response.model_dump()})
+    finally:
+        await _release_codex_slot(owner_username)
 
 
 async def _read_process_lines(
@@ -455,34 +458,74 @@ def _snapshot_codex_job(job: CodexJobState) -> CodexJobSnapshot:
     )
 
 
-def _get_codex_lock(username: str) -> asyncio.Lock:
+def _get_codex_state_lock(username: str) -> asyncio.Lock:
     owner_key = username or "__anonymous__"
-    lock = _codex_locks.get(owner_key)
+    lock = _codex_state_locks.get(owner_key)
     if lock is None:
         lock = asyncio.Lock()
-        _codex_locks[owner_key] = lock
+        _codex_state_locks[owner_key] = lock
     return lock
 
 
-def _get_latest_codex_job(username: str) -> CodexJobState | None:
+def _get_latest_codex_job(username: str, output_mode: Literal["full", "final"] | None = None) -> CodexJobState | None:
     latest_job_id = _latest_codex_job_ids.get(username)
     if latest_job_id:
         latest_job = _codex_jobs.get(latest_job_id)
-        if latest_job is not None and latest_job.owner_username == username:
+        if (
+            latest_job is not None
+            and latest_job.owner_username == username
+            and (output_mode is None or latest_job.output_mode == output_mode)
+        ):
             return latest_job
-        _latest_codex_job_ids.pop(username, None)
+        if output_mode is None:
+            _latest_codex_job_ids.pop(username, None)
 
-    user_jobs = [job for job in _codex_jobs.values() if job.owner_username == username]
+    user_jobs = [
+        job
+        for job in _codex_jobs.values()
+        if job.owner_username == username and (output_mode is None or job.output_mode == output_mode)
+    ]
     if not user_jobs:
         return None
 
     latest_job = max(user_jobs, key=lambda job: job.started_at)
-    _latest_codex_job_ids[username] = latest_job.job_id
+    if output_mode is None:
+        _latest_codex_job_ids[username] = latest_job.job_id
     return latest_job
 
 
-def _has_running_codex_job(username: str) -> bool:
-    return any(job.status == "running" for job in _codex_jobs.values() if job.owner_username == username)
+async def _try_reserve_codex_slot(username: str) -> bool:
+    owner_key = username or "__anonymous__"
+    async with _get_codex_state_lock(owner_key):
+        active_count = _codex_active_run_counts.get(owner_key, 0)
+        if active_count >= settings.web_codex_user_concurrency:
+            return False
+        _codex_active_run_counts[owner_key] = active_count + 1
+        return True
+
+
+async def _release_codex_slot(username: str) -> None:
+    owner_key = username or "__anonymous__"
+    async with _get_codex_state_lock(owner_key):
+        active_count = _codex_active_run_counts.get(owner_key, 0)
+        if active_count <= 1:
+            _codex_active_run_counts.pop(owner_key, None)
+            return
+        _codex_active_run_counts[owner_key] = active_count - 1
+
+
+async def _release_job_slot(job: CodexJobState) -> None:
+    if not job.slot_reserved:
+        return
+    job.slot_reserved = False
+    await _release_codex_slot(job.owner_username)
+
+
+def _codex_concurrency_conflict_detail() -> str:
+    return (
+        "A Codex task is already running. Wait for it to finish before starting another. "
+        f"Current per-user Codex concurrency limit: {settings.web_codex_user_concurrency}."
+    )
 
 
 def _handle_codex_job_task_done(job: CodexJobState, task: asyncio.Task[None]) -> None:
@@ -517,6 +560,7 @@ async def _reconcile_codex_jobs(username: str) -> None:
 
         if task is None:
             _mark_codex_job_failed(job, "Codex task state was lost before finishing. Please retry.")
+            await _release_job_slot(job)
             continue
 
         if task.done():
@@ -528,6 +572,7 @@ async def _reconcile_codex_jobs(username: str) -> None:
                     _mark_codex_job_failed(job, f"Codex task failed unexpectedly: {exception}")
                 elif job.status == "running":
                     _mark_codex_job_failed(job, "Codex task ended without reporting a final status. Please retry.")
+            await _release_job_slot(job)
             continue
 
         runtime_seconds = (datetime.now(UTC) - job.started_at).total_seconds()
@@ -543,6 +588,7 @@ async def _reconcile_codex_jobs(username: str) -> None:
             with suppress(Exception):
                 await process.wait()
         _mark_codex_job_failed(job, "Codex task timed out before finishing.")
+        await _release_job_slot(job)
 
 
 def _json_line(value: dict[str, object]) -> str:

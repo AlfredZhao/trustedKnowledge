@@ -36,6 +36,14 @@ class BlogFactoryItem(BaseModel):
     article_file_path: str | None = None
     article_checksum: str | None = None
     article_saved_at: datetime | None = None
+    remote_post_id: str | None = None
+    remote_publish_config_id: int | None = None
+    remote_publish_state: str | None = None
+    remote_submission_option: str | None = None
+    remote_categories_snapshot: str | None = None
+    remote_tags_snapshot: str | None = None
+    remote_published_at: datetime | None = None
+    remote_last_synced_at: datetime | None = None
     has_article: bool = False
 
     model_config = ConfigDict(from_attributes=True)

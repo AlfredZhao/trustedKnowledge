@@ -7,6 +7,7 @@ from app.schemas.blog_factory import BlogFactoryItem
 
 
 BlogPublishType = Literal["METAWEBLOG_API"]
+BlogPublishSubmissionOption = Literal["CNBLOGS_HOME", "PERSONAL_ONLY"]
 
 
 class BlogPublishConfigBase(BaseModel):
@@ -114,11 +115,24 @@ class BlogPublishConfigValidationResponse(BaseModel):
     message: str
 
 
+class BlogPublishCategory(BaseModel):
+    category_id: str | None = None
+    title: str
+    description: str | None = None
+
+
+class BlogPublishCategoryListResponse(BaseModel):
+    items: list[BlogPublishCategory]
+    total: int
+
+
 class BlogFactoryPublishRequest(BaseModel):
     config_id: int | None = Field(default=None, ge=1)
     article_markdown: str = Field(..., min_length=1)
     article_title: str | None = Field(default=None, max_length=300)
+    categories: list[str] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
+    submission_option: BlogPublishSubmissionOption = "CNBLOGS_HOME"
     publish: bool = True
 
     @field_validator("article_markdown")
@@ -137,7 +151,7 @@ class BlogFactoryPublishRequest(BaseModel):
         stripped = value.strip()
         return stripped or None
 
-    @field_validator("tags", mode="before")
+    @field_validator("categories", "tags", mode="before")
     @classmethod
     def normalize_tags(cls, value: object) -> list[str]:
         if value is None:

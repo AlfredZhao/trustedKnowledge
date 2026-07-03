@@ -37,6 +37,16 @@ class MetaWeblogPublishResult:
     blog_url: str | None
 
 
+@dataclass(frozen=True)
+class MetaWeblogCategory:
+    category_id: str | None
+    title: str
+    description: str | None
+
+
+CNBLOGS_HOME_CATEGORY = "[发布至博客园首页]"
+
+
 async def validate_metaweblog_config(
     *,
     api_url: str,
@@ -68,8 +78,11 @@ async def publish_metaweblog_post(
     password: str,
     title: str,
     markdown: str,
+    categories: list[str],
     tags: list[str],
+    submission_option: str = "CNBLOGS_HOME",
     publish: bool,
+    post_id: str | None = None,
     blog_url: str | None = None,
     blog_name: str | None = None,
     blog_id: str | None = None,
@@ -87,32 +100,80 @@ async def publish_metaweblog_post(
         "title": title,
         "description": markdown if publish_as_markdown else markdown_to_html(markdown),
     }
+    cleaned_categories = [tag for tag in dict.fromkeys(_clean_tag(tag) for tag in categories) if tag]
     cleaned_tags = [tag for tag in dict.fromkeys(_clean_tag(tag) for tag in tags) if tag]
+    is_cnblogs = _is_cnblogs_endpoint(api_url) or _is_cnblogs_endpoint(resolved.blog_url or blog_url)
+    if is_cnblogs:
+        cleaned_categories = [tag for tag in cleaned_categories if tag != CNBLOGS_HOME_CATEGORY]
+        if submission_option == "CNBLOGS_HOME":
+            cleaned_categories.insert(0, CNBLOGS_HOME_CATEGORY)
     if publish_as_markdown:
-        categories = ["[Markdown]", *[tag for tag in cleaned_tags if tag != "[Markdown]"]]
-        content["categories"] = categories
+        content_categories = ["[Markdown]", *[tag for tag in cleaned_categories if tag != "[Markdown]"]]
+        content["categories"] = content_categories
         keyword_tags = [tag for tag in cleaned_tags if tag != "[Markdown]"]
         if keyword_tags:
             content["mt_keywords"] = ", ".join(keyword_tags)
+    elif cleaned_categories:
+        content["categories"] = cleaned_categories
+        if cleaned_tags:
+            content["mt_keywords"] = ", ".join(cleaned_tags)
     elif cleaned_tags:
+        # Non-markdown MetaWeblog endpoints typically use the same tag field for categories.
         content["categories"] = cleaned_tags
         content["mt_keywords"] = ", ".join(cleaned_tags)
+    if is_cnblogs:
+        content["inSiteHome"] = submission_option == "CNBLOGS_HOME"
 
-    response = await _call_xmlrpc(
-        api_url,
-        "metaWeblog.newPost",
-        (resolved.blog_id, username, password, content, bool(publish)),
-    )
-    post_id = str(response).strip()
-    if not post_id:
-        raise MetaWeblogError("Metaweblog 返回了空的文章 ID。")
+    normalized_post_id = (post_id or "").strip()
+    if normalized_post_id:
+        response = await _call_xmlrpc(
+            api_url,
+            "metaWeblog.editPost",
+            (normalized_post_id, username, password, content, bool(publish)),
+        )
+        if response not in (True, "true", "True", 1):
+            raise MetaWeblogError("Metaweblog 未确认文章更新成功。")
+    else:
+        response = await _call_xmlrpc(
+            api_url,
+            "metaWeblog.newPost",
+            (resolved.blog_id, username, password, content, bool(publish)),
+        )
+        normalized_post_id = str(response).strip()
+        if not normalized_post_id:
+            raise MetaWeblogError("Metaweblog 返回了空的文章 ID。")
 
     return MetaWeblogPublishResult(
-        post_id=post_id,
+        post_id=normalized_post_id,
         blog_id=resolved.blog_id,
         blog_name=resolved.blog_name,
         blog_url=resolved.blog_url,
     )
+
+
+async def list_metaweblog_categories(
+    *,
+    api_url: str,
+    username: str,
+    password: str,
+    blog_url: str | None = None,
+    blog_name: str | None = None,
+    blog_id: str | None = None,
+) -> tuple[MetaWeblogBlogInfo, list[MetaWeblogCategory]]:
+    resolved = await _resolve_blog(
+        api_url=api_url,
+        username=username,
+        password=password,
+        preferred_blog_url=blog_url,
+        preferred_blog_name=blog_name,
+        preferred_blog_id=blog_id,
+    )
+    response = await _call_xmlrpc(
+        api_url,
+        "metaWeblog.getCategories",
+        (resolved.blog_id, username, password),
+    )
+    return resolved, _normalize_categories(response)
 
 
 def markdown_to_html(markdown: str) -> str:
@@ -328,6 +389,37 @@ def _normalize_blog_list(value: Any) -> list[MetaWeblogBlogInfo]:
         blog_url = str(item.get("url") or item.get("blogUrl") or item.get("link") or "").strip() or None
         blogs.append(MetaWeblogBlogInfo(blog_id=blog_id, blog_name=blog_name, blog_url=blog_url))
     return blogs
+
+
+def _normalize_categories(value: Any) -> list[MetaWeblogCategory]:
+    raw_items = value if isinstance(value, (list, tuple)) else [value]
+    categories: list[MetaWeblogCategory] = []
+    seen_titles: set[str] = set()
+    for item in raw_items:
+        if isinstance(item, str):
+            title = item.strip()
+            if not title or title.casefold() in seen_titles:
+                continue
+            seen_titles.add(title.casefold())
+            categories.append(MetaWeblogCategory(category_id=None, title=title, description=None))
+            continue
+        if not isinstance(item, dict):
+            continue
+        title = str(
+            item.get("title")
+            or item.get("categoryName")
+            or item.get("category")
+            or item.get("description")
+            or ""
+        ).strip()
+        if not title or title.casefold() in seen_titles:
+            continue
+        seen_titles.add(title.casefold())
+        category_id = str(item.get("categoryId") or item.get("categoryid") or item.get("id") or "").strip() or None
+        description = str(item.get("description") or "").strip() or None
+        categories.append(MetaWeblogCategory(category_id=category_id, title=title, description=description))
+    categories.sort(key=lambda item: item.title.casefold())
+    return categories
 
 
 async def _call_xmlrpc(api_url: str, method_name: str, params: tuple[Any, ...]) -> Any:

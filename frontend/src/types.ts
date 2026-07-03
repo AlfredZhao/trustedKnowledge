@@ -57,10 +57,19 @@ export interface BlogFactoryItem {
   article_file_path: string | null;
   article_checksum: string | null;
   article_saved_at: string | null;
+  remote_post_id: string | null;
+  remote_publish_config_id: number | null;
+  remote_publish_state: string | null;
+  remote_submission_option: BlogPublishSubmissionOption | null;
+  remote_categories_snapshot: string | null;
+  remote_tags_snapshot: string | null;
+  remote_published_at: string | null;
+  remote_last_synced_at: string | null;
   has_article: boolean;
 }
 
 export type BlogPublishType = "METAWEBLOG_API";
+export type BlogPublishSubmissionOption = "CNBLOGS_HOME" | "PERSONAL_ONLY";
 
 export interface BlogPublishConfig {
   id: number;
@@ -81,6 +90,12 @@ export interface BlogPublishValidationResult {
   blog_name: string | null;
   blog_url: string | null;
   message: string;
+}
+
+export interface BlogPublishCategory {
+  category_id: string | null;
+  title: string;
+  description: string | null;
 }
 
 export interface BlogFactoryPublishResult {

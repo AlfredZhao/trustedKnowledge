@@ -65,6 +65,11 @@ export async function getLatestCodexJob(): Promise<CodexJobSnapshot> {
   return request<CodexJobSnapshot>("/api/codex/runs/jobs/latest");
 }
 
+export async function getLatestCodexJobByOutputMode(outputMode: CodexOutputMode): Promise<CodexJobSnapshot> {
+  const params = new URLSearchParams({ output_mode: outputMode });
+  return request<CodexJobSnapshot>(`/api/codex/runs/jobs/latest?${params.toString()}`);
+}
+
 export async function streamCodex(
   prompt: string,
   onEvent: (event: CodexStreamEvent) => void,
