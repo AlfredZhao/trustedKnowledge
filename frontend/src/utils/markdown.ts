@@ -310,7 +310,10 @@ function inlineClipboardStyles(html: string) {
     .replace(/<ol>/g, '<ol style="margin: 0 0 10px; padding-left: 22px; color: #000000;">')
     .replace(/<li>/g, '<li style="margin: 0 0 4px; color: #000000;">')
     .replace(/<blockquote>/g, '<blockquote style="margin: 0 0 10px; padding-left: 12px; border-left: 3px solid #d1d5db; color: #374151;">')
-    .replace(/<pre>/g, '<pre style="margin: 0 0 10px; padding: 0; color: #000000; white-space: pre-wrap;">')
+    .replace(
+      /<pre>/g,
+      '<pre style="margin: 0 0 10px; padding: 0; color: #000000; white-space: pre; overflow-x: auto; overflow-y: hidden;">',
+    )
     .replace(/<code([^>]*)>/g, '<code$1 style="font-family: Consolas, Menlo, Monaco, monospace; color: #000000;">')
     .replace(
       /<div class="tk-math-block">/g,
@@ -363,7 +366,7 @@ function inlineEnhancedClipboardStyles(html: string) {
     )
     .replace(
       /<pre>/g,
-      '<pre style="margin: 0 0 14px; padding: 14px 16px; border-radius: 12px; background: #2a1f1d; color: #fdf4f1; white-space: pre-wrap;">',
+      '<pre style="margin: 0 0 14px; padding: 14px 16px; border-radius: 12px; background: #2a1f1d; color: #fdf4f1; white-space: pre; overflow-x: auto; overflow-y: hidden;">',
     )
     .replace(
       /<code([^>]*)>/g,
@@ -390,7 +393,10 @@ function inlineEnhancedClipboardStyles(html: string) {
     .replace(/<tr>/g, '<tr>')
     .replace(/<th(?=[\s>])/g, '<th style="border: 1px solid #ead9d3; padding: 10px 12px; font-weight: 700; text-align: left; color: #7f1d1d;"')
     .replace(/<td(?=[\s>])/g, '<td style="border: 1px solid #f1dfda; padding: 10px 12px; text-align: left; vertical-align: top;"')
-    .replace(/<pre([^>]*)><code([^>]*) style="([^"]*)">/g, '<pre$1><code$2 style="font-family: Consolas, Menlo, Monaco, monospace; background: transparent; color: #fdf4f1; padding: 0;">')
+    .replace(
+      /<pre([^>]*)><code([^>]*) style="([^"]*)">/g,
+      '<pre$1><code$2 style="display: block; min-width: max-content; font-family: Consolas, Menlo, Monaco, monospace; white-space: inherit; background: transparent; color: #fdf4f1; padding: 0;">',
+    )
     .replace(/<strong>/g, '<strong style="color: #5f1d1d; font-weight: 700;">')
     .replace(/<em>/g, '<em style="color: #7c4a43;">')
     .replace(/<img /g, '<img style="display: block; max-width: 100%; height: auto; margin: 18px auto; border-radius: 14px; box-shadow: 0 8px 24px rgba(95, 29, 29, 0.08);" ')

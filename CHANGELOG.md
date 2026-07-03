@@ -50,6 +50,9 @@ The format follows the common GitHub changelog convention inspired by
 - Fixed Blog Factory Metaweblog draft/update behavior so saved drafts now persist the remote `post_id` and publish settings, letting later `保存草稿` update the same post, `确认发布` upgrade the draft in place, and the dialog reopen with the last-used config, categories, tags, and submission option restored.
 - 修复博客工厂 Metaweblog 的草稿/更新链路：已保存的草稿现在会持久化远端 `post_id` 和发布参数，后续再次 `保存草稿` 会更新同一篇文章，`确认发布` 会在原草稿上原地转为正式发布；重新打开弹窗时也会自动回填上次使用的配置、分类、标签和投稿选项。
 
+- Fixed Blog Factory enhanced-HTML export code blocks so downloaded standalone HTML now preserves source line breaks, disables forced wrapping, and allows horizontal scrolling for long code lines; the same behavior is mirrored in the offline `scripts/export-enhanced-html.mjs` exporter.
+- 修复博客工厂增强美化导出 HTML 的代码块展示：下载的独立 HTML 现在会保留源代码换行、不再强制自动折行，并支持长代码横向滚动；同样的行为也同步到了离线导出脚本 `scripts/export-enhanced-html.mjs`。
+
 - Fixed Todo editor switching so unsaved changes are now preserved per item while navigating the Todo list; users can switch away and return without losing local edits, and the editor shows an explicit unsaved-change reminder until saved.
 - 修复待办事项编辑区的切换丢稿问题：现在每条 Todo 都会单独保留本地未保存草稿，用户切换到别的事项后再返回也不会丢失输入；编辑区同时增加未保存提示，避免误以为已落库。
 
