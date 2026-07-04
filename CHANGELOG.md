@@ -9,7 +9,20 @@ The format follows the common GitHub changelog convention inspired by
 
 ## 本次版本更新
 
-### [0.3.1]
+### [0.3.2]
+
+#### Added / 新增
+
+#### Changed / 变更
+
+#### Fixed / 修复
+
+- Fixed the Knowledge Processing to Blog Factory handoff so copying a processed result into Blog Factory now immediately marks the source knowledge record as `已发布`, removing it from the unpublished queue and leaving Blog Factory users to manage only the factory workflow state.
+- 修复知识加工到博客工厂的状态衔接：将加工结果复制保存到博客工厂后，会立即把源知识记录标记为 `已发布`，从知识加工的未发布队列中移出；博客工厂侧只需继续维护工厂流程状态。
+
+## 历史版本更新
+
+### [0.3.1] - 2026-07-03
 
 #### Added / 新增
 
@@ -82,8 +95,6 @@ The format follows the common GitHub changelog convention inspired by
 
 - Fixed the AI Ask result skill chips in light theme so selected skill names such as `自动化原始周报清洗规整` remain readable above the answer card.
 - 修复 AI 问数结果区的已选 Skill 标签在浅色主题下的可见性：像 `自动化原始周报清洗规整` 这类名称现在会在答案卡片上方保持清晰可读。
-
-## 历史版本更新
 
 ### [0.3.0] - 2026-07-01
 

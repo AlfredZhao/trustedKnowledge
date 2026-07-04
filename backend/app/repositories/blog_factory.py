@@ -86,6 +86,27 @@ def _row_to_dict(row: Any) -> dict[str, Any]:
     }
 
 
+async def _mark_knowledge_as_published(cursor: Any, knowledge_id: int, user_id: int | None) -> None:
+    await cursor.execute(
+        """
+        update ai_qa_lib
+        set blog_status = '已发布'
+        where id = :knowledge_id
+          and ((user_id = :user_id) or (user_id is null and :user_id is null))
+        """,
+        {"knowledge_id": knowledge_id, "user_id": user_id},
+    )
+    await cursor.execute(
+        """
+        update ai_blog_factory
+        set blog_status_snapshot = '已发布'
+        where knowledge_id = :knowledge_id
+          and ((user_id = :user_id) or (user_id is null and :user_id is null))
+        """,
+        {"knowledge_id": knowledge_id, "user_id": user_id},
+    )
+
+
 async def _ensure_blog_factory_table(connection: oracledb.AsyncConnection) -> None:
     global _table_ready
     if _table_ready:
@@ -341,6 +362,7 @@ async def create_blog_factory_item(payload: BlogFactoryCreate, auth_context: Aut
                 "new_id": new_id,
             },
         )
+        await _mark_knowledge_as_published(cursor, payload.knowledge_id, source_row[5])
         await connection.commit()
         item_id = int(new_id.getvalue()[0])
 

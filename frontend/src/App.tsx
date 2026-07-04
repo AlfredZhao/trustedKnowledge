@@ -90,7 +90,6 @@ import {
   readCachedKnowledge,
   readCachedTodos,
   updateBlogFactoryArticle,
-  updateBlogFactoryContentStatus,
   updateBlogFactoryItem,
   updateBlogFactoryStatus,
   updateBlogPublishConfig,
@@ -800,7 +799,6 @@ function App() {
   const [isBlogFactoryLoading, setIsBlogFactoryLoading] = useState(false);
   const [isBlogFactoryDetailLoading, setIsBlogFactoryDetailLoading] = useState(false);
   const [isBlogFactoryStatusSaving, setIsBlogFactoryStatusSaving] = useState(false);
-  const [isBlogFactoryContentStatusSaving, setIsBlogFactoryContentStatusSaving] = useState(false);
   const [isBlogFactoryItemSaving, setIsBlogFactoryItemSaving] = useState(false);
   const [isBlogFactoryArticleSaving, setIsBlogFactoryArticleSaving] = useState(false);
   const [isBlogFactoryDeleting, setIsBlogFactoryDeleting] = useState(false);
@@ -3230,24 +3228,6 @@ function App() {
     );
   }
 
-  async function handleUpdateBlogFactoryContentStatus(status: KnowledgeStatus) {
-    if (!selectedBlogFactoryItem || isBlogFactoryContentStatusSaving) return;
-
-    setIsBlogFactoryContentStatusSaving(true);
-    setBlogFactoryStatusError(null);
-    try {
-      const updated = await updateBlogFactoryContentStatus(selectedBlogFactoryItem.id, status);
-      clearApiResponseCache();
-      setSelectedBlogFactoryItem(updated);
-      setBlogFactoryItems((current) => current.map((item) => (item.id === updated.id ? updated : item)));
-      setBlogFactoryRefreshToken((current) => current + 1);
-    } catch (error) {
-      setBlogFactoryStatusError(error instanceof Error ? error.message : "内容状态更新失败，请稍后重试。");
-    } finally {
-      setIsBlogFactoryContentStatusSaving(false);
-    }
-  }
-
   function handleRequestDeleteBlogFactoryItem() {
     if (!selectedBlogFactoryItem || isBlogFactoryDeleting) return;
     setBlogFactoryDeleteTarget(selectedBlogFactoryItem);
@@ -4824,7 +4804,6 @@ function App() {
               isLoading={isBlogFactoryLoading}
               isDetailLoading={isBlogFactoryDetailLoading}
               isStatusSaving={isBlogFactoryStatusSaving}
-              isContentStatusSaving={isBlogFactoryContentStatusSaving}
               isItemSaving={isBlogFactoryItemSaving}
               isArticleSaving={isBlogFactoryArticleSaving}
               isDeleting={isBlogFactoryDeleting}
@@ -4884,7 +4863,6 @@ function App() {
               onDelete={handleRequestDeleteBlogFactoryItem}
               onCloseMobileDetail={() => setIsMobileBlogFactoryDetailOpen(false)}
               onSaveItem={handleSaveBlogFactoryItem}
-              onContentStatusChange={handleUpdateBlogFactoryContentStatus}
               onSelect={handleSelectBlogFactoryItem}
               onStatusChange={handleUpdateBlogFactoryStatus}
             />
@@ -8377,7 +8355,6 @@ function BlogFactoryRecords({
   isLoading,
   isDetailLoading,
   isStatusSaving,
-  isContentStatusSaving,
   isItemSaving,
   isArticleSaving,
   isDeleting,
@@ -8412,7 +8389,6 @@ function BlogFactoryRecords({
   onDelete,
   onCloseMobileDetail,
   onSaveItem,
-  onContentStatusChange,
   onSelect,
   onStatusChange,
 }: {
@@ -8425,7 +8401,6 @@ function BlogFactoryRecords({
   isLoading: boolean;
   isDetailLoading: boolean;
   isStatusSaving: boolean;
-  isContentStatusSaving: boolean;
   isItemSaving: boolean;
   isArticleSaving: boolean;
   isDeleting: boolean;
@@ -8460,7 +8435,6 @@ function BlogFactoryRecords({
   onDelete: () => void;
   onCloseMobileDetail: () => void;
   onSaveItem: () => void;
-  onContentStatusChange: (status: KnowledgeStatus) => void;
   onSelect: (item: BlogFactoryItem) => void;
   onStatusChange: (status: BlogFactoryStatus) => void;
 }) {
@@ -8491,7 +8465,6 @@ function BlogFactoryRecords({
     { label: "跳过", value: "跳过" },
   ];
   const nextStatusOptions: BlogFactoryStatus[] = ["待处理", "已处理", "已发布", "跳过"];
-  const contentStatusOptions: KnowledgeStatus[] = ["未发布", "已发布", "跳过"];
   const canSaveItem =
     selectedItem !== null &&
     editDraft.taskContent.trim().length > 0 &&
@@ -8562,28 +8535,8 @@ function BlogFactoryRecords({
               </div>
             </div>
 
-            <div>
-              <div className="mb-2 text-sm font-medium text-slate-300">内容状态</div>
-              <div className="grid grid-cols-3 gap-2">
-                {contentStatusOptions.map((status) => (
-                  <button
-                    key={status}
-                    className={`flex h-10 items-center justify-center gap-2 rounded-lg border px-2 text-sm font-medium transition disabled:cursor-not-allowed ${
-                      selectedItem.blog_status_snapshot === status
-                        ? statusStyles[status]
-                        : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-mint-300/30 hover:text-mint-300 disabled:text-slate-600"
-                    }`}
-                    disabled={isContentStatusSaving || selectedItem.blog_status_snapshot === status}
-                    type="button"
-                    onClick={() => onContentStatusChange(status)}
-                  >
-                    {isContentStatusSaving && selectedItem.blog_status_snapshot !== status ? (
-                      <Loader2 className="animate-spin" size={15} />
-                    ) : null}
-                    {status}
-                  </button>
-                ))}
-              </div>
+            <div className="rounded-lg border border-white/10 bg-white/[0.02] px-3 py-3 text-sm leading-6 text-slate-400">
+              发送到博客工厂后，源知识内容状态会自动同步为“已发布”；此处只需要维护工厂状态。
             </div>
           </div>
 
@@ -9035,7 +8988,7 @@ function BlogFactoryRecords({
                     </span>
                   )}
                   <span className="rounded-md border border-white/8 bg-white/[0.035] px-2 py-1 text-xs text-slate-400">
-                    原状态 {item.blog_status_snapshot || "未记录"}
+                    内容 {item.blog_status_snapshot || "未记录"}
                   </span>
                   {item.topic_tag_snapshot ? (
                     <span className="rounded-md border border-white/8 bg-white/[0.035] px-2 py-1 text-xs text-slate-400">
@@ -9084,7 +9037,7 @@ function BlogFactoryRecords({
 
       <MobileEditorSheet
         icon={<FileText size={17} />}
-        isBusy={isDetailLoading || isStatusSaving || isContentStatusSaving || isItemSaving || isArticleSaving || isDeleting}
+        isBusy={isDetailLoading || isStatusSaving || isItemSaving || isArticleSaving || isDeleting}
         isOpen={isMobileDetailOpen && selectedItem !== null}
         label="Record Detail"
         title="博客工厂任务详情"
