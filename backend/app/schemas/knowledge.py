@@ -3,6 +3,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.schemas.validators import normalize_optional_short_text, normalize_optional_topic_tag
+
 
 KnowledgeStatus = Literal["未发布", "已发布", "跳过"]
 
@@ -11,7 +13,7 @@ class KnowledgeBase(BaseModel):
     question: str = Field(..., min_length=1, max_length=4000)
     answer: str = Field(..., min_length=1)
     source: str | None = Field(default=None, max_length=200)
-    topic_tag: str | None = Field(default=None, max_length=100, pattern=r"^[a-zA-Z0-9_,\s]+$")
+    topic_tag: str | None = Field(default=None, max_length=100)
     blog_status: KnowledgeStatus = "未发布"
 
     @field_validator("question", "answer")
@@ -22,13 +24,15 @@ class KnowledgeBase(BaseModel):
             raise ValueError("Field cannot be blank")
         return stripped
 
-    @field_validator("source", "topic_tag", mode="before")
+    @field_validator("source", mode="before")
     @classmethod
-    def empty_string_to_none(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        stripped = value.strip()
-        return stripped or None
+    def normalize_source(cls, value: str | None) -> str | None:
+        return normalize_optional_short_text(value, field_name="source", max_length=200)
+
+    @field_validator("topic_tag", mode="before")
+    @classmethod
+    def normalize_topic_tag(cls, value: str | None) -> str | None:
+        return normalize_optional_topic_tag(value)
 
 
 class KnowledgeCreate(KnowledgeBase):
@@ -53,7 +57,7 @@ class KnowledgeUpdate(BaseModel):
     question: str | None = Field(default=None, min_length=1, max_length=4000)
     answer: str | None = Field(default=None, min_length=1)
     source: str | None = Field(default=None, max_length=200)
-    topic_tag: str | None = Field(default=None, max_length=100, pattern=r"^[a-zA-Z0-9_,\s]+$")
+    topic_tag: str | None = Field(default=None, max_length=100)
     blog_status: KnowledgeStatus | None = None
 
     @field_validator("question", "answer")
@@ -66,13 +70,15 @@ class KnowledgeUpdate(BaseModel):
             raise ValueError("Field cannot be blank")
         return stripped
 
-    @field_validator("source", "topic_tag", mode="before")
+    @field_validator("source", mode="before")
     @classmethod
-    def empty_string_to_none(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        stripped = value.strip()
-        return stripped or None
+    def normalize_source(cls, value: str | None) -> str | None:
+        return normalize_optional_short_text(value, field_name="source", max_length=200)
+
+    @field_validator("topic_tag", mode="before")
+    @classmethod
+    def normalize_topic_tag(cls, value: str | None) -> str | None:
+        return normalize_optional_topic_tag(value)
 
 
 class KnowledgeItem(KnowledgeBase):

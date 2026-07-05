@@ -3,6 +3,7 @@ from typing import Annotated, Literal
 import oracledb
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
+from app.api.errors import oracle_http_exception
 from app.core.security import require_current_user
 from app.repositories.users import AuthContext
 from app.repositories.current_records import (
@@ -53,12 +54,7 @@ async def get_current_records(
             auth_context=auth_context,
         )
     except oracledb.Error as exc:
-        error = exc.args[0] if exc.args else exc
-        message = getattr(error, "message", str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Oracle rejected the current records query: {message}",
-        ) from exc
+        raise oracle_http_exception(exc, "Oracle rejected the current records query") from exc
 
     return CurrentRecordListResponse(items=items, total=total, limit=limit, offset=offset)
 
@@ -68,12 +64,7 @@ async def get_current_records_options(auth_context: AuthContext = Depends(requir
     try:
         options = await get_current_record_options(auth_context)
     except oracledb.Error as exc:
-        error = exc.args[0] if exc.args else exc
-        message = getattr(error, "message", str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Oracle rejected the current records options query: {message}",
-        ) from exc
+        raise oracle_http_exception(exc, "Oracle rejected the current records options query") from exc
 
     return CurrentRecordOptions.model_validate(options)
 
@@ -83,12 +74,7 @@ async def get_current_record_detail(record_id: int, auth_context: AuthContext = 
     try:
         item = await get_current_record(record_id, auth_context)
     except oracledb.Error as exc:
-        error = exc.args[0] if exc.args else exc
-        message = getattr(error, "message", str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Oracle rejected the current record detail query: {message}",
-        ) from exc
+        raise oracle_http_exception(exc, "Oracle rejected the current record detail query") from exc
 
     if item is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Current record not found")
@@ -106,12 +92,7 @@ async def post_current_record(
     except HTTPException:
         raise
     except oracledb.Error as exc:
-        error = exc.args[0] if exc.args else exc
-        message = getattr(error, "message", str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Oracle rejected the current record insert: {message}",
-        ) from exc
+        raise oracle_http_exception(exc, "Oracle rejected the current record insert") from exc
 
     return CurrentRecordItem.model_validate(created)
 
@@ -127,12 +108,7 @@ async def patch_current_record(
     except HTTPException:
         raise
     except oracledb.Error as exc:
-        error = exc.args[0] if exc.args else exc
-        message = getattr(error, "message", str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Oracle rejected the current record update: {message}",
-        ) from exc
+        raise oracle_http_exception(exc, "Oracle rejected the current record update") from exc
 
     if item is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Current record not found")

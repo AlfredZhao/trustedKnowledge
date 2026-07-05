@@ -1,4 +1,5 @@
 import hashlib
+import logging
 import re
 from typing import Any
 
@@ -55,6 +56,7 @@ SORT_COLUMNS = {
 
 
 _table_ready = False
+logger = logging.getLogger(__name__)
 
 
 def _row_to_dict(row: Any) -> dict[str, Any]:
@@ -113,6 +115,7 @@ async def _ensure_blog_factory_table(connection: oracledb.AsyncConnection) -> No
         return
 
     cursor = connection.cursor()
+    logger.info("Ensuring Oracle table ai_blog_factory exists")
     await cursor.execute(
         """
         begin
@@ -139,6 +142,7 @@ async def _ensure_blog_factory_table(connection: oracledb.AsyncConnection) -> No
         end;
         """
     )
+    logger.info("Ensuring Oracle index ai_blog_factory_kid_idx exists")
     await cursor.execute(
         """
         begin
@@ -174,6 +178,7 @@ async def _ensure_blog_factory_table(connection: oracledb.AsyncConnection) -> No
 
 async def _add_column_if_missing(cursor: Any, column_definition: str) -> None:
     ddl = column_definition.replace("'", "''")
+    logger.info("Ensuring Oracle column ai_blog_factory.%s exists", column_definition.split()[0])
     await cursor.execute(
         f"""
         begin

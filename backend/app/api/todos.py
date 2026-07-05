@@ -3,6 +3,7 @@ from typing import Annotated, Literal
 import oracledb
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 
+from app.api.errors import oracle_http_exception
 from app.core.security import require_current_user
 from app.repositories.conversions import convert_todo_to_knowledge
 from app.repositories.current_records import prepend_todo_to_current_content
@@ -38,12 +39,7 @@ async def get_todos(
             auth_context=auth_context,
         )
     except oracledb.Error as exc:
-        error = exc.args[0] if exc.args else exc
-        message = getattr(error, "message", str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Oracle rejected the todo query: {message}",
-        ) from exc
+        raise oracle_http_exception(exc, "Oracle rejected the todo query") from exc
 
     return TodoListResponse(items=items, total=total, limit=limit, offset=offset)
 
@@ -53,12 +49,7 @@ async def post_todo(payload: TodoCreate, auth_context: AuthContext = Depends(req
     try:
         created = await create_todo(payload, auth_context)
     except oracledb.Error as exc:
-        error = exc.args[0] if exc.args else exc
-        message = getattr(error, "message", str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Oracle rejected the todo entry: {message}",
-        ) from exc
+        raise oracle_http_exception(exc, "Oracle rejected the todo entry") from exc
 
     return TodoItem.model_validate(created)
 
@@ -71,12 +62,7 @@ async def post_todo_convert_to_knowledge(
     try:
         converted = await convert_todo_to_knowledge(todo_id, auth_context)
     except oracledb.Error as exc:
-        error = exc.args[0] if exc.args else exc
-        message = getattr(error, "message", str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Oracle rejected the todo conversion: {message}",
-        ) from exc
+        raise oracle_http_exception(exc, "Oracle rejected the todo conversion") from exc
 
     if converted is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Todo item not found")
@@ -108,12 +94,7 @@ async def post_todo_append_to_current(
     except HTTPException:
         raise
     except oracledb.Error as exc:
-        error = exc.args[0] if exc.args else exc
-        message = getattr(error, "message", str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Oracle rejected the current record append: {message}",
-        ) from exc
+        raise oracle_http_exception(exc, "Oracle rejected the current record append") from exc
 
     if updated is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Current record not found")
@@ -129,12 +110,7 @@ async def get_todo_detail(
     try:
         item = await get_todo_by_id(todo_id, auth_context)
     except oracledb.Error as exc:
-        error = exc.args[0] if exc.args else exc
-        message = getattr(error, "message", str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Oracle rejected the todo detail query: {message}",
-        ) from exc
+        raise oracle_http_exception(exc, "Oracle rejected the todo detail query") from exc
 
     if item is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Todo item not found")
@@ -151,12 +127,7 @@ async def patch_todo(
     try:
         item = await update_todo(todo_id, payload, auth_context)
     except oracledb.Error as exc:
-        error = exc.args[0] if exc.args else exc
-        message = getattr(error, "message", str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Oracle rejected the todo update: {message}",
-        ) from exc
+        raise oracle_http_exception(exc, "Oracle rejected the todo update") from exc
 
     if item is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Todo item not found")

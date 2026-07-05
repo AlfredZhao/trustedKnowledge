@@ -1,6 +1,6 @@
 # 前端界面与展示配置概览
 
-最近评估日期：2026-07-01
+最近评估日期：2026-07-05
 
 本文档维护当前前端界面布局、已实现功能，以及可以安全手工调整的纯前端展示配置。后续如果前端导航、页面布局、模块可见性、默认展示数量、分页方式或纯展示行为发生变化，需要在同一次变更中更新本文档。
 
@@ -10,7 +10,8 @@
 - 主入口：`frontend/src/main.tsx`。
 - 主要实现：`frontend/src/App.tsx`。
 - 全局样式：`frontend/src/styles.css`。
-- API 封装：`frontend/src/api/*.ts`。
+- API 封装：`frontend/src/api/*.ts`，共享请求、错误解析、查询参数和 GET 缓存逻辑集中在 `frontend/src/api/client.ts`。
+- 展示配置：分页数量、导航项、排序字段和状态选项集中在 `frontend/src/uiConfig.ts`。
 - Markdown 渲染：`frontend/src/components/MarkdownPreview.tsx` 和 `frontend/src/utils/markdown.ts`。
 
 当前前端大部分逻辑集中在一个较大的 `App.tsx` 文件中。它同时承载导航、状态恢复、数据加载、视图切换和大部分页面组件。项目没有使用 React Router；当前工作区由 `activeView` 控制，并持久化到 localStorage 的 `trustedKnowledge.uiState.v1`。
@@ -34,7 +35,7 @@
 
 ## 导航模型
 
-导航项由 `frontend/src/App.tsx` 中的 `FUNCTION_NAV_ITEMS` 定义。
+导航项由 `frontend/src/uiConfig.ts` 中的 `FUNCTION_NAV_ITEMS` 定义。
 
 | View key | 页面名称 | 主要用途 |
 | --- | --- | --- |

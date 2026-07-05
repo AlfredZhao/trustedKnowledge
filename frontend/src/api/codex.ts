@@ -1,42 +1,8 @@
 import type { CodexJobSnapshot, CodexOutputMode, CodexRunResponse, CodexStreamEvent } from "../types";
-import { clearStoredApiKey, readStoredApiKey } from "./auth";
+import { clearStoredApiKey } from "./auth";
+import { authFetch, buildQuery, readErrorMessage, request } from "./client";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.trim() ?? "";
 type CodexSandboxMode = "read-only" | "workspace-write";
-
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const apiKey = readStoredApiKey();
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(apiKey ? { "X-API-Key": apiKey } : {}),
-      ...options?.headers,
-    },
-  });
-
-  if (!response.ok) {
-    if (response.status === 401) {
-      clearStoredApiKey();
-      window.dispatchEvent(new Event("trusted-knowledge:unauthorized"));
-    }
-    const detail = await readErrorDetail(response);
-    throw new Error(detail || `Request failed with HTTP ${response.status}`);
-  }
-
-  return response.json() as Promise<T>;
-}
-
-async function readErrorDetail(response: Response): Promise<string | null> {
-  try {
-    const data = (await response.json()) as { detail?: unknown };
-    if (typeof data.detail === "string") return data.detail;
-    if (Array.isArray(data.detail)) return data.detail.map((item) => item.msg ?? "Validation error").join("; ");
-    return null;
-  } catch {
-    return null;
-  }
-}
 
 export async function runCodex(prompt: string): Promise<CodexRunResponse> {
   return request<CodexRunResponse>("/api/codex/runs", {
@@ -66,8 +32,7 @@ export async function getLatestCodexJob(): Promise<CodexJobSnapshot> {
 }
 
 export async function getLatestCodexJobByOutputMode(outputMode: CodexOutputMode): Promise<CodexJobSnapshot> {
-  const params = new URLSearchParams({ output_mode: outputMode });
-  return request<CodexJobSnapshot>(`/api/codex/runs/jobs/latest?${params.toString()}`);
+  return request<CodexJobSnapshot>(`/api/codex/runs/jobs/latest${buildQuery({ output_mode: outputMode })}`);
 }
 
 export async function streamCodex(
@@ -76,13 +41,8 @@ export async function streamCodex(
   skillIds: string[] = [],
   sandboxMode: CodexSandboxMode = "workspace-write",
 ): Promise<CodexRunResponse> {
-  const apiKey = readStoredApiKey();
-  const response = await fetch(`${API_BASE_URL}/api/codex/runs/stream`, {
+  const response = await authFetch("/api/codex/runs/stream", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(apiKey ? { "X-API-Key": apiKey } : {}),
-    },
     body: JSON.stringify({ prompt, skill_ids: skillIds, sandbox_mode: sandboxMode }),
   });
 
@@ -91,7 +51,7 @@ export async function streamCodex(
       clearStoredApiKey();
       window.dispatchEvent(new Event("trusted-knowledge:unauthorized"));
     }
-    const detail = await readErrorDetail(response);
+    const detail = await readErrorMessage(response);
     throw new Error(detail || `Request failed with HTTP ${response.status}`);
   }
 

@@ -16,8 +16,7 @@ import type {
   TodoItem,
   TodoStatus,
 } from "../types";
-import { clearStoredApiKey, readStoredApiKey } from "./auth";
-import { buildApiCacheKey, readCachedApiResponse, writeCachedApiResponse } from "./localCache";
+import { buildQuery, readCachedGet, request } from "./client";
 
 export interface KnowledgeListResponse {
   items: KnowledgeItem[];
@@ -50,50 +49,6 @@ export interface TodoListResponse {
   offset: number;
 }
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.trim() ?? "";
-
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const apiKey = readStoredApiKey();
-  const method = options?.method ?? "GET";
-  const cacheKey = method === "GET" ? buildApiCacheKey(path, apiKey) : null;
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(apiKey ? { "X-API-Key": apiKey } : {}),
-      ...options?.headers,
-    },
-  });
-
-  if (!response.ok) {
-    if (response.status === 401) {
-      clearStoredApiKey();
-      window.dispatchEvent(new Event("trusted-knowledge:unauthorized"));
-    }
-    const detail = await readErrorDetail(response);
-    throw new Error(detail || `Request failed with HTTP ${response.status}`);
-  }
-
-  if (response.status === 204) {
-    return undefined as T;
-  }
-
-  const data = (await response.json()) as T;
-  if (cacheKey) writeCachedApiResponse(cacheKey, data);
-  return data;
-}
-
-async function readErrorDetail(response: Response): Promise<string | null> {
-  try {
-    const data = (await response.json()) as { detail?: unknown };
-    if (typeof data.detail === "string") return data.detail;
-    if (Array.isArray(data.detail)) return data.detail.map((item) => item.msg ?? "Validation error").join("; ");
-    return null;
-  } catch {
-    return null;
-  }
-}
-
 export async function fetchKnowledge({
   query,
   username,
@@ -123,9 +78,7 @@ export function readCachedKnowledge({
   offset: number;
   status?: KnowledgeStatus;
 }): KnowledgeListResponse | null {
-  return readCachedApiResponse<KnowledgeListResponse>(
-    buildApiCacheKey(buildKnowledgeListPath({ query, username, limit, offset, status }), readStoredApiKey()),
-  );
+  return readCachedGet<KnowledgeListResponse>(buildKnowledgeListPath({ query, username, limit, offset, status }));
 }
 
 function buildKnowledgeListPath({
@@ -141,27 +94,19 @@ function buildKnowledgeListPath({
   offset: number;
   status?: KnowledgeStatus;
 }): string {
-  const params = new URLSearchParams({
+  return `/api/knowledge${buildQuery({
     limit: String(limit),
     offset: String(offset),
-  });
-
-  if (query?.trim()) {
-    params.set("q", query.trim());
-  }
-  if (username?.trim()) {
-    params.set("username", username.trim());
-  }
-  if (status) {
-    params.set("status", status);
-  }
-
-  return `/api/knowledge?${params.toString()}`;
+    q: query,
+    username,
+    status,
+  })}`;
 }
 
 export async function createKnowledge(draft: KnowledgeDraft): Promise<KnowledgeItem> {
   return request<KnowledgeItem>("/api/knowledge", {
     method: "POST",
+    invalidatePrefixes: ["/api/knowledge"],
     body: JSON.stringify({
       question: draft.question,
       answer: draft.answer,
@@ -179,6 +124,7 @@ export async function getKnowledge(id: number): Promise<KnowledgeItem> {
 export async function updateKnowledge(id: number, draft: KnowledgeDraft): Promise<KnowledgeItem> {
   return request<KnowledgeItem>(`/api/knowledge/${id}`, {
     method: "PATCH",
+    invalidatePrefixes: ["/api/knowledge"],
     body: JSON.stringify({
       question: draft.question,
       answer: draft.answer,
@@ -192,24 +138,28 @@ export async function updateKnowledge(id: number, draft: KnowledgeDraft): Promis
 export async function deleteKnowledge(id: number): Promise<void> {
   await request<void>(`/api/knowledge/${id}`, {
     method: "DELETE",
+    invalidatePrefixes: ["/api/knowledge"],
   });
 }
 
 export async function convertKnowledgeToTodo(id: number): Promise<TodoItem> {
   return request<TodoItem>(`/api/knowledge/${id}/convert-to-todo`, {
     method: "POST",
+    invalidatePrefixes: ["/api/knowledge", "/api/todos"],
   });
 }
 
 export async function convertTodoToKnowledge(id: number): Promise<KnowledgeItem> {
   return request<KnowledgeItem>(`/api/todos/${id}/convert-to-knowledge`, {
     method: "POST",
+    invalidatePrefixes: ["/api/todos", "/api/knowledge"],
   });
 }
 
 export async function mergeKnowledge(knowledgeIds: number[], draft: KnowledgeDraft): Promise<KnowledgeItem> {
   return request<KnowledgeItem>("/api/knowledge/merge", {
     method: "POST",
+    invalidatePrefixes: ["/api/knowledge", "/api/blog-factory"],
     body: JSON.stringify({
       knowledge_ids: knowledgeIds,
       question: draft.question,
@@ -250,9 +200,7 @@ export function readCachedTodos({
   offset: number;
   status?: TodoStatus;
 }): TodoListResponse | null {
-  return readCachedApiResponse<TodoListResponse>(
-    buildApiCacheKey(buildTodoListPath({ query, username, limit, offset, status }), readStoredApiKey()),
-  );
+  return readCachedGet<TodoListResponse>(buildTodoListPath({ query, username, limit, offset, status }));
 }
 
 function buildTodoListPath({
@@ -268,21 +216,19 @@ function buildTodoListPath({
   offset: number;
   status?: TodoStatus;
 }): string {
-  const params = new URLSearchParams({
+  return `/api/todos${buildQuery({
     limit: String(limit),
     offset: String(offset),
-  });
-
-  if (query?.trim()) params.set("q", query.trim());
-  if (username?.trim()) params.set("username", username.trim());
-  if (status) params.set("status", status);
-
-  return `/api/todos?${params.toString()}`;
+    q: query,
+    username,
+    status,
+  })}`;
 }
 
 export async function createTodo(draft: TodoDraft): Promise<TodoItem> {
   return request<TodoItem>("/api/todos", {
     method: "POST",
+    invalidatePrefixes: ["/api/todos"],
     body: JSON.stringify({
       title: draft.title,
       content: draft.content,
@@ -300,6 +246,7 @@ export async function getTodo(id: number): Promise<TodoItem> {
 export async function updateTodo(id: number, draft: TodoDraft): Promise<TodoItem> {
   return request<TodoItem>(`/api/todos/${id}`, {
     method: "PATCH",
+    invalidatePrefixes: ["/api/todos"],
     body: JSON.stringify({
       title: draft.title,
       content: draft.content,
@@ -327,6 +274,7 @@ export async function appendTodoToCurrent({
 }): Promise<CurrentRecordItem> {
   return request<CurrentRecordItem>(`/api/todos/${id}/append-to-current`, {
     method: "POST",
+    invalidatePrefixes: ["/api/todos", "/api/current-records"],
     body: JSON.stringify({ username, type, week, day, replace_existing_content: replaceExistingContent }),
   });
 }
@@ -340,6 +288,7 @@ export async function createBlogFactoryItem({
 }): Promise<BlogFactoryItem> {
   return request<BlogFactoryItem>("/api/blog-factory", {
     method: "POST",
+    invalidatePrefixes: ["/api/blog-factory", "/api/knowledge"],
     body: JSON.stringify({
       knowledge_id: knowledgeId,
       task_content: taskContent,
@@ -394,11 +343,8 @@ export function readCachedBlogFactoryItems({
   sortBy?: "copied_at" | "id" | "knowledge_id" | "factory_status";
   sortDir?: "asc" | "desc";
 }): BlogFactoryListResponse | null {
-  return readCachedApiResponse<BlogFactoryListResponse>(
-    buildApiCacheKey(
-      buildBlogFactoryListPath({ query, username, limit, offset, factoryStatus, topic, knowledgeId, sortBy, sortDir }),
-      readStoredApiKey(),
-    ),
+  return readCachedGet<BlogFactoryListResponse>(
+    buildBlogFactoryListPath({ query, username, limit, offset, factoryStatus, topic, knowledgeId, sortBy, sortDir }),
   );
 }
 
@@ -423,20 +369,17 @@ function buildBlogFactoryListPath({
   sortBy?: "copied_at" | "id" | "knowledge_id" | "factory_status";
   sortDir?: "asc" | "desc";
 }): string {
-  const params = new URLSearchParams({
+  return `/api/blog-factory${buildQuery({
     limit: String(limit),
     offset: String(offset),
     sort_by: sortBy ?? "copied_at",
     sort_dir: sortDir ?? "desc",
-  });
-
-  if (query?.trim()) params.set("q", query.trim());
-  if (username?.trim()) params.set("username", username.trim());
-  if (factoryStatus) params.set("factory_status", factoryStatus);
-  if (topic?.trim()) params.set("topic", topic.trim());
-  if (knowledgeId?.trim()) params.set("knowledge_id", knowledgeId.trim());
-
-  return `/api/blog-factory?${params.toString()}`;
+    q: query,
+    username,
+    factory_status: factoryStatus,
+    topic,
+    knowledge_id: knowledgeId,
+  })}`;
 }
 
 export async function getBlogFactoryItem(id: number): Promise<BlogFactoryItem> {
@@ -446,6 +389,7 @@ export async function getBlogFactoryItem(id: number): Promise<BlogFactoryItem> {
 export async function updateBlogFactoryStatus(id: number, factoryStatus: BlogFactoryStatus): Promise<BlogFactoryItem> {
   return request<BlogFactoryItem>(`/api/blog-factory/${id}/status`, {
     method: "PATCH",
+    invalidatePrefixes: ["/api/blog-factory"],
     body: JSON.stringify({
       factory_status: factoryStatus,
     }),
@@ -455,6 +399,7 @@ export async function updateBlogFactoryStatus(id: number, factoryStatus: BlogFac
 export async function updateBlogFactoryContentStatus(id: number, blogStatus: KnowledgeStatus): Promise<BlogFactoryItem> {
   return request<BlogFactoryItem>(`/api/blog-factory/${id}/content-status`, {
     method: "PATCH",
+    invalidatePrefixes: ["/api/blog-factory", "/api/knowledge"],
     body: JSON.stringify({
       blog_status: blogStatus,
     }),
@@ -478,6 +423,7 @@ export async function updateBlogFactoryItem({
 }): Promise<BlogFactoryItem> {
   return request<BlogFactoryItem>(`/api/blog-factory/${id}`, {
     method: "PATCH",
+    invalidatePrefixes: ["/api/blog-factory"],
     body: JSON.stringify({
       task_content: taskContent,
       question_snapshot: questionSnapshot,
@@ -499,6 +445,7 @@ export async function updateBlogFactoryArticle({
 }): Promise<BlogFactoryItem> {
   return request<BlogFactoryItem>(`/api/blog-factory/${id}/article`, {
     method: "PATCH",
+    invalidatePrefixes: ["/api/blog-factory"],
     body: JSON.stringify({
       article_markdown: articleMarkdown,
       article_file_path: articleFilePath || null,
@@ -509,6 +456,7 @@ export async function updateBlogFactoryArticle({
 export async function deleteBlogFactoryItem(id: number): Promise<void> {
   await request<void>(`/api/blog-factory/${id}`, {
     method: "DELETE",
+    invalidatePrefixes: ["/api/blog-factory"],
   });
 }
 
@@ -535,6 +483,7 @@ export async function createBlogPublishConfig({
 }): Promise<BlogPublishConfig> {
   return request<BlogPublishConfig>("/api/blog-factory/publish-configs", {
     method: "POST",
+    invalidatePrefixes: ["/api/blog-factory/publish-configs", "/api/blog-factory"],
     body: JSON.stringify({
       blog_type: blogType,
       blog_url: blogUrl,
@@ -568,6 +517,7 @@ export async function updateBlogPublishConfig({
 }): Promise<BlogPublishConfig> {
   return request<BlogPublishConfig>(`/api/blog-factory/publish-configs/${id}`, {
     method: "PATCH",
+    invalidatePrefixes: ["/api/blog-factory/publish-configs", "/api/blog-factory"],
     body: JSON.stringify({
       ...(blogType ? { blog_type: blogType } : {}),
       ...(blogUrl !== undefined ? { blog_url: blogUrl } : {}),
@@ -583,6 +533,7 @@ export async function updateBlogPublishConfig({
 export async function deleteBlogPublishConfig(id: number): Promise<void> {
   await request<void>(`/api/blog-factory/publish-configs/${id}`, {
     method: "DELETE",
+    invalidatePrefixes: ["/api/blog-factory/publish-configs", "/api/blog-factory"],
   });
 }
 
@@ -619,10 +570,7 @@ export async function fetchBlogPublishCategories(configId: number): Promise<Blog
 }
 
 export function readCachedBlogPublishCategories(configId: number): BlogPublishCategoryListResponse | null {
-  return readCachedApiResponse<BlogPublishCategoryListResponse>(
-    buildApiCacheKey(`/api/blog-factory/publish-configs/${configId}/categories`, readStoredApiKey()),
-    10 * 60 * 1000,
-  );
+  return readCachedGet<BlogPublishCategoryListResponse>(`/api/blog-factory/publish-configs/${configId}/categories`, 10 * 60 * 1000);
 }
 
 export async function publishBlogFactoryArticle({
@@ -646,6 +594,7 @@ export async function publishBlogFactoryArticle({
 }): Promise<BlogFactoryPublishResult> {
   return request<BlogFactoryPublishResult>(`/api/blog-factory/${id}/publish`, {
     method: "POST",
+    invalidatePrefixes: ["/api/blog-factory", "/api/knowledge"],
     body: JSON.stringify({
       config_id: configId ?? null,
       article_markdown: articleMarkdown,

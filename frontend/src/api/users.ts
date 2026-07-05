@@ -11,53 +11,16 @@ import type {
   UserRelationGraphResponse,
   UserRelationListResponse,
 } from "../types";
-import { clearStoredApiKey, readStoredApiKey } from "./auth";
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.trim() ?? "";
-
-async function readErrorDetail(response: Response): Promise<string | null> {
-  try {
-    const data = (await response.json()) as { detail?: unknown };
-    if (typeof data.detail === "string") return data.detail;
-    if (Array.isArray(data.detail)) return data.detail.map((item) => item.msg ?? "Validation error").join("; ");
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const apiKey = readStoredApiKey();
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(apiKey ? { "X-API-Key": apiKey } : {}),
-      ...options?.headers,
-    },
-  });
-
-  if (!response.ok) {
-    if (response.status === 401) {
-      clearStoredApiKey();
-      window.dispatchEvent(new Event("trusted-knowledge:unauthorized"));
-    }
-    const detail = await readErrorDetail(response);
-    throw new Error(detail || `Request failed with HTTP ${response.status}`);
-  }
-
-  return response.json() as Promise<T>;
-}
+import { buildQuery, request } from "./client";
 
 export async function fetchManagedUsers(query: string): Promise<ManagedUserListResponse> {
-  const search = new URLSearchParams();
-  if (query.trim()) search.set("q", query.trim());
-  return request<ManagedUserListResponse>(`/api/users${search.toString() ? `?${search.toString()}` : ""}`);
+  return request<ManagedUserListResponse>(`/api/users${buildQuery({ q: query })}`);
 }
 
 export async function createManagedUser(draft: ManagedUserCreateDraft): Promise<ManagedUserItem> {
   return request<ManagedUserItem>("/api/users", {
     method: "POST",
+    invalidatePrefixes: ["/api/users"],
     body: JSON.stringify(draft),
   });
 }
@@ -68,6 +31,7 @@ export async function updateManagedUser(
 ): Promise<ManagedUserItem> {
   return request<ManagedUserItem>(`/api/users/${userId}`, {
     method: "PATCH",
+    invalidatePrefixes: ["/api/users"],
     body: JSON.stringify(payload),
   });
 }
@@ -75,6 +39,7 @@ export async function updateManagedUser(
 export async function resetManagedUserPassword(userId: number, password: string): Promise<ManagedUserItem> {
   return request<ManagedUserItem>(`/api/users/${userId}/reset-password`, {
     method: "POST",
+    invalidatePrefixes: ["/api/users"],
     body: JSON.stringify({ password }),
   });
 }
@@ -94,6 +59,7 @@ export async function createUserRelation(payload: {
 }): Promise<UserRelationItem> {
   return request<UserRelationItem>("/api/users/relations", {
     method: "POST",
+    invalidatePrefixes: ["/api/users"],
     body: JSON.stringify(payload),
   });
 }
@@ -101,6 +67,7 @@ export async function createUserRelation(payload: {
 export async function updateUserRelation(relationId: number, status: ManagedUserStatus): Promise<UserRelationItem> {
   return request<UserRelationItem>(`/api/users/relations/${relationId}`, {
     method: "PATCH",
+    invalidatePrefixes: ["/api/users"],
     body: JSON.stringify({ status }),
   });
 }
@@ -115,6 +82,7 @@ export async function updateAdminModuleAccess(
 ): Promise<AdminModuleAccessItem> {
   return request<AdminModuleAccessItem>(`/api/users/admin-modules/${moduleCode}`, {
     method: "PATCH",
+    invalidatePrefixes: ["/api/users"],
     body: JSON.stringify({ access_level: accessLevel }),
   });
 }

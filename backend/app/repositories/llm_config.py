@@ -1,5 +1,6 @@
 from typing import Any
 
+import logging
 import oracledb
 
 from app.core.config import settings
@@ -8,6 +9,7 @@ from app.core.config import settings
 HISTORY_ASK_MODULE_KEY = "history_ask"
 
 _table_ready = False
+logger = logging.getLogger(__name__)
 
 
 async def ensure_llm_config_table(connection: oracledb.AsyncConnection) -> None:
@@ -16,6 +18,7 @@ async def ensure_llm_config_table(connection: oracledb.AsyncConnection) -> None:
         return
 
     cursor = connection.cursor()
+    logger.info("Ensuring Oracle table ai_llm_configs exists")
     await cursor.execute(
         """
         begin
@@ -46,6 +49,7 @@ async def ensure_llm_config_table(connection: oracledb.AsyncConnection) -> None:
 
 
 async def _drop_api_key_column_if_present(cursor: Any) -> None:
+    logger.info("Ensuring Oracle column ai_llm_configs.api_key is absent")
     await cursor.execute(
         """
         begin

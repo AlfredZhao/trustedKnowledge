@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from secrets import token_urlsafe
@@ -35,6 +36,7 @@ ADMIN_MODULES: dict[str, dict[str, str]] = {
 }
 
 _schema_ready = False
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -202,6 +204,7 @@ async def ensure_user_schema_for_connection(connection: oracledb.AsyncConnection
 
 async def _execute_ddl(cursor: Any, ddl: str) -> None:
     escaped = ddl.strip().replace("'", "''")
+    logger.info("Ensuring Oracle DDL: %s", " ".join(ddl.strip().split())[:160])
     await cursor.execute(
         f"""
         begin
@@ -219,6 +222,7 @@ async def _execute_ddl(cursor: Any, ddl: str) -> None:
 async def _add_column_if_missing(cursor: Any, table_name: str, column_definition: str) -> None:
     escaped_table = table_name.upper()
     escaped = column_definition.replace("'", "''")
+    logger.info("Ensuring Oracle column %s.%s exists", escaped_table, column_definition.split()[0])
     await cursor.execute(
         f"""
         begin

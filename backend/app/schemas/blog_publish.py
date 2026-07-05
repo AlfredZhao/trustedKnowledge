@@ -4,6 +4,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.schemas.blog_factory import BlogFactoryItem
+from app.schemas.validators import normalize_optional_short_text, normalize_required_url
 
 
 BlogPublishType = Literal["METAWEBLOG_API"]
@@ -17,13 +18,23 @@ class BlogPublishConfigBase(BaseModel):
     api_url: str = Field(..., min_length=1, max_length=500)
     blog_name: str | None = Field(default=None, max_length=200)
 
-    @field_validator("blog_url", "username", "api_url")
+    @field_validator("blog_url", "username", "api_url", mode="before")
     @classmethod
     def strip_required_fields(cls, value: str) -> str:
-        stripped = value.strip()
-        if not stripped:
+        normalized = normalize_optional_short_text(value, field_name="Field", max_length=500)
+        if normalized is None:
             raise ValueError("Field cannot be blank")
-        return stripped
+        return normalized
+
+    @field_validator("blog_url")
+    @classmethod
+    def validate_blog_url(cls, value: str) -> str:
+        return normalize_required_url(value, field_name="blog_url", max_length=500)
+
+    @field_validator("api_url")
+    @classmethod
+    def validate_api_url(cls, value: str) -> str:
+        return normalize_required_url(value, field_name="api_url", max_length=500)
 
     @field_validator("blog_name", mode="before")
     @classmethod
@@ -56,15 +67,25 @@ class BlogPublishConfigUpdate(BaseModel):
     blog_name: str | None = Field(default=None, max_length=200)
     is_default: bool | None = None
 
-    @field_validator("blog_url", "username", "api_url")
+    @field_validator("blog_url", "username", "api_url", mode="before")
     @classmethod
     def strip_optional_required_fields(cls, value: str | None) -> str | None:
         if value is None:
             return None
-        stripped = value.strip()
-        if not stripped:
+        normalized = normalize_optional_short_text(value, field_name="Field", max_length=500)
+        if normalized is None:
             raise ValueError("Field cannot be blank")
-        return stripped
+        return normalized
+
+    @field_validator("blog_url")
+    @classmethod
+    def validate_optional_blog_url(cls, value: str | None) -> str | None:
+        return normalize_required_url(value, field_name="blog_url", max_length=500) if value is not None else None
+
+    @field_validator("api_url")
+    @classmethod
+    def validate_optional_api_url(cls, value: str | None) -> str | None:
+        return normalize_required_url(value, field_name="api_url", max_length=500) if value is not None else None
 
     @field_validator("password", "blog_name", mode="before")
     @classmethod

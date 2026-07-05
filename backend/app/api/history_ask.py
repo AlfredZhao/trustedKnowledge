@@ -1,6 +1,7 @@
 import oracledb
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from app.api.errors import oracle_http_exception
 from app.core.security import require_api_key, require_current_user
 from app.db.oracle import acquire_connection
 from app.repositories.history_ask import ask_history
@@ -24,12 +25,7 @@ async def get_llm_config() -> LlmConfigResponse:
             await ensure_llm_config_table(connection)
             config = await get_history_ask_llm_config(connection)
     except oracledb.Error as exc:
-        error = exc.args[0] if exc.args else exc
-        message = getattr(error, "message", str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Oracle rejected the LLM config query: {message}",
-        ) from exc
+        raise oracle_http_exception(exc, "Oracle rejected the LLM config query") from exc
 
     return LlmConfigResponse(
         provider_name=config["provider_name"],
@@ -46,12 +42,7 @@ async def put_llm_config(payload: LlmConfigUpdate) -> LlmConfigResponse:
         async with acquire_connection() as connection:
             config = await update_history_ask_llm_config(connection, payload.model_dump())
     except oracledb.Error as exc:
-        error = exc.args[0] if exc.args else exc
-        message = getattr(error, "message", str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Oracle rejected the LLM config update: {message}",
-        ) from exc
+        raise oracle_http_exception(exc, "Oracle rejected the LLM config update") from exc
 
     return LlmConfigResponse(
         provider_name=config["provider_name"],
@@ -70,11 +61,6 @@ async def post_history_ask(
     try:
         result = await ask_history(payload.question.strip(), skill_ids=payload.skill_ids, auth_context=auth_context)
     except oracledb.Error as exc:
-        error = exc.args[0] if exc.args else exc
-        message = getattr(error, "message", str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Oracle rejected the history ask query: {message}",
-        ) from exc
+        raise oracle_http_exception(exc, "Oracle rejected the history ask query") from exc
 
     return HistoryAskResponse.model_validate(result)

@@ -3,6 +3,7 @@ from typing import Annotated, Literal
 import oracledb
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 
+from app.api.errors import oracle_http_exception
 from app.core.security import require_current_user
 from app.repositories.conversions import convert_knowledge_to_todo
 from app.repositories.knowledge import (
@@ -62,12 +63,7 @@ async def post_knowledge(
     try:
         created = await create_knowledge(payload, auth_context)
     except oracledb.Error as exc:
-        error = exc.args[0] if exc.args else exc
-        message = getattr(error, "message", str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Oracle rejected the knowledge entry: {message}",
-        ) from exc
+        raise oracle_http_exception(exc, "Oracle rejected the knowledge entry") from exc
 
     return KnowledgeItem.model_validate(created)
 
@@ -80,12 +76,7 @@ async def post_knowledge_merge(
     try:
         created = await merge_knowledge(payload, auth_context)
     except oracledb.Error as exc:
-        error = exc.args[0] if exc.args else exc
-        message = getattr(error, "message", str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Oracle rejected the knowledge merge: {message}",
-        ) from exc
+        raise oracle_http_exception(exc, "Oracle rejected the knowledge merge") from exc
 
     if created is None:
         raise HTTPException(
@@ -104,12 +95,7 @@ async def post_knowledge_convert_to_todo(
     try:
         converted = await convert_knowledge_to_todo(knowledge_id, auth_context)
     except oracledb.Error as exc:
-        error = exc.args[0] if exc.args else exc
-        message = getattr(error, "message", str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Oracle rejected the knowledge conversion: {message}",
-        ) from exc
+        raise oracle_http_exception(exc, "Oracle rejected the knowledge conversion") from exc
 
     if converted is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Knowledge item not found")
@@ -137,12 +123,7 @@ async def patch_knowledge(
     try:
         updated = await update_knowledge(knowledge_id, payload, auth_context)
     except oracledb.Error as exc:
-        error = exc.args[0] if exc.args else exc
-        message = getattr(error, "message", str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Oracle rejected the knowledge update: {message}",
-        ) from exc
+        raise oracle_http_exception(exc, "Oracle rejected the knowledge update") from exc
 
     if updated is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Knowledge item not found")
@@ -158,12 +139,7 @@ async def delete_knowledge_item(
     try:
         deleted = await delete_knowledge(knowledge_id, auth_context)
     except oracledb.Error as exc:
-        error = exc.args[0] if exc.args else exc
-        message = getattr(error, "message", str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Oracle rejected the knowledge deletion: {message}",
-        ) from exc
+        raise oracle_http_exception(exc, "Oracle rejected the knowledge deletion") from exc
 
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Knowledge item not found")

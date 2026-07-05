@@ -3,6 +3,7 @@ from typing import Annotated, Literal
 import oracledb
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
+from app.api.errors import oracle_http_exception
 from app.core.security import require_current_user
 from app.repositories.english_materials import (
     create_english_material,
@@ -47,12 +48,7 @@ async def get_english_materials(
             auth_context=auth_context,
         )
     except oracledb.Error as exc:
-        error = exc.args[0] if exc.args else exc
-        message = getattr(error, "message", str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Oracle rejected the English materials query: {message}",
-        ) from exc
+        raise oracle_http_exception(exc, "Oracle rejected the English materials query") from exc
 
     return EnglishMaterialListResponse(items=items, total=total, limit=limit, offset=offset)
 
@@ -65,12 +61,7 @@ async def get_english_material_detail(
     try:
         item = await get_english_material(material_id, auth_context)
     except oracledb.Error as exc:
-        error = exc.args[0] if exc.args else exc
-        message = getattr(error, "message", str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Oracle rejected the English material detail query: {message}",
-        ) from exc
+        raise oracle_http_exception(exc, "Oracle rejected the English material detail query") from exc
 
     if item is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="English material not found")
@@ -86,12 +77,7 @@ async def post_english_material(
     try:
         created = await create_english_material(payload, auth_context)
     except oracledb.Error as exc:
-        error = exc.args[0] if exc.args else exc
-        message = getattr(error, "message", str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Oracle rejected the English material insert: {message}",
-        ) from exc
+        raise oracle_http_exception(exc, "Oracle rejected the English material insert") from exc
 
     return EnglishMaterialItem.model_validate(created)
 
@@ -105,12 +91,7 @@ async def patch_english_material(
     try:
         updated = await update_english_material(material_id, payload, auth_context)
     except oracledb.Error as exc:
-        error = exc.args[0] if exc.args else exc
-        message = getattr(error, "message", str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Oracle rejected the English material update: {message}",
-        ) from exc
+        raise oracle_http_exception(exc, "Oracle rejected the English material update") from exc
 
     if updated is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="English material not found")

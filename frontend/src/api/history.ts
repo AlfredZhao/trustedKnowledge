@@ -1,6 +1,5 @@
 import type { HistoryItem, HistorySummary } from "../types";
-import { clearStoredApiKey, readStoredApiKey } from "./auth";
-import { buildApiCacheKey, readCachedApiResponse, writeCachedApiResponse } from "./localCache";
+import { buildQuery, readCachedGet, request } from "./client";
 
 export interface HistoryQuery {
   query?: string;
@@ -26,68 +25,28 @@ export interface HistoryListResponse {
   summary: HistorySummary;
 }
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.trim() ?? "";
-
-async function request<T>(path: string): Promise<T> {
-  const apiKey = readStoredApiKey();
-  const cacheKey = buildApiCacheKey(path, apiKey);
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    headers: {
-      "Content-Type": "application/json",
-      ...(apiKey ? { "X-API-Key": apiKey } : {}),
-    },
-  });
-
-  if (!response.ok) {
-    if (response.status === 401) {
-      clearStoredApiKey();
-      window.dispatchEvent(new Event("trusted-knowledge:unauthorized"));
-    }
-    const detail = await readErrorDetail(response);
-    throw new Error(detail || `Request failed with HTTP ${response.status}`);
-  }
-
-  const data = (await response.json()) as T;
-  writeCachedApiResponse(cacheKey, data);
-  return data;
-}
-
-async function readErrorDetail(response: Response): Promise<string | null> {
-  try {
-    const data = (await response.json()) as { detail?: unknown };
-    if (typeof data.detail === "string") return data.detail;
-    if (Array.isArray(data.detail)) return data.detail.map((item) => item.msg ?? "Validation error").join("; ");
-    return null;
-  } catch {
-    return null;
-  }
-}
-
 export async function fetchHistory(query: HistoryQuery): Promise<HistoryListResponse> {
   return request<HistoryListResponse>(buildHistoryPath(query));
 }
 
 export function readCachedHistory(query: HistoryQuery): HistoryListResponse | null {
-  return readCachedApiResponse<HistoryListResponse>(buildApiCacheKey(buildHistoryPath(query), readStoredApiKey()));
+  return readCachedGet<HistoryListResponse>(buildHistoryPath(query));
 }
 
 function buildHistoryPath(query: HistoryQuery): string {
-  const params = new URLSearchParams({
+  return `/api/history${buildQuery({
     limit: String(query.limit),
     offset: String(query.offset),
     sort_by: query.sortBy ?? "history_date",
     sort_dir: query.sortDir ?? "desc",
-  });
-
-  if (query.query?.trim()) params.set("q", query.query.trim());
-  if (query.type?.trim()) params.set("type", query.type.trim());
-  if (query.username?.trim()) params.set("username", query.username.trim());
-  if (query.week?.trim()) params.set("week", query.week.trim());
-  if (query.day?.trim()) params.set("day", query.day.trim());
-  if (query.learnLevel?.trim()) params.set("learn_level", query.learnLevel.trim());
-  if (query.vectorStatus && query.vectorStatus !== "all") params.set("v_needs_update", query.vectorStatus);
-  if (query.dateFrom) params.set("date_from", query.dateFrom);
-  if (query.dateTo) params.set("date_to", query.dateTo);
-
-  return `/api/history?${params.toString()}`;
+    q: query.query,
+    type: query.type,
+    username: query.username,
+    week: query.week,
+    day: query.day,
+    learn_level: query.learnLevel,
+    v_needs_update: query.vectorStatus && query.vectorStatus !== "all" ? query.vectorStatus : undefined,
+    date_from: query.dateFrom,
+    date_to: query.dateTo,
+  })}`;
 }

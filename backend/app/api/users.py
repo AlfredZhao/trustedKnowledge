@@ -3,6 +3,7 @@ from typing import Annotated
 import oracledb
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 
+from app.api.errors import oracle_http_exception
 from app.core.security import require_admin_user
 from app.repositories.users import (
     AuthContext,
@@ -60,7 +61,7 @@ async def get_users(
     try:
         items, total = await list_managed_users(q=q)
     except oracledb.Error as exc:
-        raise _oracle_error(exc, "Oracle rejected the user list query") from exc
+        raise oracle_http_exception(exc, "Oracle rejected the user list query") from exc
     return ManagedUserListResponse(items=items, total=total)
 
 
@@ -74,7 +75,7 @@ async def post_user(
     except UserConflictError as exc:
         raise _conflict(exc) from exc
     except oracledb.Error as exc:
-        raise _oracle_error(exc, "Oracle rejected the user insert") from exc
+        raise oracle_http_exception(exc, "Oracle rejected the user insert") from exc
 
 
 @router.patch("/{user_id}", response_model=ManagedUserItem)
@@ -88,7 +89,7 @@ async def patch_user(
     except UserNotFoundError as exc:
         raise _not_found(exc) from exc
     except oracledb.Error as exc:
-        raise _oracle_error(exc, "Oracle rejected the user update") from exc
+        raise oracle_http_exception(exc, "Oracle rejected the user update") from exc
 
 
 @router.post("/{user_id}/reset-password", response_model=ManagedUserItem)
@@ -102,7 +103,7 @@ async def post_user_password_reset(
     except UserNotFoundError as exc:
         raise _not_found(exc) from exc
     except oracledb.Error as exc:
-        raise _oracle_error(exc, "Oracle rejected the password reset") from exc
+        raise oracle_http_exception(exc, "Oracle rejected the password reset") from exc
 
 
 @router.get("/relations", response_model=UserRelationListResponse)
@@ -110,7 +111,7 @@ async def get_relations(_: AuthContext = Depends(require_admin_user)) -> UserRel
     try:
         items, total = await list_user_relations()
     except oracledb.Error as exc:
-        raise _oracle_error(exc, "Oracle rejected the relation list query") from exc
+        raise oracle_http_exception(exc, "Oracle rejected the relation list query") from exc
     return UserRelationListResponse(items=items, total=total)
 
 
@@ -119,7 +120,7 @@ async def get_relation_graph(_: AuthContext = Depends(require_admin_user)) -> Us
     try:
         graph = await get_user_relation_graph()
     except oracledb.Error as exc:
-        raise _oracle_error(exc, "Oracle rejected the relation graph query") from exc
+        raise oracle_http_exception(exc, "Oracle rejected the relation graph query") from exc
     return UserRelationGraphResponse.model_validate(graph)
 
 
@@ -137,7 +138,7 @@ async def post_relation(
     except UserManagementError as exc:
         raise _bad_request(exc) from exc
     except oracledb.Error as exc:
-        raise _oracle_error(exc, "Oracle rejected the relation insert") from exc
+        raise oracle_http_exception(exc, "Oracle rejected the relation insert") from exc
 
 
 @router.patch("/relations/{relation_id}", response_model=UserRelationItem)
@@ -151,7 +152,7 @@ async def patch_relation(
     except UserNotFoundError as exc:
         raise _not_found(exc) from exc
     except oracledb.Error as exc:
-        raise _oracle_error(exc, "Oracle rejected the relation update") from exc
+        raise oracle_http_exception(exc, "Oracle rejected the relation update") from exc
 
 
 @router.get("/admin-modules", response_model=AdminModuleAccessListResponse)
@@ -159,7 +160,7 @@ async def get_admin_modules(_: AuthContext = Depends(require_admin_user)) -> Adm
     try:
         items = await list_admin_module_access()
     except oracledb.Error as exc:
-        raise _oracle_error(exc, "Oracle rejected the admin module settings query") from exc
+        raise oracle_http_exception(exc, "Oracle rejected the admin module settings query") from exc
     return AdminModuleAccessListResponse(items=[AdminModuleAccessItem.model_validate(item) for item in items])
 
 
@@ -174,11 +175,5 @@ async def patch_admin_module(
     except UserNotFoundError as exc:
         raise _not_found(exc) from exc
     except oracledb.Error as exc:
-        raise _oracle_error(exc, "Oracle rejected the admin module settings update") from exc
+        raise oracle_http_exception(exc, "Oracle rejected the admin module settings update") from exc
     return AdminModuleAccessItem.model_validate(item)
-
-
-def _oracle_error(exc: oracledb.Error, prefix: str) -> HTTPException:
-    error = exc.args[0] if exc.args else exc
-    message = getattr(error, "message", str(exc))
-    return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{prefix}: {message}")

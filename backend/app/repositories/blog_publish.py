@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import logging
 from typing import Any
 
 import oracledb
@@ -28,6 +29,7 @@ CONFIG_COLUMNS = """
 """
 
 _table_ready = False
+logger = logging.getLogger(__name__)
 
 
 class BlogPublishConfigNotFoundError(Exception):
@@ -574,6 +576,7 @@ async def _ensure_blog_publish_table(connection: oracledb.AsyncConnection) -> No
         return
 
     cursor = connection.cursor()
+    logger.info("Ensuring Oracle table tk_blog_publish_configs exists")
     await cursor.execute(
         """
         begin
@@ -647,6 +650,7 @@ async def _update_factory_publish_metadata(
         },
     )
     await _add_column_if_missing(cursor, "owner_username varchar2(100)")
+    logger.info("Ensuring Oracle index tk_blog_publish_cfg_owner_idx exists")
     await cursor.execute(
         """
         update tk_blog_publish_configs config
@@ -705,6 +709,7 @@ async def _update_factory_publish_metadata(
 
 async def _add_column_if_missing(cursor: Any, column_definition: str) -> None:
     ddl = column_definition.replace("'", "''")
+    logger.info("Ensuring Oracle column tk_blog_publish_configs.%s exists", column_definition.split()[0])
     await cursor.execute(
         f"""
         begin

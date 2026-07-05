@@ -1,5 +1,6 @@
 from typing import Any
 
+import logging
 import oracledb
 
 from app.db.oracle import acquire_connection
@@ -24,6 +25,7 @@ LIST_COLUMNS = """
 """
 
 _table_ready = False
+logger = logging.getLogger(__name__)
 
 
 def _row_to_dict(row: Any) -> dict[str, Any]:
@@ -45,6 +47,7 @@ async def _ensure_todo_table(connection: oracledb.AsyncConnection) -> None:
         return
 
     cursor = connection.cursor()
+    logger.info("Ensuring Oracle table ai_todo_items exists")
     await cursor.execute(
         """
         begin
@@ -71,6 +74,7 @@ async def _ensure_todo_table(connection: oracledb.AsyncConnection) -> None:
         end;
         """
     )
+    logger.info("Ensuring Oracle column ai_todo_items.user_id exists")
     await cursor.execute(
         """
         begin
@@ -86,6 +90,7 @@ async def _ensure_todo_table(connection: oracledb.AsyncConnection) -> None:
         end;
         """
     )
+    logger.info("Ensuring Oracle index ai_todo_items_status_idx exists")
     await cursor.execute(
         """
         begin

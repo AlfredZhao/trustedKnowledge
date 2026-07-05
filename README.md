@@ -168,7 +168,7 @@ GET /health
 POST /api/auth/login
 ```
 
-登录成功后，前端把返回的 API key 保存到 `sessionStorage`，后续请求通过请求头发送：
+登录成功后，前端把返回的 API key 保存到 `localStorage`，后续请求通过请求头发送。旧版本保存在 `sessionStorage` 的 key 会在读取时迁移到 `localStorage`：
 
 ```text
 X-API-Key: <api-key>
@@ -387,7 +387,7 @@ The browser first logs in through:
 POST /api/auth/login
 ```
 
-After login, the frontend stores the returned API key in `sessionStorage` and sends it on subsequent requests as:
+After login, the frontend stores the returned API key in `localStorage` and sends it on subsequent requests. Keys saved by older versions in `sessionStorage` are migrated to `localStorage` when read:
 
 ```text
 X-API-Key: <api-key>

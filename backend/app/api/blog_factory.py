@@ -3,6 +3,7 @@ from typing import Annotated, Literal
 import oracledb
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
+from app.api.errors import oracle_http_exception
 from app.core.security import require_current_user
 from app.repositories.blog_factory import (
     create_blog_factory_item,
@@ -79,12 +80,7 @@ async def get_blog_factory_items(
             auth_context=auth_context,
         )
     except oracledb.Error as exc:
-        error = exc.args[0] if exc.args else exc
-        message = getattr(error, "message", str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Oracle rejected the blog factory query: {message}",
-        ) from exc
+        raise oracle_http_exception(exc, "Oracle rejected the blog factory query") from exc
 
     return BlogFactoryListResponse(items=items, total=total, limit=limit, offset=offset)
 
@@ -97,12 +93,7 @@ async def post_blog_factory_item(
     try:
         created = await create_blog_factory_item(payload, auth_context)
     except oracledb.Error as exc:
-        error = exc.args[0] if exc.args else exc
-        message = getattr(error, "message", str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Oracle rejected the blog factory entry: {message}",
-        ) from exc
+        raise oracle_http_exception(exc, "Oracle rejected the blog factory entry") from exc
 
     if created is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Knowledge item not found")
@@ -117,12 +108,7 @@ async def get_blog_publish_configs(
     try:
         items = await list_blog_publish_configs(auth_context)
     except oracledb.Error as exc:
-        error = exc.args[0] if exc.args else exc
-        message = getattr(error, "message", str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Oracle rejected the blog publish config query: {message}",
-        ) from exc
+        raise oracle_http_exception(exc, "Oracle rejected the blog publish config query") from exc
     return BlogPublishConfigListResponse(items=[BlogPublishConfig.model_validate(item) for item in items], total=len(items))
 
 
@@ -134,12 +120,7 @@ async def post_blog_publish_config(
     try:
         created = await create_blog_publish_config(payload, auth_context)
     except oracledb.Error as exc:
-        error = exc.args[0] if exc.args else exc
-        message = getattr(error, "message", str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Oracle rejected the blog publish config creation: {message}",
-        ) from exc
+        raise oracle_http_exception(exc, "Oracle rejected the blog publish config creation") from exc
     return BlogPublishConfig.model_validate(created)
 
 
@@ -152,12 +133,7 @@ async def patch_blog_publish_config(
     try:
         updated = await update_blog_publish_config(config_id, payload, auth_context)
     except oracledb.Error as exc:
-        error = exc.args[0] if exc.args else exc
-        message = getattr(error, "message", str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Oracle rejected the blog publish config update: {message}",
-        ) from exc
+        raise oracle_http_exception(exc, "Oracle rejected the blog publish config update") from exc
     if updated is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blog publish config not found")
     return BlogPublishConfig.model_validate(updated)
@@ -171,12 +147,7 @@ async def delete_blog_publish_config_detail(
     try:
         deleted = await delete_blog_publish_config(config_id, auth_context)
     except oracledb.Error as exc:
-        error = exc.args[0] if exc.args else exc
-        message = getattr(error, "message", str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Oracle rejected the blog publish config deletion: {message}",
-        ) from exc
+        raise oracle_http_exception(exc, "Oracle rejected the blog publish config deletion") from exc
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blog publish config not found")
 
@@ -211,12 +182,7 @@ async def get_blog_publish_categories(
     except MetaWeblogError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except oracledb.Error as exc:
-        error = exc.args[0] if exc.args else exc
-        message = getattr(error, "message", str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Oracle rejected the blog publish category query: {message}",
-        ) from exc
+        raise oracle_http_exception(exc, "Oracle rejected the blog publish category query") from exc
     return BlogPublishCategoryListResponse.model_validate({"items": items, "total": len(items)})
 
 
@@ -228,12 +194,7 @@ async def get_blog_factory_item_detail(
     try:
         item = await get_blog_factory_item(item_id, auth_context)
     except oracledb.Error as exc:
-        error = exc.args[0] if exc.args else exc
-        message = getattr(error, "message", str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Oracle rejected the blog factory detail query: {message}",
-        ) from exc
+        raise oracle_http_exception(exc, "Oracle rejected the blog factory detail query") from exc
 
     if item is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blog factory item not found")
@@ -250,12 +211,7 @@ async def patch_blog_factory_item(
     try:
         item = await update_blog_factory_item(item_id, payload, auth_context)
     except oracledb.Error as exc:
-        error = exc.args[0] if exc.args else exc
-        message = getattr(error, "message", str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Oracle rejected the blog factory item update: {message}",
-        ) from exc
+        raise oracle_http_exception(exc, "Oracle rejected the blog factory item update") from exc
 
     if item is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blog factory item not found")
@@ -272,12 +228,7 @@ async def patch_blog_factory_status(
     try:
         item = await update_blog_factory_status(item_id, payload, auth_context)
     except oracledb.Error as exc:
-        error = exc.args[0] if exc.args else exc
-        message = getattr(error, "message", str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Oracle rejected the blog factory status update: {message}",
-        ) from exc
+        raise oracle_http_exception(exc, "Oracle rejected the blog factory status update") from exc
 
     if item is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blog factory item not found")
@@ -294,12 +245,7 @@ async def patch_blog_factory_content_status(
     try:
         item = await update_blog_factory_content_status(item_id, payload, auth_context)
     except oracledb.Error as exc:
-        error = exc.args[0] if exc.args else exc
-        message = getattr(error, "message", str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Oracle rejected the blog factory content status update: {message}",
-        ) from exc
+        raise oracle_http_exception(exc, "Oracle rejected the blog factory content status update") from exc
 
     if item is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blog factory item not found")
@@ -316,12 +262,7 @@ async def patch_blog_factory_article(
     try:
         item = await update_blog_factory_article(item_id, payload, auth_context)
     except oracledb.Error as exc:
-        error = exc.args[0] if exc.args else exc
-        message = getattr(error, "message", str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Oracle rejected the blog factory article update: {message}",
-        ) from exc
+        raise oracle_http_exception(exc, "Oracle rejected the blog factory article update") from exc
 
     if item is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blog factory item not found")
@@ -337,12 +278,7 @@ async def delete_blog_factory_item_detail(
     try:
         deleted = await delete_blog_factory_item(item_id, auth_context)
     except oracledb.Error as exc:
-        error = exc.args[0] if exc.args else exc
-        message = getattr(error, "message", str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Oracle rejected the blog factory deletion: {message}",
-        ) from exc
+        raise oracle_http_exception(exc, "Oracle rejected the blog factory deletion") from exc
 
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blog factory item not found")
@@ -365,10 +301,5 @@ async def post_blog_factory_publish(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except oracledb.Error as exc:
-        error = exc.args[0] if exc.args else exc
-        message = getattr(error, "message", str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Oracle rejected the blog publish request: {message}",
-        ) from exc
+        raise oracle_http_exception(exc, "Oracle rejected the blog publish request") from exc
     return BlogFactoryPublishResponse.model_validate(result)

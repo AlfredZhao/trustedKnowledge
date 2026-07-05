@@ -13,7 +13,16 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Added / 新增
 
+- Added `/health/db` for a focused Oracle connectivity check, plus unit tests around visibility clauses, admin module access, conversion workflows, current-record appends, and Blog Factory publish status synchronization.
+- 新增 `/health/db` 用于单独检查 Oracle 连通性，并补充权限可见性条件、管理员模块权限、知识/Todo 转换、Todo 追加当前记录和博客工厂发布状态同步的单元测试。
+
 #### Changed / 变更
+
+- Split frontend display constants into `frontend/src/uiConfig.ts`, added a shared API client/cache invalidation layer, and reused a debounced-value hook across search inputs to reduce `App.tsx` maintenance cost without changing UI behavior.
+- 将前端展示常量拆到 `frontend/src/uiConfig.ts`，新增统一 API client 与缓存前缀失效层，并复用搜索输入防抖 hook，在不改变界面行为的前提下降低 `App.tsx` 维护成本。
+
+- Tightened backend field validation for knowledge/Todo tags and sources, Blog Factory article paths, and MetaWeblog URLs, while centralizing Oracle error conversion and adding runtime DDL logs.
+- 收紧后端对知识/Todo 标签与来源、博客工厂文章路径、MetaWeblog URL 的字段校验，同时统一 Oracle 错误转换并为运行时 DDL 增加日志。
 
 #### Fixed / 修复
 

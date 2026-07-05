@@ -3,6 +3,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.schemas.validators import normalize_optional_file_path, normalize_optional_short_text, normalize_optional_topic_tag
+
 BlogFactoryStatus = Literal["待处理", "已处理", "已发布", "跳过"]
 KnowledgeStatus = Literal["未发布", "已发布", "跳过"]
 
@@ -69,7 +71,7 @@ class BlogFactoryUpdate(BaseModel):
     question_snapshot: str | None = Field(default=None, min_length=1, max_length=4000)
     answer_snapshot: str | None = Field(default=None, min_length=1)
     source_snapshot: str | None = Field(default=None, max_length=200)
-    topic_tag_snapshot: str | None = Field(default=None, max_length=100, pattern=r"^[a-zA-Z0-9_,\s]+$")
+    topic_tag_snapshot: str | None = Field(default=None, max_length=100)
 
     @field_validator("task_content", "question_snapshot", "answer_snapshot")
     @classmethod
@@ -81,13 +83,15 @@ class BlogFactoryUpdate(BaseModel):
             raise ValueError("Field cannot be blank")
         return stripped
 
-    @field_validator("source_snapshot", "topic_tag_snapshot", mode="before")
+    @field_validator("source_snapshot", mode="before")
     @classmethod
-    def empty_string_to_none(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        stripped = value.strip()
-        return stripped or None
+    def normalize_source_snapshot(cls, value: str | None) -> str | None:
+        return normalize_optional_short_text(value, field_name="source_snapshot", max_length=200)
+
+    @field_validator("topic_tag_snapshot", mode="before")
+    @classmethod
+    def normalize_topic_tag_snapshot(cls, value: str | None) -> str | None:
+        return normalize_optional_topic_tag(value)
 
 
 class BlogFactoryArticleUpdate(BaseModel):
@@ -105,7 +109,4 @@ class BlogFactoryArticleUpdate(BaseModel):
     @field_validator("article_file_path", mode="before")
     @classmethod
     def empty_path_to_none(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        stripped = value.strip()
-        return stripped or None
+        return normalize_optional_file_path(value)

@@ -49,10 +49,32 @@ export function clearApiResponseCache() {
   }
 }
 
+export function invalidateApiResponseCache(pathPrefixes: string[]) {
+  try {
+    for (let index = window.localStorage.length - 1; index >= 0; index -= 1) {
+      const key = window.localStorage.key(index);
+      if (!key?.startsWith(API_CACHE_PREFIX)) continue;
+
+      const cachePath = readCachePath(key);
+      if (cachePath && pathPrefixes.some((prefix) => cachePath.startsWith(prefix))) {
+        window.localStorage.removeItem(key);
+      }
+    }
+  } catch {
+    // Cache cleanup is best effort.
+  }
+}
+
 function hashCacheScope(scope: string): string {
   let hash = 0;
   for (let index = 0; index < scope.length; index += 1) {
     hash = (hash * 31 + scope.charCodeAt(index)) | 0;
   }
   return Math.abs(hash).toString(36);
+}
+
+function readCachePath(cacheKey: string): string | null {
+  const marker = ":/api/";
+  const index = cacheKey.indexOf(marker);
+  return index >= 0 ? cacheKey.slice(index + 1) : null;
 }
