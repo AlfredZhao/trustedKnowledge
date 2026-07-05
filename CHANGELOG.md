@@ -26,6 +26,9 @@ The format follows the common GitHub changelog convention inspired by
 - Fixed AI Coding form select controls so fixed-height dropdowns such as `执行模型` no longer clip the lower half of the option text.
 - 修复 AI 编程表单下拉框的文字裁切问题：像 `执行模型` 这类固定高度选择框不再出现选项文字下半部分被遮挡。
 
+- Fixed the Current Records filter bar so the `清空` button now matches the compact dropdown height instead of standing taller than the adjacent selects.
+- 修复当前记录筛选栏的视觉不一致问题：`清空` 按钮现在与旁边的紧凑型下拉框保持同一高度，不再显得更高更突兀。
+
 ## 历史版本更新
 
 ### [0.3.2] - 2026-07-05

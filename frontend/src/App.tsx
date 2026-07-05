@@ -9343,7 +9343,7 @@ function CurrentRecordsWorkspace({
             </select>
           </Field>
           <button
-            className="mt-7 h-11 rounded-lg border border-white/10 bg-white/[0.035] px-4 text-sm font-medium text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300"
+            className="mt-7 h-10 rounded-lg border border-white/10 bg-white/[0.035] px-4 text-sm font-medium text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300"
             type="button"
             onClick={onClearFilters}
           >
