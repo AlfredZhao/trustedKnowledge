@@ -1,4 +1,4 @@
-import type { CodexJobSnapshot, CodexOutputMode, CodexRunResponse, CodexStreamEvent } from "../types";
+import type { CodexConfig, CodexJobSnapshot, CodexOutputMode, CodexRunResponse, CodexStreamEvent } from "../types";
 import { clearStoredApiKey } from "./auth";
 import { authFetch, buildQuery, readErrorMessage, request } from "./client";
 
@@ -11,15 +11,26 @@ export async function runCodex(prompt: string): Promise<CodexRunResponse> {
   });
 }
 
+export async function fetchCodexConfig(): Promise<CodexConfig> {
+  return request<CodexConfig>("/api/codex/config");
+}
+
 export async function startCodexJob(
   prompt: string,
   skillIds: string[] = [],
   sandboxMode: CodexSandboxMode = "workspace-write",
   outputMode: CodexOutputMode = "full",
+  modelName = "",
 ): Promise<CodexJobSnapshot> {
   return request<CodexJobSnapshot>("/api/codex/runs/jobs", {
     method: "POST",
-    body: JSON.stringify({ prompt, skill_ids: skillIds, sandbox_mode: sandboxMode, output_mode: outputMode }),
+    body: JSON.stringify({
+      prompt,
+      skill_ids: skillIds,
+      sandbox_mode: sandboxMode,
+      output_mode: outputMode,
+      model_name: modelName,
+    }),
   });
 }
 

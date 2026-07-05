@@ -1,6 +1,8 @@
 import asyncio
 import json
+import os
 import time
+import tomllib
 from collections.abc import AsyncIterator
 from contextlib import suppress
 from dataclasses import dataclass, field
@@ -17,13 +19,14 @@ from app.core.config import settings
 from app.core.security import require_admin_module, require_current_user
 from app.repositories.skills import get_prompt_skills
 from app.repositories.users import AuthContext
-from app.schemas.codex import CodexJobSnapshot, CodexJobStatus, CodexRunRequest, CodexRunResponse
+from app.schemas.codex import CodexConfigResponse, CodexJobSnapshot, CodexJobStatus, CodexRunRequest, CodexRunResponse
 
 
 router = APIRouter(prefix="/codex", tags=["codex"], dependencies=[Depends(require_admin_module("aiCoding"))])
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 CODEX_TIMEOUT_SECONDS = 900
+CODEX_AVAILABLE_MODELS = ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex", "gpt-5.2"]
 _codex_state_locks: dict[str, asyncio.Lock] = {}
 _codex_active_run_counts: dict[str, int] = {}
 _codex_jobs: dict[str, "CodexJobState"] = {}
@@ -37,6 +40,7 @@ class CodexJobState:
     job_id: str
     owner_username: str
     prompt: str
+    model_name: str | None = None
     skill_ids: list[str] = field(default_factory=list)
     sandbox_mode: str = "workspace-write"
     output_mode: str = "full"
@@ -48,6 +52,14 @@ class CodexJobState:
     started_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     completed_at: datetime | None = None
     slot_reserved: bool = False
+
+
+@router.get("/config", response_model=CodexConfigResponse)
+async def get_codex_config() -> CodexConfigResponse:
+    return CodexConfigResponse(
+        default_model_name=_read_codex_default_model(PROJECT_ROOT),
+        available_models=CODEX_AVAILABLE_MODELS,
+    )
 
 
 @router.post("/runs", response_model=CodexRunResponse)
@@ -68,7 +80,8 @@ async def run_codex(
     try:
         started_at = time.monotonic()
         prompt = _build_prompt(payload.prompt.strip(), payload.skill_ids, auth_context, payload.output_mode)
-        exec_args, output_path = _build_codex_exec_args(payload.sandbox_mode, payload.output_mode)
+        model_name = _resolve_codex_model_name(payload.model_name)
+        exec_args, output_path = _build_codex_exec_args(payload.sandbox_mode, payload.output_mode, model_name=model_name)
 
         try:
             process = await asyncio.create_subprocess_exec(
@@ -115,6 +128,7 @@ async def run_codex(
         exit_code=process.returncode or 0,
         duration_seconds=duration_seconds,
         git_status=git_status,
+        model_name=model_name,
     )
 
 
@@ -140,6 +154,7 @@ async def stream_codex(
             payload.sandbox_mode,
             auth_context,
             payload.output_mode,
+            payload.model_name,
         ),
         media_type="application/x-ndjson",
         headers={"Cache-Control": "no-store"},
@@ -165,6 +180,7 @@ async def start_codex_job(
         job_id=uuid4().hex,
         owner_username=auth_context.username,
         prompt=payload.prompt.strip(),
+        model_name=_resolve_codex_model_name(payload.model_name),
         skill_ids=payload.skill_ids,
         sandbox_mode=payload.sandbox_mode,
         output_mode=payload.output_mode,
@@ -268,7 +284,12 @@ async def _run_codex_job(job: CodexJobState, auth_context: AuthContext) -> None:
     try:
         started_at = time.monotonic()
         prompt = _build_prompt(job.prompt, job.skill_ids, auth_context, job.output_mode)
-        exec_args, output_path = _build_codex_exec_args(job.sandbox_mode, job.output_mode, json_output=True)
+        exec_args, output_path = _build_codex_exec_args(
+            job.sandbox_mode,
+            job.output_mode,
+            json_output=True,
+            model_name=job.model_name,
+        )
         process: asyncio.subprocess.Process | None = None
 
         try:
@@ -337,6 +358,7 @@ async def _run_codex_job(job: CodexJobState, auth_context: AuthContext) -> None:
                 exit_code=process.returncode or 0,
                 duration_seconds=duration_seconds,
                 git_status=git_status,
+                model_name=job.model_name,
             )
             job.status = "completed"
             job.completed_at = datetime.now(UTC)
@@ -353,6 +375,7 @@ async def _stream_codex_events(
     sandbox_mode: str = "workspace-write",
     auth_context: AuthContext | None = None,
     output_mode: str = "full",
+    model_name: str = "",
 ) -> AsyncIterator[str]:
     owner_username = (auth_context.username if auth_context else "").strip()
     try:
@@ -361,7 +384,13 @@ async def _stream_codex_events(
         stdout_parts: list[str] = []
         stderr_parts: list[str] = []
         queue: asyncio.Queue[dict[str, str]] = asyncio.Queue()
-        exec_args, output_path = _build_codex_exec_args(sandbox_mode, output_mode, json_output=True)
+        effective_model_name = _resolve_codex_model_name(model_name)
+        exec_args, output_path = _build_codex_exec_args(
+            sandbox_mode,
+            output_mode,
+            json_output=True,
+            model_name=effective_model_name,
+        )
 
         yield _json_line({"type": "status", "message": "Codex started."})
 
@@ -417,6 +446,7 @@ async def _stream_codex_events(
             exit_code=process.returncode or 0,
             duration_seconds=duration_seconds,
             git_status=git_status,
+            model_name=effective_model_name,
         )
         yield _json_line({"type": "complete", "response": response.model_dump()})
     finally:
@@ -448,6 +478,7 @@ def _snapshot_codex_job(job: CodexJobState) -> CodexJobSnapshot:
     return CodexJobSnapshot(
         job_id=job.job_id,
         prompt=job.prompt,
+        model_name=job.model_name,
         status=job.status,
         output="\n".join(job.output_parts).strip(),
         error_output="\n".join(job.error_parts).strip(),
@@ -599,6 +630,7 @@ def _build_codex_exec_args(
     sandbox_mode: str,
     output_mode: str,
     json_output: bool = False,
+    model_name: str | None = None,
 ) -> tuple[list[str], Path | None]:
     output_path: Path | None = None
     args = [
@@ -607,6 +639,8 @@ def _build_codex_exec_args(
     ]
     if json_output:
         args.append("--json")
+    if model_name:
+        args.extend(["--model", model_name])
     args.extend(
         [
         "--cd",
@@ -623,6 +657,52 @@ def _build_codex_exec_args(
         args.extend(["--output-last-message", str(output_path)])
     args.append("-")
     return args, output_path
+
+
+def _resolve_codex_model_name(model_name: str | None) -> str | None:
+    requested_model = (model_name or "").strip()
+    if requested_model:
+        return requested_model
+    return _read_codex_default_model(PROJECT_ROOT)
+
+
+def _read_codex_default_model(project_root: Path) -> str | None:
+    for config_path in _iter_codex_config_paths(project_root):
+        config = _read_toml_file(config_path)
+        if not config:
+            continue
+        model_name = config.get("model")
+        if isinstance(model_name, str) and model_name.strip():
+            return model_name.strip()
+    return None
+
+
+def _iter_codex_config_paths(project_root: Path) -> list[Path]:
+    paths: list[Path] = []
+    current = project_root
+    while True:
+        paths.append(current / ".codex" / "config.toml")
+        if current.parent == current:
+            break
+        current = current.parent
+
+    codex_home = os.environ.get("CODEX_HOME", "").strip()
+    if codex_home:
+        paths.append(Path(codex_home).expanduser() / "config.toml")
+    else:
+        paths.append(Path.home() / ".codex" / "config.toml")
+    return paths
+
+
+def _read_toml_file(path: Path) -> dict[str, object]:
+    if not path.exists() or not path.is_file():
+        return {}
+    try:
+        with path.open("rb") as handle:
+            data = tomllib.load(handle)
+    except (OSError, tomllib.TOMLDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
 
 
 def _resolve_codex_output(

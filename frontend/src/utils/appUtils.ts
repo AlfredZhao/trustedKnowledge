@@ -171,6 +171,7 @@ export interface StoredUiState {
   };
   aiCoding: {
     prompt: string;
+    modelName: string;
     messages: AiCodingMessage[];
     activeJobId: string | null;
     githubSyncStatus: GithubSyncResponse | null;
@@ -187,6 +188,7 @@ export interface AiCodingMessage {
   id: number;
   jobId?: string;
   prompt: string;
+  modelName?: string | null;
   status: AiCodingNoticeStatus;
   output: string;
   errorOutput: string;
@@ -1047,6 +1049,7 @@ export function readStoredUiState(): StoredUiState {
       },
       aiCoding: {
         prompt: readString(aiCoding.prompt),
+        modelName: readString(aiCoding.modelName),
         messages: readAiCodingMessages(aiCoding.messages),
         activeJobId: readNullableString(aiCoding.activeJobId),
         githubSyncStatus: readGithubSyncResponse(aiCoding.githubSyncStatus),
@@ -1160,6 +1163,7 @@ function buildDefaultUiState(): StoredUiState {
     },
     aiCoding: {
       prompt: "",
+      modelName: "",
       messages: [],
       activeJobId: null,
       githubSyncStatus: null,
@@ -1287,6 +1291,7 @@ function readAiCodingMessages(value: unknown): AiCodingMessage[] {
     const output = readString(item.output);
     const errorOutput = readString(item.errorOutput);
     const errorMessage = readNullableString(item.errorMessage);
+    const modelName = readNullableString(item.modelName);
     const startedAt = readNullableString(item.startedAt);
     const completedAt = readNullableString(item.completedAt);
     if (!prompt && !response && !errorMessage && !output && !errorOutput) return [];
@@ -1296,6 +1301,7 @@ function readAiCodingMessages(value: unknown): AiCodingMessage[] {
         id: readPositiveInteger(item.id, Date.now()),
         jobId: readNullableString(item.jobId) ?? undefined,
         prompt,
+        modelName,
         status,
         output,
         errorOutput,
@@ -1325,6 +1331,7 @@ function readCodexRunResponse(value: unknown): CodexRunResponse | null {
     exit_code: typeof value.exit_code === "number" ? value.exit_code : 0,
     duration_seconds: typeof value.duration_seconds === "number" ? value.duration_seconds : 0,
     git_status: readString(value.git_status),
+    model_name: readNullableString(value.model_name),
   };
 }
 
@@ -1439,6 +1446,7 @@ export function upsertCodexJobMessage(messages: AiCodingMessage[], job: CodexJob
     id: Date.parse(job.started_at) || Date.now(),
     jobId: job.job_id,
     prompt: job.prompt,
+    modelName: job.model_name,
     status: job.status,
     output: job.output,
     errorOutput: job.error_output,
@@ -1455,6 +1463,7 @@ export function upsertCodexJobMessage(messages: AiCodingMessage[], job: CodexJob
       ? {
           ...message,
           prompt: job.prompt,
+          modelName: job.model_name,
           status: job.status,
           output: job.output,
           errorOutput: job.error_output,

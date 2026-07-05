@@ -9,7 +9,26 @@ The format follows the common GitHub changelog convention inspired by
 
 ## 本次版本更新
 
-### [0.3.2]
+### [0.3.3]
+
+#### Added / 新增
+
+- Added an explicit model selector to the AI Coding workspace, plus backend Codex config exposure so the frontend can show the current CLI default model instead of guessing.
+- 为 AI 编程工作台新增显式模型选择器，并增加后端 Codex 配置读取接口，让前端可以展示当前 CLI 默认模型，而不是自行猜测。
+
+#### Changed / 变更
+
+- Changed AI Coding task submissions and result cards to carry the effective Codex model name end to end, while persisting the user's last model selection in browser UI state.
+- 调整 AI 编程任务提交与结果卡片的模型链路：前后端现在会贯通记录本次实际使用的 Codex 模型名称，同时把用户上次选择的模型持久化到浏览器 UI 状态。
+
+#### Fixed / 修复
+
+- Fixed AI Coding form select controls so fixed-height dropdowns such as `执行模型` no longer clip the lower half of the option text.
+- 修复 AI 编程表单下拉框的文字裁切问题：像 `执行模型` 这类固定高度选择框不再出现选项文字下半部分被遮挡。
+
+## 历史版本更新
+
+### [0.3.2] - 2026-07-05
 
 #### Added / 新增
 
@@ -28,8 +47,6 @@ The format follows the common GitHub changelog convention inspired by
 
 - Fixed the Knowledge Processing to Blog Factory handoff so copying a processed result into Blog Factory now immediately marks the source knowledge record as `已发布`, removing it from the unpublished queue and leaving Blog Factory users to manage only the factory workflow state.
 - 修复知识加工到博客工厂的状态衔接：将加工结果复制保存到博客工厂后，会立即把源知识记录标记为 `已发布`，从知识加工的未发布队列中移出；博客工厂侧只需继续维护工厂流程状态。
-
-## 历史版本更新
 
 ### [0.3.1] - 2026-07-03
 

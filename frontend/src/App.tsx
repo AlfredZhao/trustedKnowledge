@@ -100,7 +100,7 @@ import {
 } from "./api/knowledge";
 import { fetchHistory, readCachedHistory } from "./api/history";
 import { askHistory, fetchHistoryAskLlmConfig, updateHistoryAskLlmConfig } from "./api/historyAsk";
-import { getCodexJob, getLatestCodexJobByOutputMode, startCodexJob } from "./api/codex";
+import { fetchCodexConfig, getCodexJob, getLatestCodexJobByOutputMode, startCodexJob } from "./api/codex";
 import {
   createCurrentRecord,
   fetchCurrentRecordOptions,
@@ -270,6 +270,7 @@ import type {
   BlogPublishSubmissionOption,
   BlogPublishType,
   CodexJobSnapshot,
+  CodexConfig,
   CurrentDay,
   CurrentRecordItem,
   CurrentRecordOptions,
@@ -378,6 +379,8 @@ const emptyOverviewSectionErrors: OverviewSectionErrors = {
   knowledge: null,
   english: null,
 };
+const AI_CODING_DEFAULT_MODEL = "__codex_cli_default__";
+const AI_CODING_MODEL_FALLBACK_OPTIONS = ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex", "gpt-5.2"];
 
 // Navigation and access boundaries.
 const SUPER_ADMIN_ONLY_VIEWS: AppView[] = ["users"];
@@ -818,6 +821,9 @@ function App() {
   const [overviewUpdatedAt, setOverviewUpdatedAt] = useState<string | null>(null);
   const [overviewRefreshToken, setOverviewRefreshToken] = useState(0);
   const [aiCodingPrompt, setAiCodingPrompt] = useState(restoredUiState.aiCoding.prompt);
+  const [aiCodingModelName, setAiCodingModelName] = useState(
+    restoredUiState.aiCoding.modelName || AI_CODING_DEFAULT_MODEL,
+  );
   const [aiCodingMessages, setAiCodingMessages] = useState<AiCodingMessage[]>(restoredUiState.aiCoding.messages);
   const [activeCodexJobId, setActiveCodexJobId] = useState<string | null>(restoredUiState.aiCoding.activeJobId);
   const [liveCodexOutput, setLiveCodexOutput] = useState("");
@@ -835,6 +841,9 @@ function App() {
   const [restartError, setRestartError] = useState<string | null>(null);
   const [isRestartingServices, setIsRestartingServices] = useState(false);
   const [githubSyncStatus, setGithubSyncStatus] = useState<GithubSyncResponse | null>(restoredUiState.aiCoding.githubSyncStatus);
+  const [codexConfig, setCodexConfig] = useState<CodexConfig | null>(null);
+  const [isCodexConfigLoading, setIsCodexConfigLoading] = useState(false);
+  const [codexConfigError, setCodexConfigError] = useState<string | null>(null);
 
   const canAccessAiCoding = canAccessView("aiCoding", authUser);
   const canAccessUsage = canAccessView("usage", authUser);
@@ -871,6 +880,40 @@ function App() {
   }
 
   // Loading, polling, cache hydration, and persistence effects.
+  useEffect(() => {
+    if (!apiKey || !canAccessAiCoding || activeView !== "aiCoding") return;
+    if (isCodexConfigLoading || codexConfig) return;
+
+    let cancelled = false;
+    setIsCodexConfigLoading(true);
+    setCodexConfigError(null);
+
+    fetchCodexConfig()
+      .then((config) => {
+        if (cancelled) return;
+        setCodexConfig({
+          default_model_name: config.default_model_name,
+          available_models:
+            config.available_models.length > 0 ? config.available_models : AI_CODING_MODEL_FALLBACK_OPTIONS,
+        });
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setCodexConfig({
+          default_model_name: null,
+          available_models: AI_CODING_MODEL_FALLBACK_OPTIONS,
+        });
+        setCodexConfigError(error instanceof Error ? error.message : "Codex 模型配置读取失败。");
+      })
+      .finally(() => {
+        if (!cancelled) setIsCodexConfigLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeView, apiKey, canAccessAiCoding, codexConfig, isCodexConfigLoading]);
+
   useEffect(() => {
     if (!isMobileViewport()) return;
 
@@ -985,6 +1028,9 @@ function App() {
       setResetPasswordValue("");
       setUserManagementError(null);
       setAiCodingMessages([]);
+      setAiCodingModelName(AI_CODING_DEFAULT_MODEL);
+      setCodexConfig(null);
+      setCodexConfigError(null);
       setActiveCodexJobId(null);
       setIsCodexRunning(false);
       setLiveCodexOutput("");
@@ -1145,6 +1191,7 @@ function App() {
       },
       aiCoding: {
         prompt: aiCodingPrompt,
+        modelName: aiCodingModelName,
         messages: aiCodingMessages,
         activeJobId: activeCodexJobId,
         githubSyncStatus,
@@ -1154,6 +1201,7 @@ function App() {
     activeView,
     activeCodexJobId,
     aiCodingMessages,
+    aiCodingModelName,
     aiCodingPrompt,
     apiKey,
     blogFactoryArticleDraft,
@@ -4067,6 +4115,7 @@ function App() {
     event.preventDefault();
     const prompt = aiCodingPrompt.trim();
     if (!prompt || isCodexRunning) return;
+    const requestedModelName = aiCodingModelName === AI_CODING_DEFAULT_MODEL ? "" : aiCodingModelName;
 
     setIsCodexRunning(true);
     setCodexError(null);
@@ -4076,12 +4125,13 @@ function App() {
     setAiCodingNoticeStatus("running");
     hasRestoredLatestCodexJobRef.current = false;
     try {
-      const job = await startCodexJob(prompt);
+      const job = await startCodexJob(prompt, [], "workspace-write", "full", requestedModelName);
       setAiCodingMessages((current) => [
         {
           id: Date.now(),
           jobId: job.job_id,
           prompt,
+          modelName: job.model_name,
           status: job.status,
           output: job.output,
           errorOutput: job.error_output,
@@ -4424,15 +4474,19 @@ function App() {
             />
           ) : activeView === "aiCoding" ? (
             <AiCodingWorkspace
+              codexConfig={codexConfig}
+              codexConfigError={codexConfigError}
               codexError={codexError}
               githubSyncError={githubSyncError}
               githubSyncStatus={githubSyncStatus}
+              isCodexConfigLoading={isCodexConfigLoading}
               isCodexRunning={isCodexRunning}
               isGithubSyncing={isGithubSyncing}
               isRestartingServices={isRestartingServices}
               liveErrorOutput={liveCodexErrorOutput}
               liveOutput={liveCodexOutput}
               liveStatus={liveCodexStatus}
+              modelName={aiCodingModelName}
               messages={aiCodingMessages}
               prompt={aiCodingPrompt}
               archiveError={codexArchiveError}
@@ -4442,6 +4496,7 @@ function App() {
               restartResponse={restartResponse}
               onArchiveMessage={handleArchiveCodexMessage}
               onClearGithubSyncStatus={handleClearGithubSyncStatus}
+              onModelChange={setAiCodingModelName}
               onPromptChange={setAiCodingPrompt}
               onRestartConfirmChange={setRestartConfirm}
               onRestartServices={handleRestartServices}
@@ -12237,16 +12292,34 @@ function HistoryAskFilterSummary({ filters }: { filters: HistoryAskResponse["fil
   );
 }
 
+function buildAiCodingModelOptions(config: CodexConfig | null) {
+  const values = compactUnique([...(config?.available_models ?? []), ...AI_CODING_MODEL_FALLBACK_OPTIONS]);
+  return [
+    { value: AI_CODING_DEFAULT_MODEL, label: config?.default_model_name ? `CLI 默认（当前 ${config.default_model_name}）` : "CLI 默认" },
+    ...values.map((value) => ({ value, label: value })),
+  ];
+}
+
+function formatAiCodingModelLabel(modelName: string | null | undefined, defaultModelName: string | null | undefined) {
+  if (modelName && modelName.trim()) return modelName;
+  if (defaultModelName && defaultModelName.trim()) return `CLI 默认（当前 ${defaultModelName}）`;
+  return "CLI 默认";
+}
+
 function AiCodingWorkspace({
+  codexConfig,
+  codexConfigError,
   codexError,
   githubSyncError,
   githubSyncStatus,
+  isCodexConfigLoading,
   isCodexRunning,
   isGithubSyncing,
   isRestartingServices,
   liveErrorOutput,
   liveOutput,
   liveStatus,
+  modelName,
   messages,
   prompt,
   archiveError,
@@ -12256,21 +12329,26 @@ function AiCodingWorkspace({
   restartResponse,
   onArchiveMessage,
   onClearGithubSyncStatus,
+  onModelChange,
   onPromptChange,
   onRestartConfirmChange,
   onRestartServices,
   onSyncCodeToGithub,
   onSubmit,
 }: {
+  codexConfig: CodexConfig | null;
+  codexConfigError: string | null;
   codexError: string | null;
   githubSyncError: string | null;
   githubSyncStatus: GithubSyncResponse | null;
+  isCodexConfigLoading: boolean;
   isCodexRunning: boolean;
   isGithubSyncing: boolean;
   isRestartingServices: boolean;
   liveErrorOutput: string;
   liveOutput: string;
   liveStatus: string;
+  modelName: string;
   messages: AiCodingMessage[];
   prompt: string;
   archiveError: string | null;
@@ -12280,6 +12358,7 @@ function AiCodingWorkspace({
   restartResponse: SystemRestartResponse | null;
   onArchiveMessage: (message: AiCodingMessage) => void;
   onClearGithubSyncStatus: () => void;
+  onModelChange: (value: string) => void;
   onPromptChange: (value: string) => void;
   onRestartConfirmChange: (value: string) => void;
   onRestartServices: () => void;
@@ -12291,6 +12370,11 @@ function AiCodingWorkspace({
   const canRestart = restartConfirm === "RESTART" && !isRestartingServices;
   const latestMessage = messages[0];
   const visibleLatestMessage = latestMessage?.archivedKnowledgeId ? null : latestMessage;
+  const modelOptions = useMemo(() => buildAiCodingModelOptions(codexConfig), [codexConfig]);
+  const selectedModelLabel = formatAiCodingModelLabel(
+    modelName === AI_CODING_DEFAULT_MODEL ? null : modelName,
+    codexConfig?.default_model_name,
+  );
 
   return (
     <div className="flex-1 px-4 pb-4 pt-2">
@@ -12305,6 +12389,31 @@ function AiCodingWorkspace({
           </div>
 
           <form className="space-y-4" onSubmit={onSubmit}>
+            <div className="grid gap-3 lg:grid-cols-[minmax(0,220px)_minmax(0,1fr)]">
+              <Field label="执行模型" icon={<Settings2 size={16} />}>
+                <select
+                  className="control h-10"
+                  disabled={isCodexRunning}
+                  value={modelName}
+                  onChange={(event) => onModelChange(event.target.value)}
+                >
+                  {modelOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <div className="rounded-lg border border-white/10 bg-white/[0.028] px-3 py-3 text-sm leading-6 text-slate-400">
+                <div className="mb-1 text-xs uppercase tracking-[0.18em] text-slate-500">Current Model</div>
+                <div className="font-medium text-slate-100">{selectedModelLabel}</div>
+                <div className="mt-1 text-xs text-slate-500">
+                  {modelName === AI_CODING_DEFAULT_MODEL
+                    ? "不强制指定 --model，沿用服务端 Codex CLI 当前默认模型。"
+                    : "本次任务会显式传给 Codex CLI 的 --model。"}
+                </div>
+              </div>
+            </div>
             <textarea
               className="control min-h-[170px] resize-none leading-7"
               disabled={isCodexRunning}
@@ -12327,6 +12436,19 @@ function AiCodingWorkspace({
               </button>
             </div>
           </form>
+
+          {isCodexConfigLoading ? (
+            <div className="mt-4 rounded-lg border border-white/10 bg-white/[0.025] px-3 py-3 text-sm text-slate-400">
+              正在读取 Codex 默认模型配置...
+            </div>
+          ) : null}
+
+          {codexConfigError ? (
+            <div className="mt-4 flex items-start gap-2 rounded-lg border border-amberline/25 bg-amberline/10 px-3 py-3 text-sm text-amber-100">
+              <TriangleAlert className="mt-0.5 shrink-0 text-amberline" size={17} />
+              <span>{codexConfigError}</span>
+            </div>
+          ) : null}
 
           {codexError ? (
             <div className="mt-4 flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100">
@@ -12367,6 +12489,7 @@ function AiCodingWorkspace({
               </div>
             ) : (
               <AiCodingMessageCard
+                defaultModelName={codexConfig?.default_model_name ?? null}
                 archiveLoadingId={archiveLoadingId}
                 message={visibleLatestMessage}
                 onArchiveMessage={onArchiveMessage}
@@ -12498,10 +12621,12 @@ function AiCodingWorkspace({
 }
 
 function AiCodingMessageCard({
+  defaultModelName,
   archiveLoadingId,
   message,
   onArchiveMessage,
 }: {
+  defaultModelName: string | null;
   archiveLoadingId: number | null;
   message: AiCodingMessage;
   onArchiveMessage: (message: AiCodingMessage) => void;
@@ -12515,12 +12640,18 @@ function AiCodingMessageCard({
         <CodexCompletionSummaryCard
           isArchiving={archiveLoadingId === message.id}
           message={message}
+          defaultModelName={defaultModelName}
           onArchive={() => onArchiveMessage(message)}
         />
       ) : null}
 
       <div className="mb-3 rounded-lg border border-mint-300/15 bg-mint-300/8 p-3">
-        <div className="mb-2 text-xs font-medium uppercase tracking-[0.18em] text-mint-300/80">Prompt</div>
+        <div className="mb-2 flex flex-wrap items-center gap-2 text-xs font-medium uppercase tracking-[0.18em] text-mint-300/80">
+          <span>Prompt</span>
+          <span className="rounded-md border border-mint-300/20 bg-mint-300/10 px-2 py-1 normal-case tracking-normal text-mint-100/90">
+            {formatAiCodingModelLabel(message.modelName ?? message.response?.model_name, defaultModelName)}
+          </span>
+        </div>
         <div className="whitespace-pre-wrap text-sm leading-6 text-slate-200">{message.prompt}</div>
       </div>
 
@@ -12610,10 +12741,12 @@ function CodexOutputBlock({
 }
 
 function CodexCompletionSummaryCard({
+  defaultModelName,
   isArchiving,
   message,
   onArchive,
 }: {
+  defaultModelName: string | null;
   isArchiving: boolean;
   message: AiCodingMessage;
   onArchive: () => void;
@@ -12639,6 +12772,9 @@ function CodexCompletionSummaryCard({
           </div>
           <div className="text-xs leading-5 text-slate-400">
             exit {message.response.exit_code} · {message.response.duration_seconds}s · {summary.changedFiles.length} 个变更文件
+          </div>
+          <div className="mt-1 text-xs leading-5 text-slate-500">
+            模型：{formatAiCodingModelLabel(message.modelName ?? message.response.model_name, defaultModelName)}
           </div>
         </div>
 

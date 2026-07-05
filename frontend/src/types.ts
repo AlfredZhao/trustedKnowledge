@@ -415,6 +415,7 @@ export interface CodexRunResponse {
   exit_code: number;
   duration_seconds: number;
   git_status: string;
+  model_name: string | null;
 }
 
 export type CodexOutputMode = "full" | "final";
@@ -424,6 +425,7 @@ export type CodexJobStatus = "running" | "completed" | "failed";
 export interface CodexJobSnapshot {
   job_id: string;
   prompt: string;
+  model_name: string | null;
   status: CodexJobStatus;
   output: string;
   error_output: string;
@@ -431,6 +433,11 @@ export interface CodexJobSnapshot {
   error_message: string | null;
   started_at: string;
   completed_at: string | null;
+}
+
+export interface CodexConfig {
+  default_model_name: string | null;
+  available_models: string[];
 }
 
 export type CodexStreamEvent =

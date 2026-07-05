@@ -146,6 +146,13 @@ button:disabled {
     background: var(--control-bg-focus);
   }
 
+  select.control {
+    padding-top: 0;
+    padding-bottom: 0;
+    padding-right: 2.5rem;
+    line-height: 1.5;
+  }
+
   .history-date-control {
     inline-size: 100%;
     min-inline-size: 0;
