@@ -95,6 +95,7 @@ async def list_english_materials(
     *,
     limit: int,
     offset: int,
+    include_total: bool = True,
     q: str | None = None,
     username: str | None = None,
     category: str | None = None,
@@ -127,14 +128,17 @@ async def list_english_materials(
             offset :offset rows fetch next :limit rows only
         """
         cursor = connection.cursor()
-        await cursor.execute(count_sql, params)
-        count_row = await cursor.fetchone()
-        total = int(count_row[0]) if count_row else 0
+        total = 0
+        if include_total:
+            await cursor.execute(count_sql, params)
+            count_row = await cursor.fetchone()
+            total = int(count_row[0]) if count_row else 0
 
         await cursor.execute(list_sql, {**params, "offset": offset, "limit": limit})
         rows = await cursor.fetchall()
 
-    return [_row_to_dict(row) for row in rows], total
+    items = [_row_to_dict(row) for row in rows]
+    return items, total if include_total else len(items)
 
 
 async def get_english_material(material_id: int, auth_context: AuthContext | None = None) -> dict[str, Any] | None:

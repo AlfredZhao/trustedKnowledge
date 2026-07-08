@@ -151,9 +151,9 @@ export default function OverviewDashboard({
             onAction={() => onOpenView("usage")}
           />
         ) : null}
-        <MetricTile icon={<ClipboardCheck size={17} />} label="处理中 Todo" value={formatAmount(data.processingTodoTotal)} detail={`${data.processingTodos.length} 条已载入`} />
-        <MetricTile icon={<BookOpenCheck size={17} />} label="未发布知识" value={formatAmount(data.unpublishedKnowledgeTotal)} detail={`${formatAmount(data.recentKnowledge.length)} 条已载入`} />
-        <MetricTile icon={<FileText size={17} />} label="English 素材" value={formatAmount(data.englishMaterialTotal)} detail={latestEnglish?.sequence_no ? `最新 #${latestEnglish.sequence_no}` : "最近素材"} />
+        <MetricTile icon={<ClipboardCheck size={17} />} label="处理中 Todo" value={formatAmount(data.processingTodos.length)} detail="总览仅读取最近几条" />
+        <MetricTile icon={<BookOpenCheck size={17} />} label="未发布知识" value={formatAmount(data.recentKnowledge.length)} detail="总览仅读取最近几条" />
+        <MetricTile icon={<FileText size={17} />} label="English 素材" value={latestEnglish?.sequence_no ? `#${latestEnglish.sequence_no}` : formatAmount(data.englishMaterialTotal)} detail={latestEnglish ? "最近 1 条" : "暂无最近素材"} />
       </div>
 
       {canViewUsage && sectionErrors.usage ? <OverviewInlineError message={`LLM 用量读取失败：${sectionErrors.usage}`} /> : null}

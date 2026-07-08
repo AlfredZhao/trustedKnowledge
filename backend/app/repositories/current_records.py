@@ -5,7 +5,7 @@ import oracledb
 from fastapi import HTTPException, status
 
 from app.db.oracle import acquire_connection
-from app.repositories.users import AuthContext, get_or_create_user_id, get_user_id_by_username
+from app.repositories.users import AuthContext, append_requested_username_clause, get_or_create_user_id, get_user_id_by_username
 from app.schemas.current_records import CurrentRecordCreate, CurrentRecordUpdate
 
 
@@ -47,7 +47,6 @@ def _row_to_dict(row: Any) -> dict[str, Any]:
 
 def _build_filters(
     q: str | None,
-    username: str | None,
     current_type: str | None,
     week: str | None,
     day: str | None,
@@ -63,10 +62,6 @@ def _build_filters(
             "or lower(current_record.content) like '%' || lower(:q) || '%')"
         )
         params["q"] = q
-
-    if username:
-        clauses.append("lower(coalesce(record_user.username, current_record.username)) = lower(:username)")
-        params["username"] = username
 
     if current_type:
         clauses.append("lower(current_record.type) = lower(:current_type)")
@@ -106,24 +101,33 @@ async def list_current_records(
     sort_dir: str = "desc",
     auth_context: AuthContext,
 ) -> tuple[list[dict[str, Any]], int]:
-    where_sql, params = _build_filters(q, username, current_type, week, day, learn_level, auth_context)
+    where_sql, params = _build_filters(q, current_type, week, day, learn_level, auth_context)
     sort_column = SORT_COLUMNS.get(sort_by, "id")
     sort_direction = "asc" if sort_dir == "asc" else "desc"
 
-    from_sql = """
-        from t_current current_record
-        left join tk_users record_user on record_user.user_id = current_record.user_id
-    """
-    count_sql = f"select count(*) {from_sql} {where_sql}"
-    list_sql = f"""
-        select {LIST_COLUMNS}
-        {from_sql}
-        {where_sql}
-        order by {sort_column} {sort_direction} nulls last, current_record.id desc
-        offset :offset rows fetch next :limit rows only
-    """
-
     async with acquire_connection() as connection:
+        clauses = where_sql.removeprefix(" where ").split(" and ") if where_sql else []
+        await append_requested_username_clause(
+            connection,
+            clauses,
+            params,
+            auth_context,
+            username,
+            "current_record.user_id",
+        )
+        where_sql = f" where {' and '.join(clauses)}" if clauses else ""
+        from_sql = """
+            from t_current current_record
+            left join tk_users record_user on record_user.user_id = current_record.user_id
+        """
+        count_sql = f"select count(*) {from_sql} {where_sql}"
+        list_sql = f"""
+            select {LIST_COLUMNS}
+            {from_sql}
+            {where_sql}
+            order by {sort_column} {sort_direction} nulls last, current_record.id desc
+            offset :offset rows fetch next :limit rows only
+        """
         cursor = connection.cursor()
         await cursor.execute(count_sql, params)
         count_row = await cursor.fetchone()

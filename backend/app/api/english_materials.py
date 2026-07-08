@@ -27,6 +27,7 @@ router = APIRouter(prefix="/english-materials", tags=["english-materials"])
 async def get_english_materials(
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
+    include_total: bool = True,
     q: Annotated[str | None, Query(min_length=1, max_length=400)] = None,
     username: Annotated[str | None, Query(min_length=1, max_length=100)] = None,
     category: Annotated[str | None, Query(min_length=1, max_length=50)] = None,
@@ -39,6 +40,7 @@ async def get_english_materials(
         items, total = await list_english_materials(
             limit=limit,
             offset=offset,
+            include_total=include_total,
             q=q,
             username=username,
             category=category,

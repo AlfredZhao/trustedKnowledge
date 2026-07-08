@@ -106,6 +106,22 @@ async def _ensure_todo_table(connection: oracledb.AsyncConnection) -> None:
         end;
         """
     )
+    logger.info("Ensuring Oracle index ai_todo_items_user_status_created_idx exists")
+    await cursor.execute(
+        """
+        begin
+            execute immediate '
+                create index ai_todo_items_user_status_created_idx
+                on ai_todo_items (user_id, todo_status, created_at desc)
+            ';
+        exception
+            when others then
+                if sqlcode != -955 then
+                    raise;
+                end if;
+        end;
+        """
+    )
     _table_ready = True
 
 
@@ -134,6 +150,7 @@ async def list_todos(
     *,
     limit: int,
     offset: int,
+    include_total: bool = True,
     q: str | None = None,
     username: str | None = None,
     todo_status: str | None = None,
@@ -161,15 +178,18 @@ async def list_todos(
             offset :offset rows fetch next :limit rows only
         """
         cursor = connection.cursor()
-        await cursor.execute(count_sql, params)
-        count_row = await cursor.fetchone()
-        total = int(count_row[0]) if count_row else 0
+        total = 0
+        if include_total:
+            await cursor.execute(count_sql, params)
+            count_row = await cursor.fetchone()
+            total = int(count_row[0]) if count_row else 0
 
         list_params = {**params, "offset": offset, "limit": limit}
         await cursor.execute(list_sql, list_params)
         rows = await cursor.fetchall()
 
-    return [_row_to_dict(row) for row in rows], total
+    items = [_row_to_dict(row) for row in rows]
+    return items, total if include_total else len(items)
 
 
 async def get_todo_by_id(todo_id: int, auth_context: AuthContext | None = None) -> dict[str, Any] | None:

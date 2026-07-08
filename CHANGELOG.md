@@ -21,6 +21,15 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Fixed / 修复
 
+- Fixed Oracle list-filter performance for history and current records by resolving requested usernames to `user_id` before querying, so the backend can use direct user-based predicates instead of `coalesce(...username...)` filters that forced poorer plans.
+- 修复历史查询与当前记录列表的 Oracle 过滤性能问题：后端现先将用户名解析为 `user_id` 再查询，避免继续使用 `coalesce(...username...)` 这类不利于优化器走索引的过滤条件。
+
+- Fixed database indexing gaps for user-scoped list pages by ensuring composite indexes for knowledge, todo, English materials, history, current records, and relation child lookups are created alongside existing runtime schema checks.
+- 修复按用户筛选列表页的数据库索引缺口：运行时 schema ensure 现会补齐知识库、Todo、英语素材、历史、当前记录以及关系子节点查询所需的组合索引，减少首屏和筛选请求的全表扫描风险。
+
+- Fixed Overview dashboard query weight by switching its usage, todo, knowledge, and English-material requests to lightweight reads that skip exact `count(*)` totals and only load the recent cards the page actually renders.
+- 修复总览页查询负载偏重的问题：总览使用的用量、Todo、知识库和英语素材请求现改为轻量读取，不再为首页卡片额外执行精确 `count(*)`，只加载页面实际展示的最近几条数据。
+
 - Fixed redundant same-path GET requests in the frontend API client by deduplicating in-flight reads and pruning oversized local API caches, reducing repeated refresh traffic and localStorage pressure on list and dashboard pages.
 - 修复前端 API 客户端的同路径 GET 重复请求与本地缓存膨胀问题：现在会合并进行中的相同读取请求，并裁剪过大的本地 API 缓存，降低列表页与总览页重复刷新时的网络流量和 localStorage 压力。
 

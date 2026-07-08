@@ -74,6 +74,7 @@ async def list_knowledge(
     *,
     limit: int,
     offset: int,
+    include_total: bool = True,
     q: str | None = None,
     username: str | None = None,
     topic: str | None = None,
@@ -102,15 +103,18 @@ async def list_knowledge(
             offset :offset rows fetch next :limit rows only
         """
         cursor = connection.cursor()
-        await cursor.execute(count_sql, params)
-        count_row = await cursor.fetchone()
-        total = int(count_row[0]) if count_row else 0
+        total = 0
+        if include_total:
+            await cursor.execute(count_sql, params)
+            count_row = await cursor.fetchone()
+            total = int(count_row[0]) if count_row else 0
 
         list_params = {**params, "offset": offset, "limit": limit}
         await cursor.execute(list_sql, list_params)
         rows = await cursor.fetchall()
 
-    return [_row_to_dict(row) for row in rows], total
+    items = [_row_to_dict(row) for row in rows]
+    return items, total if include_total else len(items)
 
 
 async def get_knowledge_by_id(knowledge_id: int, auth_context: AuthContext | None = None) -> dict[str, Any] | None:

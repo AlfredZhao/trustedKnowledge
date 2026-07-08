@@ -2,7 +2,7 @@ from datetime import date
 from typing import Any
 
 from app.db.oracle import acquire_connection
-from app.repositories.users import AuthContext
+from app.repositories.users import AuthContext, append_requested_username_clause
 
 
 LIST_COLUMNS = """
@@ -43,7 +43,6 @@ def _row_to_dict(row: Any) -> dict[str, Any]:
 def _build_filters(
     q: str | None,
     history_type: str | None,
-    username: str | None,
     week: str | None,
     day: str | None,
     learn_level: int | None,
@@ -62,10 +61,6 @@ def _build_filters(
     if history_type:
         clauses.append("lower(history_record.type) = lower(:history_type)")
         params["history_type"] = history_type
-
-    if username:
-        clauses.append("lower(coalesce(record_user.username, history_record.username)) = lower(:username)")
-        params["username"] = username
 
     if week:
         clauses.append("lower(history_record.week) = lower(:week)")
@@ -119,7 +114,6 @@ async def list_history(
     where_sql, params = _build_filters(
         q,
         history_type,
-        username,
         week,
         day,
         learn_level,
@@ -131,53 +125,62 @@ async def list_history(
     sort_column = SORT_COLUMNS.get(sort_by, "history_date")
     sort_direction = "asc" if sort_dir == "asc" else "desc"
 
-    from_sql = """
-        from t_history history_record
-        left join tk_users record_user on record_user.user_id = history_record.user_id
-    """
-    count_sql = f"select count(*) {from_sql} {where_sql}"
-    summary_sql = f"""
-        select
-            min(trunc(history_record.history_date)),
-            max(trunc(history_record.history_date))
-        {from_sql}
-        {where_sql}
-    """
-    list_sql = f"""
-        select {LIST_COLUMNS}
-        {from_sql}
-        {where_sql}
-        order by {sort_column} {sort_direction} nulls last, history_record.id desc
-        offset :offset rows fetch next :limit rows only
-    """
-    visibility_clauses: list[str] = []
-    visibility_params: dict[str, Any] = {}
-    _append_visibility_clause(visibility_clauses, visibility_params, auth_context)
-    visibility_sql = " and " + " and ".join(visibility_clauses) if visibility_clauses else ""
-    type_sql = f"""
-        select distinct history_record.type
-        {from_sql}
-        where history_record.type is not null
-        {visibility_sql}
-        order by history_record.type
-    """
-    user_sql = f"""
-        select distinct coalesce(record_user.username, history_record.username) as username
-        {from_sql}
-        where coalesce(record_user.username, history_record.username) is not null
-        {visibility_sql}
-        order by username
-    """
-    user_type_sql = f"""
-        select coalesce(record_user.username, history_record.username) as username, history_record.type
-        {from_sql}
-        where coalesce(record_user.username, history_record.username) is not null
-          and history_record.type is not null
-        {visibility_sql}
-        order by username, history_record.type
-    """
-
     async with acquire_connection() as connection:
+        clauses = where_sql.removeprefix(" where ").split(" and ") if where_sql else []
+        await append_requested_username_clause(
+            connection,
+            clauses,
+            params,
+            auth_context,
+            username,
+            "history_record.user_id",
+        )
+        where_sql = f" where {' and '.join(clauses)}" if clauses else ""
+        from_sql = """
+            from t_history history_record
+            left join tk_users record_user on record_user.user_id = history_record.user_id
+        """
+        count_sql = f"select count(*) {from_sql} {where_sql}"
+        summary_sql = f"""
+            select
+                min(trunc(history_record.history_date)),
+                max(trunc(history_record.history_date))
+            {from_sql}
+            {where_sql}
+        """
+        list_sql = f"""
+            select {LIST_COLUMNS}
+            {from_sql}
+            {where_sql}
+            order by {sort_column} {sort_direction} nulls last, history_record.id desc
+            offset :offset rows fetch next :limit rows only
+        """
+        visibility_clauses: list[str] = []
+        visibility_params: dict[str, Any] = {}
+        _append_visibility_clause(visibility_clauses, visibility_params, auth_context)
+        visibility_sql = " and " + " and ".join(visibility_clauses) if visibility_clauses else ""
+        type_sql = f"""
+            select distinct history_record.type
+            {from_sql}
+            where history_record.type is not null
+            {visibility_sql}
+            order by history_record.type
+        """
+        user_sql = f"""
+            select distinct coalesce(record_user.username, history_record.username) as username
+            {from_sql}
+            where coalesce(record_user.username, history_record.username) is not null
+            {visibility_sql}
+            order by username
+        """
+        user_type_sql = f"""
+            select coalesce(record_user.username, history_record.username) as username, history_record.type
+            {from_sql}
+            where coalesce(record_user.username, history_record.username) is not null
+              and history_record.type is not null
+            {visibility_sql}
+            order by username, history_record.type
+        """
         cursor = connection.cursor()
         await cursor.execute(count_sql, params)
         count_row = await cursor.fetchone()

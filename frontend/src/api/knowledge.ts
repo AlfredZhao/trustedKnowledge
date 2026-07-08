@@ -55,14 +55,16 @@ export async function fetchKnowledge({
   limit,
   offset,
   status,
+  includeTotal = true,
 }: {
   query?: string;
   username?: string;
   limit: number;
   offset: number;
   status?: KnowledgeStatus;
+  includeTotal?: boolean;
 }): Promise<KnowledgeListResponse> {
-  return request<KnowledgeListResponse>(buildKnowledgeListPath({ query, username, limit, offset, status }));
+  return request<KnowledgeListResponse>(buildKnowledgeListPath({ query, username, limit, offset, status, includeTotal }));
 }
 
 export function readCachedKnowledge({
@@ -71,14 +73,16 @@ export function readCachedKnowledge({
   limit,
   offset,
   status,
+  includeTotal = true,
 }: {
   query?: string;
   username?: string;
   limit: number;
   offset: number;
   status?: KnowledgeStatus;
+  includeTotal?: boolean;
 }): KnowledgeListResponse | null {
-  return readCachedGet<KnowledgeListResponse>(buildKnowledgeListPath({ query, username, limit, offset, status }));
+  return readCachedGet<KnowledgeListResponse>(buildKnowledgeListPath({ query, username, limit, offset, status, includeTotal }));
 }
 
 function buildKnowledgeListPath({
@@ -87,12 +91,14 @@ function buildKnowledgeListPath({
   limit,
   offset,
   status,
+  includeTotal = true,
 }: {
   query?: string;
   username?: string;
   limit: number;
   offset: number;
   status?: KnowledgeStatus;
+  includeTotal?: boolean;
 }): string {
   return `/api/knowledge${buildQuery({
     limit: String(limit),
@@ -100,6 +106,7 @@ function buildKnowledgeListPath({
     q: query,
     username,
     status,
+    include_total: includeTotal ? undefined : false,
   })}`;
 }
 
@@ -177,14 +184,16 @@ export async function fetchTodos({
   limit,
   offset,
   status,
+  includeTotal = true,
 }: {
   query?: string;
   username?: string;
   limit: number;
   offset: number;
   status?: TodoStatus;
+  includeTotal?: boolean;
 }): Promise<TodoListResponse> {
-  return request<TodoListResponse>(buildTodoListPath({ query, username, limit, offset, status }));
+  return request<TodoListResponse>(buildTodoListPath({ query, username, limit, offset, status, includeTotal }));
 }
 
 export function readCachedTodos({
@@ -193,14 +202,16 @@ export function readCachedTodos({
   limit,
   offset,
   status,
+  includeTotal = true,
 }: {
   query?: string;
   username?: string;
   limit: number;
   offset: number;
   status?: TodoStatus;
+  includeTotal?: boolean;
 }): TodoListResponse | null {
-  return readCachedGet<TodoListResponse>(buildTodoListPath({ query, username, limit, offset, status }));
+  return readCachedGet<TodoListResponse>(buildTodoListPath({ query, username, limit, offset, status, includeTotal }));
 }
 
 function buildTodoListPath({
@@ -209,12 +220,14 @@ function buildTodoListPath({
   limit,
   offset,
   status,
+  includeTotal = true,
 }: {
   query?: string;
   username?: string;
   limit: number;
   offset: number;
   status?: TodoStatus;
+  includeTotal?: boolean;
 }): string {
   return `/api/todos${buildQuery({
     limit: String(limit),
@@ -222,6 +235,7 @@ function buildTodoListPath({
     q: query,
     username,
     status,
+    include_total: includeTotal ? undefined : false,
   })}`;
 }
 

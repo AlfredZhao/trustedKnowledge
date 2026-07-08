@@ -14,7 +14,7 @@ def _row_to_dict(row: Any) -> dict[str, Any]:
     }
 
 
-async def list_llm_usage(*, limit: int) -> tuple[list[dict[str, Any]], int]:
+async def list_llm_usage(*, limit: int, include_total: bool = True) -> tuple[list[dict[str, Any]], int]:
     count_sql = "select count(*) from v_llm_usage"
     list_sql = """
         select
@@ -41,11 +41,14 @@ async def list_llm_usage(*, limit: int) -> tuple[list[dict[str, Any]], int]:
 
     async with acquire_connection() as connection:
         cursor = connection.cursor()
-        await cursor.execute(count_sql)
-        count_row = await cursor.fetchone()
-        total = int(count_row[0]) if count_row else 0
+        total = 0
+        if include_total:
+            await cursor.execute(count_sql)
+            count_row = await cursor.fetchone()
+            total = int(count_row[0]) if count_row else 0
 
         await cursor.execute(list_sql, {"limit": limit})
         rows = await cursor.fetchall()
 
-    return [_row_to_dict(row) for row in rows], total
+    items = [_row_to_dict(row) for row in rows]
+    return items, total if include_total else len(items)

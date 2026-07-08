@@ -2174,12 +2174,14 @@ function App() {
       status: "处理中" as const,
       limit: OVERVIEW_TODO_LIMIT,
       offset: 0,
+      includeTotal: false,
     };
     const unpublishedKnowledgeQueryConfig = {
       username: overviewUsername,
       status: "未发布" as const,
       limit: OVERVIEW_KNOWLEDGE_LIMIT,
       offset: 0,
+      includeTotal: false,
     };
     const latestEnglishMaterialQueryConfig = {
       username: overviewUsername,
@@ -2187,9 +2189,10 @@ function App() {
       sortDir: "desc" as const,
       limit: 1,
       offset: 0,
+      includeTotal: false,
     };
 
-    const cachedUsage = canAccessUsage ? readCachedLlmUsage(usageLimit) : { items: [], total: 0 };
+    const cachedUsage = canAccessUsage ? readCachedLlmUsage(usageLimit, false) : { items: [], total: 0 };
     const cachedTodos = readCachedTodos(todoQueryConfig);
     const cachedUnpublishedKnowledge = readCachedKnowledge(unpublishedKnowledgeQueryConfig);
     const cachedEnglishMaterial = readCachedEnglishMaterials(latestEnglishMaterialQueryConfig);
@@ -2202,14 +2205,14 @@ function App() {
     } else if (hasCompleteCache) {
       setOverviewData({
         usageItems: cachedUsage.items,
-        usageTotal: cachedUsage.total,
+        usageTotal: cachedUsage.items.length,
         processingTodos: cachedTodos.items,
-        processingTodoTotal: cachedTodos.total,
+        processingTodoTotal: cachedTodos.items.length,
         recentKnowledge: cachedUnpublishedKnowledge.items,
-        knowledgeTotal: cachedUnpublishedKnowledge.total,
-        unpublishedKnowledgeTotal: cachedUnpublishedKnowledge.total,
+        knowledgeTotal: cachedUnpublishedKnowledge.items.length,
+        unpublishedKnowledgeTotal: cachedUnpublishedKnowledge.items.length,
         latestEnglishMaterial: cachedEnglishMaterial.items[0] ?? null,
-        englishMaterialTotal: cachedEnglishMaterial.total,
+        englishMaterialTotal: cachedEnglishMaterial.items.length,
       });
       setOverviewSectionErrors(emptyOverviewSectionErrors);
       setOverviewError(null);
@@ -2220,7 +2223,7 @@ function App() {
     }
 
     Promise.allSettled([
-      canAccessUsage ? fetchLlmUsage(usageLimit) : Promise.resolve({ items: [], total: 0 }),
+      canAccessUsage ? fetchLlmUsage(usageLimit, false) : Promise.resolve({ items: [], total: 0 }),
       fetchTodos(todoQueryConfig),
       fetchKnowledge(unpublishedKnowledgeQueryConfig),
       fetchEnglishMaterials(latestEnglishMaterialQueryConfig),
@@ -2253,7 +2256,7 @@ function App() {
             next = {
               ...next,
               usageItems: usageResult.value.items,
-              usageTotal: usageResult.value.total,
+              usageTotal: usageResult.value.items.length,
             };
           }
 
@@ -2261,7 +2264,7 @@ function App() {
             next = {
               ...next,
               processingTodos: todoResult.value.items,
-              processingTodoTotal: todoResult.value.total,
+              processingTodoTotal: todoResult.value.items.length,
             };
           }
 
@@ -2269,8 +2272,8 @@ function App() {
             next = {
               ...next,
               recentKnowledge: unpublishedKnowledgeResult.value.items,
-              knowledgeTotal: unpublishedKnowledgeResult.value.total,
-              unpublishedKnowledgeTotal: unpublishedKnowledgeResult.value.total,
+              knowledgeTotal: unpublishedKnowledgeResult.value.items.length,
+              unpublishedKnowledgeTotal: unpublishedKnowledgeResult.value.items.length,
             };
           }
 
@@ -2278,7 +2281,7 @@ function App() {
             next = {
               ...next,
               latestEnglishMaterial: englishMaterialResult.value.items[0] ?? null,
-              englishMaterialTotal: englishMaterialResult.value.total,
+              englishMaterialTotal: englishMaterialResult.value.items.length,
             };
           }
 

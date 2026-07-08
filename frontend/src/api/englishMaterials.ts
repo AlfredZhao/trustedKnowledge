@@ -17,6 +17,7 @@ export interface EnglishMaterialQuery {
   sortDir?: "asc" | "desc";
   limit: number;
   offset: number;
+  includeTotal?: boolean;
 }
 
 export async function fetchEnglishMaterials(query: EnglishMaterialQuery): Promise<EnglishMaterialListResponse> {
@@ -53,6 +54,7 @@ function buildEnglishMaterialsPath(query: EnglishMaterialQuery): string {
     username: query.username,
     category: query.category,
     flag: query.flag,
+    include_total: query.includeTotal === false ? false : undefined,
   })}`;
 }
 

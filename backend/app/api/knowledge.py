@@ -32,6 +32,7 @@ router = APIRouter(prefix="/knowledge", tags=["knowledge"])
 async def get_knowledge(
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
+    include_total: bool = True,
     q: Annotated[str | None, Query(min_length=1, max_length=200)] = None,
     username: Annotated[str | None, Query(min_length=1, max_length=100)] = None,
     topic: Annotated[str | None, Query(min_length=1, max_length=100)] = None,
@@ -45,6 +46,7 @@ async def get_knowledge(
     items, total = await list_knowledge(
         limit=limit,
         offset=offset,
+        include_total=include_total,
         q=q,
         username=username,
         topic=topic,

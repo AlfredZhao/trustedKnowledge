@@ -6,14 +6,14 @@ export interface LlmUsageResponse {
   total: number;
 }
 
-export async function fetchLlmUsage(limit = 72): Promise<LlmUsageResponse> {
-  return request<LlmUsageResponse>(buildLlmUsagePath(limit));
+export async function fetchLlmUsage(limit = 72, includeTotal = true): Promise<LlmUsageResponse> {
+  return request<LlmUsageResponse>(buildLlmUsagePath(limit, includeTotal));
 }
 
-export function readCachedLlmUsage(limit = 72): LlmUsageResponse | null {
-  return readCachedGet<LlmUsageResponse>(buildLlmUsagePath(limit));
+export function readCachedLlmUsage(limit = 72, includeTotal = true): LlmUsageResponse | null {
+  return readCachedGet<LlmUsageResponse>(buildLlmUsagePath(limit, includeTotal));
 }
 
-function buildLlmUsagePath(limit = 72): string {
-  return `/api/llm-usage${buildQuery({ limit })}`;
+function buildLlmUsagePath(limit = 72, includeTotal = true): string {
+  return `/api/llm-usage${buildQuery({ limit, include_total: includeTotal ? undefined : false })}`;
 }

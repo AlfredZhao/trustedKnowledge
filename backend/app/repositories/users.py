@@ -168,6 +168,8 @@ async def ensure_user_schema_for_connection(connection: oracledb.AsyncConnection
     )
     await _execute_ddl(cursor, "create index tk_user_sessions_user_idx on tk_user_sessions (user_id, expires_at)")
     await _execute_ddl(cursor, "create index tk_relations_parent_idx on tk_relations (parent_user_id, status)")
+    await _execute_ddl(cursor, "create index tk_relations_child_status_idx on tk_relations (child_user_id, status)")
+    await _execute_ddl(cursor, "create index tk_users_status_username_idx on tk_users (status, username)")
     await _execute_ddl(
         cursor,
         """
@@ -191,6 +193,12 @@ async def ensure_user_schema_for_connection(connection: oracledb.AsyncConnection
     await _add_column_if_missing(cursor, "ai_qa_lib", "user_id number")
     await _add_column_if_missing(cursor, "ai_todo_items", "user_id number")
     await _add_column_if_missing(cursor, "t_douyin_details", "user_id number")
+    await _execute_ddl(cursor, "create index ai_qa_lib_user_status_id_idx on ai_qa_lib (user_id, blog_status, id desc)")
+    await _execute_ddl(cursor, "create index t_douyin_details_user_flag_id_idx on t_douyin_details (user_id, flag, id desc)")
+    await _execute_ddl(cursor, "create index t_current_user_type_idx on t_current (user_id, type)")
+    await _execute_ddl(cursor, "create index t_current_user_week_day_idx on t_current (user_id, week, day)")
+    await _execute_ddl(cursor, "create index t_history_user_date_idx on t_history (user_id, history_date desc)")
+    await _execute_ddl(cursor, "create index t_history_user_type_week_day_idx on t_history (user_id, type, week, day)")
 
     await _migrate_users(cursor, legacy_relations_exists=legacy_relations_exists)
     await _backfill_fact_user_ids(cursor)

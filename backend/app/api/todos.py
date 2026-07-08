@@ -21,6 +21,7 @@ router = APIRouter(prefix="/todos", tags=["todos"])
 async def get_todos(
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
+    include_total: bool = True,
     q: Annotated[str | None, Query(min_length=1, max_length=400)] = None,
     username: Annotated[str | None, Query(min_length=1, max_length=100)] = None,
     status_filter: Annotated[
@@ -33,6 +34,7 @@ async def get_todos(
         items, total = await list_todos(
             limit=limit,
             offset=offset,
+            include_total=include_total,
             q=q,
             username=username,
             todo_status=status_filter,

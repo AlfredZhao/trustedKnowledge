@@ -97,10 +97,10 @@
 
 数据来源：
 
-- `fetchLlmUsage(USAGE_SAMPLE_LIMIT)`
-- `fetchTodos({ username: authUser.username, status: "处理中", limit: OVERVIEW_TODO_LIMIT, offset: 0 })`
-- `fetchKnowledge({ username: authUser.username, status: "未发布", limit: OVERVIEW_KNOWLEDGE_LIMIT, offset: 0 })`
-- `fetchEnglishMaterials({ username: authUser.username, sortBy: "id", sortDir: "desc", limit: 1, offset: 0 })`
+- `fetchLlmUsage(USAGE_SAMPLE_LIMIT, false)`
+- `fetchTodos({ username: authUser.username, status: "处理中", limit: OVERVIEW_TODO_LIMIT, offset: 0, includeTotal: false })`
+- `fetchKnowledge({ username: authUser.username, status: "未发布", limit: OVERVIEW_KNOWLEDGE_LIMIT, offset: 0, includeTotal: false })`
+- `fetchEnglishMaterials({ username: authUser.username, sortBy: "id", sortDir: "desc", limit: 1, offset: 0, includeTotal: false })`
 
 当前行为：
 
@@ -108,6 +108,7 @@
 - 总览 Todo 只显示 `处理中` 状态。
 - English 模块只显示最新 1 条。
 - 可信知识模块只显示 `未发布` 状态，并使用 `OVERVIEW_KNOWLEDGE_LIMIT` 控制卡片数量。
+- 总览卡片不再展示这些模块的精确总数；指标卡显示的是当前已加载条数或最近一条素材标识，以避免首页额外执行 `count(*)`。
 - 总览中的 Todo、可信知识和英语素材会固定收敛到当前登录用户名，只展示“我自己的数据”；不会再默认汇总其他可见用户的数据。
 - 分区失败会独立展示错误，一个数据源失败不会阻断整个总览。
 - 点击卡片会跳转到对应完整工作区，并在支持的页面中选中对应记录。
