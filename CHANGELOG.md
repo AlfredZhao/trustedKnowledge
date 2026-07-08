@@ -21,6 +21,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Fixed / 修复
 
+- Fixed the mobile PWA layout of the Current Records filter bar so the `清空筛选条件` button now wraps onto its own row instead of being squeezed beside the sort dropdowns.
+- 修复当前记录列表筛选条在手机端 PWA 中的排版：`清空筛选条件` 按钮现在会独立换到下一行，不再和排序下拉框挤在一起。
+
 - Fixed Oracle list-filter performance for history and current records by resolving requested usernames to `user_id` before querying, so the backend can use direct user-based predicates instead of `coalesce(...username...)` filters that forced poorer plans.
 - 修复历史查询与当前记录列表的 Oracle 过滤性能问题：后端现先将用户名解析为 `user_id` 再查询，避免继续使用 `coalesce(...username...)` 这类不利于优化器走索引的过滤条件。
 

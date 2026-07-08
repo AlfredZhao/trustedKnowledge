@@ -9320,7 +9320,7 @@ function CurrentRecordsWorkspace({
           </Field>
         </div>
 
-        <div className="mb-4 grid grid-cols-[1fr_120px_auto] gap-3">
+        <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-[minmax(0,1fr)_120px_auto]">
           <Field label="排序字段" icon={<ChartLine size={16} />}>
             <select
               className="control"
@@ -9345,7 +9345,7 @@ function CurrentRecordsWorkspace({
               <option value="asc">升序</option>
             </select>
           </Field>
-          <FilterClearButton className="mt-7" label="清空筛选条件" onClick={onClearFilters} />
+          <FilterClearButton className="col-span-2 w-full md:col-span-1 md:mt-7 md:w-auto" label="清空筛选条件" onClick={onClearFilters} />
         </div>
 
         {isLoading ? (
