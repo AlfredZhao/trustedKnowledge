@@ -11,6 +11,12 @@ export function useDebouncedValue<T>(value: T, delayMs = 260, onDebouncedChange?
   useEffect(() => {
     if (Object.is(value, debouncedValue)) return;
 
+    if (typeof value === "string" && value.length === 0) {
+      setDebouncedValue(value);
+      onDebouncedChangeRef.current?.(value);
+      return;
+    }
+
     const timer = window.setTimeout(() => {
       setDebouncedValue(value);
       onDebouncedChangeRef.current?.(value);

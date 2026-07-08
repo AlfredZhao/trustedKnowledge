@@ -26,8 +26,20 @@ The format follows the common GitHub changelog convention inspired by
 - Fixed AI Coding form select controls so fixed-height dropdowns such as `执行模型` no longer clip the lower half of the option text.
 - 修复 AI 编程表单下拉框的文字裁切问题：像 `执行模型` 这类固定高度选择框不再出现选项文字下半部分被遮挡。
 
-- Fixed the Current Records filter bar so the `清空` button now matches the compact dropdown height instead of standing taller than the adjacent selects.
-- 修复当前记录筛选栏的视觉不一致问题：`清空` 按钮现在与旁边的紧凑型下拉框保持同一高度，不再显得更高更突兀。
+- Clarified the Current Records filter reset action by renaming its `清空` button to `清空筛选条件`, making the button intent explicit without changing behavior.
+- 调整“当前记录”模块筛选重置按钮文案：将 `清空` 改为 `清空筛选条件`，仅增强语义，不改变原有清空行为。
+
+- Fixed list filter clear buttons across Current Records, Todo, English Materials, Blog Factory, and History so they share one compact icon style aligned with adjacent controls.
+- 统一当前记录、待办事项、英语素材、博客工厂和历史查询筛选区的清空按钮：改为与相邻控件对齐的紧凑图标按钮，避免单个按钮尺寸显得突兀。
+
+- Standardized remaining filter reset labels so buttons previously shown as `清空` or `清空条件` now all read `清空筛选条件` across modules.
+- 统一各模块筛选重置按钮文案：原来显示为 `清空` 或 `清空条件` 的按钮，现统一改为 `清空筛选条件`。
+
+- Fixed delayed filter reset feedback on list pages by making cleared search terms bypass debounce, so `清空筛选条件` now refreshes Todo, Current Records, English Materials, Blog Factory, and History results immediately.
+- 修复列表页筛选重置反馈延迟的问题：搜索词被清空时现在会跳过防抖，`清空筛选条件` 在待办事项、当前记录、英语素材、博客工厂和历史查询页都会立即刷新结果，不再看起来像“点了没反应”。
+
+- Unified the user-reset behavior behind `清空筛选条件`: Blog Factory, Todo, English Materials, Current Records, and History now clear back to `全部可见用户`/`全部用户`, while single-user scopes still stay locked to that only visible user.
+- 统一 `清空筛选条件` 的用户重置语义：博客工厂、待办事项、英语素材、当前记录和历史查询现在都会回到 `全部可见用户` / `全部用户`；仅当当前账号本来只可见一个用户时，才保持该唯一用户不变。
 
 ## 历史版本更新
 

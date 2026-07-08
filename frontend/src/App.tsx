@@ -434,6 +434,15 @@ function resolveScopedUsernameFilter(authUser: AuthUser | null, currentValue: st
   return getDefaultOwnedUsername(authUser);
 }
 
+function getClearedScopedUsernameFilter(authUser: AuthUser | null, visibleUsers?: string[]): string {
+  if (!authUser || authUser.is_admin) return "";
+  const scopedUsers = visibleUsers ?? getVisibleUsers(authUser);
+  if (scopedUsers.length <= 1) {
+    return scopedUsers[0] ?? getDefaultOwnedUsername(authUser);
+  }
+  return "";
+}
+
 type ConversionTarget = "knowledgeToTodo" | "todoToKnowledge";
 
 interface PendingCurrentRecordUpdate {
@@ -4545,7 +4554,7 @@ function App() {
               onClearFilters={() => {
                 setBlogFactoryPage(1);
                 setBlogFactoryQuery("");
-                setBlogFactoryUsername(getDefaultOwnedUsername(authUser));
+                setBlogFactoryUsername(getClearedScopedUsernameFilter(authUser));
                 setBlogFactoryStatus("all");
                 setBlogFactoryTopic("");
                 setBlogFactoryKnowledgeId("");
@@ -4599,7 +4608,7 @@ function App() {
               onClearFilters={() => {
                 setTodoPage(1);
                 setTodoQuery("");
-                setTodoUsername(getDefaultOwnedUsername(authUser));
+                setTodoUsername(getClearedScopedUsernameFilter(authUser));
                 setTodoStatus("all");
               }}
               onCloseMobileEditor={() => setIsMobileTodoEditorOpen(false)}
@@ -4646,7 +4655,7 @@ function App() {
               onClearFilters={() => {
                 setCurrentRecordPage(1);
                 setCurrentRecordQuery("");
-                setCurrentRecordUsername(!authUser?.is_admin && currentRecordOptions.users.length === 1 ? currentRecordOptions.users[0] : "");
+                setCurrentRecordUsername(getClearedScopedUsernameFilter(authUser, currentRecordOptions.users));
                 setCurrentRecordTypeFilter("");
                 setCurrentRecordWeek("");
                 setCurrentRecordDay("");
@@ -4700,7 +4709,7 @@ function App() {
               onClearFilters={() => {
                 setEnglishMaterialPage(1);
                 setEnglishMaterialQuery("");
-                setEnglishMaterialUsername(getDefaultOwnedUsername(authUser));
+                setEnglishMaterialUsername(getClearedScopedUsernameFilter(authUser));
                 setEnglishMaterialCategory("");
                 setEnglishMaterialFlag("");
                 setEnglishMaterialSortBy("id");
@@ -4763,7 +4772,7 @@ function App() {
                 setHistoryPage(1);
                 setHistoryQuery("");
                 setHistoryType("");
-                setHistoryUsername(!authUser?.is_admin && historySummary.users.length === 1 ? historySummary.users[0] : "");
+                setHistoryUsername(getClearedScopedUsernameFilter(authUser, historySummary.users));
                 setHistoryWeek("");
                 setHistoryDay("");
                 setHistoryLearnLevel("");
@@ -7125,6 +7134,27 @@ function Field({
   );
 }
 
+function FilterClearButton({
+  label = "清空筛选条件",
+  className = "",
+  onClick,
+}: {
+  label?: string;
+  className?: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      className={`inline-flex h-10 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-white/10 bg-white/[0.035] px-3 text-sm font-medium text-slate-300 transition hover:border-mint-300/30 hover:bg-white/[0.055] hover:text-mint-300 ${className}`}
+      type="button"
+      onClick={onClick}
+    >
+      <X size={15} />
+      <span>{label}</span>
+    </button>
+  );
+}
+
 function KnowledgeList({
   authUser,
   items,
@@ -8586,13 +8616,7 @@ function BlogFactoryRecords({
             </Field>
           </div>
 
-          <button
-            className="h-11 w-full rounded-lg border border-white/10 bg-white/[0.035] px-4 text-sm font-medium text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300"
-            type="button"
-            onClick={onClearFilters}
-          >
-            清空条件
-          </button>
+          <FilterClearButton className="w-full" onClick={onClearFilters} />
         </div>
       </aside>
 
@@ -9023,13 +9047,7 @@ function TodoWorkspace({
               ))}
             </select>
           </Field>
-          <button
-            className="mt-7 h-11 rounded-lg border border-white/10 bg-white/[0.035] px-4 text-sm font-medium text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300"
-            type="button"
-            onClick={onClearFilters}
-          >
-            清空条件
-          </button>
+          <FilterClearButton className="sm:mt-7" label="清空筛选条件" onClick={onClearFilters} />
         </div>
 
         {isLoading ? (
@@ -9342,13 +9360,7 @@ function CurrentRecordsWorkspace({
               <option value="asc">升序</option>
             </select>
           </Field>
-          <button
-            className="mt-7 h-10 rounded-lg border border-white/10 bg-white/[0.035] px-4 text-sm font-medium text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300"
-            type="button"
-            onClick={onClearFilters}
-          >
-            清空
-          </button>
+          <FilterClearButton className="mt-7" label="清空筛选条件" onClick={onClearFilters} />
         </div>
 
         {isLoading ? (
@@ -9792,13 +9804,7 @@ function EnglishMaterialsWorkspace({
               </select>
             </div>
           </Field>
-          <button
-            className="mt-7 h-11 rounded-lg border border-white/10 bg-white/[0.035] px-4 text-sm font-medium text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300"
-            type="button"
-            onClick={onClearFilters}
-          >
-            清空
-          </button>
+          <FilterClearButton className="md:mt-7" label="清空筛选条件" onClick={onClearFilters} />
         </div>
 
         {isLoading ? (
@@ -13010,13 +13016,7 @@ function HistoryExplorer({
               </Field>
             </div>
 
-            <button
-              className="h-11 w-full rounded-lg border border-white/10 bg-white/[0.035] px-4 text-sm font-medium text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300"
-              type="button"
-              onClick={onClearFilters}
-            >
-              清空条件
-            </button>
+            <FilterClearButton className="w-full" onClick={onClearFilters} />
           </div>
         </aside>
 
