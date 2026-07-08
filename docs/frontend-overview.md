@@ -10,6 +10,7 @@
 - 主入口：`frontend/src/main.tsx`。
 - 主要实现：`frontend/src/App.tsx`。
 - 全局样式：`frontend/src/styles.css`。
+- 离线/刷新缓存：`frontend/public/sw.js` 负责静态资源缓存与页面刷新时的兜底。
 - API 封装：`frontend/src/api/*.ts`，共享请求、错误解析、查询参数和 GET 缓存逻辑集中在 `frontend/src/api/client.ts`。
 - 展示配置：分页数量、导航项、排序字段和状态选项集中在 `frontend/src/uiConfig.ts`。
 - Markdown 渲染：`frontend/src/components/MarkdownPreview.tsx` 和 `frontend/src/utils/markdown.ts`。
@@ -27,6 +28,7 @@
 - 浅色主题下所有复用 `z-50` 全屏遮罩的按钮触发弹窗，会统一把 `bg-ink-900` / `bg-ink-900/96` 面板和 `bg-black/60` / `bg-black/62` 遮罩替换为浅色表面，避免博客工厂 `配置API`、`发布到博客` 以及其它详情/确认弹窗残留深色外观。
 - 应用刷新时会在 React 挂载前先读取并应用已保存的主题模式，保证浅色主题下的加载骨架与初始页面背景不会短暂回退成深色。
 - 除应用内骨架屏外，`frontend/index.html` 中的静态 `Trusted Knowledge / 加载中...` 启动占位页也会读取同一份主题状态，确保手工刷新时启动页与应用主题一致。
+- `frontend/public/sw.js` 当前对 HTML 与应用壳采用网络优先策略，离线时回退到缓存页面；对 `/assets/` 下带 hash 的静态资源采用 `stale-while-revalidate`，优先秒开已缓存资源，并在后台补更最新文件。
 - 面板：主要使用 8px `rounded-lg`、半透明白色边框和克制阴影。
 - 布局：桌面端是固定左侧栏 + 顶部栏；移动端隐藏侧栏，在顶部栏中展示可折叠的网格导航。
 - 顶部栏：右侧操作区会持续显示当前登录用户名，使用低对比度身份条样式，放在退出按钮左侧。

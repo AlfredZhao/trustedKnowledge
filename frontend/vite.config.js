@@ -2,6 +2,23 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 export default defineConfig({
     plugins: [react()],
+    build: {
+        rollupOptions: {
+            output: {
+                manualChunks: function (id) {
+                    if (id.indexOf("node_modules") === -1)
+                        return;
+                    if (id.indexOf("/react-dom/") !== -1 || id.indexOf("/react/") !== -1 || id.indexOf("scheduler") !== -1) {
+                        return "react-vendor";
+                    }
+                    if (id.indexOf("/lucide-react/") !== -1) {
+                        return "icon-vendor";
+                    }
+                    return "vendor";
+                },
+            },
+        },
+    },
     server: {
         host: "0.0.0.0",
         port: 8021,

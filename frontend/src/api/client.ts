@@ -7,6 +7,7 @@ import {
 } from "./localCache";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.trim() ?? "";
+const pendingGetRequests = new Map<string, Promise<unknown>>();
 
 export interface ApiRequestOptions extends RequestInit {
   invalidatePrefixes?: string[];
@@ -53,28 +54,46 @@ export async function request<T>(path: string, options?: ApiRequestOptions): Pro
   const method = options?.method ?? "GET";
   const cacheKey = method === "GET" ? buildApiCacheKey(path, readStoredApiKey()) : null;
   const { invalidatePrefixes, ...fetchOptions } = options ?? {};
-  const response = await authFetch(path, fetchOptions);
+  const executeRequest = async () => {
+    const response = await authFetch(path, fetchOptions);
 
-  if (!response.ok) {
-    if (response.status === 401) {
-      clearStoredApiKey();
-      window.dispatchEvent(new Event("trusted-knowledge:unauthorized"));
+    if (!response.ok) {
+      if (response.status === 401) {
+        clearStoredApiKey();
+        window.dispatchEvent(new Event("trusted-knowledge:unauthorized"));
+      }
+      const detail = await readErrorMessage(response);
+      throw new Error(detail || `Request failed with HTTP ${response.status}`);
     }
-    const detail = await readErrorMessage(response);
-    throw new Error(detail || `Request failed with HTTP ${response.status}`);
+
+    if (invalidatePrefixes?.length) {
+      invalidateApiCache(invalidatePrefixes);
+    }
+
+    if (response.status === 204) {
+      return undefined as T;
+    }
+
+    const data = (await response.json()) as T;
+    if (cacheKey) writeCachedApiResponse(cacheKey, data);
+    return data;
+  };
+
+  if (method !== "GET" || fetchOptions.signal) {
+    return executeRequest();
   }
 
-  if (invalidatePrefixes?.length) {
-    invalidateApiCache(invalidatePrefixes);
+  const dedupeKey = `${readStoredApiKey() ?? "anonymous"}:${path}`;
+  const pending = pendingGetRequests.get(dedupeKey);
+  if (pending) {
+    return pending as Promise<T>;
   }
 
-  if (response.status === 204) {
-    return undefined as T;
-  }
-
-  const data = (await response.json()) as T;
-  if (cacheKey) writeCachedApiResponse(cacheKey, data);
-  return data;
+  const requestPromise = executeRequest().finally(() => {
+    pendingGetRequests.delete(dedupeKey);
+  });
+  pendingGetRequests.set(dedupeKey, requestPromise);
+  return requestPromise as Promise<T>;
 }
 
 export function readCachedGet<T>(path: string, maxAgeMs?: number): T | null {

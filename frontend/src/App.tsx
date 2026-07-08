@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import {
   Archive,
   Bot,
@@ -142,6 +142,7 @@ import {
   updateUserRelation,
 } from "./api/users";
 import { clearApiResponseCache } from "./api/localCache";
+import { Field, FilterClearButton, LoadingStack, MetricTile } from "./components/AppShellPrimitives";
 import { MarkdownPreview } from "./components/MarkdownPreview";
 import {
   copyMarkdownAsEnhancedRichText,
@@ -211,7 +212,6 @@ import {
   formatResetDistance,
   formatTimeOnly,
   formatUsagePeriod,
-  getCodexCompletionSummary,
   getHistoryAskFilterEntries,
   getNextWeek,
   getResetReadyAt,
@@ -258,6 +258,12 @@ import {
   type StoredUiState,
   type ThemeMode,
 } from "./utils/appUtils";
+import { AI_CODING_DEFAULT_MODEL, AI_CODING_MODEL_FALLBACK_OPTIONS } from "./views/aiCodingShared";
+
+const OverviewDashboard = lazy(() => import("./views/OverviewDashboard"));
+const LlmUsageDashboard = lazy(() => import("./views/LlmUsageDashboard"));
+const HistoryExplorer = lazy(() => import("./views/HistoryExplorer"));
+const AiCodingWorkspace = lazy(() => import("./views/AiCodingWorkspace"));
 import type {
   AdminModuleAccessItem,
   AdminModuleAccessLevel,
@@ -379,9 +385,6 @@ const emptyOverviewSectionErrors: OverviewSectionErrors = {
   knowledge: null,
   english: null,
 };
-const AI_CODING_DEFAULT_MODEL = "__codex_cli_default__";
-const AI_CODING_MODEL_FALLBACK_OPTIONS = ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex", "gpt-5.2"];
-
 // Navigation and access boundaries.
 const SUPER_ADMIN_ONLY_VIEWS: AppView[] = ["users"];
 const ADMIN_ROLE_MODULE_VIEWS: AppView[] = ["aiCoding", "usage"];
@@ -4304,6 +4307,18 @@ function App() {
     selectedTodoIndex >= 0 &&
     (selectedTodoIndex < todoItems.length - 1 || todoPage * TODO_PAGE_SIZE < todoTotal) &&
     !isTodoNavigationBlocked;
+  const lazyViewFallback = (
+    <div className="flex-1 px-4 pb-4 pt-2">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/72 p-4 shadow-soft-glow backdrop-blur-xl">
+          <LoadingStack />
+        </section>
+        <aside className="min-w-0 rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
+          <LoadingStack />
+        </aside>
+      </div>
+    </div>
+  );
 
   // Page composition and modal/sheet boundaries.
   return (
@@ -4386,20 +4401,22 @@ function App() {
           />
 
           {activeView === "overview" ? (
-            <OverviewDashboard
-              canViewUsage={canAccessUsage}
-              data={overviewData}
-              isLoading={isOverviewLoading}
-              isRefreshing={isOverviewRefreshing}
-              lastUpdatedAt={overviewUpdatedAt}
-              loadError={overviewError}
-              sectionErrors={overviewSectionErrors}
-              onOpenEnglishMaterial={handleOpenOverviewEnglishMaterial}
-              onOpenKnowledge={handleOpenOverviewKnowledge}
-              onOpenTodo={handleOpenOverviewTodo}
-              onOpenView={handleOpenOverviewView}
-              onRefresh={handleRefreshOverview}
-            />
+            <Suspense fallback={lazyViewFallback}>
+              <OverviewDashboard
+                canViewUsage={canAccessUsage}
+                data={overviewData}
+                isLoading={isOverviewLoading}
+                isRefreshing={isOverviewRefreshing}
+                lastUpdatedAt={overviewUpdatedAt}
+                loadError={overviewError}
+                sectionErrors={overviewSectionErrors}
+                onOpenEnglishMaterial={handleOpenOverviewEnglishMaterial}
+                onOpenKnowledge={handleOpenOverviewKnowledge}
+                onOpenTodo={handleOpenOverviewTodo}
+                onOpenView={handleOpenOverviewView}
+                onRefresh={handleRefreshOverview}
+              />
+            </Suspense>
           ) : activeView === "skills" ? (
             <SkillManager
               detail={selectedSkill}
@@ -4482,36 +4499,38 @@ function App() {
               onToggleSkill={handleToggleHistoryAskSkill}
             />
           ) : activeView === "aiCoding" ? (
-            <AiCodingWorkspace
-              codexConfig={codexConfig}
-              codexConfigError={codexConfigError}
-              codexError={codexError}
-              githubSyncError={githubSyncError}
-              githubSyncStatus={githubSyncStatus}
-              isCodexConfigLoading={isCodexConfigLoading}
-              isCodexRunning={isCodexRunning}
-              isGithubSyncing={isGithubSyncing}
-              isRestartingServices={isRestartingServices}
-              liveErrorOutput={liveCodexErrorOutput}
-              liveOutput={liveCodexOutput}
-              liveStatus={liveCodexStatus}
-              modelName={aiCodingModelName}
-              messages={aiCodingMessages}
-              prompt={aiCodingPrompt}
-              archiveError={codexArchiveError}
-              archiveLoadingId={codexArchiveLoadingId}
-              restartConfirm={restartConfirm}
-              restartError={restartError}
-              restartResponse={restartResponse}
-              onArchiveMessage={handleArchiveCodexMessage}
-              onClearGithubSyncStatus={handleClearGithubSyncStatus}
-              onModelChange={setAiCodingModelName}
-              onPromptChange={setAiCodingPrompt}
-              onRestartConfirmChange={setRestartConfirm}
-              onRestartServices={handleRestartServices}
-              onSyncCodeToGithub={handleSyncCodeToGithub}
-              onSubmit={handleRunCodex}
-            />
+            <Suspense fallback={lazyViewFallback}>
+              <AiCodingWorkspace
+                codexConfig={codexConfig}
+                codexConfigError={codexConfigError}
+                codexError={codexError}
+                githubSyncError={githubSyncError}
+                githubSyncStatus={githubSyncStatus}
+                isCodexConfigLoading={isCodexConfigLoading}
+                isCodexRunning={isCodexRunning}
+                isGithubSyncing={isGithubSyncing}
+                isRestartingServices={isRestartingServices}
+                liveErrorOutput={liveCodexErrorOutput}
+                liveOutput={liveCodexOutput}
+                liveStatus={liveCodexStatus}
+                modelName={aiCodingModelName}
+                messages={aiCodingMessages}
+                prompt={aiCodingPrompt}
+                archiveError={codexArchiveError}
+                archiveLoadingId={codexArchiveLoadingId}
+                restartConfirm={restartConfirm}
+                restartError={restartError}
+                restartResponse={restartResponse}
+                onArchiveMessage={handleArchiveCodexMessage}
+                onClearGithubSyncStatus={handleClearGithubSyncStatus}
+                onModelChange={setAiCodingModelName}
+                onPromptChange={setAiCodingPrompt}
+                onRestartConfirmChange={setRestartConfirm}
+                onRestartServices={handleRestartServices}
+                onSyncCodeToGithub={handleSyncCodeToGithub}
+                onSubmit={handleRunCodex}
+              />
+            </Suspense>
           ) : activeView === "blogFactory" ? (
             <BlogFactoryRecords
               authUser={authUser}
@@ -4735,64 +4754,68 @@ function App() {
               onSubmit={handleCreateEnglishMaterial}
             />
           ) : activeView === "history" ? (
-            <HistoryExplorer
-              items={historyItems}
-              total={historyTotal}
-              page={historyPage}
-              summary={historySummary}
-              authUser={authUser}
-              isLoading={isHistoryLoading}
-              loadError={historyError}
-              filters={{
-                type: historyType,
-                username: historyUsername,
-                week: historyWeek,
-                day: historyDay,
-                learnLevel: historyLearnLevel,
-                vectorStatus: historyVectorStatus,
-                dateFrom: historyDateFrom,
-                dateTo: historyDateTo,
-                sortBy: historySortBy,
-                sortDir: historySortDir,
-              }}
-              onFilterChange={(nextFilters) => {
-                setHistoryPage(1);
-                if (nextFilters.type !== undefined) setHistoryType(nextFilters.type);
-                if (nextFilters.username !== undefined) setHistoryUsername(nextFilters.username);
-                if (nextFilters.week !== undefined) setHistoryWeek(nextFilters.week);
-                if (nextFilters.day !== undefined) setHistoryDay(nextFilters.day);
-                if (nextFilters.learnLevel !== undefined) setHistoryLearnLevel(nextFilters.learnLevel);
-                if (nextFilters.vectorStatus !== undefined) setHistoryVectorStatus(nextFilters.vectorStatus);
-                if (nextFilters.dateFrom !== undefined) setHistoryDateFrom(nextFilters.dateFrom);
-                if (nextFilters.dateTo !== undefined) setHistoryDateTo(nextFilters.dateTo);
-                if (nextFilters.sortBy !== undefined) setHistorySortBy(nextFilters.sortBy);
-                if (nextFilters.sortDir !== undefined) setHistorySortDir(nextFilters.sortDir);
-              }}
-              onClearFilters={() => {
-                setHistoryPage(1);
-                setHistoryQuery("");
-                setHistoryType("");
-                setHistoryUsername(getClearedScopedUsernameFilter(authUser, historySummary.users));
-                setHistoryWeek("");
-                setHistoryDay("");
-                setHistoryLearnLevel("");
-                setHistoryVectorStatus("all");
-                setHistoryDateFrom("");
-                setHistoryDateTo("");
-                setHistorySortBy("history_date");
-                setHistorySortDir("desc");
-              }}
-              onPageChange={setHistoryPage}
-            />
+            <Suspense fallback={lazyViewFallback}>
+              <HistoryExplorer
+                items={historyItems}
+                total={historyTotal}
+                page={historyPage}
+                summary={historySummary}
+                authUser={authUser}
+                isLoading={isHistoryLoading}
+                loadError={historyError}
+                filters={{
+                  type: historyType,
+                  username: historyUsername,
+                  week: historyWeek,
+                  day: historyDay,
+                  learnLevel: historyLearnLevel,
+                  vectorStatus: historyVectorStatus,
+                  dateFrom: historyDateFrom,
+                  dateTo: historyDateTo,
+                  sortBy: historySortBy,
+                  sortDir: historySortDir,
+                }}
+                onFilterChange={(nextFilters) => {
+                  setHistoryPage(1);
+                  if (nextFilters.type !== undefined) setHistoryType(nextFilters.type);
+                  if (nextFilters.username !== undefined) setHistoryUsername(nextFilters.username);
+                  if (nextFilters.week !== undefined) setHistoryWeek(nextFilters.week);
+                  if (nextFilters.day !== undefined) setHistoryDay(nextFilters.day);
+                  if (nextFilters.learnLevel !== undefined) setHistoryLearnLevel(nextFilters.learnLevel);
+                  if (nextFilters.vectorStatus !== undefined) setHistoryVectorStatus(nextFilters.vectorStatus);
+                  if (nextFilters.dateFrom !== undefined) setHistoryDateFrom(nextFilters.dateFrom);
+                  if (nextFilters.dateTo !== undefined) setHistoryDateTo(nextFilters.dateTo);
+                  if (nextFilters.sortBy !== undefined) setHistorySortBy(nextFilters.sortBy);
+                  if (nextFilters.sortDir !== undefined) setHistorySortDir(nextFilters.sortDir);
+                }}
+                onClearFilters={() => {
+                  setHistoryPage(1);
+                  setHistoryQuery("");
+                  setHistoryType("");
+                  setHistoryUsername(getClearedScopedUsernameFilter(authUser, historySummary.users));
+                  setHistoryWeek("");
+                  setHistoryDay("");
+                  setHistoryLearnLevel("");
+                  setHistoryVectorStatus("all");
+                  setHistoryDateFrom("");
+                  setHistoryDateTo("");
+                  setHistorySortBy("history_date");
+                  setHistorySortDir("desc");
+                }}
+                onPageChange={setHistoryPage}
+              />
+            </Suspense>
           ) : activeView === "usage" ? (
-            <LlmUsageDashboard
-              items={usageItems}
-              total={usageTotal}
-              isLoading={isUsageLoading}
-              isRefreshing={isUsageRefreshing}
-              loadError={usageError}
-              onRefresh={handleRefreshUsage}
-            />
+            <Suspense fallback={lazyViewFallback}>
+              <LlmUsageDashboard
+                items={usageItems}
+                total={usageTotal}
+                isLoading={isUsageLoading}
+                isRefreshing={isUsageRefreshing}
+                loadError={usageError}
+                onRefresh={handleRefreshUsage}
+              />
+            </Suspense>
           ) : activeView === "workbench" ? (
             <div className="grid flex-1 gap-4 px-4 pb-4 pt-2 lg:grid-cols-[minmax(440px,0.95fr)_minmax(420px,1.05fr)] xl:grid-cols-[minmax(500px,0.9fr)_minmax(460px,0.72fr)_300px]">
               <KnowledgeForm
@@ -7111,47 +7134,6 @@ function TodoStatusSegmentedControl({
         );
       })}
     </div>
-  );
-}
-
-function Field({
-  label,
-  icon,
-  children,
-}: {
-  label: string;
-  icon: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className="block min-w-0">
-      <span className="mb-2 flex items-center gap-2 text-sm text-slate-300">
-        <span className="text-slate-500">{icon}</span>
-        {label}
-      </span>
-      {children}
-    </label>
-  );
-}
-
-function FilterClearButton({
-  label = "清空筛选条件",
-  className = "",
-  onClick,
-}: {
-  label?: string;
-  className?: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      className={`inline-flex h-10 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-white/10 bg-white/[0.035] px-3 text-sm font-medium text-slate-300 transition hover:border-mint-300/30 hover:bg-white/[0.055] hover:text-mint-300 ${className}`}
-      type="button"
-      onClick={onClick}
-    >
-      <X size={15} />
-      <span>{label}</span>
-    </button>
   );
 }
 
@@ -12298,1632 +12280,6 @@ function HistoryAskFilterSummary({ filters }: { filters: HistoryAskResponse["fil
   );
 }
 
-function buildAiCodingModelOptions(config: CodexConfig | null) {
-  const values = compactUnique([...(config?.available_models ?? []), ...AI_CODING_MODEL_FALLBACK_OPTIONS]);
-  return [
-    { value: AI_CODING_DEFAULT_MODEL, label: config?.default_model_name ? `CLI 默认（当前 ${config.default_model_name}）` : "CLI 默认" },
-    ...values.map((value) => ({ value, label: value })),
-  ];
-}
-
-function formatAiCodingModelLabel(modelName: string | null | undefined, defaultModelName: string | null | undefined) {
-  if (modelName && modelName.trim()) return modelName;
-  if (defaultModelName && defaultModelName.trim()) return `CLI 默认（当前 ${defaultModelName}）`;
-  return "CLI 默认";
-}
-
-function AiCodingWorkspace({
-  codexConfig,
-  codexConfigError,
-  codexError,
-  githubSyncError,
-  githubSyncStatus,
-  isCodexConfigLoading,
-  isCodexRunning,
-  isGithubSyncing,
-  isRestartingServices,
-  liveErrorOutput,
-  liveOutput,
-  liveStatus,
-  modelName,
-  messages,
-  prompt,
-  archiveError,
-  archiveLoadingId,
-  restartConfirm,
-  restartError,
-  restartResponse,
-  onArchiveMessage,
-  onClearGithubSyncStatus,
-  onModelChange,
-  onPromptChange,
-  onRestartConfirmChange,
-  onRestartServices,
-  onSyncCodeToGithub,
-  onSubmit,
-}: {
-  codexConfig: CodexConfig | null;
-  codexConfigError: string | null;
-  codexError: string | null;
-  githubSyncError: string | null;
-  githubSyncStatus: GithubSyncResponse | null;
-  isCodexConfigLoading: boolean;
-  isCodexRunning: boolean;
-  isGithubSyncing: boolean;
-  isRestartingServices: boolean;
-  liveErrorOutput: string;
-  liveOutput: string;
-  liveStatus: string;
-  modelName: string;
-  messages: AiCodingMessage[];
-  prompt: string;
-  archiveError: string | null;
-  archiveLoadingId: number | null;
-  restartConfirm: string;
-  restartError: string | null;
-  restartResponse: SystemRestartResponse | null;
-  onArchiveMessage: (message: AiCodingMessage) => void;
-  onClearGithubSyncStatus: () => void;
-  onModelChange: (value: string) => void;
-  onPromptChange: (value: string) => void;
-  onRestartConfirmChange: (value: string) => void;
-  onRestartServices: () => void;
-  onSyncCodeToGithub: () => void;
-  onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
-}) {
-  const canRunCodex = prompt.trim().length >= 2 && !isCodexRunning;
-  const canSyncCode = !isGithubSyncing;
-  const canRestart = restartConfirm === "RESTART" && !isRestartingServices;
-  const latestMessage = messages[0];
-  const visibleLatestMessage = latestMessage?.archivedKnowledgeId ? null : latestMessage;
-  const modelOptions = useMemo(() => buildAiCodingModelOptions(codexConfig), [codexConfig]);
-  const selectedModelLabel = formatAiCodingModelLabel(
-    modelName === AI_CODING_DEFAULT_MODEL ? null : modelName,
-    codexConfig?.default_model_name,
-  );
-
-  return (
-    <div className="flex-1 px-4 pb-4 pt-2">
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/72 p-4 shadow-soft-glow backdrop-blur-xl">
-          <div className="mb-5">
-            <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
-              <WandSparkles size={17} />
-              Codex
-            </div>
-            <h2 className="text-xl font-semibold text-slate-50">AI 编程任务</h2>
-          </div>
-
-          <form className="space-y-4" onSubmit={onSubmit}>
-            <div className="grid gap-3 lg:grid-cols-[minmax(0,220px)_minmax(0,1fr)]">
-              <Field label="执行模型" icon={<Settings2 size={16} />}>
-                <select
-                  className="control h-10"
-                  disabled={isCodexRunning}
-                  value={modelName}
-                  onChange={(event) => onModelChange(event.target.value)}
-                >
-                  {modelOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <div className="rounded-lg border border-white/10 bg-white/[0.028] px-3 py-3 text-sm leading-6 text-slate-400">
-                <div className="mb-1 text-xs uppercase tracking-[0.18em] text-slate-500">Current Model</div>
-                <div className="font-medium text-slate-100">{selectedModelLabel}</div>
-                <div className="mt-1 text-xs text-slate-500">
-                  {modelName === AI_CODING_DEFAULT_MODEL
-                    ? "不强制指定 --model，沿用服务端 Codex CLI 当前默认模型。"
-                    : "本次任务会显式传给 Codex CLI 的 --model。"}
-                </div>
-              </div>
-            </div>
-            <textarea
-              className="control min-h-[170px] resize-none leading-7"
-              disabled={isCodexRunning}
-              maxLength={50000}
-              value={prompt}
-              onChange={(event) => onPromptChange(event.target.value)}
-              placeholder="例如：请调整 AI 编程界面的移动端布局，并运行前端构建验证。"
-            />
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="text-xs leading-5 text-slate-500">
-                Codex 会在当前项目目录内运行；需要重启服务时，请使用右侧人工确认按钮。
-              </div>
-              <button
-                className="flex h-11 min-w-32 items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
-                disabled={!canRunCodex}
-                type="submit"
-              >
-                {isCodexRunning ? <Loader2 className="animate-spin" size={17} /> : <Sparkles size={17} />}
-                {isCodexRunning ? "执行中" : "提交任务"}
-              </button>
-            </div>
-          </form>
-
-          {isCodexConfigLoading ? (
-            <div className="mt-4 rounded-lg border border-white/10 bg-white/[0.025] px-3 py-3 text-sm text-slate-400">
-              正在读取 Codex 默认模型配置...
-            </div>
-          ) : null}
-
-          {codexConfigError ? (
-            <div className="mt-4 flex items-start gap-2 rounded-lg border border-amberline/25 bg-amberline/10 px-3 py-3 text-sm text-amber-100">
-              <TriangleAlert className="mt-0.5 shrink-0 text-amberline" size={17} />
-              <span>{codexConfigError}</span>
-            </div>
-          ) : null}
-
-          {codexError ? (
-            <div className="mt-4 flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100">
-              <TriangleAlert className="mt-0.5 shrink-0 text-red-300" size={17} />
-              <span>{codexError}</span>
-            </div>
-          ) : null}
-
-          {archiveError ? (
-            <div className="mt-4 flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100">
-              <TriangleAlert className="mt-0.5 shrink-0 text-red-300" size={17} />
-              <span>{archiveError}</span>
-            </div>
-          ) : null}
-
-          <div className="mt-5 space-y-4">
-            {isCodexRunning ? (
-              <div className="space-y-3 rounded-lg border border-white/10 bg-white/[0.025] p-4">
-                <div className="flex items-center gap-2 text-sm text-mint-200">
-                  <Loader2 className="animate-spin" size={17} />
-                  <span>{liveStatus || "Codex 正在运行..."}</span>
-                </div>
-                <CodexOutputBlock
-                  title="Live Output"
-                  value={liveOutput || "等待 Codex 输出事件..."}
-                />
-                {liveErrorOutput ? (
-                  <CodexOutputBlock title="Live Error Output" value={liveErrorOutput} tone="warning" />
-                ) : null}
-              </div>
-            ) : !visibleLatestMessage ? (
-              <div className="grid min-h-[260px] place-items-center rounded-lg border border-white/10 bg-white/[0.025] p-6 text-center">
-                <div>
-                  <Bot className="mx-auto mb-3 text-slate-600" size={36} />
-                  <div className="mb-1 font-medium text-slate-300">等待编程任务</div>
-                  <p className="text-sm text-slate-500">提交后会显示 Codex 输出、退出码和本次工作区变更。</p>
-                </div>
-              </div>
-            ) : (
-              <AiCodingMessageCard
-                defaultModelName={codexConfig?.default_model_name ?? null}
-                archiveLoadingId={archiveLoadingId}
-                message={visibleLatestMessage}
-                onArchiveMessage={onArchiveMessage}
-              />
-            )}
-          </div>
-        </section>
-
-        <aside className="min-w-0 rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
-          <div className="mb-5">
-            <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
-              <Github size={17} />
-              Operations
-            </div>
-            <h2 className="text-lg font-semibold text-slate-50">代码与服务</h2>
-          </div>
-
-          <div className="space-y-5">
-            <div className="space-y-4 rounded-lg border border-white/10 bg-white/[0.025] p-3">
-              <div>
-                <div className="mb-1 flex items-center gap-2 text-sm font-medium text-slate-100">
-                  <Github size={16} />
-                  同步到 GitHub
-                </div>
-                <div className="text-xs leading-5 text-slate-500">调用服务端 `scripts/commit-to-github.sh` 提交并推送当前代码。</div>
-              </div>
-
-              <button
-                className="flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
-                disabled={!canSyncCode}
-                type="button"
-                onClick={onSyncCodeToGithub}
-              >
-                {isGithubSyncing ? <Loader2 className="animate-spin" size={17} /> : <Github size={17} />}
-                {isGithubSyncing ? "同步中" : "同步代码到 GitHub"}
-              </button>
-
-              {githubSyncStatus ? (
-                <div className="space-y-3 rounded-lg border border-white/10 bg-black/15 p-3">
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex flex-wrap items-center gap-2 text-xs">
-                      <span
-                        className={`rounded-md border px-2 py-1 ${
-                          githubSyncStatus.success
-                            ? "border-mint-300/25 bg-mint-300/10 text-mint-200"
-                            : "border-red-400/25 bg-red-400/10 text-red-100"
-                        }`}
-                      >
-                        {githubSyncStatus.success ? "同步完成" : "同步失败"}
-                      </span>
-                      <span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-slate-400">
-                        exit {githubSyncStatus.exit_code}
-                      </span>
-                    </div>
-                    <button
-                      className="flex h-8 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-xs text-slate-400 transition hover:border-red-400/30 hover:text-red-100"
-                      type="button"
-                      onClick={onClearGithubSyncStatus}
-                    >
-                      <Trash2 size={14} />
-                      清理结果
-                    </button>
-                  </div>
-                  <div className="text-xs leading-5 text-slate-500">
-                    {formatDateTime(githubSyncStatus.completed_at)} · Log: {githubSyncStatus.log_path}
-                  </div>
-                  <CodexOutputBlock title="最近 5 行日志" value={githubSyncStatus.output_tail || githubSyncStatus.message} />
-                </div>
-              ) : null}
-
-              {githubSyncError ? (
-                <div className="rounded-lg border border-red-400/25 bg-red-400/10 p-3 text-sm leading-6 text-red-100">
-                  {githubSyncError}
-                </div>
-              ) : null}
-            </div>
-
-            <div className="space-y-4 rounded-lg border border-white/10 bg-white/[0.025] p-3">
-              <div>
-                <div className="mb-1 flex items-center gap-2 text-sm font-medium text-slate-100">
-                  <RefreshCw size={16} />
-                  服务重启
-                </div>
-                <div className="text-xs leading-5 text-slate-500">人工确认后调用服务端重启脚本。</div>
-              </div>
-
-              <div className="rounded-lg border border-amberline/25 bg-amberline/10 p-3 text-sm leading-6 text-amber-100">
-                该操作会调用服务端 `scripts/restart-all.sh`，前端和后端会短暂不可用。
-              </div>
-
-              <Field label="确认文本" icon={<ShieldCheck size={16} />}>
-                <input
-                  className="control"
-                  disabled={isRestartingServices}
-                  value={restartConfirm}
-                  onChange={(event) => onRestartConfirmChange(event.target.value)}
-                  placeholder="输入 RESTART"
-                />
-              </Field>
-
-              <button
-                className="flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-red-400/30 bg-red-400/10 px-4 text-sm font-medium text-red-100 transition hover:bg-red-400/15 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
-                disabled={!canRestart}
-                type="button"
-                onClick={onRestartServices}
-              >
-                {isRestartingServices ? <Loader2 className="animate-spin" size={17} /> : <RefreshCw size={17} />}
-                {isRestartingServices ? "重启中" : "确认重启全部服务"}
-              </button>
-
-              {restartResponse ? (
-                <div className="rounded-lg border border-mint-300/25 bg-mint-300/10 p-3 text-sm leading-6 text-mint-100">
-                  <div>{restartResponse.message}</div>
-                  <div className="mt-2 break-all text-xs text-mint-200/75">Log: {restartResponse.log_path}</div>
-                </div>
-              ) : null}
-
-              {restartError ? (
-                <div className="rounded-lg border border-red-400/25 bg-red-400/10 p-3 text-sm leading-6 text-red-100">
-                  {restartError}
-                </div>
-              ) : null}
-            </div>
-          </div>
-        </aside>
-      </div>
-    </div>
-  );
-}
-
-function AiCodingMessageCard({
-  defaultModelName,
-  archiveLoadingId,
-  message,
-  onArchiveMessage,
-}: {
-  defaultModelName: string | null;
-  archiveLoadingId: number | null;
-  message: AiCodingMessage;
-  onArchiveMessage: (message: AiCodingMessage) => void;
-}) {
-  const resultText = message.response ? extractCodexResultText(message.response) : "";
-  const failedWithoutResponse = message.status === "failed" && !message.response;
-
-  return (
-    <article className="rounded-lg border border-white/10 bg-white/[0.025] p-4">
-      {message.response ? (
-        <CodexCompletionSummaryCard
-          isArchiving={archiveLoadingId === message.id}
-          message={message}
-          defaultModelName={defaultModelName}
-          onArchive={() => onArchiveMessage(message)}
-        />
-      ) : null}
-
-      <div className="mb-3 rounded-lg border border-mint-300/15 bg-mint-300/8 p-3">
-        <div className="mb-2 flex flex-wrap items-center gap-2 text-xs font-medium uppercase tracking-[0.18em] text-mint-300/80">
-          <span>Prompt</span>
-          <span className="rounded-md border border-mint-300/20 bg-mint-300/10 px-2 py-1 normal-case tracking-normal text-mint-100/90">
-            {formatAiCodingModelLabel(message.modelName ?? message.response?.model_name, defaultModelName)}
-          </span>
-        </div>
-        <div className="whitespace-pre-wrap text-sm leading-6 text-slate-200">{message.prompt}</div>
-      </div>
-
-      {failedWithoutResponse ? (
-        <div className="space-y-3">
-          <div className="rounded-lg border border-red-400/25 bg-red-400/10 p-3">
-            <div className="mb-2 flex items-center gap-2 text-sm font-medium text-red-100">
-              <TriangleAlert size={17} />
-              任务执行失败
-            </div>
-            <div className="text-sm leading-6 text-red-50">
-              {message.errorMessage || "Codex 任务未能完成，请稍后重试。"}
-            </div>
-            <div className="mt-2 text-xs leading-5 text-red-100/75">
-              {formatDateTime(message.completedAt ?? message.startedAt)}
-            </div>
-          </div>
-
-          {message.output ? <CodexOutputBlock title="Raw Output" value={message.output} /> : null}
-          {message.errorOutput ? (
-            <CodexOutputBlock title="Error Output" value={message.errorOutput} tone="warning" />
-          ) : null}
-        </div>
-      ) : null}
-
-      {message.response ? (
-        <div className="space-y-3">
-          <div className="flex flex-wrap gap-2 text-xs">
-            <span
-              className={`rounded-md border px-2 py-1 ${
-                message.response.exit_code === 0
-                  ? "border-mint-300/25 bg-mint-300/10 text-mint-200"
-                  : "border-red-400/25 bg-red-400/10 text-red-100"
-              }`}
-            >
-              exit {message.response.exit_code}
-            </span>
-            <span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-slate-400">
-              {message.response.duration_seconds}s
-            </span>
-          </div>
-
-          {resultText ? (
-            <CodexOutputBlock title="任务结论" value={resultText} />
-          ) : (
-            <CodexOutputBlock title="任务结论" value="未能从 Codex 输出中提取到可读结论，请展开调试日志查看原始输出。" />
-          )}
-          {message.response.error_output ? (
-            <CodexOutputBlock title="Error Output" value={message.response.error_output} tone="warning" />
-          ) : null}
-          <details className="rounded-lg border border-white/10 bg-black/15 p-3">
-            <summary className="cursor-pointer text-xs font-medium uppercase tracking-[0.18em] text-slate-500">
-              调试日志
-            </summary>
-            <div className="mt-3 space-y-3">
-              <CodexOutputBlock title="Raw Output" value={message.response.output || "Codex 未返回标准输出。"} />
-              <CodexOutputBlock title="Git Status" value={message.response.git_status || "工作区没有新增变更。"} />
-            </div>
-          </details>
-        </div>
-      ) : null}
-    </article>
-  );
-}
-
-function CodexOutputBlock({
-  title,
-  value,
-  tone = "default",
-}: {
-  title: string;
-  value: string;
-  tone?: "default" | "warning";
-}) {
-  return (
-    <div
-      className={`rounded-lg border p-3 ${
-        tone === "warning" ? "border-amberline/25 bg-amberline/10" : "border-white/10 bg-black/20"
-      }`}
-    >
-      <div className={`mb-2 text-xs font-medium uppercase tracking-[0.18em] ${tone === "warning" ? "text-amberline" : "text-slate-500"}`}>
-        {title}
-      </div>
-      <pre className="max-h-[420px] overflow-auto whitespace-pre-wrap break-words text-xs leading-5 text-slate-300">{value}</pre>
-    </div>
-  );
-}
-
-function CodexCompletionSummaryCard({
-  defaultModelName,
-  isArchiving,
-  message,
-  onArchive,
-}: {
-  defaultModelName: string | null;
-  isArchiving: boolean;
-  message: AiCodingMessage;
-  onArchive: () => void;
-}) {
-  if (!message.response) return null;
-
-  const summary = getCodexCompletionSummary(message.response);
-  const success = message.response.exit_code === 0;
-  const knowledgePreview = buildCodexKnowledgeDraft(message);
-  const resultText = extractCodexResultText(message.response);
-
-  return (
-    <div
-      className={`mb-3 rounded-lg border p-3 ${
-        success ? "border-mint-300/25 bg-mint-300/10" : "border-red-400/25 bg-red-400/10"
-      }`}
-    >
-      <div className="mb-3 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div className="min-w-0">
-          <div className={`mb-1 flex items-center gap-2 text-sm font-medium ${success ? "text-mint-100" : "text-red-100"}`}>
-            {success ? <CheckCircle2 size={17} /> : <TriangleAlert size={17} />}
-            {success ? "任务已完成" : "任务执行结束，但返回非零退出码"}
-          </div>
-          <div className="text-xs leading-5 text-slate-400">
-            exit {message.response.exit_code} · {message.response.duration_seconds}s · {summary.changedFiles.length} 个变更文件
-          </div>
-          <div className="mt-1 text-xs leading-5 text-slate-500">
-            模型：{formatAiCodingModelLabel(message.modelName ?? message.response.model_name, defaultModelName)}
-          </div>
-        </div>
-
-        <button
-          className="flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-sm font-medium text-slate-200 transition hover:border-mint-300/30 hover:text-mint-200 disabled:cursor-not-allowed disabled:text-slate-500"
-          disabled={isArchiving || Boolean(message.archivedKnowledgeId)}
-          type="button"
-          onClick={onArchive}
-        >
-          {isArchiving ? <Loader2 className="animate-spin" size={16} /> : <Archive size={16} />}
-          {message.archivedKnowledgeId ? `已归档 #${message.archivedKnowledgeId}` : isArchiving ? "归档中" : "归档精简记录"}
-        </button>
-      </div>
-
-      {resultText ? (
-        <div className="mb-3 rounded-lg border border-white/10 bg-black/15 p-3">
-          <div className="mb-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-500">任务结论</div>
-          <div className="max-h-64 overflow-auto whitespace-pre-wrap break-words text-sm leading-6 text-slate-300">
-            {resultText}
-          </div>
-        </div>
-      ) : null}
-
-      <div className="grid gap-3 md:grid-cols-2">
-        <div className="rounded-lg border border-white/10 bg-black/15 p-3">
-          <div className="mb-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-500">重启判断</div>
-          <div className={`text-sm leading-6 ${summary.restartRecommended ? "text-amber-100" : "text-slate-300"}`}>
-            {summary.restartText}
-          </div>
-        </div>
-        <div className="rounded-lg border border-white/10 bg-black/15 p-3">
-          <div className="mb-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-500">变更文件</div>
-          {summary.changedFiles.length > 0 ? (
-            <div className="space-y-1 text-xs leading-5 text-slate-300">
-              {summary.changedFiles.slice(0, 6).map((file) => (
-                <div key={file} className="truncate">
-                  {file}
-                </div>
-              ))}
-              {summary.changedFiles.length > 6 ? (
-                <div className="text-slate-500">还有 {summary.changedFiles.length - 6} 个文件，见 Git Status。</div>
-              ) : null}
-            </div>
-          ) : (
-            <div className="text-sm text-slate-500">没有检测到工作区变更。</div>
-          )}
-        </div>
-      </div>
-
-      <div className="mt-3 rounded-lg border border-white/10 bg-black/15 p-3">
-        <div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-500">
-          <Archive size={14} />
-          归档预览
-        </div>
-        <div className="mb-2 text-sm font-medium leading-6 text-slate-200">{knowledgePreview.question}</div>
-        <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs leading-5 text-slate-400">
-          {knowledgePreview.answer}
-        </pre>
-      </div>
-    </div>
-  );
-}
-
-function HistoryExplorer({
-  items,
-  total,
-  page,
-  summary,
-  authUser,
-  isLoading,
-  loadError,
-  filters,
-  onFilterChange,
-  onClearFilters,
-  onPageChange,
-}: {
-  items: HistoryItem[];
-  total: number;
-  page: number;
-  summary: HistorySummary;
-  authUser: AuthUser | null;
-  isLoading: boolean;
-  loadError: string | null;
-  filters: HistoryFilters;
-  onFilterChange: (filters: Partial<HistoryFilters>) => void;
-  onClearFilters: () => void;
-  onPageChange: (page: number) => void;
-}) {
-  const [selectedItem, setSelectedItem] = useState<HistoryItem | null>(null);
-  const totalPages = Math.max(1, Math.ceil(total / HISTORY_PAGE_SIZE));
-  const rangeStart = total === 0 ? 0 : (page - 1) * HISTORY_PAGE_SIZE + 1;
-  const rangeEnd = Math.min(page * HISTORY_PAGE_SIZE, total);
-  const historyTypeOptions = filters.username ? summary.user_types[filters.username] ?? [] : summary.types;
-  const isAdminUser = authUser?.is_admin ?? false;
-  const hasSingleVisibleUser = !isAdminUser && summary.users.length <= 1;
-  const allUsersLabel = isAdminUser ? "全部用户" : "全部可见用户";
-
-  return (
-    <div className="flex-1 px-4 pb-4 pt-2">
-      <div className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
-        <aside className="min-w-0 rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
-          <div className="mb-5">
-            <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
-              <Filter size={17} />
-              Query Controls
-            </div>
-            <h2 className="text-lg font-semibold text-slate-50">查询条件</h2>
-          </div>
-
-          <div className="space-y-4">
-            <Field label="用户" icon={<ShieldCheck size={16} />}>
-              <select
-                className="control"
-                disabled={hasSingleVisibleUser}
-                value={filters.username}
-                onChange={(event) => {
-                  const username = event.target.value;
-                  const nextTypeOptions = username ? summary.user_types[username] ?? [] : summary.types;
-                  onFilterChange({
-                    username,
-                    type: filters.type && !nextTypeOptions.includes(filters.type) ? "" : filters.type,
-                  });
-                }}
-              >
-                <option value="">{allUsersLabel}</option>
-                {summary.users.map((user) => (
-                  <option key={user} value={user}>
-                    {user}
-                  </option>
-                ))}
-              </select>
-            </Field>
-
-            <Field label="类型" icon={<Layers3 size={16} />}>
-              <select
-                className="control"
-                value={filters.type}
-                onChange={(event) => onFilterChange({ type: event.target.value })}
-              >
-                <option value="">全部类型</option>
-                {historyTypeOptions.map((type) => (
-                  <option key={type} value={type}>
-                    {type}
-                  </option>
-                ))}
-              </select>
-            </Field>
-
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Week" icon={<CalendarClock size={16} />}>
-                <input
-                  className="control"
-                  value={filters.week}
-                  onChange={(event) => onFilterChange({ week: event.target.value })}
-                  placeholder="如 2026-W01"
-                />
-              </Field>
-              <Field label="Day" icon={<CalendarClock size={16} />}>
-                <input
-                  className="control"
-                  value={filters.day}
-                  onChange={(event) => onFilterChange({ day: event.target.value })}
-                  placeholder="如 Monday"
-                />
-              </Field>
-            </div>
-
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Field label="开始日期" icon={<CalendarClock size={16} />}>
-                <input
-                  className="control history-date-control"
-                  type="date"
-                  value={filters.dateFrom}
-                  onChange={(event) => onFilterChange({ dateFrom: event.target.value })}
-                />
-              </Field>
-              <Field label="结束日期" icon={<CalendarClock size={16} />}>
-                <input
-                  className="control history-date-control"
-                  type="date"
-                  value={filters.dateTo}
-                  onChange={(event) => onFilterChange({ dateTo: event.target.value })}
-                />
-              </Field>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="等级" icon={<CircleGauge size={16} />}>
-                <input
-                  className="control"
-                  inputMode="numeric"
-                  value={filters.learnLevel}
-                  onChange={(event) => onFilterChange({ learnLevel: event.target.value.replace(/\D/g, "") })}
-                  placeholder="全部"
-                />
-              </Field>
-              <Field label="向量状态" icon={<Database size={16} />}>
-                <select
-                  className="control"
-                  value={filters.vectorStatus}
-                  onChange={(event) => onFilterChange({ vectorStatus: event.target.value as HistoryFilters["vectorStatus"] })}
-                >
-                  <option value="all">全部</option>
-                  <option value="1">待更新</option>
-                  <option value="0">已就绪</option>
-                </select>
-              </Field>
-            </div>
-
-            <div className="grid grid-cols-[1fr_120px] gap-3">
-              <Field label="排序字段" icon={<ChartLine size={16} />}>
-                <select
-                  className="control"
-                  value={filters.sortBy}
-                  onChange={(event) => onFilterChange({ sortBy: event.target.value as HistoryFilters["sortBy"] })}
-                >
-                  <option value="history_date">历史日期</option>
-                  <option value="id">ID</option>
-                  <option value="type">类型</option>
-                  <option value="username">用户</option>
-                  <option value="learn_level">等级</option>
-                </select>
-              </Field>
-              <Field label="方向" icon={<ChartLine size={16} />}>
-                <select
-                  className="control"
-                  value={filters.sortDir}
-                  onChange={(event) => onFilterChange({ sortDir: event.target.value as HistoryFilters["sortDir"] })}
-                >
-                  <option value="desc">降序</option>
-                  <option value="asc">升序</option>
-                </select>
-              </Field>
-            </div>
-
-            <FilterClearButton className="w-full" onClick={onClearFilters} />
-          </div>
-        </aside>
-
-        <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/72 p-4 shadow-soft-glow backdrop-blur-xl">
-          <div className="mb-5 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-            <div>
-              <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
-                <History size={17} />
-                T_HISTORY
-              </div>
-              <h2 className="text-xl font-semibold text-slate-50">历史记录</h2>
-            </div>
-            <div className="rounded-lg border border-white/10 bg-white/[0.035] px-3 py-2 text-sm text-slate-300">
-              {total} 条匹配
-            </div>
-          </div>
-
-          <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <MetricTile icon={<Database size={17} />} label="总量" value={formatAmount(summary.total)} detail="当前查询结果" />
-            <MetricTile icon={<Layers3 size={17} />} label="类型" value={formatAmount(summary.types.length)} detail="可筛选类型" />
-            <MetricTile icon={<ShieldCheck size={17} />} label="用户" value={formatAmount(summary.users.length)} detail="可筛选用户" />
-            <MetricTile
-              icon={<CalendarClock size={17} />}
-              label="日期范围"
-              value={formatDateOnly(summary.max_date)}
-              detail={`起始 ${formatDateOnly(summary.min_date)}`}
-            />
-          </div>
-
-          {isLoading ? (
-            <LoadingStack />
-          ) : loadError ? (
-            <div className="rounded-lg border border-amberline/25 bg-amberline/10 p-4">
-              <div className="mb-2 flex items-center gap-2 text-sm font-medium text-amberline">
-                <TriangleAlert size={16} />
-                历史查询失败
-              </div>
-              <p className="text-sm leading-6 text-amber-100/80">{loadError}</p>
-            </div>
-          ) : items.length === 0 ? (
-            <div className="grid min-h-[260px] place-items-center rounded-lg border border-white/10 bg-white/[0.025] p-6 text-center">
-              <div>
-                <History className="mx-auto mb-3 text-slate-600" size={36} />
-                <div className="mb-1 font-medium text-slate-300">没有匹配的历史记录</div>
-                <p className="text-sm text-slate-500">调整关键词、日期或筛选条件后再查询。</p>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {items.map((item) => (
-                <article
-                  key={item.id}
-                  className="cursor-pointer rounded-lg border border-white/10 bg-white/[0.028] p-4 transition hover:border-mint-300/30 hover:bg-white/[0.045] focus:outline-none focus:ring-2 focus:ring-mint-300/35"
-                  role="button"
-                  tabIndex={0}
-                  title="查看详情"
-                  onClick={() => setSelectedItem(item)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      setSelectedItem(item);
-                    }
-                  }}
-                >
-                  <div className="mb-3 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                    <div className="min-w-0">
-                      <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
-                        <span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-slate-500">#{item.id}</span>
-                        <span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-slate-400">
-                          {formatHistoryDate(item.history_date)}
-                        </span>
-                        <span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-slate-400">
-                          {item.username || "unknown user"}
-                        </span>
-                        <span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-slate-400">
-                          {item.week || "week -"} / {item.day || "day -"}
-                        </span>
-                      </div>
-                      <p className="line-clamp-3 text-sm leading-6 text-slate-300">{item.content || "无内容"}</p>
-                    </div>
-                    <div className="flex shrink-0 flex-wrap gap-2 md:justify-end">
-                      <span className="rounded-md border border-mint-300/20 bg-mint-300/8 px-2 py-1 text-xs text-mint-200">
-                        {item.type || "未分类"}
-                      </span>
-                      <span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-xs text-slate-400">
-                        Level {item.learn_level ?? "-"}
-                      </span>
-                      <span
-                        className={`rounded-md border px-2 py-1 text-xs ${
-                          item.v_needs_update === 1
-                            ? "border-amberline/30 bg-amberline/10 text-amberline"
-                            : "border-mint-300/20 bg-mint-300/8 text-mint-200"
-                        }`}
-                      >
-                        {item.v_needs_update === 1 ? "向量待更新" : "向量就绪"}
-                      </span>
-                    </div>
-                  </div>
-                </article>
-              ))}
-
-              <div className="flex flex-col gap-3 rounded-lg border border-white/8 bg-white/[0.025] px-3 py-3 text-sm text-slate-400 sm:flex-row sm:items-center sm:justify-between">
-                <span>
-                  {rangeStart}-{rangeEnd} / {total}
-                </span>
-                <div className="flex items-center gap-2">
-                  <button
-                    className="grid h-9 w-9 place-items-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600"
-                    disabled={page <= 1}
-                    title="上一页"
-                    type="button"
-                    onClick={() => onPageChange(Math.max(1, page - 1))}
-                  >
-                    <ChevronLeft size={17} />
-                  </button>
-                  <span className="min-w-16 text-center text-xs text-slate-500">
-                    {page} / {totalPages}
-                  </span>
-                  <button
-                    className="grid h-9 w-9 place-items-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600"
-                    disabled={page >= totalPages}
-                    title="下一页"
-                    type="button"
-                    onClick={() => onPageChange(Math.min(totalPages, page + 1))}
-                  >
-                    <ChevronRight size={17} />
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-        </section>
-      </div>
-
-      <HistoryDetailDialog item={selectedItem} onClose={() => setSelectedItem(null)} />
-    </div>
-  );
-}
-
-function HistoryDetailDialog({ item, onClose }: { item: HistoryItem | null; onClose: () => void }) {
-  useEffect(() => {
-    if (!item) return;
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    }
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [item, onClose]);
-
-  if (!item) return null;
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-end bg-black/62 px-0 backdrop-blur-sm sm:items-center sm:justify-center sm:px-4"
-      role="presentation"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) {
-          onClose();
-        }
-      }}
-    >
-      <section
-        aria-modal="true"
-        className="flex max-h-[100dvh] w-full flex-col overflow-hidden rounded-t-lg border border-white/10 bg-ink-900 shadow-soft-glow sm:max-h-[88vh] sm:max-w-3xl sm:rounded-lg"
-        role="dialog"
-      >
-        <div className="shrink-0 border-b border-white/10 p-4 sm:p-5">
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
-                <History size={17} />
-                History Detail
-              </div>
-              <h2 className="line-clamp-2 text-xl font-semibold text-slate-50">{item.type || "未分类历史记录"}</h2>
-            </div>
-            <button
-              className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300"
-              title="关闭"
-              type="button"
-              onClick={onClose}
-            >
-              <X size={17} />
-            </button>
-          </div>
-
-          <div className="mt-4 flex flex-wrap gap-2 text-xs">
-            <span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-slate-400">#{item.id}</span>
-            <span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-slate-400">
-              {formatHistoryDate(item.history_date)}
-            </span>
-            <span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-slate-400">
-              Level {item.learn_level ?? "-"}
-            </span>
-            <span
-              className={`rounded-md border px-2 py-1 ${
-                item.v_needs_update === 1
-                  ? "border-amberline/30 bg-amberline/10 text-amberline"
-                  : "border-mint-300/20 bg-mint-300/8 text-mint-200"
-              }`}
-            >
-              {item.v_needs_update === 1 ? "向量待更新" : "向量就绪"}
-            </span>
-          </div>
-        </div>
-
-        <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
-          <div className="mb-4 grid grid-cols-2 gap-3">
-            <HistoryDetailMetaTile icon={<CalendarClock size={17} />} label="Week" value={item.week || "-"} detail="历史周期" />
-            <HistoryDetailMetaTile icon={<CalendarClock size={17} />} label="Day" value={item.day || "-"} detail="历史日期" />
-            <HistoryDetailMetaTile icon={<ShieldCheck size={17} />} label="用户" value={item.username || "unknown"} detail={`#${item.id}`} />
-            <HistoryDetailMetaTile icon={<Layers3 size={17} />} label="类型" value={item.type || "未分类"} detail={`Level ${item.learn_level ?? "-"}`} />
-          </div>
-
-          <div className="rounded-lg border border-white/10 bg-white/[0.028] p-4">
-            <div className="mb-3 flex items-center gap-2 text-sm font-medium text-slate-300">
-              <FileText size={16} />
-              详细内容
-            </div>
-            <div className="whitespace-pre-wrap break-words text-sm leading-7 text-slate-300">{item.content || "无内容"}</div>
-          </div>
-        </div>
-
-        <div className="shrink-0 border-t border-white/10 bg-ink-900/96 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-4">
-          <button
-            className="flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20"
-            type="button"
-            onClick={onClose}
-          >
-            <X size={17} />
-            关闭
-          </button>
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function HistoryDetailMetaTile({
-  icon,
-  label,
-  value,
-  detail,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  detail: string;
-}) {
-  return (
-    <div className="min-w-0 rounded-lg border border-white/10 bg-white/[0.028] p-3 sm:p-4">
-      <div className="mb-2 flex min-w-0 items-center gap-2 text-xs text-slate-400 sm:text-sm">
-        <span className="shrink-0 text-mint-300">{icon}</span>
-        <span className="truncate">{label}</span>
-      </div>
-      <div className="min-w-0 truncate text-lg font-semibold text-slate-50 sm:text-xl" title={value}>
-        {value}
-      </div>
-      <div className="mt-1 truncate text-xs text-slate-500" title={detail}>
-        {detail}
-      </div>
-    </div>
-  );
-}
-
-function OverviewDashboard({
-  canViewUsage,
-  data,
-  isLoading,
-  isRefreshing,
-  lastUpdatedAt,
-  loadError,
-  sectionErrors,
-  onOpenEnglishMaterial,
-  onOpenKnowledge,
-  onOpenTodo,
-  onOpenView,
-  onRefresh,
-}: {
-  canViewUsage: boolean;
-  data: OverviewData;
-  isLoading: boolean;
-  isRefreshing: boolean;
-  lastUpdatedAt: string | null;
-  loadError: string | null;
-  sectionErrors: OverviewSectionErrors;
-  onOpenEnglishMaterial: (item: EnglishMaterialItem) => void;
-  onOpenKnowledge: (item: KnowledgeItem) => void;
-  onOpenTodo: (item: TodoItem) => void;
-  onOpenView: (view: AppView) => void;
-  onRefresh: () => void;
-}) {
-  const latestUsage = canViewUsage && data.usageItems.length > 0 ? data.usageItems[data.usageItems.length - 1] : null;
-  const usagePercent = latestUsage ? getUsagePercent(latestUsage) : 0;
-  const latestEnglish = data.latestEnglishMaterial;
-  const hasOverviewData =
-    latestUsage ||
-    data.processingTodos.length > 0 ||
-    data.recentKnowledge.length > 0 ||
-    latestEnglish ||
-    data.knowledgeTotal > 0 ||
-    data.englishMaterialTotal > 0;
-
-  if (isLoading) {
-    return (
-      <div className="flex-1 px-4 pb-4 pt-2">
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-          <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/72 p-4 shadow-soft-glow backdrop-blur-xl">
-            <LoadingStack />
-          </section>
-          <aside className="min-w-0 rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
-            <LoadingStack />
-          </aside>
-        </div>
-      </div>
-    );
-  }
-
-  if (loadError && !hasOverviewData) {
-    return (
-      <div className="flex-1 px-4 pb-4 pt-2">
-        <section className="rounded-lg border border-amberline/25 bg-amberline/10 p-4">
-          <div className="mb-2 flex items-center gap-2 text-sm font-medium text-amberline">
-            <TriangleAlert size={16} />
-            总览读取失败
-          </div>
-          <p className="text-sm leading-6 text-amber-100/80">{loadError}</p>
-          <button
-            className="mt-4 flex h-9 items-center gap-2 rounded-lg border border-amberline/30 bg-amberline/10 px-3 text-sm text-amber-100 transition hover:bg-amberline/15 disabled:cursor-not-allowed disabled:opacity-60"
-            type="button"
-            disabled={isRefreshing}
-            onClick={onRefresh}
-          >
-            <RefreshCw className={isRefreshing ? "animate-spin" : ""} size={15} />
-            {isRefreshing ? "重试中" : "重试"}
-          </button>
-        </section>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex-1 px-4 pb-4 pt-2">
-      <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
-            <ChartLine size={17} />
-            Overview
-          </div>
-          <div className="flex flex-wrap items-end gap-x-3 gap-y-1">
-            <h2 className="text-xl font-semibold text-slate-50">关键状态</h2>
-            <span className="text-xs text-slate-500">
-              {isRefreshing
-                ? "正在读取最新数据"
-                : lastUpdatedAt
-                  ? `最后更新 ${formatDateTime(lastUpdatedAt)}`
-                  : "尚未完成在线更新"}
-            </span>
-          </div>
-        </div>
-        <button
-          className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-sm text-slate-300 transition hover:border-mint-300/30 hover:bg-white/[0.055] hover:text-mint-300 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
-          type="button"
-          disabled={isRefreshing}
-          onClick={onRefresh}
-        >
-          <RefreshCw className={isRefreshing ? "animate-spin" : ""} size={16} />
-          {isRefreshing ? "刷新中" : "刷新总览"}
-        </button>
-      </div>
-
-      {loadError ? (
-        <div className="mb-4 rounded-lg border border-amberline/25 bg-amberline/10 p-3 text-sm text-amber-100/80">
-          {loadError}
-        </div>
-      ) : null}
-
-      <div className={`mb-4 grid grid-cols-2 gap-4 ${canViewUsage ? "xl:grid-cols-4" : "xl:grid-cols-3"}`}>
-        {canViewUsage ? (
-          <MetricTile
-            icon={<CircleGauge size={17} />}
-            label="LLM 用量"
-            value={latestUsage ? formatPercent(usagePercent) : "暂无"}
-            detail={latestUsage ? `${formatAmount(latestUsage.remaining_budget)} left` : "暂无采样"}
-            actionLabel="查看用量"
-            onAction={() => onOpenView("usage")}
-          />
-        ) : null}
-        <MetricTile
-          icon={<ClipboardCheck size={17} />}
-          label="处理中 Todo"
-          value={formatAmount(data.processingTodoTotal)}
-          detail={`${data.processingTodos.length} 条已载入`}
-        />
-        <MetricTile
-          icon={<BookOpenCheck size={17} />}
-          label="未发布知识"
-          value={formatAmount(data.unpublishedKnowledgeTotal)}
-          detail={`${formatAmount(data.recentKnowledge.length)} 条已载入`}
-        />
-        <MetricTile
-          icon={<FileText size={17} />}
-          label="English 素材"
-          value={formatAmount(data.englishMaterialTotal)}
-          detail={latestEnglish?.sequence_no ? `最新 #${latestEnglish.sequence_no}` : "最近素材"}
-        />
-      </div>
-
-      {canViewUsage && sectionErrors.usage ? <OverviewInlineError message={`LLM 用量读取失败：${sectionErrors.usage}`} /> : null}
-
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(300px,0.58fr)]">
-        <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
-          <OverviewSectionHeader
-            icon={<ClipboardCheck size={17} />}
-            title="处理中 Todo"
-            actionLabel="查看待办"
-            onAction={() => onOpenView("todos")}
-          />
-          {sectionErrors.todos ? (
-            <OverviewInlineError message={`处理中 Todo 读取失败：${sectionErrors.todos}`} />
-          ) : null}
-          {data.processingTodos.length > 0 ? (
-            <div className="space-y-3">
-              {data.processingTodos.map((item) => (
-                <button
-                  key={item.id}
-                  className="block w-full rounded-lg border border-white/10 bg-white/[0.028] p-3 text-left transition hover:border-mint-300/25 hover:bg-white/[0.045]"
-                  type="button"
-                  onClick={() => onOpenTodo(item)}
-                >
-                  <div className="mb-2 flex items-start justify-between gap-3">
-                    <div className="line-clamp-2 text-sm font-medium leading-6 text-slate-100">{item.title}</div>
-                    <span className={`shrink-0 rounded border px-2 py-1 text-xs ${todoStatusStyles[item.todo_status]}`}>
-                      {item.todo_status}
-                    </span>
-                  </div>
-                  <div className="line-clamp-2 text-sm leading-6 text-slate-500">{item.content}</div>
-                  <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-500">
-                    {item.topic_tag ? <span>#{item.topic_tag}</span> : null}
-                    <span>{formatDate(item.updated_at ?? item.created_at)}</span>
-                  </div>
-                </button>
-              ))}
-            </div>
-          ) : (
-            <OverviewEmpty icon={<ClipboardCheck size={28} />} title="暂无处理中 Todo" />
-          )}
-        </section>
-
-        <aside className="min-w-0 rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
-          <OverviewSectionHeader
-            icon={<BookOpenCheck size={17} />}
-            title="最近 English"
-            actionLabel="查看素材"
-            onAction={() => onOpenView("englishMaterials")}
-          />
-          {sectionErrors.english ? (
-            <OverviewInlineError message={`English 素材读取失败：${sectionErrors.english}`} />
-          ) : null}
-          {latestEnglish ? (
-            <button
-              className="block w-full rounded-lg border border-mint-300/20 bg-mint-300/8 p-4 text-left transition hover:border-mint-300/35 hover:bg-mint-300/10"
-              type="button"
-              onClick={() => onOpenEnglishMaterial(latestEnglish)}
-            >
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <span className="rounded border border-white/10 bg-white/[0.05] px-2 py-1 text-xs text-mint-100">
-                  {latestEnglish.category ?? "未分类"}
-                </span>
-                <span className="text-xs text-mint-100/70">
-                  {latestEnglish.flag === 1 ? "已发表" : "草稿箱"}
-                </span>
-              </div>
-              <div className="mb-2 line-clamp-2 text-base font-semibold leading-6 text-slate-50">
-                {latestEnglish.title || latestEnglish.base_expression || "未命名素材"}
-              </div>
-              <div className="line-clamp-3 text-sm leading-6 text-mint-100/80">
-                {latestEnglish.professional_sentence || latestEnglish.base_expression || "暂无英文内容"}
-              </div>
-              <div className="mt-3 line-clamp-2 text-sm leading-6 text-slate-400">
-                {latestEnglish.chinese_translation || "暂无中文翻译"}
-              </div>
-            </button>
-          ) : (
-            <OverviewEmpty icon={<FileText size={28} />} title="暂无 English 素材" />
-          )}
-        </aside>
-      </div>
-
-      <section className="mt-4 rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
-        <OverviewSectionHeader
-          icon={<ShieldCheck size={17} />}
-          title="可信知识"
-          actionLabel="进入知识库"
-          onAction={() => onOpenView("workbench")}
-        />
-        {sectionErrors.knowledge ? (
-          <OverviewInlineError message={`可信知识读取失败：${sectionErrors.knowledge}`} />
-        ) : null}
-        {data.recentKnowledge.length > 0 ? (
-          <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
-            {data.recentKnowledge.map((item) => (
-              <button
-                key={item.id}
-                className="block min-w-0 rounded-lg border border-white/10 bg-white/[0.028] p-4 text-left transition hover:border-mint-300/25 hover:bg-white/[0.045]"
-                type="button"
-                onClick={() => onOpenKnowledge(item)}
-              >
-                <div className="mb-3 flex items-start justify-between gap-3">
-                  <div className="line-clamp-2 text-sm font-medium leading-6 text-slate-100">{item.question}</div>
-                  <span className={`shrink-0 rounded border px-2 py-1 text-xs ${statusStyles[item.blog_status]}`}>
-                    {item.blog_status}
-                  </span>
-                </div>
-                <div className="line-clamp-3 text-sm leading-6 text-slate-500">{item.answer}</div>
-                <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-500">
-                  {item.source ? <span>{item.source}</span> : null}
-                  {item.topic_tag ? <span>#{item.topic_tag}</span> : null}
-                  <span>{formatDate(item.created_date)}</span>
-                </div>
-              </button>
-            ))}
-          </div>
-        ) : (
-          <OverviewEmpty icon={<ShieldCheck size={28} />} title="暂无可信知识" />
-        )}
-      </section>
-    </div>
-  );
-}
-
-function OverviewSectionHeader({
-  icon,
-  title,
-  actionLabel,
-  onAction,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  actionLabel: string;
-  onAction: () => void;
-}) {
-  return (
-    <div className="mb-4 flex items-center justify-between gap-3">
-      <div className="flex min-w-0 items-center gap-2 text-sm font-medium text-mint-300">
-        {icon}
-        <span className="truncate">{title}</span>
-      </div>
-      <button
-        className="shrink-0 rounded-lg border border-white/10 bg-white/[0.035] px-3 py-2 text-xs text-slate-300 transition hover:border-mint-300/30 hover:bg-white/[0.055] hover:text-mint-300"
-        type="button"
-        onClick={onAction}
-      >
-        {actionLabel}
-      </button>
-    </div>
-  );
-}
-
-function OverviewEmpty({ icon, title }: { icon: React.ReactNode; title: string }) {
-  return (
-    <div className="grid min-h-[160px] place-items-center rounded-lg border border-white/10 bg-white/[0.025] p-6 text-center">
-      <div>
-        <div className="mb-3 flex justify-center text-slate-600">{icon}</div>
-        <div className="text-sm font-medium text-slate-400">{title}</div>
-      </div>
-    </div>
-  );
-}
-
-function OverviewInlineError({ message }: { message: string }) {
-  return (
-    <div className="mb-4 flex items-start gap-2 rounded-lg border border-amberline/25 bg-amberline/10 p-3 text-sm leading-6 text-amber-100/80">
-      <TriangleAlert className="mt-0.5 shrink-0 text-amberline" size={15} />
-      <span>{message}</span>
-    </div>
-  );
-}
-
-function LlmUsageDashboard({
-  items,
-  total,
-  isLoading,
-  isRefreshing,
-  loadError,
-  onRefresh,
-}: {
-  items: LlmUsageSample[];
-  total: number;
-  isLoading: boolean;
-  isRefreshing: boolean;
-  loadError: string | null;
-  onRefresh: () => void;
-}) {
-  const latest = items.length > 0 ? items[items.length - 1] : null;
-  const usagePercent = latest ? clampPercent((latest.used_amount / latest.total_budget) * 100) : 0;
-  const remainingPercent = latest ? clampPercent((latest.remaining_budget / latest.total_budget) * 100) : 0;
-  const hasRemainingBudget = latest ? latest.remaining_budget > 0 : false;
-  const resetAt = latest ? parseUtcDate(latest.next_reset_at) : null;
-  const readyAt = getResetReadyAt(resetAt);
-  const sampleWindow =
-    items.length > 0
-      ? `${formatDateTime(items[0].sample_time)} - ${formatDateTime(items[items.length - 1]?.sample_time ?? null)}`
-      : "暂无采样";
-  const recentItems = collapseStableUsageSamples(items).slice(-8).reverse();
-  const trendItems = items.slice(-36);
-  const trendPercents = trendItems.map(getUsagePercent);
-  const minTrendPercent = trendPercents.length > 0 ? Math.min(...trendPercents) : 0;
-  const maxTrendPercent = trendPercents.length > 0 ? Math.max(...trendPercents) : 0;
-  const trendRange = maxTrendPercent - minTrendPercent;
-  const trendChanged = trendRange > 0.000001;
-  const latestTrendPercent = trendPercents[trendPercents.length - 1] ?? usagePercent;
-  const trendScrollRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    const element = trendScrollRef.current;
-    if (!element) return;
-    element.scrollLeft = element.scrollWidth;
-  }, [trendItems.length, latest?.sample_time]);
-
-  return (
-    <div className="flex-1 px-4 pb-4 pt-2">
-      {isLoading ? (
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-          <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/72 p-4 shadow-soft-glow backdrop-blur-xl">
-            <LoadingStack />
-          </section>
-          <aside className="min-w-0 rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
-            <LoadingStack />
-          </aside>
-        </div>
-      ) : loadError ? (
-        <section className="rounded-lg border border-amberline/25 bg-amberline/10 p-4">
-          <div className="mb-2 flex items-center gap-2 text-sm font-medium text-amberline">
-            <TriangleAlert size={16} />
-            用量视图读取失败
-          </div>
-          <p className="text-sm leading-6 text-amber-100/80">{loadError}</p>
-        </section>
-      ) : !latest ? (
-        <section className="grid min-h-[420px] place-items-center rounded-lg border border-white/10 bg-white/[0.025] p-6 text-center">
-          <div>
-            <Bot className="mx-auto mb-3 text-slate-600" size={36} />
-            <div className="mb-1 font-medium text-slate-300">暂无 LLM 用量采样</div>
-            <p className="text-sm text-slate-500">`v_llm_usage` 当前没有可展示的数据。</p>
-          </div>
-        </section>
-      ) : (
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-          <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/72 p-4 shadow-soft-glow backdrop-blur-xl">
-            <div className="mb-5 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-              <div>
-                <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
-                  <ChartLine size={17} />
-                  Usage Overview
-                </div>
-                <h2 className="text-xl font-semibold text-slate-50">当前周期用量</h2>
-              </div>
-              <div className="rounded-lg border border-white/10 bg-white/[0.035] px-3 py-2 text-sm text-slate-300">
-                {total} 个采样点
-              </div>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-3">
-              <MetricTile
-                icon={<CircleGauge size={17} />}
-                label="已使用"
-                value={formatAmount(latest.used_amount)}
-                detail={`${formatPercent(usagePercent)} / ${formatAmount(latest.total_budget)}`}
-              />
-              <MetricTile
-                icon={<Database size={17} />}
-                label="剩余额度"
-                value={formatAmount(latest.remaining_budget)}
-                detail={`${formatPercent(remainingPercent)} 可用`}
-              />
-              <MetricTile
-                icon={<CalendarClock size={17} />}
-                label={hasRemainingBudget ? "本周期状态" : "下个周期可用"}
-                value={hasRemainingBudget ? "可用中" : formatResetDate(readyAt)}
-                detail={
-                  hasRemainingBudget
-                    ? `${formatAmount(latest.remaining_budget)} 额度剩余`
-                    : formatResetDistance(readyAt, "可用")
-                }
-              />
-            </div>
-
-            <div className="mt-5 rounded-lg border border-white/10 bg-white/[0.028] p-4">
-              <div className="mb-3 flex items-center justify-between gap-4">
-                <div className="text-sm font-medium text-slate-200">预算消耗</div>
-                <div className="text-sm text-slate-400">{formatPercent(usagePercent)}</div>
-              </div>
-              <div className="h-3 overflow-hidden rounded-full bg-white/8">
-                <div
-                  className="h-full rounded-full bg-mint-300 transition-all duration-500"
-                  style={{ width: `${usagePercent}%` }}
-                />
-              </div>
-              <div className="mt-3 flex flex-col gap-1 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
-                <span>采样窗口：{sampleWindow}</span>
-                <span>周期：{latest.budget_duration ?? "未记录"}</span>
-              </div>
-            </div>
-
-            <div className="mt-5 rounded-lg border border-white/10 bg-white/[0.025] p-4">
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-200">
-                    <ChartLine size={16} />
-                    最近趋势
-                    {!trendChanged ? (
-                      <span className="text-xs font-normal text-slate-500">
-                        {latestTrendPercent > 0 ? `稳定在 ${formatPercent(latestTrendPercent)}` : "用量暂无变化"}
-                      </span>
-                    ) : null}
-                  </div>
-                  <div className="flex flex-wrap gap-2 text-xs">
-                    <span className="rounded border border-mint-300/20 bg-mint-300/8 px-2 py-1 text-mint-200">
-                      当前 {formatPercent(latestTrendPercent)}
-                    </span>
-                    <span className="rounded border border-white/10 bg-white/[0.035] px-2 py-1 text-slate-400">
-                      峰值 {formatPercent(maxTrendPercent)}
-                    </span>
-                  </div>
-                </div>
-                <button
-                  className="flex h-9 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-xs text-slate-300 transition hover:border-mint-300/30 hover:bg-white/[0.055] hover:text-mint-300 disabled:cursor-not-allowed disabled:opacity-60"
-                  type="button"
-                  title="刷新用量采样"
-                  disabled={isRefreshing}
-                  onClick={onRefresh}
-                >
-                  <RefreshCw className={isRefreshing ? "animate-spin" : ""} size={15} />
-                  <span>刷新</span>
-                </button>
-              </div>
-              <div className="grid h-48 grid-cols-[38px_minmax(0,1fr)] gap-2 overflow-hidden rounded-lg border border-white/8 bg-ink-950/36 px-3 py-4">
-                <div className="relative h-full text-[11px] text-slate-600">
-                  {[100, 80, 60, 40, 20].map((tick) => (
-                    <span
-                      key={tick}
-                      className="absolute right-0 translate-y-1/2 tabular-nums"
-                      style={{ bottom: `${tick}%` }}
-                    >
-                      {tick}%
-                    </span>
-                  ))}
-                </div>
-                <div className="relative h-full min-w-0">
-                  {[20, 40, 60, 80, 100].map((tick) => (
-                    <div
-                      key={tick}
-                      className={`absolute inset-x-0 border-t ${tick === 100 ? "border-mint-300/35" : "border-white/8"}`}
-                      style={{ bottom: `${tick}%` }}
-                    />
-                  ))}
-                  <div
-                    ref={trendScrollRef}
-                    className="relative z-10 flex h-full items-end gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-                  >
-                    {trendItems.map((item) => {
-                      const percent = getUsagePercent(item);
-                      const trendHeight = getTrendBarHeight(percent);
-                      return (
-                        <div key={item.sample_time} className="flex h-full min-w-4 flex-[0_0_14px] flex-col justify-end sm:flex-1">
-                          <div
-                            className="w-full rounded-t border border-mint-300/20 bg-mint-300/70 transition-all duration-300"
-                            style={{ height: `${trendHeight}%` }}
-                            title={`${formatDateTime(item.sample_time)} · ${formatPercent(percent)} · ${formatAmount(item.used_amount)} used`}
-                          />
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-              <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
-                <span>{formatTimeOnly(trendItems[0]?.sample_time ?? null)}</span>
-                <span>
-                  {trendChanged
-                    ? `${formatPercent(minTrendPercent)} - ${formatPercent(maxTrendPercent)}`
-                    : `当前 ${formatPercent(usagePercent)}`}
-                </span>
-                <span>{formatTimeOnly(trendItems[trendItems.length - 1]?.sample_time ?? null)}</span>
-              </div>
-            </div>
-          </section>
-
-          <aside className="min-w-0 rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
-            <div className="mb-5">
-              <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
-                <Bot size={17} />
-                Reset Tracking
-              </div>
-              <h2 className="text-lg font-semibold text-slate-50">重置时间</h2>
-            </div>
-
-            <div className="mb-4 rounded-lg border border-mint-300/20 bg-mint-300/8 p-4">
-              <div className="mb-1 text-xs uppercase tracking-[0.18em] text-mint-300/70">NEXT_RESET_AT</div>
-              <div className="text-lg font-semibold leading-7 text-mint-100">
-                {formatResetDate(resetAt)}
-              </div>
-              <div className="mt-2 text-sm text-mint-100/75">UTC 换算 · Asia/Shanghai</div>
-            </div>
-
-            {hasRemainingBudget ? (
-              <div className="mb-4 rounded-lg border border-white/10 bg-white/[0.028] p-4">
-                <div className="mb-1 text-xs uppercase tracking-[0.18em] text-slate-500">CURRENT_CYCLE</div>
-                <div className="text-lg font-semibold leading-7 text-slate-100">可用中</div>
-                <div className="mt-2 text-sm text-slate-500">
-                  当前周期仍有 {formatAmount(latest.remaining_budget)} 额度，无需等待下个周期。
-                </div>
-              </div>
-            ) : (
-              <div className="mb-4 rounded-lg border border-white/10 bg-white/[0.028] p-4">
-                <div className="mb-1 text-xs uppercase tracking-[0.18em] text-slate-500">NEXT_CYCLE_READY</div>
-                <div className="text-lg font-semibold leading-7 text-slate-100">
-                  {formatResetDate(readyAt)}
-                </div>
-                <div className="mt-2 text-sm text-slate-500">{formatResetDistance(readyAt, "可用")}</div>
-              </div>
-            )}
-
-            <div className="space-y-3">
-              {recentItems.map((item) => {
-                const percent = clampPercent((item.used_amount / item.total_budget) * 100);
-                return (
-                  <div key={item.sample_time} className="rounded-lg border border-white/10 bg-white/[0.028] p-3">
-                    <div className="mb-2 flex items-center justify-between gap-3">
-                      <span className="text-sm font-medium text-slate-200">{formatPercent(percent)}</span>
-                      <span className="text-right text-xs text-slate-500">{formatUsagePeriod(item)}</span>
-                    </div>
-                    <div className="h-2 overflow-hidden rounded-full bg-white/8">
-                      <div className="h-full rounded-full bg-mint-300/80" style={{ width: `${percent}%` }} />
-                    </div>
-                    <div className="mt-2 text-xs text-slate-500">
-                      {formatAmount(item.used_amount)} used · {formatAmount(item.remaining_budget)} left
-                      {item.sample_count > 1 ? ` · 合并 ${item.sample_count} 个采样` : ""}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </aside>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function MetricTile({
-  icon,
-  label,
-  value,
-  detail,
-  actionLabel,
-  onAction,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  detail: string;
-  actionLabel?: string;
-  onAction?: () => void;
-}) {
-  const content = (
-    <>
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2 text-sm text-slate-400">
-          <span className="text-mint-300">{icon}</span>
-          <span className="truncate">{label}</span>
-        </div>
-        {actionLabel ? (
-          <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-mint-300">
-            {actionLabel}
-            <ChevronRight size={14} />
-          </span>
-        ) : null}
-      </div>
-      <div className="text-2xl font-semibold text-slate-50">{value}</div>
-      <div className="mt-1 text-sm text-slate-500">{detail}</div>
-    </>
-  );
-
-  if (onAction) {
-    return (
-      <button
-        className="block w-full rounded-lg border border-white/10 bg-white/[0.028] p-4 text-left transition hover:border-mint-300/25 hover:bg-white/[0.045]"
-        type="button"
-        onClick={onAction}
-      >
-        {content}
-      </button>
-    );
-  }
-
-  return (
-    <div className="rounded-lg border border-white/10 bg-white/[0.028] p-4">
-      {content}
-    </div>
-  );
-}
-
 function TrustPanel({
   draft,
   trustScore,
@@ -13996,21 +12352,6 @@ function TrustPanel({
         </p>
       </div>
     </aside>
-  );
-}
-
-function LoadingStack() {
-  return (
-    <div className="tk-loading-stack space-y-3">
-      {[0, 1, 2, 3].map((item) => (
-        <div key={item} className="tk-loading-card relative overflow-hidden rounded-lg border border-white/10 bg-white/[0.025] p-4">
-          <div className="tk-loading-scan absolute inset-y-0 w-1/2 bg-gradient-to-r from-transparent via-white/[0.055] to-transparent animate-scan" />
-          <div className="tk-loading-block mb-4 h-4 w-2/3 rounded bg-white/10" />
-          <div className="tk-loading-line mb-3 h-3 w-full rounded bg-white/7" />
-          <div className="tk-loading-line h-3 w-1/2 rounded bg-white/7" />
-        </div>
-      ))}
-    </div>
   );
 }
 

@@ -9,6 +9,24 @@ The format follows the common GitHub changelog convention inspired by
 
 ## 本次版本更新
 
+### [Unreleased]
+
+#### Changed / 变更
+
+- Changed the frontend build output to split React, icon, and shared vendor code into separate chunks, reducing the main application bundle size so refreshes can reuse more cached assets instead of re-downloading one large script.
+- 调整前端构建产物拆包方式：将 React、图标库和共享依赖拆成独立 chunk，减少主应用包体积，让页面刷新时可以复用更多已缓存资源，而不是反复下载单个大脚本。
+
+- Changed the frontend shell to lazy-load the Overview, LLM Usage, History, and AI Coding views, while extracting shared metric, loading-card, and form-field primitives out of `App.tsx`, further shrinking the main entry chunk and reducing initial parse work.
+- 调整前端工作台装载方式：总览页、LLM 用量页、历史查询页和 AI 编程页改为懒加载，同时把共享指标卡、骨架屏和表单字段基元从 `App.tsx` 抽离，进一步缩小主入口 chunk，并降低初始解析负担。
+
+#### Fixed / 修复
+
+- Fixed redundant same-path GET requests in the frontend API client by deduplicating in-flight reads and pruning oversized local API caches, reducing repeated refresh traffic and localStorage pressure on list and dashboard pages.
+- 修复前端 API 客户端的同路径 GET 重复请求与本地缓存膨胀问题：现在会合并进行中的相同读取请求，并裁剪过大的本地 API 缓存，降低列表页与总览页重复刷新时的网络流量和 localStorage 压力。
+
+- Fixed refresh responsiveness for static frontend assets by switching the service worker to network-first HTML loading with background asset revalidation, while memoizing Markdown preview HTML generation to avoid repeated parsing during unrelated state updates.
+- 修复前端刷新与展示响应中的两处性能损耗：service worker 现改为 HTML 网络优先、静态资源后台更新，减少刷新时拿到旧壳或二次等待；Markdown 预览改为按内容记忆化，避免无关状态更新时反复解析同一段文本。
+
 ### [0.3.3]
 
 #### Added / 新增

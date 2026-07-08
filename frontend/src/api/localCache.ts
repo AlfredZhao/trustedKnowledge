@@ -1,5 +1,6 @@
 const API_CACHE_PREFIX = "trustedKnowledge.apiCache.v1:";
 const DEFAULT_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const MAX_API_CACHE_ENTRIES = 120;
 
 interface CachedApiEntry<T> {
   savedAt: number;
@@ -33,6 +34,7 @@ export function writeCachedApiResponse<T>(cacheKey: string, data: T) {
       data,
     };
     window.localStorage.setItem(cacheKey, JSON.stringify(entry));
+    pruneApiResponseCache();
   } catch {
     // Cache pressure should never block the live API path.
   }
@@ -77,4 +79,35 @@ function readCachePath(cacheKey: string): string | null {
   const marker = ":/api/";
   const index = cacheKey.indexOf(marker);
   return index >= 0 ? cacheKey.slice(index + 1) : null;
+}
+
+function pruneApiResponseCache() {
+  const cacheEntries: Array<{ key: string; savedAt: number }> = [];
+
+  for (let index = 0; index < window.localStorage.length; index += 1) {
+    const key = window.localStorage.key(index);
+    if (!key?.startsWith(API_CACHE_PREFIX)) continue;
+
+    try {
+      const raw = window.localStorage.getItem(key);
+      if (!raw) continue;
+      const entry = JSON.parse(raw) as CachedApiEntry<unknown>;
+      if (!entry || typeof entry.savedAt !== "number") {
+        window.localStorage.removeItem(key);
+        continue;
+      }
+      cacheEntries.push({ key, savedAt: entry.savedAt });
+    } catch {
+      window.localStorage.removeItem(key);
+    }
+  }
+
+  if (cacheEntries.length <= MAX_API_CACHE_ENTRIES) return;
+
+  cacheEntries
+    .sort((left, right) => left.savedAt - right.savedAt)
+    .slice(0, cacheEntries.length - MAX_API_CACHE_ENTRIES)
+    .forEach((entry) => {
+      window.localStorage.removeItem(entry.key);
+    });
 }

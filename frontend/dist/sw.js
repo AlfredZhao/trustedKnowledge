@@ -1,10 +1,11 @@
-const CACHE_NAME = "trusted-knowledge-shell-v2";
+const SHELL_CACHE_NAME = "trusted-knowledge-shell-v3";
+const RUNTIME_CACHE_NAME = "trusted-knowledge-runtime-v3";
 const APP_SHELL_URLS = ["/", "/index.html", "/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches
-      .open(CACHE_NAME)
+      .open(SHELL_CACHE_NAME)
       .then((cache) => cache.addAll(APP_SHELL_URLS))
       .then(() => self.skipWaiting()),
   );
@@ -14,7 +15,9 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches
       .keys()
-      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))))
+      .then((keys) =>
+        Promise.all(keys.filter((key) => key !== SHELL_CACHE_NAME && key !== RUNTIME_CACHE_NAME).map((key) => caches.delete(key))),
+      )
       .then(() => self.clients.claim()),
   );
 });
@@ -27,23 +30,61 @@ self.addEventListener("fetch", (event) => {
   if (url.origin !== self.location.origin || url.pathname.startsWith("/api/")) return;
 
   if (request.mode === "navigate") {
-    event.respondWith(fetch(request).catch(() => caches.match("/index.html")));
+    event.respondWith(networkFirst(request, "/index.html"));
     return;
   }
 
-  if (url.pathname.startsWith("/assets/") || APP_SHELL_URLS.includes(url.pathname)) {
-    event.respondWith(cacheFirst(request));
+  if (url.pathname.startsWith("/assets/")) {
+    event.respondWith(staleWhileRevalidate(request, RUNTIME_CACHE_NAME));
+    return;
+  }
+
+  if (APP_SHELL_URLS.indexOf(url.pathname) !== -1) {
+    event.respondWith(networkFirst(request));
   }
 });
 
-async function cacheFirst(request) {
-  const cached = await caches.match(request);
-  if (cached) return cached;
+async function networkFirst(request, fallbackUrl) {
+  const cache = await caches.open(SHELL_CACHE_NAME);
 
-  const response = await fetch(request);
-  if (response.ok) {
-    const cache = await caches.open(CACHE_NAME);
-    cache.put(request, response.clone());
+  try {
+    const response = await fetch(request);
+    if (response.ok) {
+      cache.put(request, response.clone());
+    }
+    return response;
+  } catch {
+    const cached = await caches.match(request);
+    if (cached) return cached;
+    if (fallbackUrl) {
+      const fallback = await caches.match(fallbackUrl);
+      if (fallback) return fallback;
+    }
+    throw new Error("Network request failed");
   }
-  return response;
+}
+
+async function staleWhileRevalidate(request, cacheName) {
+  const cache = await caches.open(cacheName);
+  const cached = await cache.match(request);
+
+  const networkPromise = fetch(request)
+    .then((response) => {
+      if (response.ok) {
+        cache.put(request, response.clone());
+      }
+      return response;
+    })
+    .catch(() => null);
+
+  if (cached) {
+    return cached;
+  }
+
+  const networkResponse = await networkPromise;
+  if (networkResponse) {
+    return networkResponse;
+  }
+
+  throw new Error("Asset request failed");
 }
