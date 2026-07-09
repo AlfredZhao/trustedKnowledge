@@ -493,16 +493,16 @@ function CodexCompletionSummaryCard({
       ) : null}
 
       <div className="grid gap-3 md:grid-cols-2">
-        <div className="rounded-lg border border-white/10 bg-black/15 p-3">
+        <div className="min-w-0 rounded-lg border border-white/10 bg-black/15 p-3">
           <div className="mb-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-500">重启判断</div>
           <div className={`text-sm leading-6 ${summary.restartRecommended ? "text-amber-100" : "text-slate-300"}`}>{summary.restartText}</div>
         </div>
-        <div className="rounded-lg border border-white/10 bg-black/15 p-3">
+        <div className="min-w-0 rounded-lg border border-white/10 bg-black/15 p-3">
           <div className="mb-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-500">变更文件</div>
           {summary.changedFiles.length > 0 ? (
-            <div className="space-y-1 text-xs leading-5 text-slate-300">
+            <div className="min-w-0 space-y-1 text-xs leading-5 text-slate-300">
               {summary.changedFiles.slice(0, 6).map((file) => (
-                <div key={file} className="truncate">
+                <div key={file} className="min-w-0 truncate">
                   {file}
                 </div>
               ))}

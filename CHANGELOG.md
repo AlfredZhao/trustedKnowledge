@@ -21,6 +21,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Fixed / 修复
 
+- Fixed the AI Coding completion summary on mobile portrait screens so the `重启判断` and `变更文件` cards now shrink within the viewport instead of overflowing past the right edge when long file paths are present.
+- 修复 AI 编程完成摘要在手机竖屏下的横向溢出：`重启判断` 与 `变更文件` 卡片现在会在视口内收缩，长文件路径不再把右侧内容顶出屏幕边缘。
+
 - Fixed the mobile PWA layout of the Current Records filter bar so the `清空筛选条件` button now wraps onto its own row instead of being squeezed beside the sort dropdowns.
 - 修复当前记录列表筛选条在手机端 PWA 中的排版：`清空筛选条件` 按钮现在会独立换到下一行，不再和排序下拉框挤在一起。
 
