@@ -45,7 +45,7 @@ The format follows the common GitHub changelog convention inspired by
 - Fixed refresh responsiveness for static frontend assets by switching the service worker to network-first HTML loading with background asset revalidation, while memoizing Markdown preview HTML generation to avoid repeated parsing during unrelated state updates.
 - 修复前端刷新与展示响应中的两处性能损耗：service worker 现改为 HTML 网络优先、静态资源后台更新，减少刷新时拿到旧壳或二次等待；Markdown 预览改为按内容记忆化，避免无关状态更新时反复解析同一段文本。
 
-### [0.3.3]
+### [0.3.4]
 
 #### Added / 新增
 
