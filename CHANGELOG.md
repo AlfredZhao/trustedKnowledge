@@ -13,6 +13,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Changed / 变更
 
+- Clarified the project development guide so future Codex tasks must update the active changelog section, scan related modules for shared UI patterns, keep user-scoped filter resets aligned with each module's default visible scope, and explicitly call out any required restart, reload, cache-clear, or migration commands in the final handoff.
+- 调整项目开发规范：后续 Codex 任务需要写入当前进行中的变更日志区，修复 UI 时同步扫描同类模块，用户域模块的筛选重置需回到该模块默认可见范围，并在最终交付中明确写出所有必要的重启、重载、清缓存或迁移命令。
+
 - Changed the frontend build output to split React, icon, and shared vendor code into separate chunks, reducing the main application bundle size so refreshes can reuse more cached assets instead of re-downloading one large script.
 - 调整前端构建产物拆包方式：将 React、图标库和共享依赖拆成独立 chunk，减少主应用包体积，让页面刷新时可以复用更多已缓存资源，而不是反复下载单个大脚本。
 
