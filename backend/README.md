@@ -24,6 +24,8 @@ TRUSTED_KNOWLEDGE_ADMIN_PASSWORD=...
 TRUSTED_KNOWLEDGE_API_KEY=...
 TRUSTED_KNOWLEDGE_HISTORY_ASK_LLM_API_KEY=...
 TRUSTED_KNOWLEDGE_SKILL_MAX_ZIP_MB=20
+TRUSTED_KNOWLEDGE_MEDIA_STORAGE_DIR=data/media
+TRUSTED_KNOWLEDGE_MEDIA_MAX_IMAGE_MB=8
 ```
 
 The pool ping/lifetime settings keep idle Oracle sessions from being reused too long after mobile PWA resumes or network interruptions.
@@ -41,6 +43,8 @@ Ordinary users are stored in the independent `TK_USERS` table and receive a sess
 The backend initializes `TK_USERS`, `TK_USER_SESSIONS`, and `TK_RELATIONS` on startup, then backfills compatible `USER_ID` columns on `T_CURRENT`, `T_HISTORY`, and `T_RELATIONS` while preserving the old `USERNAME` columns for display compatibility.
 It also adds compatible `USER_ID` ownership columns on `AI_QA_LIB`, `AI_TODO_ITEMS`, `AI_BLOG_FACTORY`, and `T_DOUYIN_DETAILS`.
 Rows with no `USER_ID` remain admin-visible legacy rows; ordinary users only see rows owned by themselves or visible child users.
+
+Markdown image uploads use `POST /api/media` with multipart form data. The backend stores image files under `TRUSTED_KNOWLEDGE_MEDIA_STORAGE_DIR`, writes metadata to `TK_MEDIA_ASSETS`, and returns Markdown using an opaque `/api/media/{public_id}/content` URL. Uploads are authenticated and user-owned; image rendering uses the opaque public ID so browser `<img>` tags can load without custom request headers.
 
 Admin-only user management routes live under `/api/users`:
 

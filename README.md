@@ -7,6 +7,7 @@ Trusted Knowledge 是一个基于 Oracle、FastAPI 和 React + Vite 的个人知
 ### 主要能力
 
 - 可信知识管理：录入、查询、编辑、状态流转、批量合并，以及与待办事项互转。
+- Markdown 图片：可信知识和 Todo 正文可通过本机选择或剪贴板粘贴插入图片，正文保存 Markdown 图片链接，图片文件存放在后端媒体仓库。
 - Blog 工厂：从可信知识生成 Blog 加工任务，保存加工结果、文章路径、校验值和发布状态。
 - 待办事项：独立待办工作区，支持状态更新，并可转换为可信知识。
 - 当前记录与历史记录：维护 `T_CURRENT`，查询 `T_HISTORY`，并保留数据库触发器驱动的历史沉淀流程。
@@ -71,6 +72,8 @@ TRUSTED_KNOWLEDGE_ADMIN_PASSWORD=...
 TRUSTED_KNOWLEDGE_API_KEY=...
 TRUSTED_KNOWLEDGE_FRONTEND_BASE_URL=http://localhost:8021
 TRUSTED_KNOWLEDGE_HISTORY_ASK_LLM_API_KEY=...
+TRUSTED_KNOWLEDGE_MEDIA_STORAGE_DIR=data/media
+TRUSTED_KNOWLEDGE_MEDIA_MAX_IMAGE_MB=8
 ```
 
 不要提交 `backend/.env`。
@@ -149,6 +152,7 @@ GET /health
 ```text
 /api/auth
 /api/knowledge
+/api/media
 /api/blog-factory
 /api/todos
 /api/current-records

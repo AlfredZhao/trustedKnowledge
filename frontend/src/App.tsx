@@ -24,6 +24,7 @@ import {
   Globe,
   Github,
   History,
+  ImagePlus,
   Lock,
   Layers3,
   LogOut,
@@ -129,6 +130,7 @@ import {
   uploadSkillZip,
 } from "./api/skills";
 import { fetchLlmUsage, readCachedLlmUsage } from "./api/usage";
+import { uploadMediaImage } from "./api/media";
 import {
   fetchAdminModuleAccess,
   createManagedUser,
@@ -6823,6 +6825,134 @@ function MobileEditorSheet({
   );
 }
 
+function MarkdownImageTextarea({
+  value,
+  onChange,
+  className,
+  placeholder,
+  disabled,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  className: string;
+  placeholder?: string;
+  disabled?: boolean;
+}) {
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
+
+  async function uploadAndInsert(files: File[]) {
+    const imageFiles = files.filter((file) => file.type.startsWith("image/"));
+    if (!imageFiles.length || disabled) return;
+
+    setIsUploadingImage(true);
+    setImageError(null);
+    try {
+      const uploads = await Promise.all(imageFiles.map((file) => uploadMediaImage(file)));
+      insertMarkdown(uploads.map((item) => item.markdown).join("\n\n"));
+    } catch (error) {
+      setImageError(error instanceof Error ? error.message : "图片上传失败，请稍后重试。");
+    } finally {
+      setIsUploadingImage(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
+  function insertMarkdown(markdown: string) {
+    const textarea = textareaRef.current;
+    const start = textarea?.selectionStart ?? value.length;
+    const end = textarea?.selectionEnd ?? value.length;
+    const before = value.slice(0, start);
+    const after = value.slice(end);
+    const prefix = before && !before.endsWith("\n") ? "\n\n" : "";
+    const suffix = after && !after.startsWith("\n") ? "\n\n" : "";
+    const insertion = `${prefix}${markdown}${suffix}`;
+    const nextValue = `${before}${insertion}${after}`;
+
+    onChange(nextValue);
+    window.requestAnimationFrame(() => {
+      textareaRef.current?.focus();
+      const nextCursor = start + insertion.length;
+      textareaRef.current?.setSelectionRange(nextCursor, nextCursor);
+    });
+  }
+
+  function handlePaste(event: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const files = Array.from(event.clipboardData.items)
+      .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => file !== null);
+
+    if (!files.length) return;
+    event.preventDefault();
+    void uploadAndInsert(files);
+  }
+
+  function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? []);
+    void uploadAndInsert(files);
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          className="flex h-9 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-sm font-medium text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600"
+          disabled={disabled || isUploadingImage}
+          title="插入图片"
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+        >
+          {isUploadingImage ? <Loader2 className="animate-spin" size={16} /> : <ImagePlus size={16} />}
+          {isUploadingImage ? "上传中" : "图片"}
+        </button>
+        {imageError ? (
+          <span className="text-sm text-red-200">{imageError}</span>
+        ) : null}
+      </div>
+      <input
+        ref={fileInputRef}
+        accept="image/png,image/jpeg,image/webp,image/gif"
+        className="hidden"
+        multiple
+        type="file"
+        onChange={handleFileChange}
+      />
+      <textarea
+        ref={textareaRef}
+        className={className}
+        disabled={disabled}
+        placeholder={placeholder}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        onPaste={handlePaste}
+      />
+    </div>
+  );
+}
+
+function EditorField({
+  label,
+  icon,
+  children,
+}: {
+  label: string;
+  icon: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="block min-w-0">
+      <div className="mb-2 flex items-center gap-2 text-sm text-slate-300">
+        <span className="text-slate-500">{icon}</span>
+        {label}
+      </div>
+      {children}
+    </div>
+  );
+}
+
 function KnowledgeForm({
   draft,
   mode,
@@ -6964,14 +7094,14 @@ function KnowledgeForm({
           />
         </Field>
 
-        <Field label={contentFieldLabel} icon={<Archive size={16} />}>
-          <textarea
+        <EditorField label={contentFieldLabel} icon={<Archive size={16} />}>
+          <MarkdownImageTextarea
             value={draft.answer}
-            onChange={(event) => onDraftChange({ ...draft, answer: event.target.value })}
             className="control min-h-[330px] resize-none leading-7"
+            onChange={(answer) => onDraftChange({ ...draft, answer })}
             placeholder={contentPlaceholder}
           />
-        </Field>
+        </EditorField>
 
         <div className={`grid gap-4 ${isTodoEntry ? "md:grid-cols-2" : "md:grid-cols-[1fr_1fr_220px]"}`}>
           <Field label="来源" icon={<Database size={16} />}>
@@ -7632,9 +7762,7 @@ function KnowledgeFactory({
                 <Archive size={16} />
                 可信答案
               </div>
-              <p className="whitespace-pre-wrap break-words text-sm leading-7 text-slate-300 [overflow-wrap:anywhere]">
-                {maskSensitive(selectedItem.answer)}
-              </p>
+              <MarkdownPreview markdown={maskSensitive(selectedItem.answer)} />
             </div>
 
             {selectedItem.topic_tag ? (
@@ -7935,15 +8063,15 @@ function MergeKnowledgeDialog({
               />
             </label>
 
-            <label className="block">
+            <div className="block">
               <span className="mb-2 block text-sm font-medium text-slate-300">合并后可信答案 / 素材</span>
-              <textarea
+              <MarkdownImageTextarea
                 className="control min-h-[300px] resize-none leading-7"
                 disabled={isMerging}
                 value={draft.answer}
-                onChange={(event) => onDraftChange({ ...draft, answer: event.target.value })}
+                onChange={(answer) => onDraftChange({ ...draft, answer })}
               />
-            </label>
+            </div>
 
             <div className="grid gap-4 md:grid-cols-2">
               <label className="block">
@@ -8904,14 +9032,14 @@ function TodoWorkspace({
             />
           </Field>
 
-          <Field label="任务内容" icon={<FileText size={16} />}>
-            <textarea
+          <EditorField label="任务内容" icon={<FileText size={16} />}>
+            <MarkdownImageTextarea
               className="control min-h-[320px] resize-none leading-7 xl:min-h-[380px]"
               value={draft.content}
-              onChange={(event) => onDraftChange({ ...draft, content: event.target.value })}
+              onChange={(content) => onDraftChange({ ...draft, content })}
               placeholder="补充待办事项背景、验收标准或下一步动作。"
             />
-          </Field>
+          </EditorField>
 
           <div className="grid gap-4 md:grid-cols-2">
             <Field label="来源" icon={<Database size={16} />}>

@@ -1,17 +1,24 @@
 from __future__ import annotations
 
-import re
 import logging
+import re
 from typing import Any
+from urllib.parse import unquote, urlparse
 
 import oracledb
 
 from app.core.config import settings
 from app.db.oracle import acquire_connection
 from app.repositories.blog_factory import get_blog_factory_item
+from app.repositories.media import get_media_content_for_cursor
 from app.repositories.users import AuthContext, user_id_for_write
 from app.schemas.blog_publish import BlogFactoryPublishRequest, BlogPublishConfigCreate, BlogPublishConfigUpdate
-from app.services.metaweblog import list_metaweblog_categories, publish_metaweblog_post, validate_metaweblog_config
+from app.services.metaweblog import (
+    MetaWeblogLocalMedia,
+    list_metaweblog_categories,
+    publish_metaweblog_post,
+    validate_metaweblog_config,
+)
 
 
 CONFIG_COLUMNS = """
@@ -331,6 +338,7 @@ async def publish_blog_factory_article(
         categories = payload.categories
         tags = payload.tags or _split_tags(topic_tag_snapshot)
         publish_markdown = _strip_leading_markdown_title(payload.article_markdown)
+        local_media = await _collect_local_publish_media(cursor, publish_markdown)
 
         publish_result = await publish_metaweblog_post(
             api_url=config["api_url"],
@@ -346,6 +354,7 @@ async def publish_blog_factory_article(
             blog_url=config["blog_url"],
             blog_name=config["blog_name"],
             blog_id=config["blog_id"],
+            local_media=local_media,
         )
 
         await cursor.execute(
@@ -765,6 +774,50 @@ def _split_tags(value: str | None) -> list[str]:
 def _join_tags(values: list[str]) -> str | None:
     compact = [value.strip()[:100] for value in values if value.strip()]
     return ",".join(compact) if compact else None
+
+
+async def _collect_local_publish_media(cursor: Any, markdown: str) -> list[MetaWeblogLocalMedia]:
+    sources = _extract_local_media_sources(markdown)
+    if not sources:
+        return []
+
+    media_items: list[MetaWeblogLocalMedia] = []
+    for source_url, public_id in sources:
+        content = await get_media_content_for_cursor(cursor, public_id)
+        if content is None:
+            raise ValueError(f"待发布正文中的图片不存在或已删除：{source_url}")
+
+        path, content_type = content
+        media_items.append(
+            MetaWeblogLocalMedia(
+                source_url=source_url,
+                name=path.name,
+                content_type=content_type,
+                data=path.read_bytes(),
+            )
+        )
+    return media_items
+
+
+def _extract_local_media_sources(markdown: str) -> list[tuple[str, str]]:
+    sources: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for match in re.finditer(r"!\[[^\]]*]\(([^)\s]+)(?:\s+['\"][^'\"]*['\"])?\)", markdown):
+        source_url = match.group(1).strip()
+        public_id = _extract_media_public_id(source_url)
+        if not public_id or source_url in seen:
+            continue
+        seen.add(source_url)
+        sources.append((source_url, public_id))
+    return sources
+
+
+def _extract_media_public_id(source_url: str) -> str | None:
+    parsed = urlparse(source_url)
+    path = parsed.path if parsed.scheme or parsed.netloc else source_url.split("?", 1)[0].split("#", 1)[0]
+    normalized_path = unquote(path).strip()
+    match = re.match(r"^/?api/media/([^/]+)/content/?$", normalized_path)
+    return match.group(1) if match else None
 
 
 def _item_owner_params(owner_id: int | None) -> tuple[str, dict[str, Any]]:

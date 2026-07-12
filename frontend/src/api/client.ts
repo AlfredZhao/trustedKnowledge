@@ -27,13 +27,17 @@ export function buildQuery(values: Record<string, string | number | boolean | nu
 
 export async function authFetch(path: string, options?: RequestInit): Promise<Response> {
   const apiKey = readStoredApiKey();
+  const headers = new Headers(options?.headers);
+  if (apiKey) {
+    headers.set("X-API-Key", apiKey);
+  }
+  if (!headers.has("Content-Type") && !(options?.body instanceof FormData)) {
+    headers.set("Content-Type", "application/json");
+  }
+
   return fetch(`${API_BASE_URL}${path}`, {
     ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(apiKey ? { "X-API-Key": apiKey } : {}),
-      ...options?.headers,
-    },
+    headers,
   });
 }
 

@@ -13,9 +13,15 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Added / 新增
 
+- Added local Markdown image uploads for trusted knowledge and Todo content editors, including file-picker uploads, pasted clipboard images, Oracle-backed media metadata, and opaque `/api/media/.../content` image URLs stored in the Markdown body.
+- 为可信知识和 Todo 正文编辑新增本地 Markdown 图片上传能力：支持选择本机图片、直接粘贴剪贴板图片，后端在 Oracle 中记录媒体元数据，并把不可猜测的 `/api/media/.../content` 图片地址写入 Markdown 正文。
+
 #### Changed / 变更
 
 #### Fixed / 修复
+
+- Fixed Blog Factory MetaWeblog publishing for local Markdown images by uploading `/api/media/.../content` assets through `metaWeblog.newMediaObject` before publishing, then replacing the article Markdown with the remote image URLs returned by the blog platform.
+- 修复博客工厂 MetaWeblog 发布本地 Markdown 图片的问题：发布前会先通过 `metaWeblog.newMediaObject` 上传 `/api/media/.../content` 图片资源，再用博客平台返回的远端图片 URL 替换正文中的本地链接。
 
 - Fixed the desktop Todo workspace editor sizing so the `待办事项列表` panel is narrower, the `编辑待办事项` panel is wider, and the `任务内容` editor is taller for more comfortable multi-line editing.
 - 修复待办事项工作台的桌面端编辑区尺寸：缩窄 `待办事项列表` 面板、加宽 `编辑待办事项` 面板，并提高 `任务内容` 编辑框高度，让多行内容编辑更顺手。

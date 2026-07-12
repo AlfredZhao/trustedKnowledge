@@ -43,6 +43,8 @@ class Settings(BaseSettings):
     history_ask_llm_api_key: str = Field("", validation_alias="TRUSTED_KNOWLEDGE_HISTORY_ASK_LLM_API_KEY")
     skill_storage_dir: str = Field("data/skills", validation_alias="TRUSTED_KNOWLEDGE_SKILL_STORAGE_DIR")
     skill_max_zip_mb: int = Field(20, validation_alias="TRUSTED_KNOWLEDGE_SKILL_MAX_ZIP_MB", ge=1)
+    media_storage_dir: str = Field("data/media", validation_alias="TRUSTED_KNOWLEDGE_MEDIA_STORAGE_DIR")
+    media_max_image_mb: int = Field(8, validation_alias="TRUSTED_KNOWLEDGE_MEDIA_MAX_IMAGE_MB", ge=1)
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -76,6 +78,17 @@ class Settings(BaseSettings):
     @property
     def skill_max_zip_size(self) -> int:
         return self.skill_max_zip_mb * 1024 * 1024
+
+    @property
+    def media_storage_path(self) -> Path:
+        path = Path(self.media_storage_dir).expanduser()
+        if path.is_absolute():
+            return path
+        return Path(__file__).resolve().parents[2] / path
+
+    @property
+    def media_max_image_size(self) -> int:
+        return self.media_max_image_mb * 1024 * 1024
 
     @field_validator("db_pool_max")
     @classmethod

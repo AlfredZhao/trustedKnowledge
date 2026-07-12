@@ -265,6 +265,15 @@ button:disabled {
     text-underline-offset: 3px;
   }
 
+  .markdown-preview img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    border-radius: 0.5rem;
+    border: 1px solid var(--border-soft);
+    background: var(--surface-elevated);
+  }
+
   .markdown-preview .tk-math-block {
     overflow-x: auto;
     border: 1px solid rgba(125, 211, 199, 0.18);

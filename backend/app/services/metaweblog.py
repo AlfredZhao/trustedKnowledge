@@ -44,6 +44,14 @@ class MetaWeblogCategory:
     description: str | None
 
 
+@dataclass(frozen=True)
+class MetaWeblogLocalMedia:
+    source_url: str
+    name: str
+    content_type: str
+    data: bytes
+
+
 CNBLOGS_HOME_CATEGORY = "[发布至博客园首页]"
 
 
@@ -86,6 +94,7 @@ async def publish_metaweblog_post(
     blog_url: str | None = None,
     blog_name: str | None = None,
     blog_id: str | None = None,
+    local_media: list[MetaWeblogLocalMedia] | None = None,
 ) -> MetaWeblogPublishResult:
     resolved = await _resolve_blog(
         api_url=api_url,
@@ -95,6 +104,15 @@ async def publish_metaweblog_post(
         preferred_blog_name=blog_name,
         preferred_blog_id=blog_id,
     )
+    if local_media:
+        markdown = await _replace_local_media_with_remote_urls(
+            api_url=api_url,
+            username=username,
+            password=password,
+            blog_id=resolved.blog_id,
+            markdown=markdown,
+            local_media=local_media,
+        )
     publish_as_markdown = _should_publish_as_markdown(api_url=api_url, blog_url=resolved.blog_url or blog_url)
     content = {
         "title": title,
@@ -174,6 +192,91 @@ async def list_metaweblog_categories(
         (resolved.blog_id, username, password),
     )
     return resolved, _normalize_categories(response)
+
+
+async def _replace_local_media_with_remote_urls(
+    *,
+    api_url: str,
+    username: str,
+    password: str,
+    blog_id: str,
+    markdown: str,
+    local_media: list[MetaWeblogLocalMedia],
+) -> str:
+    rewritten = markdown
+    uploaded_urls: dict[str, str] = {}
+    for item in local_media:
+        source_url = item.source_url.strip()
+        if not source_url or source_url in uploaded_urls:
+            continue
+        remote_url = await _upload_media_object(
+            api_url=api_url,
+            username=username,
+            password=password,
+            blog_id=blog_id,
+            media=item,
+        )
+        uploaded_urls[source_url] = remote_url
+
+    # Replace exact Markdown source strings so alt text and surrounding Markdown stay untouched.
+    for source_url, remote_url in sorted(uploaded_urls.items(), key=lambda pair: len(pair[0]), reverse=True):
+        rewritten = rewritten.replace(source_url, remote_url)
+    return rewritten
+
+
+async def _upload_media_object(
+    *,
+    api_url: str,
+    username: str,
+    password: str,
+    blog_id: str,
+    media: MetaWeblogLocalMedia,
+) -> str:
+    response = await _call_xmlrpc(
+        api_url,
+        "metaWeblog.newMediaObject",
+        (
+            blog_id,
+            username,
+            password,
+            {
+                "name": _normalize_media_name(media.name, media.content_type),
+                "type": media.content_type,
+                "bits": xmlrpc.client.Binary(media.data),
+                "overwrite": False,
+            },
+        ),
+    )
+    remote_url = _extract_media_url(response)
+    if not remote_url:
+        raise MetaWeblogError("Metaweblog 图片上传未返回可访问 URL。")
+    return remote_url
+
+
+def _extract_media_url(value: Any) -> str:
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, dict):
+        for key in ("url", "URL", "Url"):
+            candidate = str(value.get(key) or "").strip()
+            if candidate:
+                return candidate
+    return ""
+
+
+def _normalize_media_name(value: str, content_type: str) -> str:
+    name = re.sub(r"[^A-Za-z0-9._-]+", "-", value.strip().split("/")[-1]).strip(".-")
+    if not name:
+        name = "image"
+    if "." not in name:
+        extension = {
+            "image/png": ".png",
+            "image/jpeg": ".jpg",
+            "image/webp": ".webp",
+            "image/gif": ".gif",
+        }.get(content_type.lower(), "")
+        name = f"{name}{extension}"
+    return name[:180]
 
 
 def markdown_to_html(markdown: str) -> str:
