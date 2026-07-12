@@ -27,19 +27,19 @@ Options:
 
   --version X.Y.Z
       Release version. The value may also be written as vX.Y.Z.
-      This validates that CHANGELOG.md "本次版本更新" currently uses
-      the same version, creates and pushes tag vX.Y.Z, then rolls
-      CHANGELOG.md forward locally to the next patch version.
+      This promotes CHANGELOG.md "本次版本更新" / "### [Unreleased]"
+      notes into a release section "### [X.Y.Z] - YYYY-MM-DD",
+      creates and pushes tag vX.Y.Z, then reopens a blank local
+      "### [Unreleased]" section after the push.
 
       Example: --version 0.2.1
-        1. commit current changes
+        1. commit current changes plus CHANGELOG.md Unreleased notes as 0.2.1
         2. create and push tag v0.2.1
-        3. move 0.2.1 from "本次版本更新" to "历史版本更新"
-        4. open an empty local "本次版本更新" section for 0.2.2
+        3. reopen an empty local "本次版本更新" / "Unreleased" section
 
   --no-tag
       Do not create or push a Git tag, even with --version.
-      With --no-tag, CHANGELOG.md is not rolled forward.
+      With --no-tag, CHANGELOG.md is not rolled forward locally.
 
   --skip-build
       Skip frontend build verification.
@@ -70,26 +70,22 @@ Common Examples:
       Preview what would be committed without changing Git state.
 
   scripts/commit-to-github.sh --version 0.2.1
-      Release 0.2.1. Requires CHANGELOG.md current section to be 0.2.1.
-      Tags v0.2.1 and then opens 0.2.2 locally for the next development cycle.
+      Release 0.2.1 from CHANGELOG.md "### [Unreleased]".
+      Tags v0.2.1 and then reopens "### [Unreleased]" locally.
 
   scripts/commit-to-github.sh --version v0.2.1 -m "Release 0.2.1"
       Same release flow, with an explicit commit message.
 
   scripts/commit-to-github.sh --version 0.2.1 --dry-run --skip-build
-      Preview a release. Shows the next changelog version but does not commit,
-      tag, push, or edit CHANGELOG.md.
+      Preview a release. Does not commit, tag, push, or edit CHANGELOG.md.
 
   scripts/commit-to-github.sh --version 0.2.1 --no-tag
       Commit with release validation but do not tag or roll CHANGELOG.md.
 
-Version Mismatch Behavior:
-  If --version does not match the version under "## 本次版本更新",
-  interactive runs ask you to choose:
-    1) change the current CHANGELOG.md version to the requested version
-    2) cancel without committing
-
-  Non-interactive or --dry-run mismatch exits with an explanatory message.
+Release Changelog Requirement:
+  When --version is used, CHANGELOG.md must contain "### [Unreleased]"
+  directly under "## 本次版本更新". The script promotes that section
+  into the requested release version.
 USAGE
 }
 
@@ -109,120 +105,49 @@ normalize_version() {
   echo "$version"
 }
 
-bump_patch_version() {
-  local version="$1"
-  local major minor patch
-
-  IFS=. read -r major minor patch <<<"$version"
-  echo "$major.$minor.$((patch + 1))"
-}
-
-get_current_changelog_version() {
+get_current_changelog_heading() {
   awk '
     /^## 本次版本更新[[:space:]]*$/ { in_current = 1; next }
     /^## / && in_current { exit }
-    in_current && /^### \[[0-9]+\.[0-9]+\.[0-9]+\]/ { print; exit }
-  ' "$PROJECT_ROOT/CHANGELOG.md" | sed -E 's/^### \[([0-9]+\.[0-9]+\.[0-9]+)\].*/\1/'
+    in_current && /^### / { print; exit }
+  ' "$PROJECT_ROOT/CHANGELOG.md"
 }
 
-set_current_changelog_version() {
+validate_release_changelog() {
   local version="$1"
-  local changelog="$PROJECT_ROOT/CHANGELOG.md"
-  local temp_file
-
-  temp_file="$(mktemp)"
-  awk -v version="$version" '
-    BEGIN { in_current = 0; changed = 0 }
-    /^## 本次版本更新[[:space:]]*$/ { in_current = 1; print; next }
-    /^## / && in_current { in_current = 0 }
-    in_current && changed == 0 && /^### \[[0-9]+\.[0-9]+\.[0-9]+\]/ {
-      print "### [" version "]"
-      changed = 1
-      next
-    }
-    { print }
-    END {
-      if (changed == 0) {
-        exit 3
-      }
-    }
-  ' "$changelog" >"$temp_file" || {
-    rm -f "$temp_file"
-    fail "Unable to update the current CHANGELOG.md version section."
-  }
-
-  mv "$temp_file" "$changelog"
-}
-
-prepare_release_changelog() {
-  local version="$1"
-  local current_version section_count choice
+  local current_heading section_count
 
   [[ -f "$PROJECT_ROOT/CHANGELOG.md" ]] || fail "CHANGELOG.md is required when --version is used."
 
-  current_version="$(get_current_changelog_version)"
-  if [[ -z "$current_version" ]]; then
-    fail "CHANGELOG.md must contain a version section under '## 本次版本更新', for example: ### [$version]"
+  current_heading="$(get_current_changelog_heading)"
+  if [[ -z "$current_heading" ]]; then
+    fail "CHANGELOG.md must contain a '### [Unreleased]' section under '## 本次版本更新'."
   fi
 
-  if [[ "$current_version" != "$version" ]]; then
-    if [[ "$DRY_RUN" -eq 1 ]]; then
-      fail "CHANGELOG.md current version is $current_version, but --version is $version. Dry run will not modify it."
-    fi
-
-    if [[ ! -t 0 ]]; then
-      fail "CHANGELOG.md current version is $current_version, but --version is $version. Run interactively to choose whether to update it."
-    fi
-
-    echo "CHANGELOG.md current version is $current_version, but the release version is $version."
-    echo "Choose how to continue:"
-    echo "  1) Change the current CHANGELOG.md version to $version and continue"
-    echo "  2) Cancel without committing"
-    printf "Enter 1 or 2: "
-
-    if ! read -r choice; then
-      fail "No choice provided."
-    fi
-
-    case "$choice" in
-      1)
-        set_current_changelog_version "$version"
-        current_version="$version"
-        echo "Updated CHANGELOG.md current version to $version."
-        echo
-        ;;
-      2)
-        echo "Cancelled."
-        exit 0
-        ;;
-      *)
-        fail "Invalid choice: $choice"
-        ;;
-    esac
+  if [[ "$current_heading" != "### [Unreleased]" ]]; then
+    fail "CHANGELOG.md must start '## 本次版本更新' with '### [Unreleased]'. Found: $current_heading"
   fi
 
-  section_count="$(grep -Ec "^### \\[$version\\]" "$PROJECT_ROOT/CHANGELOG.md" || true)"
-  if [[ "$section_count" -gt 1 ]]; then
-    fail "CHANGELOG.md contains multiple sections for $version. Keep only one current release section before tagging."
+  section_count="$(grep -Ec "^### \\[$version\\](\\]|[[:space:]-])" "$PROJECT_ROOT/CHANGELOG.md" || true)"
+  if [[ "$section_count" -gt 0 ]]; then
+    fail "CHANGELOG.md already contains a release section for $version. Pick a new version or fix the changelog first."
   fi
 }
 
-roll_changelog_after_release() {
+promote_unreleased_to_release() {
   local version="$1"
-  local next_version="$2"
   local release_date
 
   release_date="$(date '+%Y-%m-%d')"
 
-  python3 - "$PROJECT_ROOT/CHANGELOG.md" "$version" "$next_version" "$release_date" <<'PY'
+  python3 - "$PROJECT_ROOT/CHANGELOG.md" "$version" "$release_date" <<'PY'
 from pathlib import Path
 import re
 import sys
 
 path = Path(sys.argv[1])
 version = sys.argv[2]
-next_version = sys.argv[3]
-release_date = sys.argv[4]
+release_date = sys.argv[3]
 
 text = path.read_text()
 
@@ -234,29 +159,62 @@ if current_heading not in text:
 if history_heading not in text:
     raise SystemExit(f"Missing changelog heading: {history_heading}")
 
-if re.search(rf"^### \[{re.escape(version)}\]", text.split(history_heading, 1)[1], re.M):
-    raise SystemExit(f"Historical changelog already contains {version}")
+if re.search(rf"^### \[{re.escape(version)}\](?:\]|[\s-])", text, re.M):
+    raise SystemExit(f"CHANGELOG.md already contains a release section for {version}")
 
 pattern = re.compile(
-    rf"(^## 本次版本更新\s*\n+)(### \[{re.escape(version)}\][^\n]*\n.*?)(?=^## 历史版本更新\s*$)",
+    r"(^## 本次版本更新\s*\n+)(### \[Unreleased\][^\n]*\n.*?)(?=^### \[|^## 历史版本更新\s*$)",
     re.M | re.S,
 )
 match = pattern.search(text)
 if not match:
-    raise SystemExit(f"Unable to find current changelog section for {version}")
+    raise SystemExit("Unable to find current Unreleased changelog section")
 
 release_block = match.group(2).strip()
 release_block = re.sub(
-    rf"^### \[{re.escape(version)}\][^\n]*$",
+    r"^### \[Unreleased\][^\n]*$",
     f"### [{version}] - {release_date}",
     release_block,
     count=1,
     flags=re.M,
 )
+text = f"{text[:match.start()]}{match.group(1)}{release_block}\n\n{text[match.end():]}"
 
-next_block = f"""## 本次版本更新
+path.write_text(text)
+PY
+}
 
-### [{next_version}]
+roll_changelog_after_release() {
+  local version="$1"
+
+  python3 - "$PROJECT_ROOT/CHANGELOG.md" "$version" <<'PY'
+from pathlib import Path
+import re
+import sys
+
+path = Path(sys.argv[1])
+version = sys.argv[2]
+
+text = path.read_text()
+
+current_heading = "## 本次版本更新"
+history_heading = "## 历史版本更新"
+
+if current_heading not in text:
+    raise SystemExit(f"Missing changelog heading: {current_heading}")
+if history_heading not in text:
+    raise SystemExit(f"Missing changelog heading: {history_heading}")
+
+current_part, _ = text.split(history_heading, 1)
+if re.search(r"^### \[Unreleased\]", current_part, re.M):
+    raise SystemExit("Current changelog already contains an Unreleased section")
+
+if not re.search(rf"^### \[{re.escape(version)}\](?:\]|[\s-])", current_part, re.M):
+    raise SystemExit(f"Unable to find release section for {version} under {current_heading}")
+
+unreleased_block = """## 本次版本更新
+
+### [Unreleased]
 
 #### Added / 新增
 
@@ -266,9 +224,7 @@ next_block = f"""## 本次版本更新
 
 """
 
-text = pattern.sub(next_block, text, count=1)
-text = text.replace(f"{history_heading}\n\n", f"{history_heading}\n\n{release_block}\n\n", 1)
-
+text = text.replace(f"{current_heading}\n\n", unreleased_block, 1)
 path.write_text(text)
 PY
 }
@@ -349,14 +305,12 @@ fi
 
 if [[ -n "$VERSION" ]]; then
   VERSION="$(normalize_version "$VERSION")"
-  prepare_release_changelog "$VERSION"
+  validate_release_changelog "$VERSION"
 
   if [[ "$CREATE_TAG" -eq 1 ]] && git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
     echo "Tag v$VERSION already exists." >&2
     exit 1
   fi
-
-  NEXT_VERSION="$(bump_patch_version "$VERSION")"
 fi
 
 if [[ -z "$COMMIT_MESSAGE" ]]; then
@@ -372,9 +326,6 @@ echo "Branch:  $BRANCH"
 echo "Remote:  $GIT_REMOTE ($(git remote get-url "$GIT_REMOTE"))"
 if [[ -n "$VERSION" ]]; then
   echo "Version: $VERSION"
-  if [[ "${NEXT_VERSION:-}" != "" && "$CREATE_TAG" -eq 1 ]]; then
-    echo "Next:    $NEXT_VERSION"
-  fi
   if [[ "$CREATE_TAG" -eq 1 ]]; then
     echo "Tag:     v$VERSION"
   else
@@ -400,7 +351,18 @@ echo "Checking Git diff for whitespace and conflict-marker problems..."
 git diff --check
 echo
 
-if git diff --quiet && git diff --cached --quiet && [[ -z "$(git ls-files --others --exclude-standard)" ]]; then
+if [[ -n "$VERSION" ]]; then
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    echo "Dry run: would promote CHANGELOG.md Unreleased notes to release $VERSION."
+    echo
+  else
+    echo "Promoting CHANGELOG.md Unreleased notes to release $VERSION..."
+    promote_unreleased_to_release "$VERSION"
+    echo
+  fi
+fi
+
+if [[ -z "$VERSION" ]] && git diff --quiet && git diff --cached --quiet && [[ -z "$(git ls-files --others --exclude-standard)" ]]; then
   echo "No changes to commit."
   exit 0
 fi
@@ -410,6 +372,11 @@ git status --short
 echo
 git diff --stat || true
 echo
+
+if [[ "$DRY_RUN" -eq 1 && -n "$VERSION" ]]; then
+  echo "Dry run note: release mode would also rewrite CHANGELOG.md from Unreleased to [$VERSION] - $(date '+%Y-%m-%d')."
+  echo
+fi
 
 if [[ "$DRY_RUN" -eq 1 ]]; then
   echo "Dry run complete. No files were staged, committed, or pushed."
@@ -454,8 +421,8 @@ if [[ -n "$VERSION" && "$CREATE_TAG" -eq 1 ]]; then
   git push "$GIT_REMOTE" "v$VERSION"
 
   echo
-  echo "Rolling CHANGELOG.md forward locally to $NEXT_VERSION..."
-  roll_changelog_after_release "$VERSION" "$NEXT_VERSION"
+  echo "Reopening local CHANGELOG.md Unreleased section..."
+  roll_changelog_after_release "$VERSION"
 fi
 
 echo
@@ -463,6 +430,6 @@ echo "Done. Latest commit:"
 git --no-pager log -1 --oneline
 if [[ -n "$VERSION" && "$CREATE_TAG" -eq 1 ]]; then
   echo "Tagged release: v$VERSION"
-  echo "Opened local changelog section: $NEXT_VERSION"
+  echo "Opened local changelog section: Unreleased"
   echo "CHANGELOG.md is now modified locally for the next development cycle."
 fi

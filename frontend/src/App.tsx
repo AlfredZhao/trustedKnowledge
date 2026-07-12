@@ -8906,7 +8906,7 @@ function TodoWorkspace({
 
           <Field label="任务内容" icon={<FileText size={16} />}>
             <textarea
-              className="control min-h-[260px] resize-none leading-7"
+              className="control min-h-[320px] resize-none leading-7 xl:min-h-[380px]"
               value={draft.content}
               onChange={(event) => onDraftChange({ ...draft, content: event.target.value })}
               placeholder="补充待办事项背景、验收标准或下一步动作。"
@@ -8988,7 +8988,7 @@ function TodoWorkspace({
   );
 
   return (
-    <div className="grid flex-1 gap-4 px-4 pb-4 pt-2 xl:grid-cols-[minmax(420px,1fr)_minmax(360px,0.78fr)]">
+    <div className="grid flex-1 gap-4 px-4 pb-4 pt-2 xl:grid-cols-[minmax(340px,0.8fr)_minmax(520px,1.2fr)]">
       <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/72 p-4 shadow-soft-glow backdrop-blur-xl">
         <div className="mb-5 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>

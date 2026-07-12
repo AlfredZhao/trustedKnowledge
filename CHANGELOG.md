@@ -11,6 +11,20 @@ The format follows the common GitHub changelog convention inspired by
 
 ### [Unreleased]
 
+#### Added / 新增
+
+#### Changed / 变更
+
+#### Fixed / 修复
+
+- Fixed the desktop Todo workspace editor sizing so the `待办事项列表` panel is narrower, the `编辑待办事项` panel is wider, and the `任务内容` editor is taller for more comfortable multi-line editing.
+- 修复待办事项工作台的桌面端编辑区尺寸：缩窄 `待办事项列表` 面板、加宽 `编辑待办事项` 面板，并提高 `任务内容` 编辑框高度，让多行内容编辑更顺手。
+
+- Fixed `scripts/commit-to-github.sh` release mode so it now promotes the `Unreleased` notes into the requested version instead of renaming the previous release section, then reopens a blank local `Unreleased` block after the tag push.
+- 修复 `scripts/commit-to-github.sh` 的发布逻辑：发布时现在会把 `Unreleased` 变更提升为目标版本，而不是把上一版的版本标题直接改名；推送 tag 后再在本地重新打开空白 `Unreleased` 区块。
+
+### [0.3.4] - 2026-07-10
+
 #### Changed / 变更
 
 - Clarified the project development guide so future Codex tasks must update the active changelog section, scan related modules for shared UI patterns, keep user-scoped filter resets aligned with each module's default visible scope, and explicitly call out any required restart, reload, cache-clear, or migration commands in the final handoff.
@@ -45,7 +59,7 @@ The format follows the common GitHub changelog convention inspired by
 - Fixed refresh responsiveness for static frontend assets by switching the service worker to network-first HTML loading with background asset revalidation, while memoizing Markdown preview HTML generation to avoid repeated parsing during unrelated state updates.
 - 修复前端刷新与展示响应中的两处性能损耗：service worker 现改为 HTML 网络优先、静态资源后台更新，减少刷新时拿到旧壳或二次等待；Markdown 预览改为按内容记忆化，避免无关状态更新时反复解析同一段文本。
 
-### [0.3.4]
+### [0.3.3]
 
 #### Added / 新增
 
