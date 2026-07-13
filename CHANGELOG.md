@@ -16,7 +16,22 @@ The format follows the common GitHub changelog convention inspired by
 - Added local Markdown image uploads for trusted knowledge and Todo content editors, including file-picker uploads, pasted clipboard images, Oracle-backed media metadata, and opaque `/api/media/.../content` image URLs stored in the Markdown body.
 - 为可信知识和 Todo 正文编辑新增本地 Markdown 图片上传能力：支持选择本机图片、直接粘贴剪贴板图片，后端在 Oracle 中记录媒体元数据，并把不可猜测的 `/api/media/.../content` 图片地址写入 Markdown 正文。
 
+- Added Blog Factory task-content assist actions for extracting an approximately 50-character summary capped at 100 characters and producing a copyable C4D cover-image prompt with 16:9 / 2.35:1 composition guidance.
+- 为博客工厂任务内容新增辅助操作：可提取约 50 字且不超过 100 字的摘要，并生成可复制的 C4D 封面图提示词，包含 16:9 / 2.35:1 构图建议。
+
+- Added an editable Blog Factory cover-image prompt template with `{{title}}`, `{{summary}}`, and `{{topic}}` placeholders, persisted in the browser UI state and restorable to the default template.
+- 为博客工厂封面生图提示词新增可编辑模板，支持 `{{title}}`、`{{summary}}`、`{{topic}}` 占位符，模板会保存在浏览器 UI 状态中，也可恢复默认模板。
+
+- Added a Blog Factory cover image area inside task-content assist actions, supporting file upload or pasted clipboard images through the existing media storage flow and writing the cover image back into the task-content draft as Markdown.
+- 为博客工厂任务内容辅助区新增封面图片区域，支持上传文件或粘贴剪贴板图片，图片仍走现有媒体存储链路，并以 Markdown 图片格式写回任务内容草稿。
+
 #### Changed / 变更
+
+- Removed the Blog Factory title-candidate assist action, leaving the content assist area focused on summary extraction, cover image handling, and cover prompt generation.
+- 移除博客工厂标题候选辅助操作，让内容辅助区聚焦摘要提取、封面图片处理和封面提示词生成。
+
+- Moved the Blog Factory task-content preview, copy, assist, and publishing area to the top of the task detail panel.
+- 将博客工厂任务详情中的任务内容预览、复制、辅助和博客发布区域调整到详情面板最上方。
 
 #### Fixed / 修复
 

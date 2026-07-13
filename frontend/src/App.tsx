@@ -176,12 +176,15 @@ import { useDebouncedValue } from "./hooks/useDebouncedValue";
 import { invalidateApiCache } from "./api/client";
 import {
   BLOG_FACTORY_MASK_TOGGLE_OPTIONS,
+  DEFAULT_BLOG_FACTORY_COVER_PROMPT_TEMPLATE,
   appendLogLine,
   applyBlogFactoryMaskRule,
   areTodoDraftsEqual,
   blogFactoryItemToEditDraft,
   blogPublishConfigToDraft,
+  buildBlogFactoryCoverImagePrompt,
   buildBlogFactoryArticleExportFileName,
+  buildBlogFactoryTaskSummary,
   buildBlogFactoryTaskDocumentTitle,
   buildBlogFactoryTaskExportFileName,
   buildCodexKnowledgeDraft,
@@ -201,6 +204,7 @@ import {
   createEmptyBlogFactoryMaskRule,
   describeBlogFactoryMaskRule,
   englishMaterialItemToDraft,
+  extractBlogFactoryCoverImageMarkdown,
   extractCodexResultText,
   extractMarkdownHeading,
   filterCnblogsPublishCategories,
@@ -235,6 +239,7 @@ import {
   readStoredUiState,
   readWeChatApiKeyFromHash,
   readWeChatErrorFromHash,
+  removeBlogFactoryCoverImageMarkdown,
   resolveBlogFactoryMaskRuleId,
   resolveBlogFactoryPublishMarkdown,
   resolveCurrentAppendTarget,
@@ -245,6 +250,7 @@ import {
   todoItemToDraft,
   upsertBlogPublishConfig,
   upsertCodexJobMessage,
+  upsertBlogFactoryCoverImageMarkdown,
   waitForBackendRecovery,
   writeStoredNewDraft,
   writeStoredUiState,
@@ -601,6 +607,7 @@ function App() {
   const [blogFactoryArticlePathDraft, setBlogFactoryArticlePathDraft] = useState(restoredUiState.blogFactory.articlePathDraft);
   const [blogFactoryArticleError, setBlogFactoryArticleError] = useState<string | null>(null);
   const [blogFactoryArticleCopiedMode, setBlogFactoryArticleCopiedMode] = useState<BlogFactoryArticleCopyMode | null>(null);
+  const [blogFactoryCoverPromptTemplate, setBlogFactoryCoverPromptTemplate] = useState(restoredUiState.blogFactory.coverPromptTemplate);
   const [blogFactoryTaskCopyError, setBlogFactoryTaskCopyError] = useState<string | null>(null);
   const [hasCopiedBlogFactoryTask, setHasCopiedBlogFactoryTask] = useState(false);
   const [blogFactoryError, setBlogFactoryError] = useState<string | null>(null);
@@ -1152,6 +1159,7 @@ function App() {
         articlePathDraft: blogFactoryArticlePathDraft,
         maskRules: blogFactoryMaskRules,
         selectedMaskRuleId: selectedBlogFactoryMaskRuleId,
+        coverPromptTemplate: blogFactoryCoverPromptTemplate,
       },
       todos: {
         query: todoQuery,
@@ -1220,6 +1228,7 @@ function App() {
     apiKey,
     blogFactoryArticleDraft,
     blogFactoryArticlePathDraft,
+    blogFactoryCoverPromptTemplate,
     blogFactoryMaskRules,
     blogFactoryKnowledgeId,
     blogFactoryPage,
@@ -4562,6 +4571,7 @@ function App() {
               publishSuccess={blogPublishSuccess}
               isPublishing={isBlogPublishing}
               editDraft={blogFactoryEditDraft}
+              coverPromptTemplate={blogFactoryCoverPromptTemplate}
               maskRules={blogFactoryMaskRules}
               selectedMaskRuleId={selectedBlogFactoryMaskRuleId}
               maskError={blogFactoryMaskError}
@@ -4596,6 +4606,7 @@ function App() {
               }}
               onPageChange={setBlogFactoryPage}
               onEditDraftChange={setBlogFactoryEditDraft}
+              onCoverPromptTemplateChange={setBlogFactoryCoverPromptTemplate}
               onMaskRuleChange={setSelectedBlogFactoryMaskRuleId}
               onOpenMaskDialog={handleOpenBlogFactoryMaskDialog}
               onApplyMaskRule={handleApplyBlogFactoryMaskRule}
@@ -8198,6 +8209,7 @@ function BlogFactoryRecords({
   publishSuccess,
   isPublishing,
   editDraft,
+  coverPromptTemplate,
   maskRules,
   selectedMaskRuleId,
   maskError,
@@ -8208,6 +8220,7 @@ function BlogFactoryRecords({
   onClearFilters,
   onPageChange,
   onEditDraftChange,
+  onCoverPromptTemplateChange,
   onMaskRuleChange,
   onOpenMaskDialog,
   onApplyMaskRule,
@@ -8244,6 +8257,7 @@ function BlogFactoryRecords({
   publishSuccess: BlogFactoryPublishResult | null;
   isPublishing: boolean;
   editDraft: BlogFactoryEditDraft;
+  coverPromptTemplate: string;
   maskRules: BlogFactoryMaskRule[];
   selectedMaskRuleId: string | null;
   maskError: string | null;
@@ -8254,6 +8268,7 @@ function BlogFactoryRecords({
   onClearFilters: () => void;
   onPageChange: (page: number) => void;
   onEditDraftChange: (draft: BlogFactoryEditDraft) => void;
+  onCoverPromptTemplateChange: (template: string) => void;
   onMaskRuleChange: (ruleId: string | null) => void;
   onOpenMaskDialog: () => void;
   onApplyMaskRule: (ruleId?: string | null) => void;
@@ -8270,8 +8285,29 @@ function BlogFactoryRecords({
   const rangeStart = total === 0 ? 0 : (page - 1) * BLOG_FACTORY_PAGE_SIZE + 1;
   const rangeEnd = Math.min(page * BLOG_FACTORY_PAGE_SIZE, total);
   const [taskCopyView, setTaskCopyView] = useState<BlogFactoryTaskCopyMode>("rendered");
+  const [assistView, setAssistView] = useState<"summary" | "coverPrompt">("summary");
+  const [assistCopiedTarget, setAssistCopiedTarget] = useState<"summary" | "coverPrompt" | null>(null);
+  const [assistError, setAssistError] = useState<string | null>(null);
+  const [isCoverPromptTemplateEditing, setIsCoverPromptTemplateEditing] = useState(false);
+  const [coverPromptTemplateDraft, setCoverPromptTemplateDraft] = useState(coverPromptTemplate);
+  const coverImageFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [isCoverImageUploading, setIsCoverImageUploading] = useState(false);
+  const [coverImageError, setCoverImageError] = useState<string | null>(null);
   const publishMarkdown = selectedItem ? resolveBlogFactoryPublishMarkdown(selectedItem, selectedItem.article_markdown, editDraft.taskContent) : "";
   const publishTitle = selectedItem ? extractMarkdownHeading(publishMarkdown) || selectedItem.article_title || "" : "";
+  const assistSource = editDraft.taskContent;
+  const assistSummary = useMemo(() => buildBlogFactoryTaskSummary(assistSource), [assistSource]);
+  const coverImageMarkdown = useMemo(() => extractBlogFactoryCoverImageMarkdown(assistSource), [assistSource]);
+  const coverImagePrompt = useMemo(
+    () =>
+      buildBlogFactoryCoverImagePrompt(
+        assistSource,
+        assistSummary,
+        editDraft.questionSnapshot || selectedItem?.question_snapshot || "",
+        coverPromptTemplate,
+      ),
+    [assistSource, assistSummary, coverPromptTemplate, editDraft.questionSnapshot, selectedItem?.question_snapshot],
+  );
   const canPublish = publishMarkdown.trim().length > 0 && publishConfigs.length > 0 && !isPublishing;
   const selectedMaskRule = maskRules.find((item) => item.id === selectedMaskRuleId) ?? null;
   const canApplyMaskRule =
@@ -8300,6 +8336,89 @@ function BlogFactoryRecords({
     editDraft.answerSnapshot.trim().length > 0 &&
     !isItemSaving &&
     !isDeleting;
+  useEffect(() => {
+    setAssistView("summary");
+    setAssistCopiedTarget(null);
+    setAssistError(null);
+    setIsCoverPromptTemplateEditing(false);
+    setCoverImageError(null);
+  }, [selectedItem?.id]);
+
+  useEffect(() => {
+    setCoverPromptTemplateDraft(coverPromptTemplate);
+  }, [coverPromptTemplate]);
+
+  async function handleCopyAssistText(value: string, target: "summary" | "coverPrompt") {
+    if (!value.trim()) return;
+
+    try {
+      await copyText(value);
+      setAssistError(null);
+      setAssistCopiedTarget(target);
+      window.setTimeout(() => setAssistCopiedTarget(null), 1600);
+    } catch {
+      setAssistCopiedTarget(null);
+      setAssistError("复制失败。请选中文本后手动复制。");
+    }
+  }
+
+  function handleSaveCoverPromptTemplate() {
+    const nextTemplate = coverPromptTemplateDraft.trim();
+    if (!nextTemplate) {
+      setAssistError("模板不能为空。");
+      return;
+    }
+
+    onCoverPromptTemplateChange(nextTemplate);
+    setCoverPromptTemplateDraft(nextTemplate);
+    setIsCoverPromptTemplateEditing(false);
+    setAssistError(null);
+  }
+
+  function handleRestoreDefaultCoverPromptTemplate() {
+    onCoverPromptTemplateChange(DEFAULT_BLOG_FACTORY_COVER_PROMPT_TEMPLATE);
+    setCoverPromptTemplateDraft(DEFAULT_BLOG_FACTORY_COVER_PROMPT_TEMPLATE);
+    setAssistError(null);
+  }
+
+  async function handleUploadCoverImage(files: File[]) {
+    const imageFile = files.find((file) => file.type.startsWith("image/"));
+    if (!imageFile) return;
+
+    setIsCoverImageUploading(true);
+    setCoverImageError(null);
+    try {
+      const uploaded = await uploadMediaImage(imageFile);
+      onEditDraftChange({
+        ...editDraft,
+        taskContent: upsertBlogFactoryCoverImageMarkdown(editDraft.taskContent, uploaded.markdown),
+      });
+    } catch (error) {
+      setCoverImageError(error instanceof Error ? error.message : "封面图片上传失败，请稍后重试。");
+    } finally {
+      setIsCoverImageUploading(false);
+      if (coverImageFileInputRef.current) coverImageFileInputRef.current.value = "";
+    }
+  }
+
+  function handleCoverImagePaste(event: React.ClipboardEvent<HTMLDivElement>) {
+    const files = Array.from(event.clipboardData.items)
+      .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => file !== null);
+
+    if (!files.length) return;
+    event.preventDefault();
+    void handleUploadCoverImage(files);
+  }
+
+  function handleRemoveCoverImage() {
+    onEditDraftChange({
+      ...editDraft,
+      taskContent: removeBlogFactoryCoverImageMarkdown(editDraft.taskContent),
+    });
+    setCoverImageError(null);
+  }
   const renderDetailPanel = () => (
     <>
       <div className="mb-5 flex items-start justify-between gap-4">
@@ -8325,8 +8444,8 @@ function BlogFactoryRecords({
       </div>
 
       {selectedItem ? (
-        <div className="space-y-4">
-          <div className="rounded-lg border border-white/10 bg-white/[0.028] p-4">
+        <div className="flex flex-col gap-4">
+          <div className="order-3 rounded-lg border border-white/10 bg-white/[0.028] p-4">
             <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-slate-500">
               <span>#{selectedItem.id}</span>
               <span>知识 #{selectedItem.knowledge_id}</span>
@@ -8369,13 +8488,13 @@ function BlogFactoryRecords({
           </div>
 
           {statusError ? (
-            <div className="flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100">
+            <div className="order-4 flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100">
               <TriangleAlert className="mt-0.5 shrink-0 text-red-300" size={17} />
               <span>{statusError}</span>
             </div>
           ) : null}
 
-          <div className="rounded-lg border border-white/10 bg-white/[0.025] p-4">
+          <div className="order-5 rounded-lg border border-white/10 bg-white/[0.025] p-4">
             <div className="mb-4 flex items-center gap-2 text-sm font-medium text-slate-300">
               <Pencil size={16} />
               编辑任务记录
@@ -8489,7 +8608,7 @@ function BlogFactoryRecords({
             </button>
           </div>
 
-          <div className="rounded-lg border border-white/10 bg-white/[0.025] p-4">
+          <div className="order-1 rounded-lg border border-white/10 bg-white/[0.025] p-4">
             <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0">
                 <div className="mb-2 text-sm font-medium text-slate-300">任务内容</div>
@@ -8574,6 +8693,192 @@ function BlogFactoryRecords({
               <p className="whitespace-pre-wrap break-words text-sm leading-7 text-slate-400 [overflow-wrap:anywhere]">未记录</p>
             )}
 
+            <div className="mt-4 rounded-lg border border-white/10 bg-white/[0.025] p-4">
+              <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div className="min-w-0">
+                  <div className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-300">
+                    <WandSparkles size={16} />
+                    内容辅助
+                  </div>
+                  <div className="text-xs leading-6 text-slate-500">
+                    当前标题：{editDraft.questionSnapshot || selectedItem.question_snapshot || "未记录"}
+                  </div>
+                </div>
+                <div className="grid h-9 w-full grid-cols-2 overflow-hidden rounded-lg border border-white/10 bg-white/[0.035] sm:w-auto">
+                  <button
+                    className={`px-2 text-xs transition sm:px-3 ${
+                      assistView === "summary" ? "bg-mint-300/14 text-mint-200" : "text-slate-400 hover:text-mint-200"
+                    }`}
+                    type="button"
+                    onClick={() => setAssistView("summary")}
+                  >
+                    提取摘要
+                  </button>
+                  <button
+                    className={`border-l border-white/10 px-2 text-xs transition sm:px-3 ${
+                      assistView === "coverPrompt" ? "bg-mint-300/14 text-mint-200" : "text-slate-400 hover:text-mint-200"
+                    }`}
+                    type="button"
+                    onClick={() => setAssistView("coverPrompt")}
+                  >
+                    生图提示词
+                  </button>
+                </div>
+              </div>
+
+              <div
+                className="mb-4 rounded-lg border border-white/10 bg-black/15 p-3"
+                tabIndex={0}
+                onPaste={handleCoverImagePaste}
+              >
+                <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <div className="mb-1 flex items-center gap-2 text-sm font-medium text-slate-300">
+                      <ImagePlus size={16} />
+                      封面图片
+                    </div>
+                    <div className="text-xs leading-6 text-slate-500">点击上传，或先聚焦此区域后粘贴剪贴板图片。</div>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      className="flex h-9 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-xs text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600"
+                      disabled={isCoverImageUploading}
+                      type="button"
+                      onClick={() => coverImageFileInputRef.current?.click()}
+                    >
+                      {isCoverImageUploading ? <Loader2 className="animate-spin" size={15} /> : <ImagePlus size={15} />}
+                      {isCoverImageUploading ? "上传中" : coverImageMarkdown ? "替换图片" : "上传图片"}
+                    </button>
+                    <button
+                      className="flex h-9 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-xs text-slate-300 transition hover:border-red-400/30 hover:text-red-100 disabled:cursor-not-allowed disabled:text-slate-600"
+                      disabled={!coverImageMarkdown || isCoverImageUploading}
+                      type="button"
+                      onClick={handleRemoveCoverImage}
+                    >
+                      <X size={15} />
+                      移除
+                    </button>
+                  </div>
+                </div>
+                <input
+                  ref={coverImageFileInputRef}
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  className="hidden"
+                  type="file"
+                  onChange={(event) => void handleUploadCoverImage(Array.from(event.target.files ?? []))}
+                />
+                {coverImageMarkdown ? (
+                  <MarkdownPreview markdown={coverImageMarkdown} />
+                ) : (
+                  <div className="grid min-h-[150px] place-items-center rounded-lg border border-dashed border-white/10 bg-white/[0.02] p-4 text-center text-sm leading-6 text-slate-500">
+                    暂无封面图片。上传后会以 Markdown 图片格式写入任务内容草稿。
+                  </div>
+                )}
+                {coverImageError ? (
+                  <div className="mt-3 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-2 text-xs leading-6 text-red-100">
+                    {coverImageError}
+                  </div>
+                ) : null}
+              </div>
+
+              {assistSource.trim() ? (
+                assistView === "summary" ? (
+                  <div className="space-y-3">
+                    <div className="rounded-lg border border-white/10 bg-black/15 p-3 text-sm leading-7 text-slate-300">
+                      {assistSummary || "未能提取摘要。"}
+                    </div>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <span className="text-xs text-slate-500">{Array.from(assistSummary).length} 字，目标约 50 字，上限 100 字</span>
+                      <button
+                        className={`flex h-9 items-center justify-center gap-2 rounded-lg border px-3 text-xs transition disabled:cursor-not-allowed disabled:text-slate-600 ${
+                          assistCopiedTarget === "summary"
+                            ? "border-mint-300/30 bg-mint-300/14 text-mint-300"
+                            : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-mint-300/30 hover:text-mint-300"
+                        }`}
+                        disabled={!assistSummary}
+                        type="button"
+                        onClick={() => void handleCopyAssistText(assistSummary, "summary")}
+                      >
+                        {assistCopiedTarget === "summary" ? <ClipboardCheck size={15} /> : <Copy size={15} />}
+                        {assistCopiedTarget === "summary" ? "已复制" : "复制摘要"}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-white/10 bg-black/15 p-3 text-xs leading-6 text-slate-300 [overflow-wrap:anywhere]">
+                      {coverImagePrompt}
+                    </pre>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+                      <button
+                        className="flex h-9 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-xs text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300"
+                        type="button"
+                        onClick={() => {
+                          setCoverPromptTemplateDraft(coverPromptTemplate);
+                          setIsCoverPromptTemplateEditing((current) => !current);
+                          setAssistError(null);
+                        }}
+                      >
+                        <Settings2 size={15} />
+                        {isCoverPromptTemplateEditing ? "收起模板" : "编辑模板"}
+                      </button>
+                      <button
+                        className={`flex h-9 items-center justify-center gap-2 rounded-lg border px-3 text-xs transition disabled:cursor-not-allowed disabled:text-slate-600 ${
+                          assistCopiedTarget === "coverPrompt"
+                            ? "border-mint-300/30 bg-mint-300/14 text-mint-300"
+                            : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-mint-300/30 hover:text-mint-300"
+                        }`}
+                        disabled={!coverImagePrompt}
+                        type="button"
+                        onClick={() => void handleCopyAssistText(coverImagePrompt, "coverPrompt")}
+                      >
+                        {assistCopiedTarget === "coverPrompt" ? <ClipboardCheck size={15} /> : <Copy size={15} />}
+                        {assistCopiedTarget === "coverPrompt" ? "已复制" : "复制提示词"}
+                      </button>
+                    </div>
+                    {isCoverPromptTemplateEditing ? (
+                      <div className="space-y-3 rounded-lg border border-white/10 bg-black/15 p-3">
+                        <div className="text-xs leading-6 text-slate-500">可用变量：{"{{title}}"} / {"{{summary}}"} / {"{{topic}}"}</div>
+                        <textarea
+                          className="control min-h-[220px] resize-y font-mono text-xs leading-6"
+                          value={coverPromptTemplateDraft}
+                          onChange={(event) => setCoverPromptTemplateDraft(event.target.value)}
+                        />
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <button
+                            className="flex h-9 items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-3 text-xs font-medium text-mint-300 transition hover:bg-mint-300/20"
+                            type="button"
+                            onClick={handleSaveCoverPromptTemplate}
+                          >
+                            <Save size={15} />
+                            保存模板
+                          </button>
+                          <button
+                            className="flex h-9 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-xs text-slate-300 transition hover:border-amberline/30 hover:text-amber-100"
+                            type="button"
+                            onClick={handleRestoreDefaultCoverPromptTemplate}
+                          >
+                            <RefreshCw size={15} />
+                            恢复默认
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                )
+              ) : (
+                <div className="rounded-lg border border-white/10 bg-black/15 p-3 text-sm leading-6 text-slate-500">
+                  当前任务内容为空。
+                </div>
+              )}
+
+              {assistError ? (
+                <div className="mt-3 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-2 text-xs leading-6 text-red-100">
+                  {assistError}
+                </div>
+              ) : null}
+            </div>
+
             <div className="mt-4 rounded-lg border border-mint-300/18 bg-mint-300/[0.06] p-4">
               <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                 <div className="min-w-0">
@@ -8625,7 +8930,7 @@ function BlogFactoryRecords({
             </div>
           </div>
           {taskCopyError ? (
-            <div className="flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100">
+            <div className="order-2 flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100">
               <TriangleAlert className="mt-0.5 shrink-0 text-red-300" size={17} />
               <span>{taskCopyError}</span>
             </div>

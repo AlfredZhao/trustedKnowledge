@@ -82,6 +82,17 @@ export const BLOG_FACTORY_MASK_TOGGLE_OPTIONS: Array<{
   { key: "maskIp", label: "IP", description: "替换为统一占位符" },
 ];
 
+export const DEFAULT_BLOG_FACTORY_COVER_PROMPT_TEMPLATE = [
+  "主题：{{title}}",
+  "核心意图：{{summary}}",
+  "画面：C4D 立体科技封面，抽象知识工厂与内容流水线，半透明数据块、文档卡片、发光节点和结构化网格围绕核心主题聚合。",
+  "构图：16:9 横向宽幅主视觉，主体居中偏左，右侧保留干净留白；同时适配 2.35:1 裁切，层次清晰，移动端缩略图仍可辨认。",
+  "风格：Octane render, soft studio lighting, premium SaaS editorial cover, clean background, subtle depth of field, high detail, professional, modern.",
+  "限制：不要出现可读文字、logo、水印、人物脸部或杂乱 UI 截图。",
+].join("\n");
+
+const BLOG_FACTORY_COVER_IMAGE_LINE_PATTERN = /^!\[封面图片[^\]]*]\([^)]+\)\s*$/m;
+
 export interface StoredUiState {
   activeView: AppView;
   sidebarExpanded: boolean;
@@ -118,6 +129,7 @@ export interface StoredUiState {
     articlePathDraft: string;
     maskRules: BlogFactoryMaskRule[];
     selectedMaskRuleId: string | null;
+    coverPromptTemplate: string;
   };
   todos: {
     query: string;
@@ -902,6 +914,69 @@ export function resolveBlogFactoryPublishMarkdown(
   return removeLeakedMarkdownCodePlaceholders(taskContentDraft ?? item.task_content ?? "").trim();
 }
 
+export function buildBlogFactoryTaskSummary(taskContent: string, maxLength = 100, targetLength = 50) {
+  const normalized = normalizeBlogFactoryAssistContent(taskContent);
+  if (!normalized) return "";
+
+  const sentences = splitBlogFactoryAssistSentences(normalized);
+  const preferred = pickBlogFactorySummarySentence(sentences);
+  return fitBlogFactorySummary(cleanBlogFactoryAssistPhrase(preferred || normalized), maxLength, targetLength);
+}
+
+export function buildBlogFactoryCoverImagePrompt(
+  taskContent: string,
+  summary: string,
+  title: string,
+  template = DEFAULT_BLOG_FACTORY_COVER_PROMPT_TEMPLATE,
+) {
+  const normalized = normalizeBlogFactoryAssistContent(taskContent);
+  const cleanSummary = buildBlogFactoryTaskSummary(summary || normalized);
+  const topic = extractBlogFactoryCoverTopic(normalized, cleanSummary, title);
+  const resolvedTitle = cleanBlogFactoryTitle(title) || topic || "技术文章封面";
+
+  return renderBlogFactoryCoverPromptTemplate(template || DEFAULT_BLOG_FACTORY_COVER_PROMPT_TEMPLATE, {
+    title: resolvedTitle,
+    summary: cleanSummary || "提炼文章核心观点，呈现专业可信的知识加工与实践落地感。",
+    topic: topic || resolvedTitle,
+  });
+}
+
+export function extractBlogFactoryCoverImageMarkdown(taskContent: string) {
+  const markedCover = taskContent.match(
+    /<!-- trustedKnowledge:cover-image:start -->\s*(!\[[^\]]*]\([^)]+\))\s*<!-- trustedKnowledge:cover-image:end -->/m,
+  );
+  if (markedCover) return markedCover[1].replace(/^!\[[^\]]*]/, "![封面图片]").trim();
+
+  return taskContent.match(BLOG_FACTORY_COVER_IMAGE_LINE_PATTERN)?.[0]?.trim() ?? "";
+}
+
+export function upsertBlogFactoryCoverImageMarkdown(taskContent: string, imageMarkdown: string) {
+  const cleanedImageMarkdown = imageMarkdown.trim();
+  if (!cleanedImageMarkdown) return taskContent;
+
+  const coverMarkdown = cleanedImageMarkdown.replace(/^!\[[^\]]*]/, "![封面图片]");
+  const blockPattern =
+    /<!-- trustedKnowledge:cover-image:start -->[\s\S]*?<!-- trustedKnowledge:cover-image:end -->/m;
+
+  if (blockPattern.test(taskContent)) {
+    return taskContent.replace(blockPattern, coverMarkdown).trim();
+  }
+
+  if (BLOG_FACTORY_COVER_IMAGE_LINE_PATTERN.test(taskContent)) {
+    return taskContent.replace(BLOG_FACTORY_COVER_IMAGE_LINE_PATTERN, coverMarkdown).trim();
+  }
+
+  const trimmedContent = taskContent.trim();
+  return trimmedContent ? `${coverMarkdown}\n\n${trimmedContent}` : coverMarkdown;
+}
+
+export function removeBlogFactoryCoverImageMarkdown(taskContent: string) {
+  return taskContent
+    .replace(/<!-- trustedKnowledge:cover-image:start -->[\s\S]*?<!-- trustedKnowledge:cover-image:end -->\s*/m, "")
+    .replace(BLOG_FACTORY_COVER_IMAGE_LINE_PATTERN, "")
+    .trim();
+}
+
 export function readStoredNewDraft(): KnowledgeDraft | null {
   try {
     const value = window.localStorage.getItem(NEW_KNOWLEDGE_DRAFT_STORAGE_KEY);
@@ -992,6 +1067,7 @@ export function readStoredUiState(): StoredUiState {
         articlePathDraft: readString(blogFactory.articlePathDraft),
         maskRules: blogFactoryMaskRules,
         selectedMaskRuleId: resolveBlogFactoryMaskRuleId(blogFactoryMaskRules, readNullableString(blogFactory.selectedMaskRuleId)),
+        coverPromptTemplate: readString(blogFactory.coverPromptTemplate) || DEFAULT_BLOG_FACTORY_COVER_PROMPT_TEMPLATE,
       },
       todos: {
         query: readString(todos.query),
@@ -1110,6 +1186,7 @@ function buildDefaultUiState(): StoredUiState {
       articlePathDraft: "",
       maskRules: [],
       selectedMaskRuleId: null,
+      coverPromptTemplate: DEFAULT_BLOG_FACTORY_COVER_PROMPT_TEMPLATE,
     },
     todos: {
       query: "",
@@ -1716,6 +1793,129 @@ export function extractMarkdownHeading(markdown: string) {
     if (match) return match[1].trim();
   }
   return "";
+}
+
+function normalizeBlogFactoryAssistContent(value: string) {
+  const withoutCodeBlocks = removeLeakedMarkdownCodePlaceholders(value)
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/https?:\/\/\S+/g, " ")
+    .replace(/<[^>]+>/g, " ");
+
+  return withoutCodeBlocks
+    .split("\n")
+    .map((line) =>
+      line
+        .trim()
+        .replace(/^#{1,6}\s+/, "")
+        .replace(/^>\s?/, "")
+        .replace(/^[-*+]\s+/, "")
+        .replace(/^\d+[.)、]\s*/, "")
+        .replace(/[*_~#>|]/g, "")
+        .replace(/\s+/g, " ")
+        .trim(),
+    )
+    .filter((line) => line && !isBlogFactorySeparatorLine(line))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function isBlogFactorySeparatorLine(value: string) {
+  return Array.from(value).every((char) => char === "-" || char === ":" || char === "|" || /\s/.test(char));
+}
+
+function splitBlogFactoryAssistSentences(value: string) {
+  return value
+    .split(/(?<=[。！？!?；;])\s*|\n+/u)
+    .map(cleanBlogFactoryAssistPhrase)
+    .filter((sentence) => sentence.length >= 8);
+}
+
+function pickBlogFactorySummarySentence(sentences: string[]) {
+  if (sentences.length === 0) return "";
+
+  const scored = sentences.map((sentence, index) => {
+    let score = Math.max(0, 12 - index);
+    if (/任务|目标|核心|意图|本文|文章|介绍|说明|讲解|实践|解决|实现|构建|优化|方案|流程|经验|复盘/.test(sentence)) score += 8;
+    const length = Array.from(sentence).length;
+    score += Math.max(0, 18 - Math.abs(length - 50));
+    if (length >= 24 && length <= 90) score += 5;
+    if (length > 140) score -= 8;
+    return { sentence, score };
+  });
+
+  return scored.sort((left, right) => right.score - left.score)[0]?.sentence ?? sentences[0];
+}
+
+function cleanBlogFactoryAssistPhrase(value: string) {
+  return value
+    .replace(/^任务目标[：:]\s*/u, "")
+    .replace(/^任务内容[：:]\s*/u, "")
+    .replace(/^核心意图[：:]\s*/u, "")
+    .replace(/^摘要[：:]\s*/u, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function cleanBlogFactoryTitle(value: string) {
+  return cleanBlogFactoryAssistPhrase(value)
+    .replace(/^#+\s*/, "")
+    .replace(/^标题[：:]\s*/u, "")
+    .replace(/^[《「“"']|[》」”"']$/g, "")
+    .replace(/[。！？!?；;，,、]+$/u, "")
+    .trim();
+}
+
+function extractBlogFactoryCoverTopic(content: string, summary: string, fallbackTitle: string) {
+  const titleTopic = cleanBlogFactoryTitle(fallbackTitle);
+  if (titleTopic && Array.from(titleTopic).length <= 18) return titleTopic;
+
+  const source = `${titleTopic}\n${summary}\n${content}`;
+  const techToken = source.match(/\b(?:Oracle|APEX|OCI|GraalVM|Java|Python|React|Vite|FastAPI|Codex|AI|LLM|SQL|PL\/SQL|Markdown|MetaWeblog|C4D)\b/);
+  const chineseTopic = source.match(/([\u4e00-\u9fa5A-Za-z0-9+#./-]{2,12})(?:实践|指南|方案|优化|配置|部署|开发|发布|集成|迁移|排查|复盘|教程|能力|流程|方法)/u);
+  if (techToken && chineseTopic) return `${techToken[0]} ${chineseTopic[1]}`.trim();
+  if (chineseTopic) return chineseTopic[1].trim();
+  if (techToken) return techToken[0];
+
+  return truncateByCharacters(cleanBlogFactoryTitle(summary || titleTopic || content), 10, "");
+}
+
+function renderBlogFactoryCoverPromptTemplate(template: string, values: { title: string; summary: string; topic: string }) {
+  return template
+    .replace(/\{\{\s*title\s*\}\}/g, values.title)
+    .replace(/\{\{\s*summary\s*\}\}/g, values.summary)
+    .replace(/\{\{\s*topic\s*\}\}/g, values.topic)
+    .trim();
+}
+
+function fitBlogFactorySummary(value: string, maxLength: number, targetLength: number) {
+  const cleaned = cleanBlogFactoryAssistPhrase(value);
+  const chars = Array.from(cleaned);
+  const preferredMaxLength = Math.min(maxLength, targetLength + 15);
+  if (chars.length <= preferredMaxLength) return cleaned;
+
+  const punctuationIndexes = chars
+    .map((char, index) => ("。！？!?；;".includes(char) ? index + 1 : -1))
+    .filter((index) => index >= Math.min(targetLength, maxLength));
+  const sentenceEnd = punctuationIndexes.find((index) => index <= preferredMaxLength) ?? punctuationIndexes.find((index) => index <= maxLength);
+  if (sentenceEnd) return chars.slice(0, sentenceEnd).join("").trim();
+
+  const commaIndexes = chars
+    .map((char, index) => ("，,、".includes(char) ? index + 1 : -1))
+    .filter((index) => index >= Math.min(targetLength, maxLength) && index <= Math.min(maxLength - 3, preferredMaxLength));
+  const commaEnd = commaIndexes[0];
+  if (commaEnd) return `${chars.slice(0, commaEnd).join("").trim()}...`;
+
+  return truncateByCharacters(cleaned, Math.min(maxLength, Math.max(targetLength, 12)), "...");
+}
+
+function truncateByCharacters(value: string, maxLength: number, suffix = "…") {
+  const chars = Array.from(value.trim());
+  if (chars.length <= maxLength) return value.trim();
+  return `${chars.slice(0, Math.max(0, maxLength - Array.from(suffix).length)).join("").trim()}${suffix}`;
 }
 
 function sanitizeDownloadBaseName(value: string) {
