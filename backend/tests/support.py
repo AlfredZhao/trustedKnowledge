@@ -13,6 +13,7 @@ def prepare_backend_imports() -> None:
     if "oracledb" not in sys.modules:
         sys.modules["oracledb"] = types.SimpleNamespace(
             NUMBER=object(),
+            DB_TYPE_CLOB=object(),
             Error=Exception,
             AsyncConnection=object,
             AsyncConnectionPool=object,

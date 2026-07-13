@@ -1,6 +1,6 @@
 # 前端界面与展示配置概览
 
-最近评估日期：2026-07-12
+最近评估日期：2026-07-13
 
 本文档维护当前前端界面布局、已实现功能，以及可以安全手工调整的纯前端展示配置。后续如果前端导航、页面布局、模块可见性、默认展示数量、分页方式或纯展示行为发生变化，需要在同一次变更中更新本文档。
 
@@ -99,17 +99,17 @@
 数据来源：
 
 - `fetchLlmUsage(USAGE_SAMPLE_LIMIT, false)`
-- `fetchTodos({ username: authUser.username, status: "处理中", limit: OVERVIEW_TODO_LIMIT, offset: 0, includeTotal: false })`
-- `fetchKnowledge({ username: authUser.username, status: "未发布", limit: OVERVIEW_KNOWLEDGE_LIMIT, offset: 0, includeTotal: false })`
+- `fetchTodos({ username: authUser.username, status: "处理中", limit: OVERVIEW_TODO_LIMIT, offset: 0, includeTotal: true })`
+- `fetchKnowledge({ username: authUser.username, status: "未发布", limit: OVERVIEW_KNOWLEDGE_LIMIT, offset: 0, includeTotal: true })`
 - `fetchEnglishMaterials({ username: authUser.username, sortBy: "id", sortDir: "desc", limit: 1, offset: 0, includeTotal: false })`
 
 当前行为：
 
 - 总览内各模块目前不分页。
-- 总览 Todo 只显示 `处理中` 状态。
+- 总览 Todo 只显示 `处理中` 状态，指标卡显示该状态的精确总数，列表仍只展示最近 `OVERVIEW_TODO_LIMIT` 条。
 - English 模块只显示最新 1 条。
-- 可信知识模块只显示 `未发布` 状态，并使用 `OVERVIEW_KNOWLEDGE_LIMIT` 控制卡片数量。
-- 总览卡片不再展示这些模块的精确总数；指标卡显示的是当前已加载条数或最近一条素材标识，以避免首页额外执行 `count(*)`。
+- 可信知识模块只显示 `未发布` 状态，指标卡显示未发布知识精确总数，列表使用 `OVERVIEW_KNOWLEDGE_LIMIT` 控制卡片数量。
+- English 和 LLM 用量仍使用轻量读取；English 指标显示最近一条素材标识或当前已加载条数。
 - 总览中的 Todo、可信知识和英语素材会固定收敛到当前登录用户名，只展示“我自己的数据”；不会再默认汇总其他可见用户的数据。
 - 分区失败会独立展示错误，一个数据源失败不会阻断整个总览。
 - 点击卡片会跳转到对应完整工作区，并在支持的页面中选中对应记录。
@@ -247,11 +247,13 @@
 - 筛选区使用 `清空筛选条件` 按钮来重置当前筛选；用户筛选会回到 `全部可见用户` / `全部用户`，单用户范围保持锁定。
 - 编辑任务目标、任务内容、来源、标签和状态。
 - `任务内容` 编辑器支持选择本机图片和粘贴剪贴板图片；上传成功后自动插入 Markdown 图片语法，后续转为可信知识时会随正文保留。
+- `保存待办事项` 对后端连接失败会显示明确错误；新建和更新请求如果超过 15 秒没有响应，会退出等待状态并提示检查后端服务。后端按 Oracle CLOB 写入任务目标和任务内容；更新前会先尝试获取当前 Todo 行锁，若该记录被其它事务占用超过 5 秒，会返回冲突提示让用户稍后重试。
 - 当前选中 Todo 的未保存修改会按事项 ID 暂存在前端本地状态中；切换到其他 Todo、翻页后再切回原事项时，会恢复之前尚未保存的编辑内容，而不是直接回退到服务端值。
 - 编辑区会在存在未保存修改时显示明确提示，说明当前仅为本地暂存，仍需点击 `保存待办事项` 才会提交到后端。
 - 复制当前 Todo 标题和内容。
 - 将选中 Todo 转为可信知识。
 - 当状态从非 `已完成` 改为 `已完成` 时，会弹出“追加已完成待办”对话框；除用户、类型外，也可直接选择目标当前记录的 `Week` 和 `Day`，在追加内容时同步推进进度。
+- “追加已完成待办”对话框有独立错误提示区；准备当前记录选项、匹配目标记录或确认追加失败时，错误保留在弹窗内，不再混入 Todo 编辑表单的保存错误提示。
 - 支持上一条/下一条，并可跨当前分页边界切换。
 - Todo 列表、详情、编辑和转换都按当前登录用户可见范围过滤。
 - 普通用户默认筛到自己的 Todo，可切换查看孩子或全部可见用户记录。
@@ -454,7 +456,7 @@
 | `ENGLISH_MATERIALS_PAGE_SIZE` | 10 | 英语素材列表 | 是 | 用于列表范围显示和后端 `limit`。 |
 | `HISTORY_PAGE_SIZE` | 10 | 历史查询列表 | 是 | 用于列表范围显示和后端 `limit`。 |
 | `USAGE_SAMPLE_LIMIT` | 72 | 总览和 AI 用量采样 | 无分页 UI | 数量越多，趋势图可能越密。 |
-| `OVERVIEW_TODO_LIMIT` | 5 | 总览 `处理中 Todo` 卡片 | 否 | 状态固定为 `处理中`。 |
+| `OVERVIEW_TODO_LIMIT` | 5 | 总览 `处理中 Todo` 卡片 | 否 | 状态固定为 `处理中`；指标总数来自查询响应的 `total`。 |
 | `OVERVIEW_KNOWLEDGE_LIMIT` | 5 | 总览最近知识和未发布知识请求 | 否 | 最近知识卡片使用该值；未发布知识总数来自查询响应的 `total`。 |
 
 手工修改示例:

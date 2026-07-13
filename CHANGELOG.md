@@ -41,6 +41,21 @@ The format follows the common GitHub changelog convention inspired by
 - Fixed the desktop Todo workspace editor sizing so the `待办事项列表` panel is narrower, the `编辑待办事项` panel is wider, and the `任务内容` editor is taller for more comfortable multi-line editing.
 - 修复待办事项工作台的桌面端编辑区尺寸：缩窄 `待办事项列表` 面板、加宽 `编辑待办事项` 面板，并提高 `任务内容` 编辑框高度，让多行内容编辑更顺手。
 
+- Fixed Todo completion handling so failures while preparing or confirming the `追加已完成待办` dialog no longer appear as `保存待办事项` failures after the Todo update itself has succeeded.
+- 修复 Todo 完成后的提示归属：准备或确认 `追加已完成待办` 弹窗失败时，不再显示成 `保存待办事项` 失败，避免保存已成功却被误报为保存报错。
+
+- Fixed Todo save handling for transient browser-side `Failed to fetch` errors by retrying the idempotent update request once and replacing the raw browser message with a clearer backend connectivity prompt if it still fails.
+- 修复 Todo 保存遇到浏览器侧短暂 `Failed to fetch` 或长时间无响应的处理：对幂等更新请求自动重试一次，并为保存请求增加 15 秒超时；若仍失败，改为提示后端连接/响应异常，而不是直接暴露浏览器原始报错或让按钮一直停在保存中。
+
+- Fixed Todo updates for records locked by another Oracle transaction by acquiring the row with `for update wait 5` before writing and returning a clear conflict message instead of letting one locked item keep the save button spinning.
+- 修复某条 Todo 被其它 Oracle 事务锁住时保存一直转圈的问题：写入前先用 `for update wait 5` 获取行锁，锁等待超时会返回明确冲突提示，而不是让单条记录无限保存中。
+
+- Fixed Todo create/update persistence for SQL-heavy or diagnostic text by binding `title` and `content` explicitly as Oracle CLOBs and adding the same 15-second timeout guard to Todo creation.
+- 修复包含 SQL 片段、诊断日志等文本的 Todo 新建/更新保存问题：`title` 和 `content` 明确按 Oracle CLOB 绑定写入，并为新建 Todo 也增加 15 秒超时保护。
+
+- Fixed the Overview `处理中 Todo` and `未发布知识` metric cards so they show exact totals while their lists still render only the latest cards.
+- 修复总览 `处理中 Todo` 和 `未发布知识` 指标卡：顶部数字改为显示精确总数，列表仍只展示最近几条卡片。
+
 - Fixed `scripts/commit-to-github.sh` release mode so it now promotes the `Unreleased` notes into the requested version instead of renaming the previous release section, then reopens a blank local `Unreleased` block after the tag push.
 - 修复 `scripts/commit-to-github.sh` 的发布逻辑：发布时现在会把 `Unreleased` 变更提升为目标版本，而不是把上一版的版本标题直接改名；推送 tag 后再在本地重新打开空白 `Unreleased` 区块。
 

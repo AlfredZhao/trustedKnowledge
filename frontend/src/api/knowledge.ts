@@ -243,6 +243,8 @@ export async function createTodo(draft: TodoDraft): Promise<TodoItem> {
   return request<TodoItem>("/api/todos", {
     method: "POST",
     invalidatePrefixes: ["/api/todos"],
+    timeoutMs: 15000,
+    timeoutErrorMessage: "待办事项创建请求超过 15 秒未响应，请确认后端服务可用后重试。",
     body: JSON.stringify({
       title: draft.title,
       content: draft.content,
@@ -261,6 +263,10 @@ export async function updateTodo(id: number, draft: TodoDraft): Promise<TodoItem
   return request<TodoItem>(`/api/todos/${id}`, {
     method: "PATCH",
     invalidatePrefixes: ["/api/todos"],
+    retryOnNetworkError: true,
+    networkErrorMessage: "待办事项保存请求未连接到后端，请检查网络连接或刷新页面后重试。",
+    timeoutMs: 15000,
+    timeoutErrorMessage: "待办事项保存请求超过 15 秒未响应，请确认后端服务可用后重试。",
     body: JSON.stringify({
       title: draft.title,
       content: draft.content,

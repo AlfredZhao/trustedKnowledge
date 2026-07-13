@@ -70,6 +70,7 @@ export default function OverviewDashboard({
     latestUsage ||
     data.processingTodos.length > 0 ||
     data.recentKnowledge.length > 0 ||
+    data.processingTodoTotal > 0 ||
     latestEnglish ||
     data.knowledgeTotal > 0 ||
     data.englishMaterialTotal > 0;
@@ -151,8 +152,18 @@ export default function OverviewDashboard({
             onAction={() => onOpenView("usage")}
           />
         ) : null}
-        <MetricTile icon={<ClipboardCheck size={17} />} label="处理中 Todo" value={formatAmount(data.processingTodos.length)} detail="总览仅读取最近几条" />
-        <MetricTile icon={<BookOpenCheck size={17} />} label="未发布知识" value={formatAmount(data.recentKnowledge.length)} detail="总览仅读取最近几条" />
+        <MetricTile
+          icon={<ClipboardCheck size={17} />}
+          label="处理中 Todo"
+          value={formatAmount(data.processingTodoTotal)}
+          detail={data.processingTodos.length > 0 ? `列表显示最近 ${formatAmount(data.processingTodos.length)} 条` : "暂无处理中"}
+        />
+        <MetricTile
+          icon={<BookOpenCheck size={17} />}
+          label="未发布知识"
+          value={formatAmount(data.unpublishedKnowledgeTotal)}
+          detail={data.recentKnowledge.length > 0 ? `列表显示最近 ${formatAmount(data.recentKnowledge.length)} 条` : "暂无未发布"}
+        />
         <MetricTile icon={<FileText size={17} />} label="English 素材" value={latestEnglish?.sequence_no ? `#${latestEnglish.sequence_no}` : formatAmount(data.englishMaterialTotal)} detail={latestEnglish ? "最近 1 条" : "暂无最近素材"} />
       </div>
 

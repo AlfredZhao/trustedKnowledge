@@ -4,7 +4,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.schemas.current_records import DayValue, WeekValue
-from app.schemas.validators import normalize_optional_short_text, normalize_optional_topic_tag
+from app.schemas.validators import CONTROL_CHAR_PATTERN, normalize_optional_short_text, normalize_optional_topic_tag
 
 
 TodoStatus = Literal["待处理", "处理中", "已完成"]
@@ -23,6 +23,8 @@ class TodoBase(BaseModel):
         stripped = value.strip()
         if not stripped:
             raise ValueError("Field cannot be blank")
+        if CONTROL_CHAR_PATTERN.search(stripped):
+            raise ValueError("Field cannot contain control characters")
         return stripped
 
     @field_validator("source", mode="before")
@@ -55,6 +57,8 @@ class TodoUpdate(BaseModel):
         stripped = value.strip()
         if not stripped:
             raise ValueError("Field cannot be blank")
+        if CONTROL_CHAR_PATTERN.search(stripped):
+            raise ValueError("Field cannot contain control characters")
         return stripped
 
     @field_validator("source", mode="before")

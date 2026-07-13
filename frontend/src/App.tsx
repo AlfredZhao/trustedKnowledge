@@ -674,6 +674,7 @@ function App() {
     week: "",
     day: "",
   });
+  const [todoCurrentAppendError, setTodoCurrentAppendError] = useState<string | null>(null);
   const [isTodoCurrentAppendOptionsLoading, setIsTodoCurrentAppendOptionsLoading] = useState(false);
   const [isAppendingTodoToCurrent, setIsAppendingTodoToCurrent] = useState(false);
   const todoCurrentAppendRequestRef = useRef(0);
@@ -1520,6 +1521,7 @@ function App() {
   useEffect(() => {
     setTodoCopyError(null);
     setHasCopiedTodoContent(false);
+    setTodoCurrentAppendError(null);
   }, [selectedTodoId]);
 
   useEffect(() => {
@@ -2185,14 +2187,14 @@ function App() {
       status: "处理中" as const,
       limit: OVERVIEW_TODO_LIMIT,
       offset: 0,
-      includeTotal: false,
+      includeTotal: true,
     };
     const unpublishedKnowledgeQueryConfig = {
       username: overviewUsername,
       status: "未发布" as const,
       limit: OVERVIEW_KNOWLEDGE_LIMIT,
       offset: 0,
-      includeTotal: false,
+      includeTotal: true,
     };
     const latestEnglishMaterialQueryConfig = {
       username: overviewUsername,
@@ -2218,10 +2220,10 @@ function App() {
         usageItems: cachedUsage.items,
         usageTotal: cachedUsage.items.length,
         processingTodos: cachedTodos.items,
-        processingTodoTotal: cachedTodos.items.length,
+        processingTodoTotal: cachedTodos.total,
         recentKnowledge: cachedUnpublishedKnowledge.items,
-        knowledgeTotal: cachedUnpublishedKnowledge.items.length,
-        unpublishedKnowledgeTotal: cachedUnpublishedKnowledge.items.length,
+        knowledgeTotal: cachedUnpublishedKnowledge.total,
+        unpublishedKnowledgeTotal: cachedUnpublishedKnowledge.total,
         latestEnglishMaterial: cachedEnglishMaterial.items[0] ?? null,
         englishMaterialTotal: cachedEnglishMaterial.items.length,
       });
@@ -2275,7 +2277,7 @@ function App() {
             next = {
               ...next,
               processingTodos: todoResult.value.items,
-              processingTodoTotal: todoResult.value.items.length,
+              processingTodoTotal: todoResult.value.total,
             };
           }
 
@@ -2283,8 +2285,8 @@ function App() {
             next = {
               ...next,
               recentKnowledge: unpublishedKnowledgeResult.value.items,
-              knowledgeTotal: unpublishedKnowledgeResult.value.items.length,
-              unpublishedKnowledgeTotal: unpublishedKnowledgeResult.value.items.length,
+              knowledgeTotal: unpublishedKnowledgeResult.value.total,
+              unpublishedKnowledgeTotal: unpublishedKnowledgeResult.value.total,
             };
           }
 
@@ -3329,6 +3331,7 @@ function App() {
     setPendingTodoCurrentAppend(null);
     setTodoCurrentAppendTarget({ username: "", type: "", week: "", day: "" });
     setTodoCurrentAppendMatchedPoint({ week: "", day: "" });
+    setTodoCurrentAppendError(null);
     setIsTodoCurrentAppendOptionsLoading(false);
   }
 
@@ -3342,6 +3345,7 @@ function App() {
 
     const requestId = ++todoCurrentAppendRequestRef.current;
     setIsTodoCurrentAppendOptionsLoading(true);
+    setTodoCurrentAppendError(null);
     try {
       const response = await fetchCurrentRecords({
         username: nextTarget.username,
@@ -3359,7 +3363,7 @@ function App() {
         setTodoCurrentAppendTarget((current) =>
           current.username === nextTarget.username && current.type === nextTarget.type ? { ...current, week: "", day: "" } : current,
         );
-        setTodoSaveError("未找到对应的当前记录，请先检查用户和类型。");
+        setTodoCurrentAppendError("未找到对应的当前记录，请先检查用户和类型。");
         return;
       }
 
@@ -3375,7 +3379,7 @@ function App() {
       );
     } catch (error) {
       if (todoCurrentAppendRequestRef.current !== requestId) return;
-      setTodoSaveError(error instanceof Error ? error.message : "当前记录读取失败，请稍后重试。");
+      setTodoCurrentAppendError(error instanceof Error ? error.message : "当前记录读取失败，请稍后重试。");
     } finally {
       if (todoCurrentAppendRequestRef.current === requestId) {
         setIsTodoCurrentAppendOptionsLoading(false);
@@ -3385,7 +3389,7 @@ function App() {
 
   function handleTodoCurrentAppendTargetChange(nextTarget: CurrentAppendTarget) {
     if (nextTarget.username !== todoCurrentAppendTarget.username || nextTarget.type !== todoCurrentAppendTarget.type) {
-      setTodoSaveError(null);
+      setTodoCurrentAppendError(null);
       void hydrateTodoCurrentAppendTarget(currentRecordOptions, nextTarget);
       return;
     }
@@ -3395,7 +3399,7 @@ function App() {
 
   async function prepareTodoCurrentAppend(todo: TodoItem) {
     setPendingTodoCurrentAppend(todo);
-    setTodoSaveError(null);
+    setTodoCurrentAppendError(null);
 
     const cached = readCachedCurrentRecordOptions();
     if (cached) {
@@ -3411,7 +3415,7 @@ function App() {
       setCurrentRecordOptions(options);
       void hydrateTodoCurrentAppendTarget(options, todoCurrentAppendTargetRef.current);
     } catch (error) {
-      setTodoSaveError(error instanceof Error ? error.message : "当前记录选项读取失败，请稍后重试。");
+      setTodoCurrentAppendError(error instanceof Error ? error.message : "当前记录选项读取失败，请稍后重试。");
     }
   }
 
@@ -3428,7 +3432,7 @@ function App() {
     }
 
     setIsAppendingTodoToCurrent(true);
-    setTodoSaveError(null);
+    setTodoCurrentAppendError(null);
     try {
       const updated = await appendTodoToCurrent({
         id: pendingTodoCurrentAppend.id,
@@ -3445,7 +3449,7 @@ function App() {
       setCurrentRecordRefreshToken((current) => current + 1);
       resetTodoCurrentAppendState();
     } catch (error) {
-      setTodoSaveError(error instanceof Error ? error.message : "追加到当前记录失败，请稍后重试。");
+      setTodoCurrentAppendError(error instanceof Error ? error.message : "追加到当前记录失败，请稍后重试。");
     } finally {
       setIsAppendingTodoToCurrent(false);
     }
@@ -5017,6 +5021,7 @@ function App() {
         }}
       />
       <TodoCurrentAppendDialog
+        error={todoCurrentAppendError}
         isLoadingOptions={isTodoCurrentAppendOptionsLoading}
         isOpen={pendingTodoCurrentAppend !== null}
         isPending={isAppendingTodoToCurrent}
@@ -6599,6 +6604,7 @@ function BlogPublishDialog({
 }
 
 function TodoCurrentAppendDialog({
+  error,
   isOpen,
   isLoadingOptions,
   isPending,
@@ -6609,6 +6615,7 @@ function TodoCurrentAppendDialog({
   onConfirm,
   onTargetChange,
 }: {
+  error: string | null;
   isOpen: boolean;
   isLoadingOptions: boolean;
   isPending: boolean;
@@ -6738,6 +6745,13 @@ function TodoCurrentAppendDialog({
           {isLoadingOptions ? <Loader2 className="mt-0.5 shrink-0 animate-spin" size={17} /> : <FilePlus2 className="mt-0.5 shrink-0" size={17} />}
           <span>确认后会把任务目标和任务内容追加到所选当前记录的 CONTENT 最前面，并按你的选择同步更新 Week / Day。</span>
         </div>
+
+        {error ? (
+          <div className="mb-5 flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100">
+            <TriangleAlert className="mt-0.5 shrink-0 text-red-300" size={17} />
+            <span>{error}</span>
+          </div>
+        ) : null}
 
         <div className="grid gap-3 sm:grid-cols-2">
           <button

@@ -11,6 +11,10 @@ const pendingGetRequests = new Map<string, Promise<unknown>>();
 
 export interface ApiRequestOptions extends RequestInit {
   invalidatePrefixes?: string[];
+  retryOnNetworkError?: boolean;
+  networkErrorMessage?: string;
+  timeoutMs?: number;
+  timeoutErrorMessage?: string;
 }
 
 export function buildQuery(values: Record<string, string | number | boolean | null | undefined>): string {
@@ -57,9 +61,35 @@ export async function readErrorMessage(response: Response): Promise<string | nul
 export async function request<T>(path: string, options?: ApiRequestOptions): Promise<T> {
   const method = options?.method ?? "GET";
   const cacheKey = method === "GET" ? buildApiCacheKey(path, readStoredApiKey()) : null;
-  const { invalidatePrefixes, ...fetchOptions } = options ?? {};
+  const {
+    invalidatePrefixes,
+    retryOnNetworkError = false,
+    networkErrorMessage,
+    timeoutMs,
+    timeoutErrorMessage,
+    ...fetchOptions
+  } = options ?? {};
   const executeRequest = async () => {
-    const response = await authFetch(path, fetchOptions);
+    const controller = timeoutMs && !fetchOptions.signal ? new AbortController() : null;
+    const timeoutId = controller
+      ? window.setTimeout(() => {
+          controller.abort();
+        }, timeoutMs)
+      : null;
+    let response: Response;
+
+    try {
+      response = await authFetch(path, controller ? { ...fetchOptions, signal: controller.signal } : fetchOptions);
+    } catch (error) {
+      if (isRequestAbortError(error) && timeoutErrorMessage) {
+        throw new Error(timeoutErrorMessage);
+      }
+      throw error;
+    } finally {
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+      }
+    }
 
     if (!response.ok) {
       if (response.status === 401) {
@@ -84,7 +114,20 @@ export async function request<T>(path: string, options?: ApiRequestOptions): Pro
   };
 
   if (method !== "GET" || fetchOptions.signal) {
-    return executeRequest();
+    try {
+      return await executeRequest();
+    } catch (error) {
+      if (!retryOnNetworkError || !isNetworkRequestError(error)) throw error;
+      await delay(350);
+      try {
+        return await executeRequest();
+      } catch (retryError) {
+        if (isNetworkRequestError(retryError) && networkErrorMessage) {
+          throw new Error(networkErrorMessage);
+        }
+        throw retryError;
+      }
+    }
   }
 
   const dedupeKey = `${readStoredApiKey() ?? "anonymous"}:${path}`;
@@ -114,4 +157,18 @@ export function apiUrl(path: string) {
 
 function isValidationDetail(value: unknown): value is { msg: string } {
   return typeof value === "object" && value !== null && "msg" in value;
+}
+
+function isNetworkRequestError(error: unknown) {
+  return error instanceof TypeError || (error instanceof Error && error.message === "Failed to fetch");
+}
+
+function isRequestAbortError(error: unknown) {
+  return error instanceof DOMException && error.name === "AbortError";
+}
+
+function delay(ms: number) {
+  return new Promise<void>((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
 }

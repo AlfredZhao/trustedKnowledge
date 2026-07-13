@@ -7,7 +7,7 @@ from app.api.errors import oracle_http_exception
 from app.core.security import require_current_user
 from app.repositories.conversions import convert_todo_to_knowledge
 from app.repositories.current_records import prepend_todo_to_current_content
-from app.repositories.todos import create_todo, get_todo_by_id, list_todos, update_todo
+from app.repositories.todos import TodoUpdateLocked, create_todo, get_todo_by_id, list_todos, update_todo
 from app.repositories.users import AuthContext
 from app.schemas.current_records import CurrentRecordItem
 from app.schemas.knowledge import KnowledgeItem
@@ -128,6 +128,8 @@ async def patch_todo(
 ) -> TodoItem:
     try:
         item = await update_todo(todo_id, payload, auth_context)
+    except TodoUpdateLocked as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except oracledb.Error as exc:
         raise oracle_http_exception(exc, "Oracle rejected the todo update") from exc
 

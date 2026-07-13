@@ -28,6 +28,10 @@ _table_ready = False
 logger = logging.getLogger(__name__)
 
 
+class TodoUpdateLocked(RuntimeError):
+    pass
+
+
 def _row_to_dict(row: Any) -> dict[str, Any]:
     return {
         "id": row[0],
@@ -235,6 +239,7 @@ async def create_todo(payload: TodoCreate, auth_context: AuthContext) -> dict[st
     async with acquire_connection() as connection:
         await _ensure_todo_table(connection)
         cursor = connection.cursor()
+        _set_todo_lob_input_sizes(cursor)
         new_id = cursor.var(oracledb.NUMBER)
         await cursor.execute(
             sql,
@@ -265,17 +270,38 @@ async def update_todo(todo_id: int, payload: TodoUpdate, auth_context: AuthConte
     assignments = [f"{column} = :{column}" for column in values]
     assignments.append("updated_at = systimestamp")
     params = {**values, "todo_id": todo_id}
-    clauses = ["id = :todo_id"]
-    append_user_visibility_clause(clauses, params, auth_context, "user_id")
+    lock_params: dict[str, Any] = {"todo_id": todo_id}
+    lock_clauses = ["id = :todo_id"]
+    append_user_visibility_clause(lock_clauses, lock_params, auth_context, "user_id")
+    update_clauses = ["id = :todo_id"]
+    append_user_visibility_clause(update_clauses, params, auth_context, "user_id")
+    lock_sql = f"""
+        select id
+        from ai_todo_items
+        where {" and ".join(lock_clauses)}
+        for update wait 5
+    """
     sql = f"""
         update ai_todo_items
         set {", ".join(assignments)}
-        where {" and ".join(clauses)}
+        where {" and ".join(update_clauses)}
     """
 
     async with acquire_connection() as connection:
         await _ensure_todo_table(connection)
         cursor = connection.cursor()
+        _set_todo_lob_input_sizes(cursor)
+        try:
+            await cursor.execute(lock_sql, lock_params)
+        except oracledb.Error as exc:
+            if _is_lock_timeout_error(exc):
+                await connection.rollback()
+                raise TodoUpdateLocked("待办事项正在被另一个保存请求占用，请稍后重试。") from exc
+            raise
+        locked_row = await cursor.fetchone()
+        if locked_row is None:
+            await connection.rollback()
+            return None
         await cursor.execute(sql, params)
         if cursor.rowcount == 0:
             await connection.rollback()
@@ -283,3 +309,14 @@ async def update_todo(todo_id: int, payload: TodoUpdate, auth_context: AuthConte
         await connection.commit()
 
     return await get_todo_by_id(todo_id, auth_context)
+
+
+def _is_lock_timeout_error(exc: oracledb.Error) -> bool:
+    error = exc.args[0] if exc.args else exc
+    code = getattr(error, "code", None)
+    message = getattr(error, "message", str(exc))
+    return code == 30006 or "ORA-30006" in message
+
+
+def _set_todo_lob_input_sizes(cursor: Any) -> None:
+    cursor.setinputsizes(title=oracledb.DB_TYPE_CLOB, content=oracledb.DB_TYPE_CLOB)
