@@ -23,6 +23,7 @@
 - Mobile views must keep core navigation and actions reachable.
 - After frontend changes, run `cd frontend && npm run build` when feasible.
 - For important feature changes, bug fixes, or project-rule updates, update `CHANGELOG.md` in the current in-progress section under `## 本次版本更新`, using `Added`, `Changed`, or `Fixed` entries. Do not add entries to already released version sections.
+- For bug fixes with meaningful regression risk, add or update an entry in `docs/regression-notes.md` with the symptom, trigger, root cause, safe pattern, and guardrail test.
 - For frontend layout, navigation, display count, pagination, or pure presentation behavior changes, update `docs/frontend-overview.md` in the same change.
 - For UI changes involving navigation, filters, pagination, theme, loading states, dialogs, or reusable controls, check the same interaction pattern across related modules instead of fixing only the currently reported screen.
 - For UI fixes that can affect presentation states, verify desktop/mobile behavior and dark/light theme behavior when those modes exist, including dialog, loading, and empty-state readability.

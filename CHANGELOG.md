@@ -9,9 +9,12 @@ The format follows the common GitHub changelog convention inspired by
 
 ## 本次版本更新
 
-### [Unreleased]
+### [0.3.5] - 2026-07-14
 
 #### Added / 新增
+
+- Added `docs/regression-notes.md` for documenting high-risk bug patterns, including the Todo Oracle CLOB binding order issue and its guardrail test.
+- 新增 `docs/regression-notes.md`，用于记录高复发风险的 bug 模式；首条记录覆盖 Todo Oracle CLOB 绑定顺序问题及对应防回归测试。
 
 - Added local Markdown image uploads for trusted knowledge and Todo content editors, including file-picker uploads, pasted clipboard images, Oracle-backed media metadata, and opaque `/api/media/.../content` image URLs stored in the Markdown body.
 - 为可信知识和 Todo 正文编辑新增本地 Markdown 图片上传能力：支持选择本机图片、直接粘贴剪贴板图片，后端在 Oracle 中记录媒体元数据，并把不可猜测的 `/api/media/.../content` 图片地址写入 Markdown 正文。
@@ -26,6 +29,9 @@ The format follows the common GitHub changelog convention inspired by
 - 为博客工厂任务内容辅助区新增封面图片区域，支持上传文件或粘贴剪贴板图片，图片仍走现有媒体存储链路，并以 Markdown 图片格式写回任务内容草稿。
 
 #### Changed / 变更
+
+- Changed the project development guide to require regression-note entries for bug fixes with meaningful recurrence risk.
+- 调整项目开发规范：修复存在明显复发风险的 bug 时，需要同步补充防回归记录。
 
 - Removed the Blog Factory title-candidate assist action, leaving the content assist area focused on summary extraction, cover image handling, and cover prompt generation.
 - 移除博客工厂标题候选辅助操作，让内容辅助区聚焦摘要提取、封面图片处理和封面提示词生成。
@@ -52,6 +58,9 @@ The format follows the common GitHub changelog convention inspired by
 
 - Fixed Todo create/update persistence for SQL-heavy or diagnostic text by binding `title` and `content` explicitly as Oracle CLOBs and adding the same 15-second timeout guard to Todo creation.
 - 修复包含 SQL 片段、诊断日志等文本的 Todo 新建/更新保存问题：`title` 和 `content` 明确按 Oracle CLOB 绑定写入，并为新建 Todo 也增加 15 秒超时保护。
+
+- Fixed Todo partial updates so Oracle CLOB input sizes are declared only for fields present in the generated update SQL and only immediately before that update executes, avoiding `DPY-4008` errors during the row-lock query.
+- 修复 Todo 局部更新的 Oracle CLOB 绑定：现在只会为本次更新 SQL 中实际出现的字段声明输入类型，并且只在真正执行更新前声明，避免行锁查询阶段触发 `DPY-4008`。
 
 - Fixed the Overview `处理中 Todo` and `未发布知识` metric cards so they show exact totals while their lists still render only the latest cards.
 - 修复总览 `处理中 Todo` 和 `未发布知识` 指标卡：顶部数字改为显示精确总数，列表仍只展示最近几条卡片。

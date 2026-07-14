@@ -5,6 +5,8 @@ from tests.support import prepare_backend_imports
 
 prepare_backend_imports()
 
+import oracledb
+
 from app.repositories import todos
 from app.repositories.users import AuthContext
 from app.schemas.todos import TodoUpdate
@@ -16,8 +18,14 @@ class FakeCursor:
         self.rowcount = rowcount
         self.executed: list[tuple[str, dict | None]] = []
         self.input_sizes: dict | None = None
+        self.input_size_history: list[dict] = []
 
     async def execute(self, sql: str, params: dict | None = None) -> None:
+        if self.input_sizes is not None:
+            lowered_sql = sql.lower()
+            for name in self.input_sizes:
+                if f":{name.lower()}" not in lowered_sql:
+                    raise oracledb.Error(f'no bind placeholder named ":{name}" was found in the SQL text')
         self.executed.append((sql, params))
 
     async def fetchone(self):
@@ -25,6 +33,7 @@ class FakeCursor:
 
     def setinputsizes(self, **kwargs) -> None:
         self.input_sizes = kwargs
+        self.input_size_history.append(kwargs)
 
     def var(self, _type):
         class FakeVar:
@@ -105,6 +114,26 @@ class TodoRepositoryTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("title", cursor.input_sizes)
         self.assertIn("content", cursor.input_sizes)
         self.assertIn("insert into ai_todo_items", cursor.executed[0][0].lower())
+
+    async def test_update_todo_binds_only_lobs_present_in_sql(self) -> None:
+        cursor = FakeCursor(fetch_rows=[(42,)])
+        connection = FakeConnection(cursor)
+        expected = {"id": 42, "title": "title", "content": "updated", "source": None, "topic_tag": None, "todo_status": "处理中"}
+
+        with (
+            patch("app.repositories.todos.acquire_connection", return_value=FakeAcquire(connection)),
+            patch("app.repositories.todos._ensure_todo_table", new=AsyncMock()),
+            patch("app.repositories.todos.get_todo_by_id", new=AsyncMock(return_value=expected)),
+        ):
+            result = await todos.update_todo(42, TodoUpdate(content="updated"), self.auth)
+
+        self.assertEqual(result, expected)
+        self.assertTrue(connection.committed)
+        self.assertIsNotNone(cursor.input_sizes)
+        self.assertIn("content", cursor.input_sizes)
+        self.assertNotIn("title", cursor.input_sizes)
+        self.assertIn("content = :content", cursor.executed[1][0].lower())
+        self.assertNotIn(":title", cursor.executed[1][0].lower())
 
     async def test_update_todo_rolls_back_when_visible_row_missing(self) -> None:
         cursor = FakeCursor(fetch_rows=[])

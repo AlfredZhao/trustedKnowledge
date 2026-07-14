@@ -1,3 +1,4 @@
+from collections.abc import Iterable
 from typing import Any
 
 import logging
@@ -290,7 +291,6 @@ async def update_todo(todo_id: int, payload: TodoUpdate, auth_context: AuthConte
     async with acquire_connection() as connection:
         await _ensure_todo_table(connection)
         cursor = connection.cursor()
-        _set_todo_lob_input_sizes(cursor)
         try:
             await cursor.execute(lock_sql, lock_params)
         except oracledb.Error as exc:
@@ -302,6 +302,7 @@ async def update_todo(todo_id: int, payload: TodoUpdate, auth_context: AuthConte
         if locked_row is None:
             await connection.rollback()
             return None
+        _set_todo_lob_input_sizes(cursor, values.keys())
         await cursor.execute(sql, params)
         if cursor.rowcount == 0:
             await connection.rollback()
@@ -318,5 +319,8 @@ def _is_lock_timeout_error(exc: oracledb.Error) -> bool:
     return code == 30006 or "ORA-30006" in message
 
 
-def _set_todo_lob_input_sizes(cursor: Any) -> None:
-    cursor.setinputsizes(title=oracledb.DB_TYPE_CLOB, content=oracledb.DB_TYPE_CLOB)
+def _set_todo_lob_input_sizes(cursor: Any, fields: Iterable[str] = ("title", "content")) -> None:
+    lob_fields = set(fields) & {"title", "content"}
+    input_sizes = {field: oracledb.DB_TYPE_CLOB for field in ("title", "content") if field in lob_fields}
+    if input_sizes:
+        cursor.setinputsizes(**input_sizes)
