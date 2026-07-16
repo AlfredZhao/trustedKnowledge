@@ -13,9 +13,18 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Added / 新增
 
+- Added a personal secrets workspace for storing login credentials with per-user ownership, AES-GCM encrypted username/password/notes fields, searchable metadata, field-level copy, and full-record copy.
+- 新增个人机密工作区：支持按当前用户存储登录信息，用户名、密码和备注使用 AES-GCM 加密保存，并提供元数据搜索、字段单独复制和整体复制。
+
 #### Changed / 变更
 
+- Enhanced the Blog Factory cover-image prompt helper with structured configurable subject, composition, style, objects, material, lighting, camera, quality, and negative-prompt options while keeping editable templates.
+- 增强博客工厂封面生图提示词辅助：新增主题、构图、风格、元素、材质、灯光、镜头、质量和限制项的结构化配置，同时保留可编辑模板。
+
 #### Fixed / 修复
+
+- Fixed Personal Secrets copy actions so copied field buttons and the full-copy button briefly switch to `已复制` after successful clipboard writes.
+- 修复个人机密复制反馈：字段复制和整体复制成功后，对应按钮会短暂切换为 `已复制`。
 
 ### [0.3.5] - 2026-07-14
 

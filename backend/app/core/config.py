@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     skill_max_zip_mb: int = Field(20, validation_alias="TRUSTED_KNOWLEDGE_SKILL_MAX_ZIP_MB", ge=1)
     media_storage_dir: str = Field("data/media", validation_alias="TRUSTED_KNOWLEDGE_MEDIA_STORAGE_DIR")
     media_max_image_mb: int = Field(8, validation_alias="TRUSTED_KNOWLEDGE_MEDIA_MAX_IMAGE_MB", ge=1)
+    personal_secret_key: str = Field("", validation_alias="TRUSTED_KNOWLEDGE_PERSONAL_SECRET_KEY")
 
     model_config = SettingsConfigDict(
         env_file=".env",

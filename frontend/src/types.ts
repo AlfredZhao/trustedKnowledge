@@ -41,6 +41,31 @@ export interface TodoDraft {
   todo_status: TodoStatus;
 }
 
+export interface PersonalSecretItem {
+  id: number;
+  system_name: string;
+  login_url: string | null;
+  username_preview: string | null;
+  notes_preview: string | null;
+  tags: string | null;
+  has_username: boolean;
+  has_password: boolean;
+  has_notes: boolean;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface PersonalSecretDraft {
+  system_name: string;
+  login_url: string;
+  username: string;
+  password: string;
+  notes: string;
+  tags: string;
+}
+
+export type PersonalSecretRevealField = "system_name" | "login_url" | "username" | "password" | "notes" | "all";
+
 export interface BlogFactoryItem {
   id: number;
   knowledge_id: number;
@@ -113,6 +138,7 @@ export type AppView =
   | "factory"
   | "blogFactory"
   | "todos"
+  | "personalSecrets"
   | "currentRecords"
   | "history"
   | "englishMaterials"

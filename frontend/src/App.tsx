@@ -99,6 +99,15 @@ import {
   validateBlogPublishConfig,
   publishBlogFactoryArticle,
 } from "./api/knowledge";
+import {
+  createPersonalSecret,
+  deletePersonalSecret,
+  fetchPersonalSecrets,
+  getPersonalSecret,
+  readCachedPersonalSecrets,
+  revealPersonalSecret,
+  updatePersonalSecret,
+} from "./api/personalSecrets";
 import { fetchHistory, readCachedHistory } from "./api/history";
 import { askHistory, fetchHistoryAskLlmConfig, updateHistoryAskLlmConfig } from "./api/historyAsk";
 import { fetchCodexConfig, getCodexJob, getLatestCodexJobByOutputMode, startCodexJob } from "./api/codex";
@@ -162,6 +171,7 @@ import {
   OVERVIEW_KNOWLEDGE_LIMIT,
   OVERVIEW_TODO_LIMIT,
   PAGE_SIZE,
+  PERSONAL_SECRETS_PAGE_SIZE,
   TODO_PAGE_SIZE,
   USAGE_SAMPLE_LIMIT,
   type FunctionNavItem,
@@ -175,7 +185,9 @@ import {
 import { useDebouncedValue } from "./hooks/useDebouncedValue";
 import { invalidateApiCache } from "./api/client";
 import {
+  BLOG_FACTORY_COVER_PROMPT_OPTIONS,
   BLOG_FACTORY_MASK_TOGGLE_OPTIONS,
+  DEFAULT_BLOG_FACTORY_COVER_PROMPT_CONFIG,
   DEFAULT_BLOG_FACTORY_COVER_PROMPT_TEMPLATE,
   appendLogLine,
   applyBlogFactoryMaskRule,
@@ -229,6 +241,7 @@ import {
   isEmptyDraft,
   itemToDraft,
   maskSensitive,
+  normalizeBlogFactoryCoverPromptConfig,
   normalizeBlogFactoryMaskRule,
   normalizeCurrentRecordOptions,
   normalizeFactoryTaskResult,
@@ -256,6 +269,7 @@ import {
   writeStoredUiState,
   type AiCodingMessage,
   type AiCodingNoticeStatus,
+  type BlogFactoryCoverPromptConfig,
   type BlogFactoryArticleCopyMode,
   type BlogFactoryEditDraft,
   type BlogFactoryMaskRule,
@@ -305,6 +319,9 @@ import type {
   ManagedUserItem,
   ManagedUserRole,
   ManagedUserStatus,
+  PersonalSecretDraft,
+  PersonalSecretItem,
+  PersonalSecretRevealField,
   SkillDetail,
   SkillDraft,
   SkillFile,
@@ -331,6 +348,15 @@ const emptyTodoDraft: TodoDraft = {
   source: "",
   topic_tag: "",
   todo_status: "待处理",
+};
+
+const emptyPersonalSecretDraft: PersonalSecretDraft = {
+  system_name: "",
+  login_url: "",
+  username: "",
+  password: "",
+  notes: "",
+  tags: "",
 };
 
 const emptyEnglishMaterialDraft: EnglishMaterialDraft = {
@@ -608,6 +634,9 @@ function App() {
   const [blogFactoryArticleError, setBlogFactoryArticleError] = useState<string | null>(null);
   const [blogFactoryArticleCopiedMode, setBlogFactoryArticleCopiedMode] = useState<BlogFactoryArticleCopyMode | null>(null);
   const [blogFactoryCoverPromptTemplate, setBlogFactoryCoverPromptTemplate] = useState(restoredUiState.blogFactory.coverPromptTemplate);
+  const [blogFactoryCoverPromptConfig, setBlogFactoryCoverPromptConfig] = useState<BlogFactoryCoverPromptConfig>(
+    restoredUiState.blogFactory.coverPromptConfig,
+  );
   const [blogFactoryTaskCopyError, setBlogFactoryTaskCopyError] = useState<string | null>(null);
   const [hasCopiedBlogFactoryTask, setHasCopiedBlogFactoryTask] = useState(false);
   const [blogFactoryError, setBlogFactoryError] = useState<string | null>(null);
@@ -663,6 +692,22 @@ function App() {
   const [todoCopyError, setTodoCopyError] = useState<string | null>(null);
   const [hasCopiedTodoContent, setHasCopiedTodoContent] = useState(false);
   const [todoRefreshToken, setTodoRefreshToken] = useState(0);
+  const [personalSecretItems, setPersonalSecretItems] = useState<PersonalSecretItem[]>([]);
+  const [personalSecretTotal, setPersonalSecretTotal] = useState(0);
+  const [personalSecretPage, setPersonalSecretPage] = useState(restoredUiState.personalSecrets.page);
+  const [personalSecretQuery, setPersonalSecretQuery] = useState(restoredUiState.personalSecrets.query);
+  const debouncedPersonalSecretQuery = useDebouncedValue(personalSecretQuery.trim(), 320, () => setPersonalSecretPage(1));
+  const [selectedPersonalSecretId, setSelectedPersonalSecretId] = useState<number | null>(restoredUiState.personalSecrets.selectedId);
+  const [personalSecretDraft, setPersonalSecretDraft] = useState<PersonalSecretDraft>(emptyPersonalSecretDraft);
+  const [isPersonalSecretLoading, setIsPersonalSecretLoading] = useState(false);
+  const [isPersonalSecretDetailLoading, setIsPersonalSecretDetailLoading] = useState(false);
+  const [isPersonalSecretSaving, setIsPersonalSecretSaving] = useState(false);
+  const [isPersonalSecretDeleting, setIsPersonalSecretDeleting] = useState(false);
+  const [personalSecretError, setPersonalSecretError] = useState<string | null>(null);
+  const [personalSecretSaveError, setPersonalSecretSaveError] = useState<string | null>(null);
+  const [personalSecretCopyNotice, setPersonalSecretCopyNotice] = useState<string | null>(null);
+  const [personalSecretCopiedField, setPersonalSecretCopiedField] = useState<PersonalSecretRevealField | null>(null);
+  const [personalSecretRefreshToken, setPersonalSecretRefreshToken] = useState(0);
   const [pendingTodoCurrentAppend, setPendingTodoCurrentAppend] = useState<TodoItem | null>(null);
   const [todoCurrentAppendTarget, setTodoCurrentAppendTarget] = useState<CurrentAppendTarget>({
     username: "",
@@ -999,6 +1044,12 @@ function App() {
       setHasCopiedTodoContent(false);
       setIsConvertingTodoToKnowledge(false);
       setTodoDraftsById({});
+      setPersonalSecretItems([]);
+      setPersonalSecretTotal(0);
+      setSelectedPersonalSecretId(null);
+      setPersonalSecretDraft(emptyPersonalSecretDraft);
+      setPersonalSecretCopyNotice(null);
+      setPersonalSecretCopiedField(null);
       resetTodoCurrentAppendState();
       setIsAppendingTodoToCurrent(false);
       setConversionTarget(null);
@@ -1161,6 +1212,12 @@ function App() {
         maskRules: blogFactoryMaskRules,
         selectedMaskRuleId: selectedBlogFactoryMaskRuleId,
         coverPromptTemplate: blogFactoryCoverPromptTemplate,
+        coverPromptConfig: blogFactoryCoverPromptConfig,
+      },
+      personalSecrets: {
+        query: personalSecretQuery,
+        page: personalSecretPage,
+        selectedId: selectedPersonalSecretId,
       },
       todos: {
         query: todoQuery,
@@ -1903,6 +1960,52 @@ function App() {
       mounted = false;
     };
   }, [activeView, apiKey, debouncedTodoQuery, todoPage, todoRefreshToken, todoStatus, todoUsername]);
+
+  useEffect(() => {
+    if (!apiKey || activeView !== "personalSecrets") return;
+
+    let mounted = true;
+    const requestQuery = {
+      query: debouncedPersonalSecretQuery,
+      limit: PERSONAL_SECRETS_PAGE_SIZE,
+      offset: (personalSecretPage - 1) * PERSONAL_SECRETS_PAGE_SIZE,
+    };
+    const cached = readCachedPersonalSecrets(requestQuery);
+    if (cached) {
+      setPersonalSecretItems(cached.items);
+      setPersonalSecretTotal(cached.total);
+      setPersonalSecretError(null);
+      setSelectedPersonalSecretId((currentSelectedId) => {
+        if (currentSelectedId && cached.items.some((item) => item.id === currentSelectedId)) return currentSelectedId;
+        return cached.items[0]?.id ?? null;
+      });
+    }
+
+    setIsPersonalSecretLoading(!cached);
+    fetchPersonalSecrets(requestQuery)
+      .then((data) => {
+        if (!mounted) return;
+        setPersonalSecretItems(data.items);
+        setPersonalSecretTotal(data.total);
+        setPersonalSecretError(null);
+        setSelectedPersonalSecretId((currentSelectedId) => {
+          if (currentSelectedId && data.items.some((item) => item.id === currentSelectedId)) return currentSelectedId;
+          return data.items[0]?.id ?? null;
+        });
+      })
+      .catch((error: Error) => {
+        if (!mounted) return;
+        setPersonalSecretError(error.message);
+      })
+      .finally(() => {
+        if (!mounted) return;
+        setIsPersonalSecretLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [activeView, apiKey, debouncedPersonalSecretQuery, personalSecretPage, personalSecretRefreshToken]);
 
   useEffect(() => {
     if (!apiKey || activeView !== "currentRecords") return;
@@ -2661,6 +2764,10 @@ function App() {
     setFactoryUsername(getDefaultOwnedUsername(nextAuthUser));
     setBlogFactoryUsername(getDefaultOwnedUsername(nextAuthUser));
     setTodoUsername(getDefaultOwnedUsername(nextAuthUser));
+    setPersonalSecretPage(1);
+    setPersonalSecretQuery("");
+    setSelectedPersonalSecretId(null);
+    setPersonalSecretDraft(emptyPersonalSecretDraft);
     setEnglishMaterialUsername(getDefaultOwnedUsername(nextAuthUser));
   }
 
@@ -2707,6 +2814,12 @@ function App() {
     setTodoDraftsById({});
     setTodoCopyError(null);
     setHasCopiedTodoContent(false);
+    setPersonalSecretItems([]);
+    setPersonalSecretTotal(0);
+    setSelectedPersonalSecretId(null);
+    setPersonalSecretDraft(emptyPersonalSecretDraft);
+    setPersonalSecretCopyNotice(null);
+    setPersonalSecretCopiedField(null);
     resetTodoCurrentAppendState();
     setIsAppendingTodoToCurrent(false);
     setCurrentRecordItems([]);
@@ -3468,6 +3581,101 @@ function App() {
     } catch {
       setHasCopiedTodoContent(false);
       setTodoCopyError("复制失败。请选中文本后手动复制。");
+    }
+  }
+
+  async function handleSelectPersonalSecret(item: PersonalSecretItem) {
+    setSelectedPersonalSecretId(item.id);
+    setPersonalSecretSaveError(null);
+    setPersonalSecretCopyNotice(null);
+    setPersonalSecretCopiedField(null);
+  }
+
+  async function handleLoadPersonalSecretForEdit(secretId: number) {
+    setIsPersonalSecretDetailLoading(true);
+    setPersonalSecretSaveError(null);
+    try {
+      const [detail, revealed] = await Promise.all([getPersonalSecret(secretId), revealPersonalSecret(secretId, "all")]);
+      const values = revealed.values ?? {};
+      setPersonalSecretItems((current) => current.map((item) => (item.id === detail.id ? detail : item)));
+      setPersonalSecretDraft({
+        system_name: detail.system_name,
+        login_url: detail.login_url ?? "",
+        username: values.username ?? "",
+        password: values.password ?? "",
+        notes: values.notes ?? "",
+        tags: detail.tags ?? "",
+      });
+    } catch (error) {
+      setPersonalSecretSaveError(error instanceof Error ? error.message : "读取机密详情失败，请稍后重试。");
+    } finally {
+      setIsPersonalSecretDetailLoading(false);
+    }
+  }
+
+  async function handleSavePersonalSecret() {
+    if (isPersonalSecretSaving || !personalSecretDraft.system_name.trim() || !personalSecretDraft.password.trim()) return;
+
+    setIsPersonalSecretSaving(true);
+    setPersonalSecretSaveError(null);
+    try {
+      const saved =
+        selectedPersonalSecretId === null
+          ? await createPersonalSecret(personalSecretDraft)
+          : await updatePersonalSecret(selectedPersonalSecretId, personalSecretDraft);
+      setSelectedPersonalSecretId(saved.id);
+      setPersonalSecretDraft(emptyPersonalSecretDraft);
+      setPersonalSecretRefreshToken((current) => current + 1);
+      setPersonalSecretCopyNotice("已保存。");
+    } catch (error) {
+      setPersonalSecretSaveError(error instanceof Error ? error.message : "机密保存失败，请稍后重试。");
+    } finally {
+      setIsPersonalSecretSaving(false);
+    }
+  }
+
+  async function handleDeletePersonalSecret() {
+    if (selectedPersonalSecretId === null || isPersonalSecretDeleting) return;
+    setIsPersonalSecretDeleting(true);
+    setPersonalSecretSaveError(null);
+    try {
+      await deletePersonalSecret(selectedPersonalSecretId);
+      setPersonalSecretItems((current) => current.filter((item) => item.id !== selectedPersonalSecretId));
+      setPersonalSecretTotal((current) => Math.max(0, current - 1));
+    setSelectedPersonalSecretId(null);
+    setPersonalSecretDraft(emptyPersonalSecretDraft);
+    setPersonalSecretCopiedField(null);
+      setPersonalSecretRefreshToken((current) => current + 1);
+    } catch (error) {
+      setPersonalSecretSaveError(error instanceof Error ? error.message : "机密删除失败，请稍后重试。");
+    } finally {
+      setIsPersonalSecretDeleting(false);
+    }
+  }
+
+  async function handleCopyPersonalSecretField(field: PersonalSecretRevealField) {
+    const selectedItem = personalSecretItems.find((item) => item.id === selectedPersonalSecretId);
+    if (!selectedItem) return;
+
+    try {
+      const revealed = await revealPersonalSecret(selectedItem.id, field);
+      const value =
+        field === "system_name"
+          ? selectedItem.system_name
+          : field === "login_url"
+            ? selectedItem.login_url ?? ""
+            : field === "all"
+              ? formatPersonalSecretAllCopy(revealed.values ?? {})
+              : revealed.value ?? "";
+      await copyText(value);
+      setPersonalSecretCopyNotice(null);
+      setPersonalSecretCopiedField(field);
+      window.setTimeout(() => {
+        setPersonalSecretCopiedField((current) => (current === field ? null : current));
+      }, 1600);
+    } catch {
+      setPersonalSecretCopiedField(null);
+      setPersonalSecretCopyNotice("复制失败。请稍后重试。");
     }
   }
 
@@ -4266,6 +4474,8 @@ function App() {
         ? "博客工厂记录"
         : activeView === "todos"
           ? "待办事项"
+        : activeView === "personalSecrets"
+          ? "个人机密"
           : activeView === "currentRecords"
             ? "当前记录录入"
             : activeView === "history"
@@ -4292,6 +4502,8 @@ function App() {
         ? "AI Blog Factory"
         : activeView === "todos"
           ? "AI Todo Items"
+        : activeView === "personalSecrets"
+          ? "Personal Secrets"
           : activeView === "currentRecords"
             ? "Current Records"
             : activeView === "history"
@@ -4325,6 +4537,7 @@ function App() {
     selectedTodoIndex >= 0 &&
     (selectedTodoIndex < todoItems.length - 1 || todoPage * TODO_PAGE_SIZE < todoTotal) &&
     !isTodoNavigationBlocked;
+  const selectedPersonalSecret = personalSecretItems.find((item) => item.id === selectedPersonalSecretId) ?? null;
   const lazyViewFallback = (
     <div className="flex-1 px-4 pb-4 pt-2">
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
@@ -4371,6 +4584,8 @@ function App() {
                     ? blogFactoryQuery
                     : activeView === "todos"
                       ? todoQuery
+                    : activeView === "personalSecrets"
+                      ? personalSecretQuery
                     : activeView === "currentRecords"
                       ? currentRecordQuery
                       : activeView === "englishMaterials"
@@ -4398,7 +4613,9 @@ function App() {
                   ? setBlogFactoryQuery
                   : activeView === "todos"
                     ? setTodoQuery
-                    : activeView === "currentRecords"
+                  : activeView === "personalSecrets"
+                    ? setPersonalSecretQuery
+                  : activeView === "currentRecords"
                       ? setCurrentRecordQuery
                     : activeView === "englishMaterials"
                       ? setEnglishMaterialQuery
@@ -4576,6 +4793,7 @@ function App() {
               isPublishing={isBlogPublishing}
               editDraft={blogFactoryEditDraft}
               coverPromptTemplate={blogFactoryCoverPromptTemplate}
+              coverPromptConfig={blogFactoryCoverPromptConfig}
               maskRules={blogFactoryMaskRules}
               selectedMaskRuleId={selectedBlogFactoryMaskRuleId}
               maskError={blogFactoryMaskError}
@@ -4611,6 +4829,7 @@ function App() {
               onPageChange={setBlogFactoryPage}
               onEditDraftChange={setBlogFactoryEditDraft}
               onCoverPromptTemplateChange={setBlogFactoryCoverPromptTemplate}
+              onCoverPromptConfigChange={setBlogFactoryCoverPromptConfig}
               onMaskRuleChange={setSelectedBlogFactoryMaskRuleId}
               onOpenMaskDialog={handleOpenBlogFactoryMaskDialog}
               onApplyMaskRule={handleApplyBlogFactoryMaskRule}
@@ -4666,6 +4885,38 @@ function App() {
                 setTodoUsername(nextUsername);
               }}
               onSubmit={handleUpdateTodo}
+            />
+          ) : activeView === "personalSecrets" ? (
+            <PersonalSecretsWorkspace
+              items={personalSecretItems}
+              total={personalSecretTotal}
+              page={personalSecretPage}
+              selectedItem={selectedPersonalSecret}
+              draft={personalSecretDraft}
+              isLoading={isPersonalSecretLoading}
+              isDetailLoading={isPersonalSecretDetailLoading}
+              isSaving={isPersonalSecretSaving}
+              isDeleting={isPersonalSecretDeleting}
+              loadError={personalSecretError}
+              saveError={personalSecretSaveError}
+              copyNotice={personalSecretCopyNotice}
+              copiedField={personalSecretCopiedField}
+              onClearSearch={() => {
+                setPersonalSecretPage(1);
+                setPersonalSecretQuery("");
+              }}
+              onDraftChange={setPersonalSecretDraft}
+              onNew={() => {
+                setSelectedPersonalSecretId(null);
+                setPersonalSecretDraft(emptyPersonalSecretDraft);
+                setPersonalSecretSaveError(null);
+              }}
+              onPageChange={setPersonalSecretPage}
+              onSelect={handleSelectPersonalSecret}
+              onLoadForEdit={handleLoadPersonalSecretForEdit}
+              onSave={handleSavePersonalSecret}
+              onDelete={handleDeletePersonalSecret}
+              onCopyField={handleCopyPersonalSecretField}
             />
           ) : activeView === "currentRecords" ? (
             <CurrentRecordsWorkspace
@@ -5403,6 +5654,8 @@ function Topbar({
                     ? "搜索任务、问题或答案快照"
                     : activeView === "todos"
                       ? "搜索待办标题、内容或标签"
+                    : activeView === "personalSecrets"
+                      ? "搜索系统名称、登录地址或标签"
                     : activeView === "currentRecords"
                       ? "搜索类型或当前内容"
                       : activeView === "englishMaterials"
@@ -8224,6 +8477,7 @@ function BlogFactoryRecords({
   isPublishing,
   editDraft,
   coverPromptTemplate,
+  coverPromptConfig,
   maskRules,
   selectedMaskRuleId,
   maskError,
@@ -8235,6 +8489,7 @@ function BlogFactoryRecords({
   onPageChange,
   onEditDraftChange,
   onCoverPromptTemplateChange,
+  onCoverPromptConfigChange,
   onMaskRuleChange,
   onOpenMaskDialog,
   onApplyMaskRule,
@@ -8272,6 +8527,7 @@ function BlogFactoryRecords({
   isPublishing: boolean;
   editDraft: BlogFactoryEditDraft;
   coverPromptTemplate: string;
+  coverPromptConfig: BlogFactoryCoverPromptConfig;
   maskRules: BlogFactoryMaskRule[];
   selectedMaskRuleId: string | null;
   maskError: string | null;
@@ -8283,6 +8539,7 @@ function BlogFactoryRecords({
   onPageChange: (page: number) => void;
   onEditDraftChange: (draft: BlogFactoryEditDraft) => void;
   onCoverPromptTemplateChange: (template: string) => void;
+  onCoverPromptConfigChange: (config: BlogFactoryCoverPromptConfig) => void;
   onMaskRuleChange: (ruleId: string | null) => void;
   onOpenMaskDialog: () => void;
   onApplyMaskRule: (ruleId?: string | null) => void;
@@ -8302,8 +8559,12 @@ function BlogFactoryRecords({
   const [assistView, setAssistView] = useState<"summary" | "coverPrompt">("summary");
   const [assistCopiedTarget, setAssistCopiedTarget] = useState<"summary" | "coverPrompt" | null>(null);
   const [assistError, setAssistError] = useState<string | null>(null);
+  const [isCoverPromptConfigOpen, setIsCoverPromptConfigOpen] = useState(false);
   const [isCoverPromptTemplateEditing, setIsCoverPromptTemplateEditing] = useState(false);
   const [coverPromptTemplateDraft, setCoverPromptTemplateDraft] = useState(coverPromptTemplate);
+  const [coverPromptConfigDraft, setCoverPromptConfigDraft] = useState<BlogFactoryCoverPromptConfig>(() =>
+    normalizeBlogFactoryCoverPromptConfig(coverPromptConfig),
+  );
   const coverImageFileInputRef = useRef<HTMLInputElement | null>(null);
   const [isCoverImageUploading, setIsCoverImageUploading] = useState(false);
   const [coverImageError, setCoverImageError] = useState<string | null>(null);
@@ -8312,6 +8573,12 @@ function BlogFactoryRecords({
   const assistSource = editDraft.taskContent;
   const assistSummary = useMemo(() => buildBlogFactoryTaskSummary(assistSource), [assistSource]);
   const coverImageMarkdown = useMemo(() => extractBlogFactoryCoverImageMarkdown(assistSource), [assistSource]);
+  const resolvedCoverPromptConfig = useMemo(() => normalizeBlogFactoryCoverPromptConfig(coverPromptConfig), [coverPromptConfig]);
+  const resolvedCoverPromptConfigDraft = useMemo(
+    () => normalizeBlogFactoryCoverPromptConfig(coverPromptConfigDraft),
+    [coverPromptConfigDraft],
+  );
+  const hasPendingCoverPromptConfig = JSON.stringify(resolvedCoverPromptConfigDraft) !== JSON.stringify(resolvedCoverPromptConfig);
   const coverImagePrompt = useMemo(
     () =>
       buildBlogFactoryCoverImagePrompt(
@@ -8319,8 +8586,9 @@ function BlogFactoryRecords({
         assistSummary,
         editDraft.questionSnapshot || selectedItem?.question_snapshot || "",
         coverPromptTemplate,
+        resolvedCoverPromptConfig,
       ),
-    [assistSource, assistSummary, coverPromptTemplate, editDraft.questionSnapshot, selectedItem?.question_snapshot],
+    [assistSource, assistSummary, coverPromptTemplate, resolvedCoverPromptConfig, editDraft.questionSnapshot, selectedItem?.question_snapshot],
   );
   const canPublish = publishMarkdown.trim().length > 0 && publishConfigs.length > 0 && !isPublishing;
   const selectedMaskRule = maskRules.find((item) => item.id === selectedMaskRuleId) ?? null;
@@ -8354,6 +8622,7 @@ function BlogFactoryRecords({
     setAssistView("summary");
     setAssistCopiedTarget(null);
     setAssistError(null);
+    setIsCoverPromptConfigOpen(false);
     setIsCoverPromptTemplateEditing(false);
     setCoverImageError(null);
   }, [selectedItem?.id]);
@@ -8361,6 +8630,10 @@ function BlogFactoryRecords({
   useEffect(() => {
     setCoverPromptTemplateDraft(coverPromptTemplate);
   }, [coverPromptTemplate]);
+
+  useEffect(() => {
+    setCoverPromptConfigDraft(resolvedCoverPromptConfig);
+  }, [resolvedCoverPromptConfig]);
 
   async function handleCopyAssistText(value: string, target: "summary" | "coverPrompt") {
     if (!value.trim()) return;
@@ -8393,6 +8666,33 @@ function BlogFactoryRecords({
     onCoverPromptTemplateChange(DEFAULT_BLOG_FACTORY_COVER_PROMPT_TEMPLATE);
     setCoverPromptTemplateDraft(DEFAULT_BLOG_FACTORY_COVER_PROMPT_TEMPLATE);
     setAssistError(null);
+  }
+
+  function handleRestoreDefaultCoverPromptConfig() {
+    setCoverPromptConfigDraft(DEFAULT_BLOG_FACTORY_COVER_PROMPT_CONFIG);
+    onCoverPromptConfigChange(DEFAULT_BLOG_FACTORY_COVER_PROMPT_CONFIG);
+    setIsCoverPromptConfigOpen(false);
+    setAssistError(null);
+  }
+
+  function handleApplyCoverPromptConfig() {
+    onCoverPromptConfigChange(resolvedCoverPromptConfigDraft);
+    setIsCoverPromptConfigOpen(false);
+    setAssistError(null);
+  }
+
+  function handleCoverPromptConfigDraftChange(nextConfig: Partial<BlogFactoryCoverPromptConfig>) {
+    setCoverPromptConfigDraft(normalizeBlogFactoryCoverPromptConfig({ ...resolvedCoverPromptConfigDraft, ...nextConfig }));
+    setAssistError(null);
+  }
+
+  function toggleCoverPromptConfigValue(key: keyof Pick<
+    BlogFactoryCoverPromptConfig,
+    "styles" | "objects" | "materials" | "lightings" | "cameras" | "qualities" | "negativePrompts"
+  >, value: string) {
+    const currentValues = resolvedCoverPromptConfigDraft[key];
+    const nextValues = currentValues.includes(value) ? currentValues.filter((item) => item !== value) : [...currentValues, value];
+    handleCoverPromptConfigDraftChange({ [key]: nextValues } as Partial<BlogFactoryCoverPromptConfig>);
   }
 
   async function handleUploadCoverImage(files: File[]) {
@@ -8432,6 +8732,41 @@ function BlogFactoryRecords({
       taskContent: removeBlogFactoryCoverImageMarkdown(editDraft.taskContent),
     });
     setCoverImageError(null);
+  }
+
+  function renderCoverPromptOptionChips(
+    label: string,
+    key: keyof Pick<
+      BlogFactoryCoverPromptConfig,
+      "styles" | "objects" | "materials" | "lightings" | "cameras" | "qualities" | "negativePrompts"
+    >,
+    options: readonly string[],
+  ) {
+    const selectedValues = resolvedCoverPromptConfigDraft[key];
+    return (
+      <div className="space-y-2">
+        <div className="text-xs font-medium text-slate-400">{label}</div>
+        <div className="flex flex-wrap gap-2">
+          {options.map((option) => {
+            const isSelected = selectedValues.includes(option);
+            return (
+              <button
+                key={option}
+                className={`rounded-lg border px-2.5 py-1.5 text-xs transition ${
+                  isSelected
+                    ? "border-mint-300/30 bg-mint-300/14 text-mint-200"
+                    : "border-white/10 bg-white/[0.035] text-slate-400 hover:border-mint-300/25 hover:text-mint-200"
+                }`}
+                type="button"
+                onClick={() => toggleCoverPromptConfigValue(key, option)}
+              >
+                {option}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
   }
   const renderDetailPanel = () => (
     <>
@@ -8823,36 +9158,124 @@ function BlogFactoryRecords({
                     <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-white/10 bg-black/15 p-3 text-xs leading-6 text-slate-300 [overflow-wrap:anywhere]">
                       {coverImagePrompt}
                     </pre>
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
-                      <button
-                        className="flex h-9 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-xs text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300"
-                        type="button"
-                        onClick={() => {
-                          setCoverPromptTemplateDraft(coverPromptTemplate);
-                          setIsCoverPromptTemplateEditing((current) => !current);
-                          setAssistError(null);
-                        }}
-                      >
-                        <Settings2 size={15} />
-                        {isCoverPromptTemplateEditing ? "收起模板" : "编辑模板"}
-                      </button>
-                      <button
-                        className={`flex h-9 items-center justify-center gap-2 rounded-lg border px-3 text-xs transition disabled:cursor-not-allowed disabled:text-slate-600 ${
-                          assistCopiedTarget === "coverPrompt"
-                            ? "border-mint-300/30 bg-mint-300/14 text-mint-300"
-                            : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-mint-300/30 hover:text-mint-300"
-                        }`}
-                        disabled={!coverImagePrompt}
-                        type="button"
-                        onClick={() => void handleCopyAssistText(coverImagePrompt, "coverPrompt")}
-                      >
-                        {assistCopiedTarget === "coverPrompt" ? <ClipboardCheck size={15} /> : <Copy size={15} />}
-                        {assistCopiedTarget === "coverPrompt" ? "已复制" : "复制提示词"}
-                      </button>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-h-5 text-xs leading-5 text-slate-500">
+                        {hasPendingCoverPromptConfig ? "有未应用的配置修改。" : "使用默认配置生成，可按需展开参数调整。"}
+                      </div>
+                      <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+                        <button
+                          className={`flex h-9 items-center justify-center gap-2 rounded-lg border px-3 text-xs transition ${
+                            isCoverPromptConfigOpen
+                              ? "border-mint-300/30 bg-mint-300/14 text-mint-300"
+                              : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-mint-300/30 hover:text-mint-300"
+                          }`}
+                          type="button"
+                          onClick={() => {
+                            setCoverPromptConfigDraft(resolvedCoverPromptConfig);
+                            setIsCoverPromptConfigOpen((current) => !current);
+                            setAssistError(null);
+                          }}
+                        >
+                          <Settings2 size={15} />
+                          {isCoverPromptConfigOpen ? "收起配置" : "配置参数"}
+                        </button>
+                        <button
+                          className="flex h-9 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-xs text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300"
+                          type="button"
+                          onClick={() => {
+                            setCoverPromptTemplateDraft(coverPromptTemplate);
+                            setIsCoverPromptTemplateEditing((current) => !current);
+                            setAssistError(null);
+                          }}
+                        >
+                          <Settings2 size={15} />
+                          {isCoverPromptTemplateEditing ? "收起模板" : "编辑模板"}
+                        </button>
+                        <button
+                          className={`flex h-9 items-center justify-center gap-2 rounded-lg border px-3 text-xs transition disabled:cursor-not-allowed disabled:text-slate-600 ${
+                            assistCopiedTarget === "coverPrompt"
+                              ? "border-mint-300/30 bg-mint-300/14 text-mint-300"
+                              : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-mint-300/30 hover:text-mint-300"
+                          }`}
+                          disabled={!coverImagePrompt}
+                          type="button"
+                          onClick={() => void handleCopyAssistText(coverImagePrompt, "coverPrompt")}
+                        >
+                          {assistCopiedTarget === "coverPrompt" ? <ClipboardCheck size={15} /> : <Copy size={15} />}
+                          {assistCopiedTarget === "coverPrompt" ? "已复制" : "复制提示词"}
+                        </button>
+                      </div>
                     </div>
+                    {isCoverPromptConfigOpen ? (
+                    <div className="space-y-4 rounded-lg border border-white/10 bg-black/15 p-3">
+                      <div className="grid gap-3 lg:grid-cols-2">
+                        <Field label="主题" icon={<Sparkles size={16} />}>
+                          <select
+                            className="control"
+                            value={resolvedCoverPromptConfigDraft.subject}
+                            onChange={(event) => handleCoverPromptConfigDraftChange({ subject: event.target.value })}
+                          >
+                            {BLOG_FACTORY_COVER_PROMPT_OPTIONS.subjects.map((subject) => (
+                              <option key={subject} value={subject}>
+                                {subject}
+                              </option>
+                            ))}
+                          </select>
+                        </Field>
+                        <Field label="构图" icon={<Layers3 size={16} />}>
+                          <select
+                            className="control"
+                            value={resolvedCoverPromptConfigDraft.composition}
+                            onChange={(event) => handleCoverPromptConfigDraftChange({ composition: event.target.value })}
+                          >
+                            <option value={DEFAULT_BLOG_FACTORY_COVER_PROMPT_CONFIG.composition}>
+                              16:9 centered, safe for 2.35:1 crop
+                            </option>
+                            {BLOG_FACTORY_COVER_PROMPT_OPTIONS.compositions.map((composition) => (
+                              <option key={composition} value={composition}>
+                                {composition}
+                              </option>
+                            ))}
+                          </select>
+                        </Field>
+                      </div>
+                      {renderCoverPromptOptionChips("风格", "styles", BLOG_FACTORY_COVER_PROMPT_OPTIONS.styles)}
+                      {renderCoverPromptOptionChips("元素", "objects", BLOG_FACTORY_COVER_PROMPT_OPTIONS.objects)}
+                      <div className="grid gap-4 xl:grid-cols-2">
+                        {renderCoverPromptOptionChips("材质", "materials", BLOG_FACTORY_COVER_PROMPT_OPTIONS.materials)}
+                        {renderCoverPromptOptionChips("灯光", "lightings", BLOG_FACTORY_COVER_PROMPT_OPTIONS.lightings)}
+                        {renderCoverPromptOptionChips("镜头", "cameras", BLOG_FACTORY_COVER_PROMPT_OPTIONS.cameras)}
+                        {renderCoverPromptOptionChips("质量", "qualities", BLOG_FACTORY_COVER_PROMPT_OPTIONS.qualities)}
+                      </div>
+                      {renderCoverPromptOptionChips("限制", "negativePrompts", BLOG_FACTORY_COVER_PROMPT_OPTIONS.negativePrompts)}
+                      <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+                        <button
+                          className="flex h-9 items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-3 text-xs font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
+                          disabled={!hasPendingCoverPromptConfig}
+                          type="button"
+                          onClick={handleApplyCoverPromptConfig}
+                        >
+                          <CheckCircle2 size={15} />
+                          应用配置
+                        </button>
+                        <button
+                          className="flex h-9 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-xs text-slate-300 transition hover:border-amberline/30 hover:text-amber-100"
+                          type="button"
+                          onClick={handleRestoreDefaultCoverPromptConfig}
+                        >
+                          <RefreshCw size={15} />
+                          恢复默认配置
+                        </button>
+                      </div>
+                    </div>
+                    ) : null}
                     {isCoverPromptTemplateEditing ? (
                       <div className="space-y-3 rounded-lg border border-white/10 bg-black/15 p-3">
-                        <div className="text-xs leading-6 text-slate-500">可用变量：{"{{title}}"} / {"{{summary}}"} / {"{{topic}}"}</div>
+                        <div className="text-xs leading-6 text-slate-500">
+                          可用变量：{"{{title}}"} / {"{{summary}}"} / {"{{topic}}"} / {"{{subject}}"} / {"{{objects}}"} /{" "}
+                          {"{{composition}}"} / {"{{style}}"} / {"{{lighting}}"} / {"{{material}}"} / {"{{camera}}"} /{" "}
+                          {"{{quality}}"} / {"{{negativePrompt}}"}
+                        </div>
                         <textarea
                           className="control min-h-[220px] resize-y font-mono text-xs leading-6"
                           value={coverPromptTemplateDraft}
@@ -9212,6 +9635,337 @@ function DetailBlock({
       </p>
     </div>
   );
+}
+
+function PersonalSecretsWorkspace({
+  items,
+  total,
+  page,
+  selectedItem,
+  draft,
+  isLoading,
+  isDetailLoading,
+  isSaving,
+  isDeleting,
+  loadError,
+  saveError,
+  copyNotice,
+  copiedField,
+  onClearSearch,
+  onDraftChange,
+  onNew,
+  onPageChange,
+  onSelect,
+  onLoadForEdit,
+  onSave,
+  onDelete,
+  onCopyField,
+}: {
+  items: PersonalSecretItem[];
+  total: number;
+  page: number;
+  selectedItem: PersonalSecretItem | null;
+  draft: PersonalSecretDraft;
+  isLoading: boolean;
+  isDetailLoading: boolean;
+  isSaving: boolean;
+  isDeleting: boolean;
+  loadError: string | null;
+  saveError: string | null;
+  copyNotice: string | null;
+  copiedField: PersonalSecretRevealField | null;
+  onClearSearch: () => void;
+  onDraftChange: (draft: PersonalSecretDraft) => void;
+  onNew: () => void;
+  onPageChange: (page: number) => void;
+  onSelect: (item: PersonalSecretItem) => void;
+  onLoadForEdit: (secretId: number) => void;
+  onSave: () => void;
+  onDelete: () => void;
+  onCopyField: (field: PersonalSecretRevealField) => void;
+}) {
+  const totalPages = Math.max(1, Math.ceil(total / PERSONAL_SECRETS_PAGE_SIZE));
+  const rangeStart = total === 0 ? 0 : (page - 1) * PERSONAL_SECRETS_PAGE_SIZE + 1;
+  const rangeEnd = Math.min(page * PERSONAL_SECRETS_PAGE_SIZE, total);
+  const canSave = draft.system_name.trim().length > 0 && draft.password.trim().length > 0 && !isSaving && !isDeleting;
+
+  const copyButton = (field: PersonalSecretRevealField, label = "复制") => {
+    const isCopied = copiedField === field;
+    return (
+      <button
+        className={`flex h-8 items-center justify-center gap-1.5 rounded-lg border px-2.5 text-xs transition ${
+          isCopied
+            ? "border-mint-300/30 bg-mint-300/14 text-mint-300"
+            : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-mint-300/30 hover:text-mint-300"
+        }`}
+        title={isCopied ? "已复制" : label}
+        type="button"
+        onClick={() => onCopyField(field)}
+      >
+        {isCopied ? <ClipboardCheck size={14} /> : <Copy size={14} />}
+        {isCopied ? "已复制" : label}
+      </button>
+    );
+  };
+
+  return (
+    <div className="grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(420px,1.1fr)]">
+      <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/72 p-4 shadow-soft-glow backdrop-blur-xl">
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div>
+            <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
+              <KeyRound size={17} />
+              Personal Secrets
+            </div>
+            <h2 className="text-lg font-semibold text-slate-50">个人机密</h2>
+            <p className="mt-1 text-sm leading-6 text-slate-500">仅展示当前账号记录；密码不会在列表中显示。</p>
+          </div>
+          <button
+            className="flex h-10 items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-3 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20"
+            type="button"
+            onClick={onNew}
+          >
+            <Plus size={16} />
+            新增
+          </button>
+        </div>
+
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <div className="text-xs text-slate-500">
+            {rangeStart}-{rangeEnd} / {total}
+          </div>
+          <FilterClearButton label="清空搜索" onClick={onClearSearch} />
+        </div>
+
+        {loadError ? (
+          <div className="mb-4 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100">{loadError}</div>
+        ) : null}
+
+        {isLoading ? (
+          <LoadingStack />
+        ) : items.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-white/10 bg-white/[0.02] p-6 text-center text-sm text-slate-500">
+            暂无个人机密记录。
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {items.map((item) => (
+              <button
+                key={item.id}
+                className={`w-full rounded-lg border p-3 text-left transition ${
+                  selectedItem?.id === item.id
+                    ? "border-mint-300/35 bg-mint-300/10"
+                    : "border-white/10 bg-white/[0.025] hover:border-mint-300/25 hover:bg-white/[0.04]"
+                }`}
+                type="button"
+                onClick={() => onSelect(item)}
+              >
+                <div className="mb-2 flex items-start justify-between gap-3">
+                  <div className="min-w-0 font-medium text-slate-100">{item.system_name}</div>
+                  <span className="shrink-0 text-xs text-slate-500">#{item.id}</span>
+                </div>
+                <div className="truncate text-xs text-slate-500">{item.login_url || "未记录登录地址"}</div>
+                <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-500">
+                  {item.username_preview ? <span>用户 {item.username_preview}</span> : null}
+                  {item.tags ? <span>{item.tags}</span> : null}
+                </div>
+              </button>
+            ))}
+
+            <div className="flex items-center justify-between rounded-lg border border-white/8 bg-white/[0.025] px-3 py-3">
+              <button
+                className="grid h-9 w-9 place-items-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600"
+                disabled={page <= 1}
+                title="上一页"
+                type="button"
+                onClick={() => onPageChange(Math.max(1, page - 1))}
+              >
+                <ChevronLeft size={17} />
+              </button>
+              <span className="text-xs text-slate-500">{page} / {totalPages}</span>
+              <button
+                className="grid h-9 w-9 place-items-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600"
+                disabled={page >= totalPages}
+                title="下一页"
+                type="button"
+                onClick={() => onPageChange(Math.min(totalPages, page + 1))}
+              >
+                <ChevronRight size={17} />
+              </button>
+            </div>
+          </div>
+        )}
+      </section>
+
+      <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
+              <LockKeyhole size={17} />
+              Secret Detail
+            </div>
+            <h2 className="text-lg font-semibold text-slate-50">{selectedItem ? selectedItem.system_name : "新增个人机密"}</h2>
+            <p className="mt-1 text-sm leading-6 text-slate-500">字段可单独复制；整体复制会临时解密所需字段。</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {selectedItem ? (
+              <>
+                <button
+                  className="flex h-9 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-xs text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300"
+                  disabled={isDetailLoading}
+                  type="button"
+                  onClick={() => onLoadForEdit(selectedItem.id)}
+                >
+                  {isDetailLoading ? <Loader2 className="animate-spin" size={15} /> : <Pencil size={15} />}
+                  编辑
+                </button>
+                <button
+                  className={`flex h-9 items-center justify-center gap-2 rounded-lg border px-3 text-xs font-medium transition ${
+                    copiedField === "all"
+                      ? "border-mint-300/30 bg-mint-300/14 text-mint-300"
+                      : "border-mint-300/30 bg-mint-300/14 text-mint-300 hover:bg-mint-300/20"
+                  }`}
+                  title={copiedField === "all" ? "已复制" : "复制整体"}
+                  type="button"
+                  onClick={() => onCopyField("all")}
+                >
+                  {copiedField === "all" ? <ClipboardCheck size={15} /> : <Copy size={15} />}
+                  {copiedField === "all" ? "已复制" : "复制整体"}
+                </button>
+              </>
+            ) : null}
+          </div>
+        </div>
+
+        {selectedItem ? (
+          <div className="mb-4 grid gap-3 sm:grid-cols-2">
+            <SecretDisplayField label="系统名称" value={selectedItem.system_name} action={copyButton("system_name")} />
+            <SecretDisplayField label="登录地址" value={selectedItem.login_url || "未记录"} action={copyButton("login_url")} />
+            <SecretDisplayField label="用户名" value={selectedItem.username_preview || "未记录"} action={copyButton("username")} />
+            <SecretDisplayField label="密码" value={selectedItem.has_password ? "••••••••" : "未记录"} action={copyButton("password")} />
+            <SecretDisplayField label="备注" value={selectedItem.notes_preview || "未记录"} action={copyButton("notes")} />
+            <SecretDisplayField label="标签" value={selectedItem.tags || "未记录"} />
+          </div>
+        ) : null}
+
+        <div className="rounded-lg border border-white/10 bg-white/[0.025] p-4">
+          <div className="mb-4 flex items-center gap-2 text-sm font-medium text-slate-300">
+            <Pencil size={16} />
+            {selectedItem ? "编辑机密" : "新增机密"}
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="系统名称" icon={<Database size={16} />}>
+              <input
+                className="control"
+                maxLength={200}
+                value={draft.system_name}
+                onChange={(event) => onDraftChange({ ...draft, system_name: event.target.value })}
+              />
+            </Field>
+            <Field label="登录地址" icon={<Globe size={16} />}>
+              <input
+                className="control"
+                autoComplete="off"
+                maxLength={1000}
+                value={draft.login_url}
+                onChange={(event) => onDraftChange({ ...draft, login_url: event.target.value })}
+              />
+            </Field>
+            <Field label="用户名" icon={<UserCog size={16} />}>
+              <input
+                className="control"
+                autoComplete="off"
+                maxLength={500}
+                value={draft.username}
+                onChange={(event) => onDraftChange({ ...draft, username: event.target.value })}
+              />
+            </Field>
+            <Field label="密码" icon={<KeyRound size={16} />}>
+              <input
+                className="control"
+                autoComplete="new-password"
+                maxLength={4000}
+                type="password"
+                value={draft.password}
+                onChange={(event) => onDraftChange({ ...draft, password: event.target.value })}
+              />
+            </Field>
+            <Field label="标签" icon={<Tags size={16} />}>
+              <input
+                className="control"
+                maxLength={500}
+                value={draft.tags}
+                onChange={(event) => onDraftChange({ ...draft, tags: event.target.value })}
+              />
+            </Field>
+          </div>
+          <div className="mt-3">
+            <Field label="备注" icon={<FileText size={16} />}>
+              <textarea
+                className="control min-h-[120px] resize-y leading-7"
+                maxLength={4000}
+                value={draft.notes}
+                onChange={(event) => onDraftChange({ ...draft, notes: event.target.value })}
+              />
+            </Field>
+          </div>
+
+          {saveError ? (
+            <div className="mt-3 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-2 text-sm text-red-100">{saveError}</div>
+          ) : null}
+          {copyNotice ? (
+            <div className="mt-3 rounded-lg border border-mint-300/20 bg-mint-300/10 px-3 py-2 text-sm text-mint-100">{copyNotice}</div>
+          ) : null}
+
+          <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_auto]">
+            <button
+              className="flex h-11 items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
+              disabled={!canSave}
+              type="button"
+              onClick={onSave}
+            >
+              {isSaving ? <Loader2 className="animate-spin" size={17} /> : <Save size={17} />}
+              {isSaving ? "保存中" : selectedItem ? "保存修改" : "保存机密"}
+            </button>
+            {selectedItem ? (
+              <button
+                className="flex h-11 items-center justify-center gap-2 rounded-lg border border-red-300/20 bg-red-400/10 px-4 text-sm text-red-100 transition hover:bg-red-400/16 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-600"
+                disabled={isDeleting || isSaving}
+                type="button"
+                onClick={onDelete}
+              >
+                {isDeleting ? <Loader2 className="animate-spin" size={17} /> : <Trash2 size={17} />}
+                删除
+              </button>
+            ) : null}
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function SecretDisplayField({ label, value, action }: { label: string; value: string; action?: React.ReactNode }) {
+  return (
+    <div className="rounded-lg border border-white/10 bg-white/[0.025] p-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <div className="text-xs font-medium text-slate-400">{label}</div>
+        {action}
+      </div>
+      <div className="break-words text-sm leading-6 text-slate-300 [overflow-wrap:anywhere]">{value}</div>
+    </div>
+  );
+}
+
+function formatPersonalSecretAllCopy(values: Record<string, string | null>) {
+  return [
+    `系统名称：${values.system_name || "未填写"}`,
+    `登录地址：${values.login_url || "未填写"}`,
+    `用户名：${values.username || "未填写"}`,
+    `密码：${values.password || "未填写"}`,
+    `备注：${values.notes || "未填写"}`,
+    `标签：${values.tags || "未填写"}`,
+  ].join("\n");
 }
 
 function TodoWorkspace({

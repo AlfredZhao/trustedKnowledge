@@ -23,6 +23,7 @@ TRUSTED_KNOWLEDGE_ADMIN_USERNAME=admin
 TRUSTED_KNOWLEDGE_ADMIN_PASSWORD=...
 TRUSTED_KNOWLEDGE_API_KEY=...
 TRUSTED_KNOWLEDGE_HISTORY_ASK_LLM_API_KEY=...
+TRUSTED_KNOWLEDGE_PERSONAL_SECRET_KEY=change-this-to-a-long-random-secret-value
 TRUSTED_KNOWLEDGE_SKILL_MAX_ZIP_MB=20
 TRUSTED_KNOWLEDGE_MEDIA_STORAGE_DIR=data/media
 TRUSTED_KNOWLEDGE_MEDIA_MAX_IMAGE_MB=8
@@ -31,6 +32,7 @@ TRUSTED_KNOWLEDGE_MEDIA_MAX_IMAGE_MB=8
 The pool ping/lifetime settings keep idle Oracle sessions from being reused too long after mobile PWA resumes or network interruptions.
 
 AI Ask keeps Base URL, model name, and enablement in Oracle, but reads the LLM API key only from `TRUSTED_KNOWLEDGE_HISTORY_ASK_LLM_API_KEY`.
+Personal Secrets encrypts username/password/notes fields with an AES-GCM key derived from `TRUSTED_KNOWLEDGE_PERSONAL_SECRET_KEY`; set it to a stable random value of at least 32 characters before using that module.
 
 Protected API routes require:
 

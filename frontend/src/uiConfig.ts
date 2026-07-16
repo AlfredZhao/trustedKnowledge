@@ -4,6 +4,7 @@ import {
   ChartLine,
   ClipboardCheck,
   ClipboardList,
+  KeyRound,
   FilePlus2,
   FlaskConical,
   History,
@@ -19,6 +20,7 @@ export const PAGE_SIZE = 5;
 export const FACTORY_PAGE_SIZE = 6;
 export const BLOG_FACTORY_PAGE_SIZE = 8;
 export const TODO_PAGE_SIZE = 8;
+export const PERSONAL_SECRETS_PAGE_SIZE = 8;
 export const CURRENT_RECORDS_PAGE_SIZE = 10;
 export const ENGLISH_MATERIALS_PAGE_SIZE = 10;
 export const HISTORY_PAGE_SIZE = 10;
@@ -32,6 +34,7 @@ export const APP_VIEWS: AppView[] = [
   "factory",
   "blogFactory",
   "todos",
+  "personalSecrets",
   "currentRecords",
   "history",
   "englishMaterials",
@@ -53,6 +56,7 @@ export const FUNCTION_NAV_ITEMS: FunctionNavItem[] = [
   { icon: FlaskConical, label: "知识加工", view: "factory" },
   { icon: ClipboardList, label: "博客工厂", view: "blogFactory" },
   { icon: ClipboardCheck, label: "待办事项", view: "todos" },
+  { icon: KeyRound, label: "个人机密", view: "personalSecrets" },
   { icon: FilePlus2, label: "当前记录", view: "currentRecords" },
   { icon: History, label: "历史查询", view: "history" },
   { icon: BookOpenCheck, label: "英语素材", view: "englishMaterials" },

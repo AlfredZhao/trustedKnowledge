@@ -72,6 +72,7 @@ TRUSTED_KNOWLEDGE_ADMIN_PASSWORD=...
 TRUSTED_KNOWLEDGE_API_KEY=...
 TRUSTED_KNOWLEDGE_FRONTEND_BASE_URL=http://localhost:8021
 TRUSTED_KNOWLEDGE_HISTORY_ASK_LLM_API_KEY=...
+TRUSTED_KNOWLEDGE_PERSONAL_SECRET_KEY=change-this-to-a-long-random-secret-value
 TRUSTED_KNOWLEDGE_MEDIA_STORAGE_DIR=data/media
 TRUSTED_KNOWLEDGE_MEDIA_MAX_IMAGE_MB=8
 ```
@@ -79,6 +80,7 @@ TRUSTED_KNOWLEDGE_MEDIA_MAX_IMAGE_MB=8
 不要提交 `backend/.env`。
 
 AI 问数的 Base URL、模型名和启用状态在页面中配置并保存到 Oracle；LLM API Key 只从 `backend/.env` 的 `TRUSTED_KNOWLEDGE_HISTORY_ASK_LLM_API_KEY` 读取，不保存到数据库。
+个人机密模块会使用 `TRUSTED_KNOWLEDGE_PERSONAL_SECRET_KEY` 派生 AES-GCM 加密密钥来保存用户名、密码和备注；使用前请设置为至少 32 字符的稳定随机值，变更该值会导致已有机密无法解密。
 
 ### 服务运行
 
@@ -293,12 +295,14 @@ TRUSTED_KNOWLEDGE_ADMIN_PASSWORD=...
 TRUSTED_KNOWLEDGE_API_KEY=...
 TRUSTED_KNOWLEDGE_FRONTEND_BASE_URL=http://localhost:8021
 TRUSTED_KNOWLEDGE_HISTORY_ASK_LLM_API_KEY=...
+TRUSTED_KNOWLEDGE_PERSONAL_SECRET_KEY=change-this-to-a-long-random-secret-value
 TRUSTED_KNOWLEDGE_SKILL_MAX_ZIP_MB=20
 ```
 
 Do not commit `backend/.env`.
 
 AI Ask stores Base URL, model name, and enablement in Oracle from the UI. The LLM API key is read only from `TRUSTED_KNOWLEDGE_HISTORY_ASK_LLM_API_KEY` in `backend/.env` and is not stored in the database.
+Personal Secrets derives an AES-GCM encryption key from `TRUSTED_KNOWLEDGE_PERSONAL_SECRET_KEY` for username/password/notes storage. Set it to a stable random value of at least 32 characters before using the module; changing it makes existing secrets undecryptable.
 
 ### Running Services
 
