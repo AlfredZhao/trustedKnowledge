@@ -699,6 +699,7 @@ function App() {
   const debouncedPersonalSecretQuery = useDebouncedValue(personalSecretQuery.trim(), 320, () => setPersonalSecretPage(1));
   const [selectedPersonalSecretId, setSelectedPersonalSecretId] = useState<number | null>(restoredUiState.personalSecrets.selectedId);
   const [personalSecretDraft, setPersonalSecretDraft] = useState<PersonalSecretDraft>(emptyPersonalSecretDraft);
+  const [isPersonalSecretEditorOpen, setIsPersonalSecretEditorOpen] = useState(false);
   const [isPersonalSecretLoading, setIsPersonalSecretLoading] = useState(false);
   const [isPersonalSecretDetailLoading, setIsPersonalSecretDetailLoading] = useState(false);
   const [isPersonalSecretSaving, setIsPersonalSecretSaving] = useState(false);
@@ -1048,6 +1049,7 @@ function App() {
       setPersonalSecretTotal(0);
       setSelectedPersonalSecretId(null);
       setPersonalSecretDraft(emptyPersonalSecretDraft);
+      setIsPersonalSecretEditorOpen(false);
       setPersonalSecretCopyNotice(null);
       setPersonalSecretCopiedField(null);
       resetTodoCurrentAppendState();
@@ -2768,6 +2770,7 @@ function App() {
     setPersonalSecretQuery("");
     setSelectedPersonalSecretId(null);
     setPersonalSecretDraft(emptyPersonalSecretDraft);
+    setIsPersonalSecretEditorOpen(false);
     setEnglishMaterialUsername(getDefaultOwnedUsername(nextAuthUser));
   }
 
@@ -2818,6 +2821,7 @@ function App() {
     setPersonalSecretTotal(0);
     setSelectedPersonalSecretId(null);
     setPersonalSecretDraft(emptyPersonalSecretDraft);
+    setIsPersonalSecretEditorOpen(false);
     setPersonalSecretCopyNotice(null);
     setPersonalSecretCopiedField(null);
     resetTodoCurrentAppendState();
@@ -3606,6 +3610,7 @@ function App() {
         notes: values.notes ?? "",
         tags: detail.tags ?? "",
       });
+      setIsPersonalSecretEditorOpen(true);
     } catch (error) {
       setPersonalSecretSaveError(error instanceof Error ? error.message : "读取机密详情失败，请稍后重试。");
     } finally {
@@ -3627,6 +3632,7 @@ function App() {
       setPersonalSecretDraft(emptyPersonalSecretDraft);
       setPersonalSecretRefreshToken((current) => current + 1);
       setPersonalSecretCopyNotice("已保存。");
+      setIsPersonalSecretEditorOpen(false);
     } catch (error) {
       setPersonalSecretSaveError(error instanceof Error ? error.message : "机密保存失败，请稍后重试。");
     } finally {
@@ -3642,9 +3648,10 @@ function App() {
       await deletePersonalSecret(selectedPersonalSecretId);
       setPersonalSecretItems((current) => current.filter((item) => item.id !== selectedPersonalSecretId));
       setPersonalSecretTotal((current) => Math.max(0, current - 1));
-    setSelectedPersonalSecretId(null);
-    setPersonalSecretDraft(emptyPersonalSecretDraft);
-    setPersonalSecretCopiedField(null);
+      setSelectedPersonalSecretId(null);
+      setPersonalSecretDraft(emptyPersonalSecretDraft);
+      setIsPersonalSecretEditorOpen(false);
+      setPersonalSecretCopiedField(null);
       setPersonalSecretRefreshToken((current) => current + 1);
     } catch (error) {
       setPersonalSecretSaveError(error instanceof Error ? error.message : "机密删除失败，请稍后重试。");
@@ -4892,11 +4899,8 @@ function App() {
               total={personalSecretTotal}
               page={personalSecretPage}
               selectedItem={selectedPersonalSecret}
-              draft={personalSecretDraft}
               isLoading={isPersonalSecretLoading}
               isDetailLoading={isPersonalSecretDetailLoading}
-              isSaving={isPersonalSecretSaving}
-              isDeleting={isPersonalSecretDeleting}
               loadError={personalSecretError}
               saveError={personalSecretSaveError}
               copyNotice={personalSecretCopyNotice}
@@ -4905,17 +4909,16 @@ function App() {
                 setPersonalSecretPage(1);
                 setPersonalSecretQuery("");
               }}
-              onDraftChange={setPersonalSecretDraft}
               onNew={() => {
                 setSelectedPersonalSecretId(null);
                 setPersonalSecretDraft(emptyPersonalSecretDraft);
                 setPersonalSecretSaveError(null);
+                setPersonalSecretCopyNotice(null);
+                setIsPersonalSecretEditorOpen(true);
               }}
               onPageChange={setPersonalSecretPage}
               onSelect={handleSelectPersonalSecret}
               onLoadForEdit={handleLoadPersonalSecretForEdit}
-              onSave={handleSavePersonalSecret}
-              onDelete={handleDeletePersonalSecret}
               onCopyField={handleCopyPersonalSecretField}
             />
           ) : activeView === "currentRecords" ? (
@@ -5188,6 +5191,23 @@ function App() {
           )}
         </section>
       </div>
+
+      <PersonalSecretEditorDialog
+        draft={personalSecretDraft}
+        isDeleting={isPersonalSecretDeleting}
+        isOpen={activeView === "personalSecrets" && isPersonalSecretEditorOpen}
+        isSaving={isPersonalSecretSaving}
+        saveError={personalSecretSaveError}
+        selectedItem={selectedPersonalSecret}
+        onClose={() => {
+          if (isPersonalSecretSaving || isPersonalSecretDeleting) return;
+          setIsPersonalSecretEditorOpen(false);
+          setPersonalSecretSaveError(null);
+        }}
+        onDelete={handleDeletePersonalSecret}
+        onDraftChange={setPersonalSecretDraft}
+        onSave={handleSavePersonalSecret}
+      />
 
       <MobileEditorSheet
         icon={<Pencil size={17} />}
@@ -9642,52 +9662,39 @@ function PersonalSecretsWorkspace({
   total,
   page,
   selectedItem,
-  draft,
   isLoading,
   isDetailLoading,
-  isSaving,
-  isDeleting,
   loadError,
   saveError,
   copyNotice,
   copiedField,
   onClearSearch,
-  onDraftChange,
   onNew,
   onPageChange,
   onSelect,
   onLoadForEdit,
-  onSave,
-  onDelete,
   onCopyField,
 }: {
   items: PersonalSecretItem[];
   total: number;
   page: number;
   selectedItem: PersonalSecretItem | null;
-  draft: PersonalSecretDraft;
   isLoading: boolean;
   isDetailLoading: boolean;
-  isSaving: boolean;
-  isDeleting: boolean;
   loadError: string | null;
   saveError: string | null;
   copyNotice: string | null;
   copiedField: PersonalSecretRevealField | null;
   onClearSearch: () => void;
-  onDraftChange: (draft: PersonalSecretDraft) => void;
   onNew: () => void;
   onPageChange: (page: number) => void;
   onSelect: (item: PersonalSecretItem) => void;
   onLoadForEdit: (secretId: number) => void;
-  onSave: () => void;
-  onDelete: () => void;
   onCopyField: (field: PersonalSecretRevealField) => void;
 }) {
   const totalPages = Math.max(1, Math.ceil(total / PERSONAL_SECRETS_PAGE_SIZE));
   const rangeStart = total === 0 ? 0 : (page - 1) * PERSONAL_SECRETS_PAGE_SIZE + 1;
   const rangeEnd = Math.min(page * PERSONAL_SECRETS_PAGE_SIZE, total);
-  const canSave = draft.system_name.trim().length > 0 && draft.password.trim().length > 0 && !isSaving && !isDeleting;
 
   const copyButton = (field: PersonalSecretRevealField, label = "复制") => {
     const isCopied = copiedField === field;
@@ -9804,7 +9811,7 @@ function PersonalSecretsWorkspace({
               <LockKeyhole size={17} />
               Secret Detail
             </div>
-            <h2 className="text-lg font-semibold text-slate-50">{selectedItem ? selectedItem.system_name : "新增个人机密"}</h2>
+            <h2 className="text-lg font-semibold text-slate-50">{selectedItem ? selectedItem.system_name : "选择一条机密"}</h2>
             <p className="mt-1 text-sm leading-6 text-slate-500">字段可单独复制；整体复制会临时解密所需字段。</p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -9837,6 +9844,13 @@ function PersonalSecretsWorkspace({
           </div>
         </div>
 
+        {saveError ? (
+          <div className="mb-4 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-2 text-sm text-red-100">{saveError}</div>
+        ) : null}
+        {copyNotice ? (
+          <div className="mb-4 rounded-lg border border-mint-300/20 bg-mint-300/10 px-3 py-2 text-sm text-mint-100">{copyNotice}</div>
+        ) : null}
+
         {selectedItem ? (
           <div className="mb-4 grid gap-3 sm:grid-cols-2">
             <SecretDisplayField label="系统名称" value={selectedItem.system_name} action={copyButton("system_name")} />
@@ -9846,100 +9860,15 @@ function PersonalSecretsWorkspace({
             <SecretDisplayField label="备注" value={selectedItem.notes_preview || "未记录"} action={copyButton("notes")} />
             <SecretDisplayField label="标签" value={selectedItem.tags || "未记录"} />
           </div>
-        ) : null}
-
-        <div className="rounded-lg border border-white/10 bg-white/[0.025] p-4">
-          <div className="mb-4 flex items-center gap-2 text-sm font-medium text-slate-300">
-            <Pencil size={16} />
-            {selectedItem ? "编辑机密" : "新增机密"}
+        ) : (
+          <div className="grid min-h-[260px] place-items-center rounded-lg border border-dashed border-white/10 bg-white/[0.02] p-6 text-center">
+            <div>
+              <LockKeyhole className="mx-auto mb-3 text-slate-600" size={34} />
+              <div className="mb-1 font-medium text-slate-300">选择一条机密</div>
+              <p className="text-sm leading-6 text-slate-500">从左侧列表查看安全摘要，或点击新增创建一条记录。</p>
+            </div>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="系统名称" icon={<Database size={16} />}>
-              <input
-                className="control"
-                maxLength={200}
-                value={draft.system_name}
-                onChange={(event) => onDraftChange({ ...draft, system_name: event.target.value })}
-              />
-            </Field>
-            <Field label="登录地址" icon={<Globe size={16} />}>
-              <input
-                className="control"
-                autoComplete="off"
-                maxLength={1000}
-                value={draft.login_url}
-                onChange={(event) => onDraftChange({ ...draft, login_url: event.target.value })}
-              />
-            </Field>
-            <Field label="用户名" icon={<UserCog size={16} />}>
-              <input
-                className="control"
-                autoComplete="off"
-                maxLength={500}
-                value={draft.username}
-                onChange={(event) => onDraftChange({ ...draft, username: event.target.value })}
-              />
-            </Field>
-            <Field label="密码" icon={<KeyRound size={16} />}>
-              <input
-                className="control"
-                autoComplete="new-password"
-                maxLength={4000}
-                type="password"
-                value={draft.password}
-                onChange={(event) => onDraftChange({ ...draft, password: event.target.value })}
-              />
-            </Field>
-            <Field label="标签" icon={<Tags size={16} />}>
-              <input
-                className="control"
-                maxLength={500}
-                value={draft.tags}
-                onChange={(event) => onDraftChange({ ...draft, tags: event.target.value })}
-              />
-            </Field>
-          </div>
-          <div className="mt-3">
-            <Field label="备注" icon={<FileText size={16} />}>
-              <textarea
-                className="control min-h-[120px] resize-y leading-7"
-                maxLength={4000}
-                value={draft.notes}
-                onChange={(event) => onDraftChange({ ...draft, notes: event.target.value })}
-              />
-            </Field>
-          </div>
-
-          {saveError ? (
-            <div className="mt-3 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-2 text-sm text-red-100">{saveError}</div>
-          ) : null}
-          {copyNotice ? (
-            <div className="mt-3 rounded-lg border border-mint-300/20 bg-mint-300/10 px-3 py-2 text-sm text-mint-100">{copyNotice}</div>
-          ) : null}
-
-          <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_auto]">
-            <button
-              className="flex h-11 items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
-              disabled={!canSave}
-              type="button"
-              onClick={onSave}
-            >
-              {isSaving ? <Loader2 className="animate-spin" size={17} /> : <Save size={17} />}
-              {isSaving ? "保存中" : selectedItem ? "保存修改" : "保存机密"}
-            </button>
-            {selectedItem ? (
-              <button
-                className="flex h-11 items-center justify-center gap-2 rounded-lg border border-red-300/20 bg-red-400/10 px-4 text-sm text-red-100 transition hover:bg-red-400/16 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-600"
-                disabled={isDeleting || isSaving}
-                type="button"
-                onClick={onDelete}
-              >
-                {isDeleting ? <Loader2 className="animate-spin" size={17} /> : <Trash2 size={17} />}
-                删除
-              </button>
-            ) : null}
-          </div>
-        </div>
+        )}
       </section>
     </div>
   );
@@ -9953,6 +9882,204 @@ function SecretDisplayField({ label, value, action }: { label: string; value: st
         {action}
       </div>
       <div className="break-words text-sm leading-6 text-slate-300 [overflow-wrap:anywhere]">{value}</div>
+    </div>
+  );
+}
+
+function PersonalSecretEditorDialog({
+  draft,
+  isDeleting,
+  isOpen,
+  isSaving,
+  saveError,
+  selectedItem,
+  onClose,
+  onDelete,
+  onDraftChange,
+  onSave,
+}: {
+  draft: PersonalSecretDraft;
+  isDeleting: boolean;
+  isOpen: boolean;
+  isSaving: boolean;
+  saveError: string | null;
+  selectedItem: PersonalSecretItem | null;
+  onClose: () => void;
+  onDelete: () => void;
+  onDraftChange: (draft: PersonalSecretDraft) => void;
+  onSave: () => void;
+}) {
+  const isBusy = isSaving || isDeleting;
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape" && !isBusy) {
+        onClose();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isBusy, isOpen, onClose]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end bg-black/62 px-0 backdrop-blur-sm sm:items-center sm:justify-center sm:px-4"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !isBusy) {
+          onClose();
+        }
+      }}
+    >
+      <section
+        aria-modal="true"
+        className="flex max-h-[100dvh] w-full flex-col overflow-hidden rounded-t-lg border border-white/10 bg-ink-950 shadow-soft-glow sm:max-h-[calc(100dvh-48px)] sm:max-w-3xl sm:rounded-lg"
+        role="dialog"
+      >
+        <div className="shrink-0 border-b border-white/10 p-4">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
+                <Pencil size={17} />
+                Secret Editor
+              </div>
+              <h2 className="line-clamp-2 text-lg font-semibold text-slate-50">{selectedItem ? "编辑机密" : "新增机密"}</h2>
+            </div>
+            <button
+              className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600"
+              disabled={isBusy}
+              title="关闭"
+              type="button"
+              onClick={onClose}
+            >
+              <X size={17} />
+            </button>
+          </div>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-4">
+          <PersonalSecretEditorForm
+            draft={draft}
+            isDeleting={isDeleting}
+            isSaving={isSaving}
+            saveError={saveError}
+            selectedItem={selectedItem}
+            onDelete={onDelete}
+            onDraftChange={onDraftChange}
+            onSave={onSave}
+          />
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function PersonalSecretEditorForm({
+  draft,
+  isDeleting,
+  isSaving,
+  saveError,
+  selectedItem,
+  onDelete,
+  onDraftChange,
+  onSave,
+}: {
+  draft: PersonalSecretDraft;
+  isDeleting: boolean;
+  isSaving: boolean;
+  saveError: string | null;
+  selectedItem: PersonalSecretItem | null;
+  onDelete: () => void;
+  onDraftChange: (draft: PersonalSecretDraft) => void;
+  onSave: () => void;
+}) {
+  const canSave = draft.system_name.trim().length > 0 && draft.password.trim().length > 0 && !isSaving && !isDeleting;
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="系统名称" icon={<Database size={16} />}>
+          <input
+            className="control"
+            maxLength={200}
+            value={draft.system_name}
+            onChange={(event) => onDraftChange({ ...draft, system_name: event.target.value })}
+          />
+        </Field>
+        <Field label="登录地址" icon={<Globe size={16} />}>
+          <input
+            className="control"
+            autoComplete="off"
+            maxLength={1000}
+            value={draft.login_url}
+            onChange={(event) => onDraftChange({ ...draft, login_url: event.target.value })}
+          />
+        </Field>
+        <Field label="用户名" icon={<UserCog size={16} />}>
+          <input
+            className="control"
+            autoComplete="off"
+            maxLength={500}
+            value={draft.username}
+            onChange={(event) => onDraftChange({ ...draft, username: event.target.value })}
+          />
+        </Field>
+        <Field label="密码" icon={<KeyRound size={16} />}>
+          <input
+            className="control"
+            autoComplete="new-password"
+            maxLength={4000}
+            type="password"
+            value={draft.password}
+            onChange={(event) => onDraftChange({ ...draft, password: event.target.value })}
+          />
+        </Field>
+        <Field label="标签" icon={<Tags size={16} />}>
+          <input
+            className="control"
+            maxLength={500}
+            value={draft.tags}
+            onChange={(event) => onDraftChange({ ...draft, tags: event.target.value })}
+          />
+        </Field>
+      </div>
+      <Field label="备注" icon={<FileText size={16} />}>
+        <textarea
+          className="control min-h-[120px] resize-y leading-7"
+          maxLength={4000}
+          value={draft.notes}
+          onChange={(event) => onDraftChange({ ...draft, notes: event.target.value })}
+        />
+      </Field>
+
+      {saveError ? <div className="rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-2 text-sm text-red-100">{saveError}</div> : null}
+
+      <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+        <button
+          className="flex h-11 items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
+          disabled={!canSave}
+          type="button"
+          onClick={onSave}
+        >
+          {isSaving ? <Loader2 className="animate-spin" size={17} /> : <Save size={17} />}
+          {isSaving ? "保存中" : selectedItem ? "保存修改" : "保存机密"}
+        </button>
+        {selectedItem ? (
+          <button
+            className="flex h-11 items-center justify-center gap-2 rounded-lg border border-red-300/20 bg-red-400/10 px-4 text-sm text-red-100 transition hover:bg-red-400/16 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-600"
+            disabled={isDeleting || isSaving}
+            type="button"
+            onClick={onDelete}
+          >
+            {isDeleting ? <Loader2 className="animate-spin" size={17} /> : <Trash2 size={17} />}
+            删除
+          </button>
+        ) : null}
+      </div>
     </div>
   );
 }

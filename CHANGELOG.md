@@ -18,6 +18,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Changed / 变更
 
+- Changed Personal Secrets detail so it only shows the selected secret summary and copy actions, with add/edit handled in a dedicated dialog.
+- 调整个人机密详情：详情区只展示选中机密摘要和复制操作，新增/编辑改为独立弹窗完成。
+
 - Enhanced the Blog Factory cover-image prompt helper with structured configurable subject, composition, style, objects, material, lighting, camera, quality, and negative-prompt options while keeping editable templates.
 - 增强博客工厂封面生图提示词辅助：新增主题、构图、风格、元素、材质、灯光、镜头、质量和限制项的结构化配置，同时保留可编辑模板。
 
