@@ -77,7 +77,7 @@ function toPayload(draft: PersonalSecretDraft) {
     system_name: draft.system_name,
     login_url: draft.login_url || null,
     username: draft.username || null,
-    password: draft.password,
+    password: draft.password || null,
     notes: draft.notes || null,
     tags: draft.tags || null,
   };

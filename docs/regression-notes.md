@@ -72,3 +72,32 @@ python -m pytest backend/tests/test_todos.py
 ```
 
 The test `test_update_todo_binds_only_lobs_present_in_sql` must continue to prove that Todo updates bind only CLOB fields present in the generated update SQL and do not leak those declarations into the lock query.
+
+## Personal Secrets Optional Password Must Stay Nullable End to End
+
+### Symptom
+
+Creating a Personal Secrets entry from `个人机密 -> 新增` failed or stayed disabled when the username or password field was empty.
+
+### Trigger
+
+Saving a new secret with a system name but without a username, password, or both.
+
+### Root Cause
+
+The frontend save guard required `personalSecretDraft.password.trim()`, the Pydantic create schema required a non-blank `password`, and the Oracle table definition kept `password_cipher` and `password_nonce` as `not null`. These layers made the field effectively required even though the UI needs to support records without credentials.
+
+### Safe Pattern
+
+Only `system_name` is required for Personal Secrets. Preserve the same optional contract across:
+
+- `frontend/src/App.tsx` save enablement and handler guards.
+- `frontend/src/api/personalSecrets.ts` payload normalization.
+- `backend/app/schemas/personal_secrets.py` create/update validation.
+- `backend/app/repositories/personal_secrets.py` table setup and encrypted field writes.
+
+Do not use placeholder encrypted password values to satisfy a database constraint; empty passwords should be stored as `null` cipher and nonce values so `has_password` remains false.
+
+### Guardrail
+
+`backend/tests/test_personal_secret_schemas.py` covers missing and blank username/password values for create, password clearing for update, and the continued requirement that `system_name` cannot be blank.

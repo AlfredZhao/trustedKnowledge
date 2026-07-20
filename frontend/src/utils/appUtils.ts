@@ -261,6 +261,8 @@ export interface StoredUiState {
     selectedId: number | null;
     task: string;
     skillIds: string[];
+    modelName: string;
+    customModelName: string;
     codexJobId: string | null;
   };
   blogFactory: {
@@ -1240,6 +1242,8 @@ export function readStoredUiState(): StoredUiState {
         selectedId: readNullablePositiveInteger(factory.selectedId),
         task: normalizeFactoryTaskResult(readString(factory.task)),
         skillIds: readStringArray(factory.skillIds),
+        modelName: readString(factory.modelName) || defaults.factory.modelName,
+        customModelName: readString(factory.customModelName),
         codexJobId: readNullableString(factory.codexJobId),
       },
       blogFactory: {
@@ -1365,6 +1369,8 @@ function buildDefaultUiState(): StoredUiState {
       selectedId: null,
       task: "",
       skillIds: [],
+      modelName: "__codex_cli_default__",
+      customModelName: "",
       codexJobId: null,
     },
     blogFactory: {

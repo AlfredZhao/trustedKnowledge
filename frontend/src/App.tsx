@@ -280,7 +280,12 @@ import {
   type StoredUiState,
   type ThemeMode,
 } from "./utils/appUtils";
-import { AI_CODING_DEFAULT_MODEL, AI_CODING_MODEL_FALLBACK_OPTIONS } from "./views/aiCodingShared";
+import {
+  AI_CODING_DEFAULT_MODEL,
+  AI_CODING_MODEL_FALLBACK_OPTIONS,
+  buildAiCodingModelOptions,
+  formatAiCodingModelLabel,
+} from "./views/aiCodingShared";
 
 const OverviewDashboard = lazy(() => import("./views/OverviewDashboard"));
 const LlmUsageDashboard = lazy(() => import("./views/LlmUsageDashboard"));
@@ -522,6 +527,9 @@ const englishMaterialFlagStyles: Record<EnglishMaterialDraft["flag"], string> = 
   "1": "border-mint-300/30 bg-mint-300/10 text-mint-300",
 };
 
+const FACTORY_HISTORY_ASK_MODEL = "__factory_history_ask_model__";
+const FACTORY_CUSTOM_MODEL = "__factory_custom_model__";
+
 function App() {
   // Restored UI state and long-lived workspace state.
   const [restoredUiState] = useState<StoredUiState>(() => readStoredUiState());
@@ -575,6 +583,8 @@ function App() {
   const [factorySelectedId, setFactorySelectedId] = useState<number | null>(restoredUiState.factory.selectedId);
   const [factoryTask, setFactoryTask] = useState(restoredUiState.factory.task);
   const [factorySkillIds, setFactorySkillIds] = useState<string[]>(restoredUiState.factory.skillIds);
+  const [factoryModelName, setFactoryModelName] = useState(restoredUiState.factory.modelName || AI_CODING_DEFAULT_MODEL);
+  const [factoryCustomModelName, setFactoryCustomModelName] = useState(restoredUiState.factory.customModelName);
   const [factoryError, setFactoryError] = useState<string | null>(null);
   const [isFactoryLoading, setIsFactoryLoading] = useState(false);
   const [isFactoryGenerating, setIsFactoryGenerating] = useState(Boolean(restoredUiState.factory.codexJobId));
@@ -947,9 +957,38 @@ function App() {
     return getLatestCodexJobByOutputMode("full");
   }
 
+  const factoryHistoryAskModelName =
+    historyAskLlmConfig?.enabled && historyAskLlmConfig.model_name.trim().length > 0
+      ? historyAskLlmConfig.model_name.trim()
+      : "";
+  const factoryModelOptions = useMemo(() => {
+    const options = buildAiCodingModelOptions(codexConfig);
+    if (factoryHistoryAskModelName) {
+      options.push({
+        value: FACTORY_HISTORY_ASK_MODEL,
+        label: `AI 问数配置（${factoryHistoryAskModelName}）`,
+      });
+    } else if (factoryModelName === FACTORY_HISTORY_ASK_MODEL) {
+      options.push({
+        value: FACTORY_HISTORY_ASK_MODEL,
+        label: "AI 问数配置（未启用）",
+      });
+    }
+    options.push({ value: FACTORY_CUSTOM_MODEL, label: "其他模型..." });
+    return options;
+  }, [codexConfig, factoryHistoryAskModelName, factoryModelName]);
+
+  function resolveFactoryModelName() {
+    if (factoryModelName === AI_CODING_DEFAULT_MODEL) return "";
+    if (factoryModelName === FACTORY_HISTORY_ASK_MODEL) return factoryHistoryAskModelName;
+    if (factoryModelName === FACTORY_CUSTOM_MODEL) return factoryCustomModelName.trim();
+    return factoryModelName.trim();
+  }
+
   // Loading, polling, cache hydration, and persistence effects.
   useEffect(() => {
-    if (!apiKey || !canAccessAiCoding || activeView !== "aiCoding") return;
+    if (!apiKey || (activeView !== "aiCoding" && activeView !== "factory")) return;
+    if (activeView === "aiCoding" && !canAccessAiCoding) return;
     if (isCodexConfigLoading || codexConfig) return;
 
     let cancelled = false;
@@ -1197,6 +1236,8 @@ function App() {
         selectedId: factorySelectedId,
         task: factoryTask,
         skillIds: factorySkillIds,
+        modelName: factoryModelName,
+        customModelName: factoryCustomModelName,
         codexJobId: factoryCodexJobId,
       },
       blogFactory: {
@@ -1318,6 +1359,8 @@ function App() {
     englishMaterialSortDir,
     draft,
     factoryCodexJobId,
+    factoryCustomModelName,
+    factoryModelName,
     factoryPage,
     factoryQuery,
     factorySelectedId,
@@ -1488,7 +1531,7 @@ function App() {
   }, [activeView, authUser]);
 
   useEffect(() => {
-    if (!apiKey || activeView !== "historyAsk") return;
+    if (!apiKey || (activeView !== "historyAsk" && activeView !== "factory")) return;
 
     let mounted = true;
     setIsHistoryAskLlmConfigLoading(true);
@@ -2792,6 +2835,8 @@ function App() {
     setFactoryUsername("");
     setFactoryTask("");
     setFactorySkillIds([]);
+    setFactoryModelName(AI_CODING_DEFAULT_MODEL);
+    setFactoryCustomModelName("");
     setFactoryCodexJobId(null);
     setAdminModuleItems([]);
     setFactoryCodexStatus("");
@@ -2857,6 +2902,17 @@ function App() {
       setFactoryCodexStatus("");
       return;
     }
+    const requestedModelName = resolveFactoryModelName();
+    if (factoryModelName === FACTORY_CUSTOM_MODEL && !requestedModelName) {
+      setFactoryCopyError("请输入要用于知识加工的模型名。");
+      setFactoryCodexStatus("");
+      return;
+    }
+    if (factoryModelName === FACTORY_HISTORY_ASK_MODEL && !requestedModelName) {
+      setFactoryCopyError("AI 问数模型配置未启用或模型名为空，请先在 AI 问数中保存模型配置。");
+      setFactoryCodexStatus("");
+      return;
+    }
 
     setIsFactoryGenerating(true);
     setFactorySelectedId(item.id);
@@ -2868,7 +2924,7 @@ function App() {
 
     try {
       const prompt = buildFactorySkillPrompt(item);
-      const job = await startCodexJob(prompt, factorySkillIds, "read-only", "final");
+      const job = await startCodexJob(prompt, factorySkillIds, "read-only", "final", requestedModelName);
       setFactoryCodexJobId(job.job_id);
       setFactoryTask(job.output);
       setFactoryCodexErrorOutput(job.error_output);
@@ -3619,7 +3675,7 @@ function App() {
   }
 
   async function handleSavePersonalSecret() {
-    if (isPersonalSecretSaving || !personalSecretDraft.system_name.trim() || !personalSecretDraft.password.trim()) return;
+    if (isPersonalSecretSaving || !personalSecretDraft.system_name.trim()) return;
 
     setIsPersonalSecretSaving(true);
     setPersonalSecretSaveError(null);
@@ -5161,18 +5217,23 @@ function App() {
               hasCopied={hasCopiedFactoryTask}
               isCopySaving={isFactoryCopySaving}
               isMerging={isFactoryMerging}
+              modelName={factoryModelName}
+              modelOptions={factoryModelOptions}
               copyError={factoryCopyError}
               codexErrorOutput={factoryCodexErrorOutput}
               codexStatus={factoryCodexStatus}
               searchQuery={factoryQuery}
               username={factoryUsername}
+              customModelName={factoryCustomModelName}
               onClearSearch={() => {
                 setFactoryQuery("");
                 setFactoryPage(1);
               }}
+              onCustomModelNameChange={setFactoryCustomModelName}
               onCopyTask={handleCopyFactoryTask}
               onGenerateTask={handleGenerateFactoryTask}
               onMergeKnowledge={handleMergeFactoryKnowledge}
+              onModelNameChange={setFactoryModelName}
               onPageChange={setFactoryPage}
               onUsernameChange={(nextUsername) => {
                 setFactoryPage(1);
@@ -7759,15 +7820,20 @@ function KnowledgeFactory({
   hasCopied,
   isCopySaving,
   isMerging,
+  modelName,
+  modelOptions,
   copyError,
   codexErrorOutput,
   codexStatus,
   searchQuery,
   username,
+  customModelName,
   onClearSearch,
+  onCustomModelNameChange,
   onCopyTask,
   onGenerateTask,
   onMergeKnowledge,
+  onModelNameChange,
   onPageChange,
   onUsernameChange,
   onSelect,
@@ -7790,15 +7856,20 @@ function KnowledgeFactory({
   hasCopied: boolean;
   isCopySaving: boolean;
   isMerging: boolean;
+  modelName: string;
+  modelOptions: { value: string; label: string }[];
   copyError: string | null;
   codexErrorOutput: string;
   codexStatus: string;
   searchQuery: string;
   username: string;
+  customModelName: string;
   onClearSearch: () => void;
+  onCustomModelNameChange: (modelName: string) => void;
   onCopyTask: (view: MarkdownContentView) => void;
   onGenerateTask: (item: KnowledgeItem) => void;
   onMergeKnowledge: (knowledgeIds: number[], mergeDraft: KnowledgeDraft) => Promise<KnowledgeItem>;
+  onModelNameChange: (modelName: string) => void;
   onPageChange: (page: number) => void;
   onUsernameChange: (username: string) => void;
   onSelect: (item: KnowledgeItem) => void;
@@ -7819,6 +7890,10 @@ function KnowledgeFactory({
   const isAdminUser = authUser?.is_admin ?? false;
   const hasSingleVisibleUser = !isAdminUser && visibleUsers.length <= 1;
   const allUsersLabel = isAdminUser ? "全部用户" : "全部可见用户";
+  const selectedModelLabel =
+    modelName === FACTORY_CUSTOM_MODEL
+      ? customModelName.trim() || "其他模型"
+      : (modelOptions.find((option) => option.value === modelName)?.label ?? modelName);
 
   useEffect(() => {
     setSelectedMergeItems((current) => current.map((selected) => items.find((item) => item.id === selected.id) ?? selected));
@@ -8137,6 +8212,35 @@ function KnowledgeFactory({
               )}
               {hasCopied ? "已复制" : taskView === "rendered" ? "复制美化" : "复制裸文本"}
             </button>
+          </div>
+        </div>
+
+        <div className="mb-4 rounded-lg border border-white/10 bg-white/[0.025] p-3">
+          <Field label="执行模型" icon={<Settings2 size={16} />}>
+            <select
+              className="control h-10"
+              disabled={isGenerating}
+              value={modelName}
+              onChange={(event) => onModelNameChange(event.target.value)}
+            >
+              {modelOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+          {modelName === FACTORY_CUSTOM_MODEL ? (
+            <input
+              className="control mt-3 h-10"
+              disabled={isGenerating}
+              value={customModelName}
+              onChange={(event) => onCustomModelNameChange(event.target.value)}
+              placeholder="输入模型名，例如 deepseek-chat"
+            />
+          ) : null}
+          <div className="mt-2 text-xs leading-5 text-slate-500">
+            当前模型：{selectedModelLabel}
           </div>
         </div>
 
@@ -9997,7 +10101,7 @@ function PersonalSecretEditorForm({
   onDraftChange: (draft: PersonalSecretDraft) => void;
   onSave: () => void;
 }) {
-  const canSave = draft.system_name.trim().length > 0 && draft.password.trim().length > 0 && !isSaving && !isDeleting;
+  const canSave = draft.system_name.trim().length > 0 && !isSaving && !isDeleting;
 
   return (
     <div className="space-y-4">

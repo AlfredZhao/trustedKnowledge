@@ -85,8 +85,8 @@ async def _ensure_personal_secrets_table(connection: oracledb.AsyncConnection) -
                     login_url varchar2(1000),
                     username_cipher clob,
                     username_nonce varchar2(64),
-                    password_cipher clob not null,
-                    password_nonce varchar2(64) not null,
+                    password_cipher clob,
+                    password_nonce varchar2(64),
                     notes_cipher clob,
                     notes_nonce varchar2(64),
                     tags varchar2(500),
@@ -99,6 +99,19 @@ async def _ensure_personal_secrets_table(connection: oracledb.AsyncConnection) -
         exception
             when others then
                 if sqlcode != -955 then
+                    raise;
+                end if;
+        end;
+        """
+    )
+    logger.info("Ensuring Oracle personal secret password fields are nullable")
+    await cursor.execute(
+        """
+        begin
+            execute immediate 'alter table tk_personal_secrets modify (password_cipher null, password_nonce null)';
+        exception
+            when others then
+                if sqlcode != -1451 then
                     raise;
                 end if;
         end;
@@ -227,8 +240,8 @@ async def create_personal_secret(payload: PersonalSecretCreate, auth_context: Au
                 "owner_username": owner_username,
                 "system_name": payload.system_name,
                 "login_url": payload.login_url,
-                "password_cipher": "pending",
-                "password_nonce": "pending",
+                "password_cipher": None,
+                "password_nonce": None,
                 "tags": payload.tags,
                 "new_id": new_id,
             },
@@ -278,8 +291,6 @@ async def update_personal_secret(secret_id: int, payload: PersonalSecretUpdate, 
 
     for field_name in ("username", "password", "notes"):
         if field_name in values:
-            if field_name == "password" and values[field_name] is None:
-                continue
             encrypted = encrypt_personal_secret(values[field_name], aad=_aad(secret_id, owner_username, field_name))
             assignments.append(f"{field_name}_cipher = :{field_name}_cipher")
             assignments.append(f"{field_name}_nonce = :{field_name}_nonce")
@@ -359,13 +370,11 @@ def _encrypt_payload_fields(secret_id: int, owner_username: str, payload: Person
     encrypted_username = encrypt_personal_secret(payload.username, aad=_aad(secret_id, owner_username, "username"))
     encrypted_password = encrypt_personal_secret(payload.password, aad=_aad(secret_id, owner_username, "password"))
     encrypted_notes = encrypt_personal_secret(payload.notes, aad=_aad(secret_id, owner_username, "notes"))
-    if encrypted_password is None:
-        raise RuntimeError("Password encryption returned no value")
     return {
         "username_cipher": encrypted_username.cipher if encrypted_username else None,
         "username_nonce": encrypted_username.nonce if encrypted_username else None,
-        "password_cipher": encrypted_password.cipher,
-        "password_nonce": encrypted_password.nonce,
+        "password_cipher": encrypted_password.cipher if encrypted_password else None,
+        "password_nonce": encrypted_password.nonce if encrypted_password else None,
         "notes_cipher": encrypted_notes.cipher if encrypted_notes else None,
         "notes_nonce": encrypted_notes.nonce if encrypted_notes else None,
     }
