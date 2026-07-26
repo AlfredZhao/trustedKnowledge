@@ -16,6 +16,9 @@ The format follows the common GitHub changelog convention inspired by
 - Added model selection to Knowledge Factory generation, supporting Codex presets, AI Ask's configured model, and a custom model name.
 - 为知识加工生成结果新增模型选择：支持 Codex 预设、AI 问数已配置模型，以及手工输入其他模型名。
 
+- Added Blog Factory cover-image text parsing that extracts distinct core entities from arbitrary input text and builds a C4D cartoon 3D image prompt from those entities.
+- 为博客工厂封面生图新增文本解析：支持输入任意文字，自动提取差异化核心实体，并拼接 C4D 卡通 3D 配图提示词。
+
 - Added a personal secrets workspace for storing login credentials with per-user ownership, AES-GCM encrypted username/password/notes fields, searchable metadata, field-level copy, and full-record copy.
 - 新增个人机密工作区：支持按当前用户存储登录信息，用户名、密码和备注使用 AES-GCM 加密保存，并提供元数据搜索、字段单独复制和整体复制。
 
@@ -26,6 +29,9 @@ The format follows the common GitHub changelog convention inspired by
 
 - Enhanced the Blog Factory cover-image prompt helper with structured configurable subject, composition, style, objects, material, lighting, camera, quality, and negative-prompt options while keeping editable templates.
 - 增强博客工厂封面生图提示词辅助：新增主题、构图、风格、元素、材质、灯光、镜头、质量和限制项的结构化配置，同时保留可编辑模板。
+
+- Simplified the Blog Factory cover-image prompt configuration to entity subject, aspect/composition, visual style, key objects, and exclusions, with Chinese UI labels and aspect-ratio-specific prompt wording.
+- 精简博客工厂封面生图配置，仅保留实体主题、画幅构图、视觉风格、关键元素和规避内容，界面常规文案改为中文，并在提示词中明确不同画幅构图。
 
 #### Fixed / 修复
 

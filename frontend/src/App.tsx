@@ -216,6 +216,7 @@ import {
   createEmptyBlogFactoryMaskRule,
   describeBlogFactoryMaskRule,
   englishMaterialItemToDraft,
+  extractBlogFactoryCoverEntities,
   extractBlogFactoryCoverImageMarkdown,
   extractCodexResultText,
   extractMarkdownHeading,
@@ -8685,6 +8686,7 @@ function BlogFactoryRecords({
   const [assistError, setAssistError] = useState<string | null>(null);
   const [isCoverPromptConfigOpen, setIsCoverPromptConfigOpen] = useState(false);
   const [isCoverPromptTemplateEditing, setIsCoverPromptTemplateEditing] = useState(false);
+  const [coverPromptTextDraft, setCoverPromptTextDraft] = useState("");
   const [coverPromptTemplateDraft, setCoverPromptTemplateDraft] = useState(coverPromptTemplate);
   const [coverPromptConfigDraft, setCoverPromptConfigDraft] = useState<BlogFactoryCoverPromptConfig>(() =>
     normalizeBlogFactoryCoverPromptConfig(coverPromptConfig),
@@ -8696,6 +8698,12 @@ function BlogFactoryRecords({
   const publishTitle = selectedItem ? extractMarkdownHeading(publishMarkdown) || selectedItem.article_title || "" : "";
   const assistSource = editDraft.taskContent;
   const assistSummary = useMemo(() => buildBlogFactoryTaskSummary(assistSource), [assistSource]);
+  const coverPromptSource = coverPromptTextDraft.trim() || assistSource;
+  const coverPromptSummary = useMemo(() => buildBlogFactoryTaskSummary(coverPromptSource), [coverPromptSource]);
+  const coverPromptEntities = useMemo(
+    () => extractBlogFactoryCoverEntities(coverPromptSource, coverPromptSummary, editDraft.questionSnapshot || selectedItem?.question_snapshot || ""),
+    [coverPromptSource, coverPromptSummary, editDraft.questionSnapshot, selectedItem?.question_snapshot],
+  );
   const coverImageMarkdown = useMemo(() => extractBlogFactoryCoverImageMarkdown(assistSource), [assistSource]);
   const resolvedCoverPromptConfig = useMemo(() => normalizeBlogFactoryCoverPromptConfig(coverPromptConfig), [coverPromptConfig]);
   const resolvedCoverPromptConfigDraft = useMemo(
@@ -8706,13 +8714,13 @@ function BlogFactoryRecords({
   const coverImagePrompt = useMemo(
     () =>
       buildBlogFactoryCoverImagePrompt(
-        assistSource,
-        assistSummary,
+        coverPromptSource,
+        coverPromptSummary,
         editDraft.questionSnapshot || selectedItem?.question_snapshot || "",
         coverPromptTemplate,
         resolvedCoverPromptConfig,
       ),
-    [assistSource, assistSummary, coverPromptTemplate, resolvedCoverPromptConfig, editDraft.questionSnapshot, selectedItem?.question_snapshot],
+    [coverPromptSource, coverPromptSummary, coverPromptTemplate, resolvedCoverPromptConfig, editDraft.questionSnapshot, selectedItem?.question_snapshot],
   );
   const canPublish = publishMarkdown.trim().length > 0 && publishConfigs.length > 0 && !isPublishing;
   const selectedMaskRule = maskRules.find((item) => item.id === selectedMaskRuleId) ?? null;
@@ -8748,6 +8756,7 @@ function BlogFactoryRecords({
     setAssistError(null);
     setIsCoverPromptConfigOpen(false);
     setIsCoverPromptTemplateEditing(false);
+    setCoverPromptTextDraft("");
     setCoverImageError(null);
   }, [selectedItem?.id]);
 
@@ -8812,7 +8821,7 @@ function BlogFactoryRecords({
 
   function toggleCoverPromptConfigValue(key: keyof Pick<
     BlogFactoryCoverPromptConfig,
-    "styles" | "objects" | "materials" | "lightings" | "cameras" | "qualities" | "negativePrompts"
+    "styles" | "objects" | "negativePrompts"
   >, value: string) {
     const currentValues = resolvedCoverPromptConfigDraft[key];
     const nextValues = currentValues.includes(value) ? currentValues.filter((item) => item !== value) : [...currentValues, value];
@@ -8862,7 +8871,7 @@ function BlogFactoryRecords({
     label: string,
     key: keyof Pick<
       BlogFactoryCoverPromptConfig,
-      "styles" | "objects" | "materials" | "lightings" | "cameras" | "qualities" | "negativePrompts"
+      "styles" | "objects" | "negativePrompts"
     >,
     options: readonly string[],
   ) {
@@ -9254,7 +9263,7 @@ function BlogFactoryRecords({
                 ) : null}
               </div>
 
-              {assistSource.trim() ? (
+              {assistView === "coverPrompt" || assistSource.trim() ? (
                 assistView === "summary" ? (
                   <div className="space-y-3">
                     <div className="rounded-lg border border-white/10 bg-black/15 p-3 text-sm leading-7 text-slate-300">
@@ -9279,12 +9288,82 @@ function BlogFactoryRecords({
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-white/10 bg-black/15 p-3 text-xs leading-6 text-slate-300 [overflow-wrap:anywhere]">
-                      {coverImagePrompt}
-                    </pre>
+                    <div className="space-y-3 rounded-lg border border-white/10 bg-black/15 p-3">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <div className="mb-1 flex items-center gap-2 text-sm font-medium text-slate-300">
+                            <Sparkles size={16} />
+                            文本解析
+                          </div>
+                          <div className="text-xs leading-6 text-slate-500">
+                            输入任意文字，自动提取核心实体并生成 C4D 卡通 3D 配图提示词。
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            className="flex h-9 items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-3 text-xs font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
+                            disabled={!assistSource.trim() && !coverPromptTextDraft.trim()}
+                            type="button"
+                            onClick={() => {
+                              if (!coverPromptTextDraft.trim()) setCoverPromptTextDraft(assistSource);
+                              setAssistError(null);
+                            }}
+                          >
+                            <WandSparkles size={15} />
+                            一键转配图
+                          </button>
+                          <button
+                            className="flex h-9 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-xs text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600"
+                            disabled={!assistSource.trim()}
+                            type="button"
+                            onClick={() => {
+                              setCoverPromptTextDraft(assistSource);
+                              setAssistError(null);
+                            }}
+                          >
+                            <FileText size={15} />
+                            使用任务内容
+                          </button>
+                          <button
+                            className="flex h-9 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-xs text-slate-300 transition hover:border-red-400/30 hover:text-red-100 disabled:cursor-not-allowed disabled:text-slate-600"
+                            disabled={!coverPromptTextDraft.trim()}
+                            type="button"
+                            onClick={() => setCoverPromptTextDraft("")}
+                          >
+                            <X size={15} />
+                            清空
+                          </button>
+                        </div>
+                      </div>
+                      <textarea
+                        className="control min-h-[120px] resize-y text-sm leading-7"
+                        placeholder="粘贴文章标题、摘要或正文片段。留空时使用当前任务内容生成。"
+                        value={coverPromptTextDraft}
+                        onChange={(event) => setCoverPromptTextDraft(event.target.value)}
+                      />
+                      <div className="flex flex-wrap gap-2">
+                        {(coverPromptEntities.length ? coverPromptEntities : ["等待解析实体"]).map((entity) => (
+                          <span
+                            key={entity}
+                            className="rounded-full border border-mint-300/20 bg-mint-300/10 px-2.5 py-1 text-xs text-mint-100"
+                          >
+                            {entity}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    {coverPromptSource.trim() ? (
+                      <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-white/10 bg-black/15 p-3 text-xs leading-6 text-slate-300 [overflow-wrap:anywhere]">
+                        {coverImagePrompt}
+                      </pre>
+                    ) : (
+                      <div className="rounded-lg border border-white/10 bg-black/15 p-3 text-sm leading-6 text-slate-500">
+                        输入文字后自动生成提示词。
+                      </div>
+                    )}
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <div className="min-h-5 text-xs leading-5 text-slate-500">
-                        {hasPendingCoverPromptConfig ? "有未应用的配置修改。" : "使用默认配置生成，可按需展开参数调整。"}
+                        {hasPendingCoverPromptConfig ? "有未应用的配置修改。" : "默认使用自动实体、C4D 卡通 3D 风格。"}
                       </div>
                       <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
                         <button
@@ -9321,7 +9400,7 @@ function BlogFactoryRecords({
                               ? "border-mint-300/30 bg-mint-300/14 text-mint-300"
                               : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-mint-300/30 hover:text-mint-300"
                           }`}
-                          disabled={!coverImagePrompt}
+                          disabled={!coverImagePrompt || !coverPromptSource.trim()}
                           type="button"
                           onClick={() => void handleCopyAssistText(coverImagePrompt, "coverPrompt")}
                         >
@@ -9346,15 +9425,12 @@ function BlogFactoryRecords({
                             ))}
                           </select>
                         </Field>
-                        <Field label="构图" icon={<Layers3 size={16} />}>
+                        <Field label="画幅构图" icon={<Layers3 size={16} />}>
                           <select
                             className="control"
                             value={resolvedCoverPromptConfigDraft.composition}
                             onChange={(event) => handleCoverPromptConfigDraftChange({ composition: event.target.value })}
                           >
-                            <option value={DEFAULT_BLOG_FACTORY_COVER_PROMPT_CONFIG.composition}>
-                              16:9 centered, safe for 2.35:1 crop
-                            </option>
                             {BLOG_FACTORY_COVER_PROMPT_OPTIONS.compositions.map((composition) => (
                               <option key={composition} value={composition}>
                                 {composition}
@@ -9363,15 +9439,11 @@ function BlogFactoryRecords({
                           </select>
                         </Field>
                       </div>
-                      {renderCoverPromptOptionChips("风格", "styles", BLOG_FACTORY_COVER_PROMPT_OPTIONS.styles)}
-                      {renderCoverPromptOptionChips("元素", "objects", BLOG_FACTORY_COVER_PROMPT_OPTIONS.objects)}
                       <div className="grid gap-4 xl:grid-cols-2">
-                        {renderCoverPromptOptionChips("材质", "materials", BLOG_FACTORY_COVER_PROMPT_OPTIONS.materials)}
-                        {renderCoverPromptOptionChips("灯光", "lightings", BLOG_FACTORY_COVER_PROMPT_OPTIONS.lightings)}
-                        {renderCoverPromptOptionChips("镜头", "cameras", BLOG_FACTORY_COVER_PROMPT_OPTIONS.cameras)}
-                        {renderCoverPromptOptionChips("质量", "qualities", BLOG_FACTORY_COVER_PROMPT_OPTIONS.qualities)}
+                        {renderCoverPromptOptionChips("视觉风格", "styles", BLOG_FACTORY_COVER_PROMPT_OPTIONS.styles)}
+                        {renderCoverPromptOptionChips("关键元素", "objects", BLOG_FACTORY_COVER_PROMPT_OPTIONS.objects)}
                       </div>
-                      {renderCoverPromptOptionChips("限制", "negativePrompts", BLOG_FACTORY_COVER_PROMPT_OPTIONS.negativePrompts)}
+                      {renderCoverPromptOptionChips("规避内容", "negativePrompts", BLOG_FACTORY_COVER_PROMPT_OPTIONS.negativePrompts)}
                       <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
                         <button
                           className="flex h-9 items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-3 text-xs font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
@@ -9396,7 +9468,7 @@ function BlogFactoryRecords({
                     {isCoverPromptTemplateEditing ? (
                       <div className="space-y-3 rounded-lg border border-white/10 bg-black/15 p-3">
                         <div className="text-xs leading-6 text-slate-500">
-                          可用变量：{"{{title}}"} / {"{{summary}}"} / {"{{topic}}"} / {"{{subject}}"} / {"{{objects}}"} /{" "}
+                          可用变量：{"{{title}}"} / {"{{summary}}"} / {"{{topic}}"} / {"{{entities}}"} / {"{{subject}}"} / {"{{objects}}"} /{" "}
                           {"{{composition}}"} / {"{{style}}"} / {"{{lighting}}"} / {"{{material}}"} / {"{{camera}}"} /{" "}
                           {"{{quality}}"} / {"{{negativePrompt}}"}
                         </div>

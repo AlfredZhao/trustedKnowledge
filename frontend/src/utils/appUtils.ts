@@ -93,104 +93,50 @@ const LEGACY_BLOG_FACTORY_COVER_PROMPT_TEMPLATE = [
 
 export const BLOG_FACTORY_COVER_PROMPT_OPTIONS = {
   subjects: [
-    "AI knowledge factory",
-    "content pipeline",
-    "data orchestration hub",
-    "cloud infrastructure",
-    "developer workflow",
-    "financial analytics engine",
-    "medical intelligence system",
-    "robotic automation platform",
-    "knowledge graph network",
+    "自动提取实体",
+    "产品能力架构",
+    "业务流程场景",
+    "技术系统剖面",
+    "数据分析场景",
+    "研发工作流",
+    "知识图谱网络",
   ],
   compositions: [
-    "centered hero composition",
-    "left-aligned with negative space",
-    "right-aligned with negative space",
-    "isometric layout",
-    "top-down view",
-    "symmetrical composition",
-    "layered depth composition",
-    "modular grid layout",
+    "16:9 横向封面，主体居中，适配 2.35:1 裁切",
+    "3:2 横向配图，左侧主体，右侧留白",
+    "4:3 信息图构图，主体更饱满",
+    "1:1 方图构图，中心主体突出",
+    "9:16 竖版封面，主体上下层叠",
+    "等距视角 isometric layout，模块化层级",
+    "俯视 top-down view，流程路径清晰",
   ],
   styles: [
+    "C4D 卡通 3D",
     "Octane render",
     "Cinema4D render",
     "Blender render",
-    "Unreal Engine style",
-    "Apple keynote style",
-    "premium SaaS editorial",
-    "glassmorphism",
-    "minimal luxury",
-    "futuristic but clean",
-    "cybernetic editorial",
-    "isometric 3D infographic style",
-    "clean modern",
+    "等距 3D 信息图",
+    "科技产品封面",
+    "干净现代",
   ],
   objects: [
-    "translucent glass cubes",
-    "floating document cards",
-    "glowing nodes",
-    "structured grid",
-    "data streams",
-    "modular panels",
-    "holographic connectors",
-    "conveyor-like tracks",
-    "server blocks",
-    "neural network paths",
-  ],
-  materials: [
-    "glass",
-    "acrylic",
-    "brushed aluminum",
-    "polished plastic",
-    "frosted transparent surfaces",
-    "holographic surfaces",
-    "metallic edges",
-    "luminous inserts",
-  ],
-  lightings: [
-    "soft studio lighting",
-    "cinematic lighting",
-    "rim lighting",
-    "volumetric lighting",
-    "HDR lighting",
-    "neon accent lighting",
-    "global illumination",
-    "diffused daylight",
-  ],
-  cameras: [
-    "subtle depth of field",
-    "shallow depth of field",
-    "wide angle",
-    "isometric camera",
-    "macro detail",
-    "orthographic look",
-  ],
-  qualities: [
-    "ultra detailed",
-    "high detail",
-    "photorealistic",
-    "premium",
-    "modern",
-    "polished",
-    "crisp",
-    "editorial quality",
-    "professional",
+    "围绕核心实体生成专属 3D 隐喻物件",
+    "浮动文档卡片",
+    "发光节点网络",
+    "数据流线",
+    "模块化面板",
+    "流程轨道",
+    "服务器积木",
+    "知识图谱连线",
   ],
   negativePrompts: [
-    "no readable text",
-    "no logo",
-    "no watermark",
-    "no face",
-    "no people",
-    "no clutter",
-    "no messy UI screenshot",
-    "no low quality",
-    "no blur",
-    "no extra labels",
-    "no cropped subject",
-    "no oversaturated colors",
+    "不要可读文字",
+    "不要 logo",
+    "不要水印",
+    "不要人物脸部",
+    "不要杂乱 UI 截图",
+    "不要低清模糊",
+    "不要过度饱和",
   ],
 } as const;
 
@@ -207,36 +153,26 @@ export type BlogFactoryCoverPromptConfig = {
 };
 
 export const DEFAULT_BLOG_FACTORY_COVER_PROMPT_CONFIG: BlogFactoryCoverPromptConfig = {
-  subject: "AI knowledge factory",
-  composition: "16:9 landscape hero composition, centered subject, safe for 2.35:1 crop",
-  styles: ["premium SaaS editorial", "Octane render", "clean modern"],
-  objects: ["translucent glass cubes", "floating document cards", "glowing nodes", "structured grid", "data streams"],
-  materials: ["glass", "acrylic", "frosted transparent surfaces", "metallic edges"],
-  lightings: ["soft studio lighting"],
-  cameras: ["subtle depth of field"],
-  qualities: ["high detail", "professional", "subtle depth of field"],
-  negativePrompts: ["no readable text", "no logo", "no watermark", "no people", "no face", "no messy UI screenshot"],
+  subject: "自动提取实体",
+  composition: "16:9 横向封面，主体居中，适配 2.35:1 裁切",
+  styles: ["C4D 卡通 3D", "Octane render", "干净现代"],
+  objects: ["围绕核心实体生成专属 3D 隐喻物件", "浮动文档卡片", "发光节点网络", "数据流线"],
+  materials: ["玻璃", "亚克力", "磨砂透明材质"],
+  lightings: ["柔和棚拍灯光"],
+  cameras: ["轻微景深"],
+  qualities: ["高细节", "专业质感", "画面清晰"],
+  negativePrompts: ["不要可读文字", "不要 logo", "不要水印", "不要人物脸部", "不要杂乱 UI 截图"],
 };
 
 export const DEFAULT_BLOG_FACTORY_COVER_PROMPT_TEMPLATE = [
-  "【主题】",
-  "{{subject}}：{{title}}。核心意图：{{summary}}。",
-  "【元素】",
-  "{{objects}}",
-  "【构图】",
-  "{{composition}}",
-  "【风格】",
-  "{{style}}",
-  "【灯光】",
-  "{{lighting}}",
-  "【材质】",
-  "{{material}}",
-  "【镜头】",
-  "{{camera}}",
-  "【质量】",
-  "{{quality}}",
-  "【限制】",
-  "{{negativePrompt}}",
+  "主题：{{title}}",
+  "核心实体：{{entities}}",
+  "画面：以“{{subject}}”为主体，将核心实体转成可辨认的 C4D 卡通 3D 隐喻物件，避免泛化成普通知识工厂。",
+  "内容意图：{{summary}}",
+  "关键元素：{{objects}}",
+  "画幅构图：{{composition}}",
+  "视觉风格：{{style}}，{{material}}，{{lighting}}，{{camera}}，{{quality}}。",
+  "限制：{{negativePrompt}}。",
 ].join("\n");
 
 const BLOG_FACTORY_COVER_IMAGE_LINE_PATTERN = /^!\[封面图片[^\]]*]\([^)]+\)\s*$/m;
@@ -1088,19 +1024,25 @@ export function buildBlogFactoryCoverImagePrompt(
 ) {
   const normalized = normalizeBlogFactoryAssistContent(taskContent);
   const cleanSummary = buildBlogFactoryTaskSummary(summary || normalized);
-  const topic = extractBlogFactoryCoverTopic(normalized, cleanSummary, title);
+  const entities = extractBlogFactoryCoverEntities(normalized, cleanSummary, title);
+  const topic = entities[0] || extractBlogFactoryCoverTopic(normalized, cleanSummary, title);
   const resolvedTitle = cleanBlogFactoryTitle(title) || topic || "技术文章封面";
   const resolvedConfig = normalizeBlogFactoryCoverPromptConfig(config);
-  const resolvedSubject = resolvedConfig.subject || topic || "AI knowledge factory";
+  const resolvedSubject =
+    !resolvedConfig.subject || resolvedConfig.subject === DEFAULT_BLOG_FACTORY_COVER_PROMPT_CONFIG.subject
+      ? entities.slice(0, 3).join("、") || topic || "文章核心实体"
+      : resolvedConfig.subject;
+  const entityObjects = entities.slice(0, 4).map((entity) => `${entity} 的专属 3D 隐喻物件`);
 
   return renderBlogFactoryCoverPromptTemplate(resolveBlogFactoryCoverPromptTemplate(template), {
     title: resolvedTitle,
     summary: cleanSummary || "提炼文章核心观点，呈现专业可信的知识加工与实践落地感。",
     topic: topic || resolvedTitle,
+    entities: joinPromptList(entities) || resolvedTitle,
     subject: resolvedSubject,
     composition: resolvedConfig.composition,
     style: joinPromptList(resolvedConfig.styles),
-    objects: joinPromptList(resolvedConfig.objects),
+    objects: joinPromptList([...entityObjects, ...resolvedConfig.objects]),
     material: joinPromptList(resolvedConfig.materials),
     lighting: joinPromptList(resolvedConfig.lightings),
     camera: joinPromptList(resolvedConfig.cameras),
@@ -1112,16 +1054,26 @@ export function buildBlogFactoryCoverImagePrompt(
 export function normalizeBlogFactoryCoverPromptConfig(value: unknown): BlogFactoryCoverPromptConfig {
   const record = readRecord(value);
   const defaults = DEFAULT_BLOG_FACTORY_COVER_PROMPT_CONFIG;
+  const legacySubject = readString(record.subject).trim();
+  const legacyComposition = readString(record.composition).trim();
   return {
-    subject: readString(record.subject).trim() || defaults.subject,
-    composition: readString(record.composition).trim() || defaults.composition,
-    styles: readPromptStringArray(record.styles, defaults.styles),
-    objects: readPromptStringArray(record.objects, defaults.objects),
-    materials: readPromptStringArray(record.materials, defaults.materials),
-    lightings: readPromptStringArray(record.lightings, defaults.lightings),
-    cameras: readPromptStringArray(record.cameras, defaults.cameras),
-    qualities: readPromptStringArray(record.qualities, defaults.qualities),
-    negativePrompts: readPromptStringArray(record.negativePrompts, defaults.negativePrompts),
+    subject: BLOG_FACTORY_COVER_PROMPT_OPTIONS.subjects.includes(
+      legacySubject as (typeof BLOG_FACTORY_COVER_PROMPT_OPTIONS.subjects)[number],
+    )
+      ? legacySubject
+      : defaults.subject,
+    composition: BLOG_FACTORY_COVER_PROMPT_OPTIONS.compositions.includes(
+      legacyComposition as (typeof BLOG_FACTORY_COVER_PROMPT_OPTIONS.compositions)[number],
+    )
+      ? legacyComposition
+      : defaults.composition,
+    styles: readPromptOptionArray(record.styles, defaults.styles, BLOG_FACTORY_COVER_PROMPT_OPTIONS.styles),
+    objects: readPromptOptionArray(record.objects, defaults.objects, BLOG_FACTORY_COVER_PROMPT_OPTIONS.objects),
+    materials: defaults.materials,
+    lightings: defaults.lightings,
+    cameras: defaults.cameras,
+    qualities: defaults.qualities,
+    negativePrompts: readPromptOptionArray(record.negativePrompts, defaults.negativePrompts, BLOG_FACTORY_COVER_PROMPT_OPTIONS.negativePrompts),
   };
 }
 
@@ -2076,6 +2028,90 @@ function cleanBlogFactoryTitle(value: string) {
     .trim();
 }
 
+const BLOG_FACTORY_ENTITY_STOP_WORDS = new Set([
+  "本文",
+  "文章",
+  "内容",
+  "问题",
+  "方案",
+  "实践",
+  "指南",
+  "教程",
+  "方法",
+  "流程",
+  "配置",
+  "优化",
+  "功能",
+  "能力",
+  "核心",
+  "关键",
+  "系统",
+  "平台",
+  "技术",
+  "数据",
+  "应用",
+  "开发",
+  "发布",
+  "集成",
+  "迁移",
+  "排查",
+  "复盘",
+  "用户",
+  "默认",
+  "当前",
+  "新增",
+  "修复",
+  "调整",
+]);
+
+export function extractBlogFactoryCoverEntities(content: string, summary = "", fallbackTitle = "", maxCount = 6) {
+  const titleTopic = cleanBlogFactoryTitle(fallbackTitle);
+  const normalized = normalizeBlogFactoryAssistContent(content);
+  const source = `${titleTopic}\n${summary}\n${normalized}`.replace(/[`*_>#\-[\](){}]/g, " ");
+  const scores = new Map<string, number>();
+
+  const addCandidate = (rawValue: string, score: number) => {
+    const value = cleanBlogFactoryEntity(rawValue);
+    if (!value) return;
+    scores.set(value, (scores.get(value) ?? 0) + score);
+  };
+
+  if (titleTopic) addCandidate(titleTopic, 18);
+
+  source.match(/\b(?:Oracle|APEX|OCI|GraalVM|Java|Python|React|Vite|FastAPI|Codex|OpenAI|AI|LLM|SQL|PL\/SQL|Markdown|MetaWeblog|C4D|RAG|MCP|API)\b/g)?.forEach((item) => {
+    addCandidate(item, 12);
+  });
+  source.match(/《([^》]{2,24})》|「([^」]{2,24})」|“([^”]{2,24})”/g)?.forEach((item) => {
+    addCandidate(item.replace(/[《》「」“”]/g, ""), 11);
+  });
+  source
+    .match(
+      /[\u4e00-\u9fa5A-Za-z0-9+#./-]{2,18}(?:工作台|知识库|数据库|智能体|机器人|流水线|控制台|仪表盘|模型|引擎|网关|接口|服务|平台|系统|模块|组件|表单|弹窗|看板|图谱|网络|流程|链路|架构|策略|规则|模板|助手|工厂|文章|配图|封面|提示词|实体|配置|功能|选项)/gu,
+    )
+    ?.forEach((item) => addCandidate(item, 8));
+  source
+    .match(/(?:基于|围绕|关于|面向|通过|实现|构建|优化|修复|新增|支持)([\u4e00-\u9fa5A-Za-z0-9+#./-]{2,16})/gu)
+    ?.forEach((item) => addCandidate(item.replace(/^(基于|围绕|关于|面向|通过|实现|构建|优化|修复|新增|支持)/u, ""), 5));
+
+  return Array.from(scores.entries())
+    .sort((left, right) => right[1] - left[1] || left[0].length - right[0].length)
+    .map(([value]) => value)
+    .filter((value, index, values) => values.findIndex((other) => other !== value && other.includes(value)) === -1 || index < 2)
+    .slice(0, maxCount);
+}
+
+function cleanBlogFactoryEntity(value: string) {
+  const cleaned = cleanBlogFactoryAssistPhrase(value)
+    .replace(/^[的地得和与及或、，。；：:]+|[的地得和与及或、，。；：:]+$/gu, "")
+    .replace(/^(一个|一种|这类|这些|当前|默认|核心|关键)/u, "")
+    .replace(/(实践|指南|教程|方法|流程|方案|配置|优化|能力)$/u, "")
+    .trim();
+  if (Array.from(cleaned).length < 2 || Array.from(cleaned).length > 24) return "";
+  if (BLOG_FACTORY_ENTITY_STOP_WORDS.has(cleaned)) return "";
+  if (/^\d+$/.test(cleaned)) return "";
+  return cleaned;
+}
+
 function extractBlogFactoryCoverTopic(content: string, summary: string, fallbackTitle: string) {
   const titleTopic = cleanBlogFactoryTitle(fallbackTitle);
   if (titleTopic && Array.from(titleTopic).length <= 18) return titleTopic;
@@ -2096,6 +2132,7 @@ function renderBlogFactoryCoverPromptTemplate(
     title: string;
     summary: string;
     topic: string;
+    entities: string;
     subject: string;
     composition: string;
     style: string;
@@ -2111,6 +2148,7 @@ function renderBlogFactoryCoverPromptTemplate(
     .replace(/\{\{\s*title\s*\}\}/g, values.title)
     .replace(/\{\{\s*summary\s*\}\}/g, values.summary)
     .replace(/\{\{\s*topic\s*\}\}/g, values.topic)
+    .replace(/\{\{\s*entities\s*\}\}/g, values.entities)
     .replace(/\{\{\s*subject\s*\}\}/g, values.subject)
     .replace(/\{\{\s*composition\s*\}\}/g, values.composition)
     .replace(/\{\{\s*style\s*\}\}/g, values.style)
@@ -2125,6 +2163,14 @@ function renderBlogFactoryCoverPromptTemplate(
 
 function readPromptStringArray(value: unknown, fallback: readonly string[]) {
   const values = readStringArray(value).map((item) => item.trim()).filter(Boolean);
+  return values.length > 0 ? Array.from(new Set(values)) : [...fallback];
+}
+
+function readPromptOptionArray(value: unknown, fallback: readonly string[], allowed: readonly string[]) {
+  const allowedValues = new Set(allowed);
+  const values = readStringArray(value)
+    .map((item) => item.trim())
+    .filter((item) => allowedValues.has(item));
   return values.length > 0 ? Array.from(new Set(values)) : [...fallback];
 }
 
