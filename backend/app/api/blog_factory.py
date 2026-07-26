@@ -6,10 +6,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from app.api.errors import oracle_http_exception
 from app.core.security import require_current_user
 from app.repositories.blog_factory import (
+    BlogFactoryItemNotPendingError,
     create_blog_factory_item,
     delete_blog_factory_item,
     get_blog_factory_item,
     list_blog_factory_items,
+    send_blog_factory_item_to_processing,
     update_blog_factory_article,
     update_blog_factory_content_status,
     update_blog_factory_item,
@@ -33,6 +35,8 @@ from app.schemas.blog_factory import (
     BlogFactoryCreate,
     BlogFactoryItem,
     BlogFactoryListResponse,
+    BlogFactorySendToProcessing,
+    BlogFactorySendToProcessingResult,
     BlogFactoryStatusUpdate,
     BlogFactoryUpdate,
 )
@@ -47,6 +51,7 @@ from app.schemas.blog_publish import (
     BlogPublishConfigValidationRequest,
     BlogPublishConfigValidationResponse,
 )
+from app.schemas.knowledge import KnowledgeItem
 from app.services.metaweblog import MetaWeblogError
 
 
@@ -251,6 +256,29 @@ async def patch_blog_factory_content_status(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blog factory item not found")
 
     return BlogFactoryItem.model_validate(item)
+
+
+@router.post("/{item_id}/send-to-processing", response_model=BlogFactorySendToProcessingResult)
+async def post_blog_factory_send_to_processing(
+    item_id: int,
+    payload: BlogFactorySendToProcessing,
+    auth_context: AuthContext = Depends(require_current_user),
+) -> BlogFactorySendToProcessingResult:
+    try:
+        result = await send_blog_factory_item_to_processing(item_id, payload, auth_context)
+    except BlogFactoryItemNotPendingError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except oracledb.Error as exc:
+        raise oracle_http_exception(exc, "Oracle rejected the blog factory send-back") from exc
+
+    if result is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Blog factory item not found")
+
+    item, knowledge = result
+    return BlogFactorySendToProcessingResult(
+        item=BlogFactoryItem.model_validate(item),
+        knowledge=KnowledgeItem.model_validate(knowledge),
+    )
 
 
 @router.patch("/{item_id}/article", response_model=BlogFactoryItem)

@@ -132,6 +132,11 @@ export interface BlogFactoryPublishResult {
   published: boolean;
 }
 
+export interface BlogFactorySendToProcessingResult {
+  item: BlogFactoryItem;
+  knowledge: KnowledgeItem;
+}
+
 export type AppView =
   | "overview"
   | "workbench"

@@ -13,6 +13,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Added / 新增
 
+- Added a Blog Factory send-back action for pending tasks, creating a new unpublished Knowledge Factory item from the current task content and marking the original factory task as skipped.
+- 为博客工厂待处理任务新增“发回知识加工”动作：使用当前任务内容创建新的未发布知识加工项，并将原工厂任务标记为跳过。
+
 - Added model selection to Knowledge Factory generation, supporting Codex presets, AI Ask's configured model, and a custom model name.
 - 为知识加工生成结果新增模型选择：支持 Codex 预设、AI 问数已配置模型，以及手工输入其他模型名。
 

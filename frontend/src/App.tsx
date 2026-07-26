@@ -90,6 +90,7 @@ import {
   readCachedBlogPublishCategories,
   readCachedKnowledge,
   readCachedTodos,
+  sendBlogFactoryItemToProcessing,
   updateBlogFactoryArticle,
   updateBlogFactoryItem,
   updateBlogFactoryStatus,
@@ -615,6 +616,7 @@ function App() {
   const [isBlogFactoryDetailLoading, setIsBlogFactoryDetailLoading] = useState(false);
   const [isBlogFactoryStatusSaving, setIsBlogFactoryStatusSaving] = useState(false);
   const [isBlogFactoryItemSaving, setIsBlogFactoryItemSaving] = useState(false);
+  const [isBlogFactorySendingToProcessing, setIsBlogFactorySendingToProcessing] = useState(false);
   const [isBlogFactoryArticleSaving, setIsBlogFactoryArticleSaving] = useState(false);
   const [isBlogFactoryDeleting, setIsBlogFactoryDeleting] = useState(false);
   const [isMobileBlogFactoryDetailOpen, setIsMobileBlogFactoryDetailOpen] = useState(false);
@@ -653,6 +655,7 @@ function App() {
   const [blogFactoryError, setBlogFactoryError] = useState<string | null>(null);
   const [blogFactoryStatusError, setBlogFactoryStatusError] = useState<string | null>(null);
   const [blogFactoryEditError, setBlogFactoryEditError] = useState<string | null>(null);
+  const [blogFactorySendBackNotice, setBlogFactorySendBackNotice] = useState<string | null>(null);
   const [blogFactoryDeleteTarget, setBlogFactoryDeleteTarget] = useState<BlogFactoryItem | null>(null);
   const [blogFactoryRefreshToken, setBlogFactoryRefreshToken] = useState(0);
   const [blogPublishConfigs, setBlogPublishConfigs] = useState<BlogPublishConfig[]>([]);
@@ -2997,6 +3000,7 @@ function App() {
     setBlogFactoryStatusError(null);
     setBlogFactoryEditError(null);
     setBlogFactoryTaskCopyError(null);
+    setBlogFactorySendBackNotice(null);
     setHasCopiedBlogFactoryTask(false);
     setIsBlogFactoryDetailLoading(true);
 
@@ -3026,6 +3030,48 @@ function App() {
       setBlogFactoryStatusError(error instanceof Error ? error.message : "状态更新失败，请稍后重试。");
     } finally {
       setIsBlogFactoryStatusSaving(false);
+    }
+  }
+
+  async function handleSendBlogFactoryItemToProcessing() {
+    if (!selectedBlogFactoryItem || isBlogFactorySendingToProcessing) return;
+    if (selectedBlogFactoryItem.factory_status !== "待处理") {
+      setBlogFactoryStatusError("只有待处理任务可以发回知识加工。");
+      return;
+    }
+    if (!blogFactoryEditDraft.taskContent.trim() || !blogFactoryEditDraft.questionSnapshot.trim()) {
+      setBlogFactoryStatusError("任务内容和问题快照不能为空。");
+      return;
+    }
+
+    setIsBlogFactorySendingToProcessing(true);
+    setBlogFactoryStatusError(null);
+    setBlogFactorySendBackNotice(null);
+    try {
+      const result = await sendBlogFactoryItemToProcessing({
+        id: selectedBlogFactoryItem.id,
+        taskContent: blogFactoryEditDraft.taskContent,
+        questionSnapshot: blogFactoryEditDraft.questionSnapshot,
+        sourceSnapshot: blogFactoryEditDraft.sourceSnapshot,
+        topicTagSnapshot: blogFactoryEditDraft.topicTagSnapshot,
+      });
+      invalidateApiCache(["/api/blog-factory", "/api/knowledge"]);
+      setSelectedBlogFactoryItem(result.item);
+      setBlogFactoryItems((current) => current.map((item) => (item.id === result.item.id ? result.item : item)));
+      setBlogFactorySendBackNotice(`已创建待加工知识 #${result.knowledge.id}，当前任务已标记为跳过。`);
+      setFactorySelectedId(result.knowledge.id);
+      setFactoryTask("");
+      setFactoryQuery("");
+      setFactoryUsername(getClearedScopedUsernameFilter(authUser));
+      setFactoryPage(1);
+      setFactoryRefreshToken((current) => current + 1);
+      setBlogFactoryRefreshToken((current) => current + 1);
+      setIsMobileBlogFactoryDetailOpen(false);
+      setActiveView("factory");
+    } catch (error) {
+      setBlogFactoryStatusError(error instanceof Error ? error.message : "发回知识加工失败，请稍后重试。");
+    } finally {
+      setIsBlogFactorySendingToProcessing(false);
     }
   }
 
@@ -4842,6 +4888,7 @@ function App() {
               isDetailLoading={isBlogFactoryDetailLoading}
               isStatusSaving={isBlogFactoryStatusSaving}
               isItemSaving={isBlogFactoryItemSaving}
+              isSendingToProcessing={isBlogFactorySendingToProcessing}
               isArticleSaving={isBlogFactoryArticleSaving}
               isDeleting={isBlogFactoryDeleting}
               loadError={blogFactoryError}
@@ -4849,6 +4896,7 @@ function App() {
               editError={blogFactoryEditError}
               articleError={blogFactoryArticleError}
               taskCopyError={blogFactoryTaskCopyError}
+              sendBackNotice={blogFactorySendBackNotice}
               publishConfigs={blogPublishConfigs}
               isPublishConfigsLoading={isBlogPublishConfigsLoading}
               publishConfigsError={blogPublishConfigsError}
@@ -4900,6 +4948,7 @@ function App() {
               onCopyTask={handleCopyBlogFactoryTaskContent}
               onOpenPublishConfig={handleOpenBlogPublishConfigDialog}
               onOpenPublishDialog={handleOpenBlogPublishDialog}
+              onSendToProcessing={handleSendBlogFactoryItemToProcessing}
               onDelete={handleRequestDeleteBlogFactoryItem}
               onCloseMobileDetail={() => setIsMobileBlogFactoryDetailOpen(false)}
               onSaveItem={handleSaveBlogFactoryItem}
@@ -8587,6 +8636,7 @@ function BlogFactoryRecords({
   isDetailLoading,
   isStatusSaving,
   isItemSaving,
+  isSendingToProcessing,
   isArticleSaving,
   isDeleting,
   loadError,
@@ -8594,6 +8644,7 @@ function BlogFactoryRecords({
   editError,
   articleError,
   taskCopyError,
+  sendBackNotice,
   publishConfigs,
   isPublishConfigsLoading,
   publishConfigsError,
@@ -8621,6 +8672,7 @@ function BlogFactoryRecords({
   onCopyTask,
   onOpenPublishConfig,
   onOpenPublishDialog,
+  onSendToProcessing,
   onDelete,
   onCloseMobileDetail,
   onSaveItem,
@@ -8637,6 +8689,7 @@ function BlogFactoryRecords({
   isDetailLoading: boolean;
   isStatusSaving: boolean;
   isItemSaving: boolean;
+  isSendingToProcessing: boolean;
   isArticleSaving: boolean;
   isDeleting: boolean;
   loadError: string | null;
@@ -8644,6 +8697,7 @@ function BlogFactoryRecords({
   editError: string | null;
   articleError: string | null;
   taskCopyError: string | null;
+  sendBackNotice: string | null;
   publishConfigs: BlogPublishConfig[];
   isPublishConfigsLoading: boolean;
   publishConfigsError: string | null;
@@ -8671,6 +8725,7 @@ function BlogFactoryRecords({
   onCopyTask: (view: BlogFactoryTaskCopyMode) => void;
   onOpenPublishConfig: () => void;
   onOpenPublishDialog: (mode: BlogPublishDialogMode) => void;
+  onSendToProcessing: () => void;
   onDelete: () => void;
   onCloseMobileDetail: () => void;
   onSaveItem: () => void;
@@ -8748,6 +8803,14 @@ function BlogFactoryRecords({
     editDraft.taskContent.trim().length > 0 &&
     editDraft.questionSnapshot.trim().length > 0 &&
     editDraft.answerSnapshot.trim().length > 0 &&
+    !isItemSaving &&
+    !isDeleting;
+  const canSendToProcessing =
+    selectedItem !== null &&
+    selectedItem.factory_status === "待处理" &&
+    editDraft.taskContent.trim().length > 0 &&
+    editDraft.questionSnapshot.trim().length > 0 &&
+    !isSendingToProcessing &&
     !isItemSaving &&
     !isDeleting;
   useEffect(() => {
@@ -8962,12 +9025,33 @@ function BlogFactoryRecords({
                   </button>
                 ))}
               </div>
+              <button
+                className="mt-3 flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-3 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
+                disabled={!canSendToProcessing}
+                title={
+                  selectedItem.factory_status === "待处理"
+                    ? "把当前任务内容创建为新的待加工知识"
+                    : "只有待处理任务可以发回知识加工"
+                }
+                type="button"
+                onClick={onSendToProcessing}
+              >
+                {isSendingToProcessing ? <Loader2 className="animate-spin" size={15} /> : <RefreshCw size={15} />}
+                {isSendingToProcessing ? "发回中" : "发回知识加工"}
+              </button>
             </div>
 
             <div className="rounded-lg border border-white/10 bg-white/[0.02] px-3 py-3 text-sm leading-6 text-slate-400">
-              发送到博客工厂后，源知识内容状态会自动同步为“已发布”；此处只需要维护工厂状态。
+              发送到博客工厂后，源知识内容状态会自动同步为“已发布”；待处理任务可将当前任务内容发回知识加工再次生成。
             </div>
           </div>
+
+          {sendBackNotice ? (
+            <div className="order-4 flex items-start gap-2 rounded-lg border border-mint-300/25 bg-mint-300/10 px-3 py-3 text-sm text-mint-100">
+              <CheckCircle2 className="mt-0.5 shrink-0 text-mint-300" size={17} />
+              <span>{sendBackNotice}</span>
+            </div>
+          ) : null}
 
           {statusError ? (
             <div className="order-4 flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100">
@@ -9797,7 +9881,7 @@ function BlogFactoryRecords({
 
       <MobileEditorSheet
         icon={<FileText size={17} />}
-        isBusy={isDetailLoading || isStatusSaving || isItemSaving || isArticleSaving || isDeleting}
+        isBusy={isDetailLoading || isStatusSaving || isItemSaving || isSendingToProcessing || isArticleSaving || isDeleting}
         isOpen={isMobileDetailOpen && selectedItem !== null}
         label="Record Detail"
         title="博客工厂任务详情"

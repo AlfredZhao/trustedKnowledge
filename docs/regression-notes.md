@@ -101,3 +101,32 @@ Do not use placeholder encrypted password values to satisfy a database constrain
 ### Guardrail
 
 `backend/tests/test_personal_secret_schemas.py` covers missing and blank username/password values for create, password clearing for update, and the continued requirement that `system_name` cannot be blank.
+
+## Blog Factory Send-Back Must Preserve Ownership and Avoid Reusing the Source Knowledge
+
+### Symptom
+
+A pending Blog Factory result sent back for reprocessing could either disappear from the wrong user's queue, overwrite the original trusted knowledge, or re-enter Knowledge Factory with the original source text instead of the current factory result.
+
+### Trigger
+
+Using `发回知识加工` from a Blog Factory task whose current `任务内容` has been edited or belongs to a child/visible user rather than the logged-in operator.
+
+### Root Cause
+
+The Blog Factory task stores both the original knowledge snapshots and the generated task content. Reusing the old source knowledge status would expose the original answer to Knowledge Factory, not the current generated result. Creating the new knowledge on the frontend would also lose the factory row's `user_id` when an admin or parent user is operating on another visible user's task.
+
+### Safe Pattern
+
+Keep the send-back operation in the backend transaction:
+
+1. Lock and visibility-check the `ai_blog_factory` row.
+2. Require `factory_status = '待处理'`.
+3. Insert a new `ai_qa_lib` row with `blog_status = '未发布'`, `answer = task_content`, and `user_id` copied from the factory row.
+4. Persist the current factory draft fields and mark the factory task as `跳过`.
+
+Do not update the original source knowledge in place for this workflow.
+
+### Guardrail
+
+`backend/tests/test_conversions.py` covers `send_blog_factory_item_to_processing()` inserting into `ai_qa_lib` with the factory row's `user_id`, using the current task draft as the new knowledge answer, marking the factory task as `跳过`, and refusing non-`待处理` tasks.

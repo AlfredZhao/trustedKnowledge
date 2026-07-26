@@ -1,6 +1,7 @@
 import type {
   BlogPublishCategory,
   BlogFactoryPublishResult,
+  BlogFactorySendToProcessingResult,
   BlogFactoryItem,
   BlogPublishSubmissionOption,
   CurrentDay,
@@ -422,6 +423,31 @@ export async function updateBlogFactoryContentStatus(id: number, blogStatus: Kno
     invalidatePrefixes: ["/api/blog-factory", "/api/knowledge"],
     body: JSON.stringify({
       blog_status: blogStatus,
+    }),
+  });
+}
+
+export async function sendBlogFactoryItemToProcessing({
+  id,
+  taskContent,
+  questionSnapshot,
+  sourceSnapshot,
+  topicTagSnapshot,
+}: {
+  id: number;
+  taskContent: string;
+  questionSnapshot?: string;
+  sourceSnapshot?: string;
+  topicTagSnapshot?: string;
+}): Promise<BlogFactorySendToProcessingResult> {
+  return request<BlogFactorySendToProcessingResult>(`/api/blog-factory/${id}/send-to-processing`, {
+    method: "POST",
+    invalidatePrefixes: ["/api/blog-factory", "/api/knowledge"],
+    body: JSON.stringify({
+      task_content: taskContent,
+      question_snapshot: questionSnapshot || null,
+      source_snapshot: sourceSnapshot || null,
+      topic_tag_snapshot: topicTagSnapshot || null,
     }),
   });
 }

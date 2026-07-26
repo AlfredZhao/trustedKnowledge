@@ -6,11 +6,13 @@ from typing import Any
 import oracledb
 
 from app.db.oracle import acquire_connection
+from app.repositories.knowledge import get_knowledge_by_id
 from app.repositories.users import AuthContext, append_requested_username_clause, append_user_visibility_clause
 from app.schemas.blog_factory import (
     BlogFactoryArticleUpdate,
     BlogFactoryContentStatusUpdate,
     BlogFactoryCreate,
+    BlogFactorySendToProcessing,
     BlogFactoryStatusUpdate,
     BlogFactoryUpdate,
 )
@@ -57,6 +59,10 @@ SORT_COLUMNS = {
 
 _table_ready = False
 logger = logging.getLogger(__name__)
+
+
+class BlogFactoryItemNotPendingError(ValueError):
+    pass
 
 
 def _row_to_dict(row: Any) -> dict[str, Any]:
@@ -487,6 +493,104 @@ async def update_blog_factory_content_status(
         await connection.commit()
 
     return await get_blog_factory_item(item_id, auth_context)
+
+
+async def send_blog_factory_item_to_processing(
+    item_id: int,
+    payload: BlogFactorySendToProcessing,
+    auth_context: AuthContext,
+) -> tuple[dict[str, Any], dict[str, Any]] | None:
+    params: dict[str, Any] = {"item_id": item_id}
+    clauses = ["id = :item_id"]
+    append_user_visibility_clause(clauses, params, auth_context, "user_id")
+    select_sql = f"""
+        select question_snapshot, source_snapshot, topic_tag_snapshot, user_id, factory_status
+        from ai_blog_factory
+        where {" and ".join(clauses)}
+        for update
+    """
+    insert_sql = """
+        insert into ai_qa_lib (
+            question,
+            answer,
+            source,
+            topic_tag,
+            blog_status,
+            user_id
+        ) values (
+            :question,
+            :answer,
+            :source,
+            :topic_tag,
+            '未发布',
+            :user_id
+        )
+        returning id into :new_id
+    """
+    update_factory_sql = """
+        update ai_blog_factory
+        set task_content = :task_content,
+            question_snapshot = :question_snapshot,
+            source_snapshot = :source_snapshot,
+            topic_tag_snapshot = :topic_tag_snapshot,
+            factory_status = '跳过'
+        where id = :item_id
+    """
+
+    async with acquire_connection() as connection:
+        await _ensure_blog_factory_table(connection)
+        cursor = connection.cursor()
+        await cursor.execute(select_sql, params)
+        row = await cursor.fetchone()
+        if row is None:
+            await connection.rollback()
+            return None
+
+        if row[4] != "待处理":
+            await connection.rollback()
+            raise BlogFactoryItemNotPendingError("Only pending blog factory items can be sent back to knowledge processing")
+
+        question_snapshot = payload.question_snapshot or row[0] or f"博客工厂任务 #{item_id}"
+        source_snapshot = payload.source_snapshot if payload.source_snapshot is not None else row[1]
+        topic_tag_snapshot = payload.topic_tag_snapshot if payload.topic_tag_snapshot is not None else row[2]
+        user_id = row[3]
+        reprocess_question = f"再加工：{question_snapshot}"[:4000]
+
+        new_id = cursor.var(oracledb.NUMBER)
+        await cursor.execute(
+            insert_sql,
+            {
+                "question": reprocess_question,
+                "answer": payload.task_content,
+                "source": source_snapshot,
+                "topic_tag": topic_tag_snapshot,
+                "user_id": user_id,
+                "new_id": new_id,
+            },
+        )
+        knowledge_id = int(new_id.getvalue()[0])
+
+        await cursor.execute(
+            update_factory_sql,
+            {
+                "item_id": item_id,
+                "task_content": payload.task_content,
+                "question_snapshot": question_snapshot,
+                "source_snapshot": source_snapshot,
+                "topic_tag_snapshot": topic_tag_snapshot,
+            },
+        )
+        if cursor.rowcount == 0:
+            await connection.rollback()
+            return None
+
+        await connection.commit()
+
+    item = await get_blog_factory_item(item_id, auth_context)
+    knowledge = await get_knowledge_by_id(knowledge_id, auth_context)
+    if item is None or knowledge is None:
+        raise RuntimeError("Blog factory send-back rows were committed but could not be reloaded")
+    return item, knowledge
 
 
 async def update_blog_factory_article(

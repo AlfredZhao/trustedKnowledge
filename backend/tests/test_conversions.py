@@ -5,8 +5,9 @@ from tests.support import prepare_backend_imports
 
 prepare_backend_imports()
 
-from app.repositories import blog_publish, conversions, current_records
+from app.repositories import blog_factory, blog_publish, conversions, current_records
 from app.repositories.users import AuthContext
+from app.schemas.blog_factory import BlogFactorySendToProcessing
 
 
 class FakeVar:
@@ -134,6 +135,63 @@ class ConversionRegressionTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("set blog_status = '已发布'", cursor.executed[0][0])
         self.assertIn("factory_status = '已发布'", cursor.executed[1][0])
         self.assertEqual(cursor.executed[0][1], {"knowledge_id": 42, "user_id": 10})
+
+    async def test_blog_factory_send_back_creates_unpublished_knowledge_for_factory_owner(self) -> None:
+        cursor = FakeCursor(fetch_rows=[("Original question", "source", "tag", 23, "待处理")], generated_id=118)
+        connection = FakeConnection(cursor)
+        expected_item = {"id": 9, "factory_status": "跳过"}
+        expected_knowledge = {
+            "id": 118,
+            "question": "再加工：Edited question",
+            "answer": "Edited task",
+            "source": "edited source",
+            "topic_tag": "edited-tag",
+            "blog_status": "未发布",
+        }
+
+        with (
+            patch("app.repositories.blog_factory.acquire_connection", return_value=FakeAcquire(connection)),
+            patch("app.repositories.blog_factory._ensure_blog_factory_table", new=AsyncMock()),
+            patch("app.repositories.blog_factory.get_blog_factory_item", new=AsyncMock(return_value=expected_item)),
+            patch("app.repositories.blog_factory.get_knowledge_by_id", new=AsyncMock(return_value=expected_knowledge)),
+        ):
+            result = await blog_factory.send_blog_factory_item_to_processing(
+                9,
+                BlogFactorySendToProcessing(
+                    task_content="Edited task",
+                    question_snapshot="Edited question",
+                    source_snapshot="edited source",
+                    topic_tag_snapshot="edited-tag",
+                ),
+                self.auth,
+            )
+
+        self.assertEqual(result, (expected_item, expected_knowledge))
+        self.assertTrue(connection.committed)
+        insert_call = next((params for sql, params in cursor.executed if "insert into ai_qa_lib" in sql), None)
+        self.assertIsNotNone(insert_call)
+        self.assertEqual(insert_call["user_id"], 23)
+        self.assertEqual(insert_call["answer"], "Edited task")
+        self.assertEqual(insert_call["question"], "再加工：Edited question")
+        self.assertTrue(any("factory_status = '跳过'" in sql for sql, _ in cursor.executed))
+
+    async def test_blog_factory_send_back_rejects_non_pending_items(self) -> None:
+        cursor = FakeCursor(fetch_rows=[("Original question", "source", "tag", 23, "已处理")], generated_id=118)
+        connection = FakeConnection(cursor)
+
+        with (
+            patch("app.repositories.blog_factory.acquire_connection", return_value=FakeAcquire(connection)),
+            patch("app.repositories.blog_factory._ensure_blog_factory_table", new=AsyncMock()),
+        ):
+            with self.assertRaises(blog_factory.BlogFactoryItemNotPendingError):
+                await blog_factory.send_blog_factory_item_to_processing(
+                    9,
+                    BlogFactorySendToProcessing(task_content="Edited task"),
+                    self.auth,
+                )
+
+        self.assertTrue(connection.rolled_back)
+        self.assertFalse(any("insert into ai_qa_lib" in sql for sql, _ in cursor.executed))
 
 
 if __name__ == "__main__":

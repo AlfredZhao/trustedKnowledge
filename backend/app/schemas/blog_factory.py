@@ -4,6 +4,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.schemas.validators import normalize_optional_file_path, normalize_optional_short_text, normalize_optional_topic_tag
+from app.schemas.knowledge import KnowledgeItem
 
 BlogFactoryStatus = Literal["待处理", "已处理", "已发布", "跳过"]
 KnowledgeStatus = Literal["未发布", "已发布", "跳过"]
@@ -64,6 +65,46 @@ class BlogFactoryStatusUpdate(BaseModel):
 
 class BlogFactoryContentStatusUpdate(BaseModel):
     blog_status: KnowledgeStatus
+
+
+class BlogFactorySendToProcessing(BaseModel):
+    task_content: str = Field(..., min_length=1)
+    question_snapshot: str | None = Field(default=None, min_length=1, max_length=4000)
+    source_snapshot: str | None = Field(default=None, max_length=200)
+    topic_tag_snapshot: str | None = Field(default=None, max_length=100)
+
+    @field_validator("task_content")
+    @classmethod
+    def strip_task_content(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("Field cannot be blank")
+        return stripped
+
+    @field_validator("question_snapshot")
+    @classmethod
+    def strip_question_snapshot(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("Field cannot be blank")
+        return stripped
+
+    @field_validator("source_snapshot", mode="before")
+    @classmethod
+    def normalize_source_snapshot(cls, value: str | None) -> str | None:
+        return normalize_optional_short_text(value, field_name="source_snapshot", max_length=200)
+
+    @field_validator("topic_tag_snapshot", mode="before")
+    @classmethod
+    def normalize_topic_tag_snapshot(cls, value: str | None) -> str | None:
+        return normalize_optional_topic_tag(value)
+
+
+class BlogFactorySendToProcessingResult(BaseModel):
+    item: BlogFactoryItem
+    knowledge: KnowledgeItem
 
 
 class BlogFactoryUpdate(BaseModel):
