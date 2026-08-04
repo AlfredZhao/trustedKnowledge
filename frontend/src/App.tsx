@@ -293,6 +293,7 @@ const OverviewDashboard = lazy(() => import("./views/OverviewDashboard"));
 const LlmUsageDashboard = lazy(() => import("./views/LlmUsageDashboard"));
 const HistoryExplorer = lazy(() => import("./views/HistoryExplorer"));
 const AiCodingWorkspace = lazy(() => import("./views/AiCodingWorkspace"));
+const AiGraphWorkspace = lazy(() => import("./views/AiGraphWorkspace"));
 import type {
   AdminModuleAccessItem,
   AdminModuleAccessLevel,
@@ -4592,6 +4593,8 @@ function App() {
               ? "历史记录查询"
               : activeView === "englishMaterials"
                 ? "英语素材管理"
+              : activeView === "aiGraph"
+                ? "AI图谱"
               : activeView === "users"
                 ? "用户管理"
               : activeView === "skills"
@@ -4620,6 +4623,8 @@ function App() {
               ? "History Explorer"
               : activeView === "englishMaterials"
                 ? "English Materials"
+              : activeView === "aiGraph"
+                ? "Module Graph"
               : activeView === "users"
                 ? "User Management"
               : activeView === "skills"
@@ -4697,9 +4702,11 @@ function App() {
                     : activeView === "personalSecrets"
                       ? personalSecretQuery
                     : activeView === "currentRecords"
-                      ? currentRecordQuery
-                      : activeView === "englishMaterials"
-                        ? englishMaterialQuery
+                    ? currentRecordQuery
+                    : activeView === "englishMaterials"
+                      ? englishMaterialQuery
+                    : activeView === "aiGraph"
+                      ? ""
                       : activeView === "users"
                         ? managedUserQuery
                       : activeView === "skills"
@@ -5184,6 +5191,10 @@ function App() {
                 }}
                 onPageChange={setHistoryPage}
               />
+            </Suspense>
+          ) : activeView === "aiGraph" ? (
+            <Suspense fallback={lazyViewFallback}>
+              <AiGraphWorkspace onOpenView={setActiveView} />
             </Suspense>
           ) : activeView === "usage" ? (
             <Suspense fallback={lazyViewFallback}>
@@ -5771,7 +5782,11 @@ function Topbar({
         </nav>
       ) : null}
       <div className="flex min-w-0 flex-wrap items-center gap-2">
-        {activeView !== "overview" && activeView !== "usage" && activeView !== "historyAsk" && activeView !== "aiCoding" ? (
+        {activeView !== "overview" &&
+        activeView !== "usage" &&
+        activeView !== "historyAsk" &&
+        activeView !== "aiCoding" &&
+        activeView !== "aiGraph" ? (
           <label className="flex h-11 min-w-[180px] flex-1 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-slate-400 md:w-80">
             <Search size={17} />
             <input

@@ -147,6 +147,7 @@ export type AppView =
   | "currentRecords"
   | "history"
   | "englishMaterials"
+  | "aiGraph"
   | "users"
   | "skills"
   | "historyAsk"

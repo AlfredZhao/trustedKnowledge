@@ -25,6 +25,9 @@ The format follows the common GitHub changelog convention inspired by
 - Added a personal secrets workspace for storing login credentials with per-user ownership, AES-GCM encrypted username/password/notes fields, searchable metadata, field-level copy, and full-record copy.
 - 新增个人机密工作区：支持按当前用户存储登录信息，用户名、密码和备注使用 AES-GCM 加密保存，并提供元数据搜索、字段单独复制和整体复制。
 
+- Added an AI Graph workspace that visualizes current project modules as an interactive frontend graph with grouped entities, relationship highlights, and module jump actions.
+- 新增 AI图谱工作区：将当前项目功能模块展示为交互式前端图谱，支持实体分组、关系高亮和模块跳转。
+
 #### Changed / 变更
 
 - Changed Personal Secrets detail so it only shows the selected secret summary and copy actions, with add/edit handled in a dedicated dialog.
