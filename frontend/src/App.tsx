@@ -9487,9 +9487,9 @@ function BlogFactoryRecords({
                     当前标题：{editDraft.questionSnapshot || selectedItem.question_snapshot || "未记录"}
                   </div>
                 </div>
-                <div className="grid h-9 w-full grid-cols-2 overflow-hidden rounded-lg border border-white/10 bg-white/[0.035] sm:w-auto">
+                <div className="flex h-9 w-full shrink-0 overflow-hidden rounded-lg border border-white/10 bg-white/[0.035] sm:w-auto">
                   <button
-                    className={`px-2 text-xs transition sm:px-3 ${
+                    className={`flex flex-1 items-center justify-center whitespace-nowrap px-3 text-xs transition ${
                       assistView === "summary" ? "bg-mint-300/14 text-mint-200" : "text-slate-400 hover:text-mint-200"
                     }`}
                     type="button"
@@ -9498,7 +9498,7 @@ function BlogFactoryRecords({
                     提取摘要
                   </button>
                   <button
-                    className={`border-l border-white/10 px-2 text-xs transition sm:px-3 ${
+                    className={`flex flex-1 items-center justify-center whitespace-nowrap border-l border-white/10 px-3 text-xs transition ${
                       assistView === "coverPrompt" ? "bg-mint-300/14 text-mint-200" : "text-slate-400 hover:text-mint-200"
                     }`}
                     type="button"
@@ -9507,61 +9507,6 @@ function BlogFactoryRecords({
                     生图提示词
                   </button>
                 </div>
-              </div>
-
-              <div
-                className="mb-4 rounded-lg border border-white/10 bg-black/15 p-3"
-                tabIndex={0}
-                onPaste={handleCoverImagePaste}
-              >
-                <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="min-w-0">
-                    <div className="mb-1 flex items-center gap-2 text-sm font-medium text-slate-300">
-                      <ImagePlus size={16} />
-                      封面图片
-                    </div>
-                    <div className="text-xs leading-6 text-slate-500">点击上传，或先聚焦此区域后粘贴剪贴板图片。</div>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      className="flex h-9 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-xs text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600"
-                      disabled={isCoverImageUploading}
-                      type="button"
-                      onClick={() => coverImageFileInputRef.current?.click()}
-                    >
-                      {isCoverImageUploading ? <Loader2 className="animate-spin" size={15} /> : <ImagePlus size={15} />}
-                      {isCoverImageUploading ? "上传中" : coverImageMarkdown ? "替换图片" : "上传图片"}
-                    </button>
-                    <button
-                      className="flex h-9 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-xs text-slate-300 transition hover:border-red-400/30 hover:text-red-100 disabled:cursor-not-allowed disabled:text-slate-600"
-                      disabled={!coverImageMarkdown || isCoverImageUploading}
-                      type="button"
-                      onClick={handleRemoveCoverImage}
-                    >
-                      <X size={15} />
-                      移除
-                    </button>
-                  </div>
-                </div>
-                <input
-                  ref={coverImageFileInputRef}
-                  accept="image/png,image/jpeg,image/webp,image/gif"
-                  className="hidden"
-                  type="file"
-                  onChange={(event) => void handleUploadCoverImage(Array.from(event.target.files ?? []))}
-                />
-                {coverImageMarkdown ? (
-                  <MarkdownPreview markdown={coverImageMarkdown} />
-                ) : (
-                  <div className="grid min-h-[150px] place-items-center rounded-lg border border-dashed border-white/10 bg-white/[0.02] p-4 text-center text-sm leading-6 text-slate-500">
-                    暂无封面图片。上传后会以 Markdown 图片格式写入任务内容草稿。
-                  </div>
-                )}
-                {coverImageError ? (
-                  <div className="mt-3 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-2 text-xs leading-6 text-red-100">
-                    {coverImageError}
-                  </div>
-                ) : null}
               </div>
 
               {assistView === "coverPrompt" || assistSource.trim() ? (
@@ -9822,6 +9767,61 @@ function BlogFactoryRecords({
                   当前任务内容为空。
                 </div>
               )}
+
+              <div
+                className="mt-4 rounded-lg border border-white/10 bg-black/15 p-3"
+                tabIndex={0}
+                onPaste={handleCoverImagePaste}
+              >
+                <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <div className="mb-1 flex items-center gap-2 text-sm font-medium text-slate-300">
+                      <ImagePlus size={16} />
+                      封面图片
+                    </div>
+                    <div className="text-xs leading-6 text-slate-500">点击上传，或先聚焦此区域后粘贴剪贴板图片。</div>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      className="flex h-9 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-xs text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600"
+                      disabled={isCoverImageUploading}
+                      type="button"
+                      onClick={() => coverImageFileInputRef.current?.click()}
+                    >
+                      {isCoverImageUploading ? <Loader2 className="animate-spin" size={15} /> : <ImagePlus size={15} />}
+                      {isCoverImageUploading ? "上传中" : coverImageMarkdown ? "替换图片" : "上传图片"}
+                    </button>
+                    <button
+                      className="flex h-9 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-xs text-slate-300 transition hover:border-red-400/30 hover:text-red-100 disabled:cursor-not-allowed disabled:text-slate-600"
+                      disabled={!coverImageMarkdown || isCoverImageUploading}
+                      type="button"
+                      onClick={handleRemoveCoverImage}
+                    >
+                      <X size={15} />
+                      移除
+                    </button>
+                  </div>
+                </div>
+                <input
+                  ref={coverImageFileInputRef}
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  className="hidden"
+                  type="file"
+                  onChange={(event) => void handleUploadCoverImage(Array.from(event.target.files ?? []))}
+                />
+                {coverImageMarkdown ? (
+                  <MarkdownPreview markdown={coverImageMarkdown} />
+                ) : (
+                  <div className="grid min-h-[150px] place-items-center rounded-lg border border-dashed border-white/10 bg-white/[0.02] p-4 text-center text-sm leading-6 text-slate-500">
+                    暂无封面图片。上传后会以 Markdown 图片格式写入任务内容草稿。
+                  </div>
+                )}
+                {coverImageError ? (
+                  <div className="mt-3 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-2 text-xs leading-6 text-red-100">
+                    {coverImageError}
+                  </div>
+                ) : null}
+              </div>
 
               {assistError ? (
                 <div className="mt-3 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-2 text-xs leading-6 text-red-100">

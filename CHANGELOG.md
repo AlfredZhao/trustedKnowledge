@@ -30,6 +30,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Changed / 变更
 
+- Moved the Blog Factory cover-image uploader below the summary and image-prompt results in Content Assist, keeping the lower-frequency action after the primary tools.
+- 调整博客工厂“内容辅助”的顺序：将低频的封面图片上传区移至提取摘要和生图提示词结果之后。
+
 - Moved the Blog Factory task-detail shortcuts for summary extraction, image-prompt generation, and blog publishing directly beneath the task-content `美化` / `增强美化` controls; the two assist shortcuts now take the user to the corresponding result area.
 - 将博客工厂任务详情的提取摘要、生图提示词和发布到博客快捷操作移至任务内容 `美化` / `增强美化` 控件下方；前两项会自动定位到相应的辅助结果区。
 
@@ -49,6 +52,12 @@ The format follows the common GitHub changelog convention inspired by
 - 调整博客工厂封面生图提示词生成：新增清透商务、暗黑赛博、Apple 哑光极简、暖调工业哑光四套画面风格一键切换，仅替换风格、灯光、材质三段提示词。
 
 #### Fixed / 修复
+
+- Fixed Blog Factory Content Assist tabs so the full `提取摘要` and `生图提示词` labels remain visible instead of being squeezed or clipped on desktop and mobile.
+- 修复博客工厂“内容辅助”切换按钮：桌面端和移动端均完整显示“提取摘要”“生图提示词”文案，不再因宽度压缩而被裁切。
+
+- Fixed the static startup loading screen so its centered indicator no longer creates an unnecessary vertical scrollbar on desktop or mobile; scrolling is unlocked after React mounts.
+- 修复静态启动加载页：桌面端和移动端的居中加载动画不再产生无意义的纵向滚动条，React 挂载后会恢复应用内页面滚动。
 
 - Fixed Blog Factory task-detail summary and image-prompt shortcuts so they wait for the selected task's detail load to finish before scrolling, while stale detail requests from previously selected tasks can no longer overwrite the current selection.
 - 修复博客工厂任务详情的提取摘要、生图提示词快捷操作：现在会等待当前任务详情加载完成后再定位，同时旧任务的过期详情请求不再覆盖当前选中任务。

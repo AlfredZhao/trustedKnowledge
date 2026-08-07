@@ -6,6 +6,14 @@ import "./styles.css";
 
 const UI_STATE_STORAGE_KEY = "trustedKnowledge.uiState.v1";
 
+function BootScrollLock() {
+  React.useEffect(() => {
+    document.body.classList.remove("app-booting");
+  }, []);
+
+  return null;
+}
+
 try {
   const rawUiState = window.localStorage.getItem(UI_STATE_STORAGE_KEY);
   if (rawUiState) {
@@ -35,6 +43,7 @@ if ("serviceWorker" in navigator && import.meta.env.PROD) {
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
+    <BootScrollLock />
     <App />
   </React.StrictMode>,
 );

@@ -72,9 +72,18 @@
           var(--boot-bg);
       }
 
+      body.app-booting,
+      body.app-booting #root {
+        height: 100dvh;
+        overflow: hidden;
+        overscroll-behavior: none;
+      }
+
       .app-boot {
+        box-sizing: border-box;
         display: grid;
         min-height: 100vh;
+        min-height: 100dvh;
         place-items: center;
         padding: 24px;
         color: var(--boot-text);
@@ -126,7 +135,7 @@
       }
     </style>
   </head>
-  <body>
+  <body class="app-booting">
     <div id="root">
       <main class="app-boot" aria-label="应用加载中">
         <section class="app-boot__panel">
