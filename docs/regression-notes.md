@@ -15,6 +15,32 @@ When fixing a bug with meaningful regression risk, add a short entry with:
 
 Keep entries concrete. Prefer file paths, function names, SQL placeholders, and test names over broad advice.
 
+## Blog Factory Quick-Action Scrolling Must Follow the Current Detail Request
+
+### Symptom
+
+After switching Blog Factory tasks, `提取摘要` or `生图提示词` could fail to reach the content-assist area, or show the default summary view instead of the requested image-prompt view. Refreshing sometimes made the issue disappear.
+
+### Trigger
+
+Select one Blog Factory task and immediately select another, then use either task-content quick action while the detail request is still in flight.
+
+### Root Cause
+
+The original quick action used one `requestAnimationFrame()` to scroll immediately, without waiting for the selected task's asynchronous detail load and draft reset to finish. In parallel, `handleSelectBlogFactoryItem()` accepted every `getBlogFactoryItem()` response, so a slower request for a previously selected task could overwrite the current selection and invalidate the scroll target.
+
+### Safe Pattern
+
+Keep the queued assist target as `{ itemId, view }`. Execute its scroll only after `isDetailLoading` is false and the currently selected item still has that `itemId`; otherwise discard it. Resolve the target from the clicked button's own `[data-blog-factory-item-id]` container instead of a shared detail ref, and only cancel a scheduled scroll when a newer action or task selection increments `contentAssistScrollRequestRef`—never when clearing the queue state itself. Also increment `blogFactoryDetailRequestRef` on every task selection and apply detail results, errors, and loading completion only when their request ID is still current.
+
+### Guardrail
+
+Manually verify on desktop and mobile:
+
+1. Select task A, immediately select task B, then click `提取摘要` and confirm the B content-assist card becomes visible.
+2. Repeat with `生图提示词` and confirm the B prompt panel is selected.
+3. Throttle the detail API or rapidly alternate A/B; a late A response must not replace B in the detail panel.
+
 ## Oracle CLOB Input Sizes Must Match the SQL Being Executed
 
 ### Symptom

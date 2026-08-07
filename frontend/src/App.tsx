@@ -187,6 +187,7 @@ import { useDebouncedValue } from "./hooks/useDebouncedValue";
 import { invalidateApiCache } from "./api/client";
 import {
   BLOG_FACTORY_COVER_PROMPT_OPTIONS,
+  BLOG_FACTORY_COVER_STYLE_PRESETS,
   BLOG_FACTORY_MASK_TOGGLE_OPTIONS,
   DEFAULT_BLOG_FACTORY_COVER_PROMPT_CONFIG,
   DEFAULT_BLOG_FACTORY_COVER_PROMPT_TEMPLATE,
@@ -255,6 +256,7 @@ import {
   readWeChatApiKeyFromHash,
   readWeChatErrorFromHash,
   removeBlogFactoryCoverImageMarkdown,
+  resolveBlogFactoryCoverStylePreset,
   resolveBlogFactoryMaskRuleId,
   resolveBlogFactoryPublishMarkdown,
   resolveCurrentAppendTarget,
@@ -272,6 +274,7 @@ import {
   type AiCodingMessage,
   type AiCodingNoticeStatus,
   type BlogFactoryCoverPromptConfig,
+  type BlogFactoryCoverStylePresetId,
   type BlogFactoryArticleCopyMode,
   type BlogFactoryEditDraft,
   type BlogFactoryMaskRule,
@@ -594,8 +597,13 @@ function App() {
   const [hasCopiedFactoryTask, setHasCopiedFactoryTask] = useState(false);
   const [factoryCopyError, setFactoryCopyError] = useState<string | null>(null);
   const [isFactoryCopySaving, setIsFactoryCopySaving] = useState(false);
+  const [isFactoryAutoSaving, setIsFactoryAutoSaving] = useState(false);
+  const [factorySavedKnowledgeId, setFactorySavedKnowledgeId] = useState<number | null>(null);
   const [isFactoryMerging, setIsFactoryMerging] = useState(false);
   const [factoryCodexJobId, setFactoryCodexJobId] = useState<string | null>(restoredUiState.factory.codexJobId);
+  const [factoryCodexKnowledgeId, setFactoryCodexKnowledgeId] = useState<number | null>(
+    restoredUiState.factory.codexKnowledgeId ?? (restoredUiState.factory.codexJobId ? restoredUiState.factory.selectedId : null),
+  );
   const [factoryCodexStatus, setFactoryCodexStatus] = useState(
     restoredUiState.factory.codexJobId ? "正在恢复 Codex 加工状态..." : "",
   );
@@ -613,6 +621,7 @@ function App() {
   const [blogFactorySortBy, setBlogFactorySortBy] = useState<BlogFactorySortBy>(restoredUiState.blogFactory.sortBy);
   const [blogFactorySortDir, setBlogFactorySortDir] = useState<SortDirection>(restoredUiState.blogFactory.sortDir);
   const [selectedBlogFactoryItem, setSelectedBlogFactoryItem] = useState<BlogFactoryItem | null>(null);
+  const blogFactoryDetailRequestRef = useRef(0);
   const [isBlogFactoryLoading, setIsBlogFactoryLoading] = useState(false);
   const [isBlogFactoryDetailLoading, setIsBlogFactoryDetailLoading] = useState(false);
   const [isBlogFactoryStatusSaving, setIsBlogFactoryStatusSaving] = useState(false);
@@ -1067,7 +1076,17 @@ function App() {
       setSelectedId(null);
       setIsMobileKnowledgeEditorOpen(false);
       setIsConvertingKnowledgeToTodo(false);
+      setFactoryItems([]);
+      setFactorySelectedId(null);
       setFactoryUsername("");
+      setFactoryTask("");
+      setFactoryCodexJobId(null);
+      setFactoryCodexKnowledgeId(null);
+      setFactoryCodexStatus("");
+      setFactoryCodexErrorOutput("");
+      setIsFactoryGenerating(false);
+      setIsFactoryAutoSaving(false);
+      setFactorySavedKnowledgeId(null);
       setBlogFactoryItems([]);
       setBlogFactoryUsername("");
       setBlogFactoryTotal(0);
@@ -1244,6 +1263,7 @@ function App() {
         modelName: factoryModelName,
         customModelName: factoryCustomModelName,
         codexJobId: factoryCodexJobId,
+        codexKnowledgeId: factoryCodexKnowledgeId,
       },
       blogFactory: {
         query: blogFactoryQuery,
@@ -1364,6 +1384,7 @@ function App() {
     englishMaterialSortDir,
     draft,
     factoryCodexJobId,
+    factoryCodexKnowledgeId,
     factoryCustomModelName,
     factoryModelName,
     factoryPage,
@@ -1445,6 +1466,7 @@ function App() {
     if (!apiKey || !factoryCodexJobId) return;
 
     const jobId = factoryCodexJobId;
+    const jobKnowledgeId = factoryCodexKnowledgeId ?? factorySelectedId;
     let cancelled = false;
     let timer: number | undefined;
 
@@ -1463,10 +1485,10 @@ function App() {
           return;
         }
 
-        setIsFactoryGenerating(false);
-        setFactoryCodexJobId(null);
-
         if (job.status === "failed") {
+          setIsFactoryGenerating(false);
+          setFactoryCodexJobId(null);
+          setFactoryCodexKnowledgeId(null);
           setFactoryCodexStatus("Codex 加工失败。");
           setFactoryCopyError(job.error_message ?? "Codex 加工失败，请稍后重试。");
           return;
@@ -1475,12 +1497,49 @@ function App() {
         const result = job.response
           ? extractCodexResultText(job.response) || job.response.output || job.output
           : job.output;
-        setFactoryTask(normalizeFactoryTaskResult(result));
-        setFactoryCodexStatus("Codex 加工完成。");
+        const taskContent = normalizeFactoryTaskResult(result);
+        setFactoryTask(taskContent);
+        setIsFactoryGenerating(false);
+
+        if (!taskContent) {
+          setFactoryCodexJobId(null);
+          setFactoryCodexKnowledgeId(null);
+          setFactoryCodexStatus("Codex 加工完成，但没有生成可保存的内容。");
+          return;
+        }
+
+        if (!jobKnowledgeId) {
+          setFactoryCodexJobId(null);
+          setFactoryCodexKnowledgeId(null);
+          setFactoryCodexStatus("Codex 加工完成，但缺少源知识 ID，未自动发送到博客工厂。");
+          setFactoryCopyError("缺少源知识 ID，请重新选择知识后再复制保存。");
+          return;
+        }
+
+        setIsFactoryAutoSaving(true);
+        setFactoryCodexStatus("Codex 加工完成，正在自动发送到博客工厂...");
+        try {
+          await saveFactoryTaskToBlogFactory(jobKnowledgeId, taskContent);
+          if (cancelled) return;
+          setFactoryCopyError(null);
+          setFactoryCodexStatus("Codex 加工完成，已自动发送到博客工厂。");
+        } catch (error) {
+          if (cancelled) return;
+          setFactoryCopyError(error instanceof Error ? `自动发送到博客工厂失败：${error.message}` : "自动发送到博客工厂失败。");
+          setFactoryCodexStatus("Codex 加工完成，但自动发送到博客工厂失败。");
+        } finally {
+          if (!cancelled) {
+            setIsFactoryAutoSaving(false);
+            setFactoryCodexJobId(null);
+            setFactoryCodexKnowledgeId(null);
+          }
+        }
       } catch (error) {
         if (cancelled) return;
         setIsFactoryGenerating(false);
         setFactoryCodexJobId(null);
+        setFactoryCodexKnowledgeId(null);
+        setIsFactoryAutoSaving(false);
         setFactoryCodexStatus("Codex 加工失败。");
         setFactoryCopyError(error instanceof Error ? error.message : "恢复 Codex 加工状态失败。");
       }
@@ -1492,7 +1551,7 @@ function App() {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [apiKey, factoryCodexJobId]);
+  }, [apiKey, factoryCodexJobId, factoryCodexKnowledgeId, factorySelectedId]);
 
   useEffect(() => {
     if (!apiKey || activeCodexJobId || hasRestoredLatestCodexJobRef.current || !canAccessAiCoding) return;
@@ -2843,9 +2902,13 @@ function App() {
     setFactoryModelName(AI_CODING_DEFAULT_MODEL);
     setFactoryCustomModelName("");
     setFactoryCodexJobId(null);
+    setFactoryCodexKnowledgeId(null);
     setAdminModuleItems([]);
     setFactoryCodexStatus("");
     setFactoryCodexErrorOutput("");
+    setIsFactoryGenerating(false);
+    setIsFactoryAutoSaving(false);
+    setFactorySavedKnowledgeId(null);
     setBlogFactoryItems([]);
     setBlogFactoryTotal(0);
     setBlogFactoryUsername("");
@@ -2900,6 +2963,17 @@ function App() {
     setIsGithubSyncing(false);
   }
 
+  async function saveFactoryTaskToBlogFactory(knowledgeId: number, taskContent: string) {
+    await createBlogFactoryItem({
+      knowledgeId,
+      taskContent,
+    });
+    setFactorySavedKnowledgeId(knowledgeId);
+    setFactoryItems((current) => current.filter((item) => item.id !== knowledgeId));
+    setFactoryTotalItems((current) => Math.max(0, current - 1));
+    setBlogFactoryRefreshToken((current) => current + 1);
+  }
+
   async function handleGenerateFactoryTask(item: KnowledgeItem) {
     if (isFactoryGenerating) return;
     if (factorySkillIds.length === 0) {
@@ -2920,12 +2994,15 @@ function App() {
     }
 
     setIsFactoryGenerating(true);
+    setIsFactoryAutoSaving(false);
     setFactorySelectedId(item.id);
+    setFactoryCodexKnowledgeId(item.id);
     setFactoryTask("");
     setFactoryCodexStatus("正在提交 Codex 加工任务...");
     setFactoryCodexErrorOutput("");
     setHasCopiedFactoryTask(false);
     setFactoryCopyError(null);
+    setFactorySavedKnowledgeId(null);
 
     try {
       const prompt = buildFactorySkillPrompt(item);
@@ -2936,7 +3013,9 @@ function App() {
       setFactoryCodexStatus("Codex 任务已提交，正在加工...");
     } catch (error) {
       setIsFactoryGenerating(false);
+      setIsFactoryAutoSaving(false);
       setFactoryCodexJobId(null);
+      setFactoryCodexKnowledgeId(null);
       setFactoryCodexStatus("Codex 加工失败。");
       setFactoryCopyError(error instanceof Error ? error.message : "Codex 加工失败，请稍后重试。");
     }
@@ -2944,7 +3023,7 @@ function App() {
 
   async function handleCopyFactoryTask(view: MarkdownContentView) {
     const taskContent = normalizeFactoryTaskResult(factoryTask);
-    if (!taskContent || factorySelectedId === null || isFactoryCopySaving) return;
+    if (!taskContent || factorySelectedId === null || isFactoryCopySaving || isFactoryAutoSaving) return;
 
     setIsFactoryCopySaving(true);
     try {
@@ -2961,17 +3040,17 @@ function App() {
     }
 
     try {
-      await createBlogFactoryItem({
-        knowledgeId: factorySelectedId,
-        taskContent,
-      });
+      if (factorySavedKnowledgeId !== factorySelectedId) {
+        await saveFactoryTaskToBlogFactory(factorySelectedId, taskContent);
+        setFactoryCodexStatus("已复制，并已发送到博客工厂。");
+      }
       setFactoryCopyError(null);
       setHasCopiedFactoryTask(true);
       window.setTimeout(() => setHasCopiedFactoryTask(false), 1600);
     } catch (error) {
       setHasCopiedFactoryTask(false);
       setFactoryCopyError(
-        error instanceof Error ? `已复制，但保存到数据库失败：${error.message}` : "已复制，但保存到数据库失败。",
+        error instanceof Error ? `已复制，但保存到博客工厂失败：${error.message}` : "已复制，但保存到博客工厂失败。",
       );
     } finally {
       setIsFactoryCopySaving(false);
@@ -2987,6 +3066,7 @@ function App() {
       setFactoryTask("");
       setHasCopiedFactoryTask(false);
       setFactoryCopyError(null);
+      setFactorySavedKnowledgeId(null);
       setFactoryPage(1);
       setFactoryRefreshToken((current) => current + 1);
       return merged;
@@ -2996,6 +3076,7 @@ function App() {
   }
 
   async function handleSelectBlogFactoryItem(item: BlogFactoryItem) {
+    const requestId = ++blogFactoryDetailRequestRef.current;
     setSelectedBlogFactoryItem(item);
     setIsMobileBlogFactoryDetailOpen(true);
     setBlogFactoryStatusError(null);
@@ -3007,13 +3088,17 @@ function App() {
 
     try {
       const detail = await getBlogFactoryItem(item.id);
+      if (requestId !== blogFactoryDetailRequestRef.current) return;
       setSelectedBlogFactoryItem(detail);
       setBlogFactoryItems((current) => current.map((entry) => (entry.id === detail.id ? detail : entry)));
       setBlogFactoryError(null);
     } catch (error) {
+      if (requestId !== blogFactoryDetailRequestRef.current) return;
       setBlogFactoryError(error instanceof Error ? error.message : "读取博客工厂记录失败，请稍后重试。");
     } finally {
-      setIsBlogFactoryDetailLoading(false);
+      if (requestId === blogFactoryDetailRequestRef.current) {
+        setIsBlogFactoryDetailLoading(false);
+      }
     }
   }
 
@@ -3062,6 +3147,9 @@ function App() {
       setBlogFactorySendBackNotice(`已创建待加工知识 #${result.knowledge.id}，当前任务已标记为跳过。`);
       setFactorySelectedId(result.knowledge.id);
       setFactoryTask("");
+      setHasCopiedFactoryTask(false);
+      setFactoryCopyError(null);
+      setFactorySavedKnowledgeId(null);
       setFactoryQuery("");
       setFactoryUsername(getClearedScopedUsernameFilter(authUser));
       setFactoryPage(1);
@@ -5276,6 +5364,7 @@ function App() {
               skillsError={skillError}
               skillsLoading={isSkillLoading}
               hasCopied={hasCopiedFactoryTask}
+              isAutoSaving={isFactoryAutoSaving}
               isCopySaving={isFactoryCopySaving}
               isMerging={isFactoryMerging}
               modelName={factoryModelName}
@@ -5301,12 +5390,14 @@ function App() {
                 setFactoryUsername(nextUsername);
               }}
               onSelect={(item) => {
+                if (isFactoryGenerating || isFactoryAutoSaving) return;
                 setFactorySelectedId(item.id);
                 setFactoryTask("");
                 setFactoryCodexStatus("");
                 setFactoryCodexErrorOutput("");
                 setHasCopiedFactoryTask(false);
                 setFactoryCopyError(null);
+                setFactorySavedKnowledgeId(null);
               }}
               onToggleSkill={handleToggleFactorySkill}
             />
@@ -7883,6 +7974,7 @@ function KnowledgeFactory({
   skillsError,
   skillsLoading,
   hasCopied,
+  isAutoSaving,
   isCopySaving,
   isMerging,
   modelName,
@@ -7919,6 +8011,7 @@ function KnowledgeFactory({
   skillsError: string | null;
   skillsLoading: boolean;
   hasCopied: boolean;
+  isAutoSaving: boolean;
   isCopySaving: boolean;
   isMerging: boolean;
   modelName: string;
@@ -8108,7 +8201,12 @@ function KnowledgeFactory({
                     type="checkbox"
                     onChange={() => toggleMergeSelection(item)}
                   />
-                  <button className="min-w-0 flex-1 text-left" type="button" onClick={() => onSelect(item)}>
+                  <button
+                    className="min-w-0 flex-1 text-left disabled:cursor-wait"
+                    disabled={isGenerating || isAutoSaving}
+                    type="button"
+                    onClick={() => onSelect(item)}
+                  >
                     <div className="mb-3 flex items-start justify-between gap-3">
                       <h3 className="line-clamp-2 min-w-0 text-sm font-semibold leading-6 text-slate-50">
                         {item.question}
@@ -8263,12 +8361,12 @@ function KnowledgeFactory({
                   ? "border-mint-300/30 bg-mint-300/14 text-mint-300"
                   : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-mint-300/30 hover:text-mint-300"
               }`}
-              disabled={!task || isCopySaving}
-              title={isCopySaving ? "正在保存" : hasCopied ? "已复制并保存" : "复制并保存加工结果"}
+              disabled={!task || isCopySaving || isAutoSaving}
+              title={isAutoSaving ? "正在发送到博客工厂" : isCopySaving ? "正在复制" : hasCopied ? "已复制" : "复制加工结果"}
               type="button"
               onClick={() => onCopyTask(taskView)}
             >
-              {isCopySaving ? (
+              {isCopySaving || isAutoSaving ? (
                 <Loader2 className="animate-spin" size={15} />
               ) : hasCopied ? (
                 <ClipboardCheck size={15} />
@@ -8762,6 +8860,12 @@ function BlogFactoryRecords({
     normalizeBlogFactoryCoverPromptConfig(coverPromptConfig),
   );
   const coverImageFileInputRef = useRef<HTMLInputElement | null>(null);
+  const pendingContentAssistTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const contentAssistScrollRequestRef = useRef(0);
+  const [pendingContentAssistTarget, setPendingContentAssistTarget] = useState<{
+    itemId: number;
+    view: "summary" | "coverPrompt";
+  } | null>(null);
   const [isCoverImageUploading, setIsCoverImageUploading] = useState(false);
   const [coverImageError, setCoverImageError] = useState<string | null>(null);
   const publishMarkdown = selectedItem ? resolveBlogFactoryPublishMarkdown(selectedItem, selectedItem.article_markdown, editDraft.taskContent) : "";
@@ -8829,7 +8933,10 @@ function BlogFactoryRecords({
     !isItemSaving &&
     !isDeleting;
   useEffect(() => {
+    contentAssistScrollRequestRef.current += 1;
+    pendingContentAssistTriggerRef.current = null;
     setAssistView("summary");
+    setPendingContentAssistTarget(null);
     setAssistCopiedTarget(null);
     setAssistError(null);
     setIsCoverPromptConfigOpen(false);
@@ -8837,6 +8944,50 @@ function BlogFactoryRecords({
     setCoverPromptTextDraft("");
     setCoverImageError(null);
   }, [selectedItem?.id]);
+
+  useEffect(() => {
+    if (!pendingContentAssistTarget) return;
+
+    if (pendingContentAssistTarget.itemId !== selectedItem?.id) {
+      setPendingContentAssistTarget(null);
+      return;
+    }
+
+    if (isDetailLoading) return;
+
+    const requestId = ++contentAssistScrollRequestRef.current;
+    scrollContentAssist(pendingContentAssistTriggerRef.current, requestId);
+    setPendingContentAssistTarget(null);
+  }, [isDetailLoading, pendingContentAssistTarget, selectedItem?.id]);
+
+  function scrollContentAssist(trigger: HTMLButtonElement | null, requestId: number) {
+    const scrollTarget = trigger
+      ?.closest<HTMLElement>("[data-blog-factory-item-id]")
+      ?.querySelector<HTMLElement>("[data-content-assist]");
+
+    if (!scrollTarget) return;
+
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        if (requestId !== contentAssistScrollRequestRef.current) return;
+        scrollTarget.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    });
+  }
+
+  function handleOpenContentAssist(event: React.MouseEvent<HTMLButtonElement>, view: "summary" | "coverPrompt") {
+    if (!selectedItem) return;
+
+    const requestId = ++contentAssistScrollRequestRef.current;
+    pendingContentAssistTriggerRef.current = event.currentTarget;
+    setAssistView(view);
+    if (!isDetailLoading) {
+      scrollContentAssist(event.currentTarget, requestId);
+      return;
+    }
+
+    setPendingContentAssistTarget({ itemId: selectedItem.id, view });
+  }
 
   useEffect(() => {
     setCoverPromptTemplateDraft(coverPromptTemplate);
@@ -8897,9 +9048,20 @@ function BlogFactoryRecords({
     setAssistError(null);
   }
 
+  function handleCoverPromptStylePresetChange(stylePresetId: BlogFactoryCoverStylePresetId) {
+    const stylePreset = resolveBlogFactoryCoverStylePreset(stylePresetId);
+    const nextConfig = normalizeBlogFactoryCoverPromptConfig({
+      ...resolvedCoverPromptConfig,
+      stylePresetId: stylePreset.id,
+    });
+    setCoverPromptConfigDraft(nextConfig);
+    onCoverPromptConfigChange(nextConfig);
+    setAssistError(null);
+  }
+
   function toggleCoverPromptConfigValue(key: keyof Pick<
     BlogFactoryCoverPromptConfig,
-    "styles" | "objects" | "negativePrompts"
+    "objects" | "negativePrompts"
   >, value: string) {
     const currentValues = resolvedCoverPromptConfigDraft[key];
     const nextValues = currentValues.includes(value) ? currentValues.filter((item) => item !== value) : [...currentValues, value];
@@ -8949,7 +9111,7 @@ function BlogFactoryRecords({
     label: string,
     key: keyof Pick<
       BlogFactoryCoverPromptConfig,
-      "styles" | "objects" | "negativePrompts"
+      "objects" | "negativePrompts"
     >,
     options: readonly string[],
   ) {
@@ -9004,7 +9166,7 @@ function BlogFactoryRecords({
       </div>
 
       {selectedItem ? (
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-4" data-blog-factory-item-id={selectedItem.id}>
           <div className="order-3 rounded-lg border border-white/10 bg-white/[0.028] p-4">
             <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-slate-500">
               <span>#{selectedItem.id}</span>
@@ -9254,9 +9416,49 @@ function BlogFactoryRecords({
                       ? "已复制"
                       : taskCopyView === "enhanced"
                         ? "复制增强美化"
-                        : taskCopyView === "rendered"
+                      : taskCopyView === "rendered"
                           ? "复制美化"
                           : "复制裸文本"}
+                  </button>
+                </div>
+                <div className="grid w-full grid-cols-3 gap-2 sm:w-auto">
+                  <button
+                    className={`flex h-9 items-center justify-center gap-1.5 rounded-lg border px-2 text-xs transition disabled:cursor-not-allowed disabled:text-slate-600 ${
+                      assistView === "summary"
+                        ? "border-mint-300/30 bg-mint-300/14 text-mint-200"
+                        : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-mint-300/30 hover:text-mint-300"
+                    }`}
+                    disabled={!assistSource.trim()}
+                    title="提取并查看任务内容摘要"
+                    type="button"
+                    onClick={(event) => handleOpenContentAssist(event, "summary")}
+                  >
+                    <Sparkles size={14} />
+                    提取摘要
+                  </button>
+                  <button
+                    className={`flex h-9 items-center justify-center gap-1.5 rounded-lg border px-2 text-xs transition disabled:cursor-not-allowed disabled:text-slate-600 ${
+                      assistView === "coverPrompt"
+                        ? "border-mint-300/30 bg-mint-300/14 text-mint-200"
+                        : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-mint-300/30 hover:text-mint-300"
+                    }`}
+                    disabled={!assistSource.trim()}
+                    title="生成并查看封面生图提示词"
+                    type="button"
+                    onClick={(event) => handleOpenContentAssist(event, "coverPrompt")}
+                  >
+                    <ImagePlus size={14} />
+                    生图提示词
+                  </button>
+                  <button
+                    className="flex h-9 items-center justify-center gap-1.5 rounded-lg border border-mint-300/30 bg-mint-300/14 px-2 text-xs font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
+                    disabled={!canPublish}
+                    title="发布当前博客文章"
+                    type="button"
+                    onClick={() => onOpenPublishDialog("publish")}
+                  >
+                    <Send size={14} />
+                    发布到博客
                   </button>
                 </div>
               </div>
@@ -9274,7 +9476,7 @@ function BlogFactoryRecords({
               <p className="whitespace-pre-wrap break-words text-sm leading-7 text-slate-400 [overflow-wrap:anywhere]">未记录</p>
             )}
 
-            <div className="mt-4 rounded-lg border border-white/10 bg-white/[0.025] p-4">
+            <div data-content-assist className="mt-4 scroll-mt-4 rounded-lg border border-white/10 bg-white/[0.025] p-4">
               <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                 <div className="min-w-0">
                   <div className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-300">
@@ -9451,6 +9653,24 @@ function BlogFactoryRecords({
                         ))}
                       </div>
                     </div>
+                    <div className="rounded-lg border border-white/10 bg-black/15 p-3">
+                      <Field label="画面风格" icon={<Sparkles size={16} />}>
+                        <select
+                          className="control"
+                          value={resolvedCoverPromptConfig.stylePresetId}
+                          onChange={(event) => handleCoverPromptStylePresetChange(event.target.value as BlogFactoryCoverStylePresetId)}
+                        >
+                          {BLOG_FACTORY_COVER_STYLE_PRESETS.map((preset) => (
+                            <option key={preset.id} value={preset.id}>
+                              {preset.styleName}
+                            </option>
+                          ))}
+                        </select>
+                      </Field>
+                      <div className="mt-2 text-xs leading-6 text-slate-500">
+                        切换后会即时替换提示词中的风格、灯光、材质三段。
+                      </div>
+                    </div>
                     {coverPromptSource.trim() ? (
                       <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-white/10 bg-black/15 p-3 text-xs leading-6 text-slate-300 [overflow-wrap:anywhere]">
                         {coverImagePrompt}
@@ -9462,7 +9682,7 @@ function BlogFactoryRecords({
                     )}
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <div className="min-h-5 text-xs leading-5 text-slate-500">
-                        {hasPendingCoverPromptConfig ? "有未应用的配置修改。" : "默认使用自动实体、C4D 卡通 3D 风格。"}
+                        {hasPendingCoverPromptConfig ? "有未应用的配置修改。" : "画面风格会即时替换风格、灯光、材质三段。"}
                       </div>
                       <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
                         <button
@@ -9539,10 +9759,9 @@ function BlogFactoryRecords({
                         </Field>
                       </div>
                       <div className="grid gap-4 xl:grid-cols-2">
-                        {renderCoverPromptOptionChips("视觉风格", "styles", BLOG_FACTORY_COVER_PROMPT_OPTIONS.styles)}
                         {renderCoverPromptOptionChips("关键元素", "objects", BLOG_FACTORY_COVER_PROMPT_OPTIONS.objects)}
+                        {renderCoverPromptOptionChips("规避内容", "negativePrompts", BLOG_FACTORY_COVER_PROMPT_OPTIONS.negativePrompts)}
                       </div>
-                      {renderCoverPromptOptionChips("规避内容", "negativePrompts", BLOG_FACTORY_COVER_PROMPT_OPTIONS.negativePrompts)}
                       <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
                         <button
                           className="flex h-9 items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-3 text-xs font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"

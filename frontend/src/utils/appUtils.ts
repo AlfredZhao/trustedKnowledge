@@ -91,6 +91,50 @@ const LEGACY_BLOG_FACTORY_COVER_PROMPT_TEMPLATE = [
   "限制：不要出现可读文字、logo、水印、人物脸部或杂乱 UI 截图。",
 ].join("\n");
 
+const COMPACT_BLOG_FACTORY_COVER_PROMPT_TEMPLATE = [
+  "主题：{{title}}",
+  "核心实体：{{entities}}",
+  "画面：以“{{subject}}”为主体，将核心实体转成可辨认的 C4D 卡通 3D 隐喻物件，避免泛化成普通知识工厂。",
+  "内容意图：{{summary}}",
+  "关键元素：{{objects}}",
+  "画幅构图：{{composition}}",
+  "视觉风格：{{style}}，{{material}}，{{lighting}}，{{camera}}，{{quality}}。",
+  "限制：{{negativePrompt}}。",
+].join("\n");
+
+export const BLOG_FACTORY_COVER_STYLE_PRESETS = [
+  {
+    id: "clear-minimal-business",
+    styleName: "清透极简商务（默认）",
+    styleText: "C4D 卡通 3D, Octane render, 干净现代，浅灰渐变底色，柔和低对比",
+    lightText: "柔和棚拍灯光，漫射天光，均匀柔光",
+    materialText: "玻璃, 亚克力, 磨砂透明材质，浅银金属细边",
+  },
+  {
+    id: "dark-cyber-tech",
+    styleName: "暗黑赛博科技",
+    styleText: "C4D 卡通 3D, Octane render, 暗黑赛博科技，深黑底色，低明度画面，高对比光影",
+    lightText: "局部冷色聚光灯，轮廓霓虹光，微弱环境补光，暗场光影",
+    materialText: "深色透黑玻璃，深空灰亚克力，半透磨砂深色材质，金属冷银描边",
+  },
+  {
+    id: "apple-matte-minimal",
+    styleName: "Apple哑光极简风",
+    styleText: "C4D 卡通 3D, Octane render, Apple keynote极简风，纯白哑光底色，低饱和高级灰，柔和层次",
+    lightText: "均匀漫射日光，无影柔光，平缓明暗过渡",
+    materialText: "雾面哑光玻璃，米灰磨砂亚克力，细浅金色金属边缘",
+  },
+  {
+    id: "warm-industrial-matte",
+    styleName: "暖调工业哑光科技",
+    styleText: "C4D 卡通 3D, Octane render, 暖调工业科技，浅炭灰底色，中性低对比，温润质感",
+    lightText: "暖白定向柔光，局部补光，无强烈高光",
+    materialText: "茶透玻璃，暖灰哑光亚克力，古铜细金属描边",
+  },
+] as const;
+
+export type BlogFactoryCoverStylePresetId = (typeof BLOG_FACTORY_COVER_STYLE_PRESETS)[number]["id"];
+
 export const BLOG_FACTORY_COVER_PROMPT_OPTIONS = {
   subjects: [
     "自动提取实体",
@@ -143,6 +187,7 @@ export const BLOG_FACTORY_COVER_PROMPT_OPTIONS = {
 export type BlogFactoryCoverPromptConfig = {
   subject: string;
   composition: string;
+  stylePresetId: BlogFactoryCoverStylePresetId;
   styles: string[];
   objects: string[];
   materials: string[];
@@ -155,10 +200,11 @@ export type BlogFactoryCoverPromptConfig = {
 export const DEFAULT_BLOG_FACTORY_COVER_PROMPT_CONFIG: BlogFactoryCoverPromptConfig = {
   subject: "自动提取实体",
   composition: "16:9 横向封面，主体居中，适配 2.35:1 裁切",
-  styles: ["C4D 卡通 3D", "Octane render", "干净现代"],
+  stylePresetId: "clear-minimal-business",
+  styles: [BLOG_FACTORY_COVER_STYLE_PRESETS[0].styleText],
   objects: ["围绕核心实体生成专属 3D 隐喻物件", "浮动文档卡片", "发光节点网络", "数据流线"],
-  materials: ["玻璃", "亚克力", "磨砂透明材质"],
-  lightings: ["柔和棚拍灯光"],
+  materials: [BLOG_FACTORY_COVER_STYLE_PRESETS[0].materialText],
+  lightings: [BLOG_FACTORY_COVER_STYLE_PRESETS[0].lightText],
   cameras: ["轻微景深"],
   qualities: ["高细节", "专业质感", "画面清晰"],
   negativePrompts: ["不要可读文字", "不要 logo", "不要水印", "不要人物脸部", "不要杂乱 UI 截图"],
@@ -166,12 +212,13 @@ export const DEFAULT_BLOG_FACTORY_COVER_PROMPT_CONFIG: BlogFactoryCoverPromptCon
 
 export const DEFAULT_BLOG_FACTORY_COVER_PROMPT_TEMPLATE = [
   "主题：{{title}}",
-  "核心实体：{{entities}}",
-  "画面：以“{{subject}}”为主体，将核心实体转成可辨认的 C4D 卡通 3D 隐喻物件，避免泛化成普通知识工厂。",
-  "内容意图：{{summary}}",
-  "关键元素：{{objects}}",
-  "画幅构图：{{composition}}",
-  "视觉风格：{{style}}，{{material}}，{{lighting}}，{{camera}}，{{quality}}。",
+  "元素：以“{{subject}}”为主体，将核心实体（{{entities}}）转成可辨认的 C4D 卡通 3D 隐喻物件；关键元素：{{objects}}；内容意图：{{summary}}。",
+  "构图：{{composition}}",
+  "风格：{{style}}",
+  "灯光：{{lighting}}",
+  "材质：{{material}}",
+  "镜头：{{camera}}",
+  "质量：{{quality}}",
   "限制：{{negativePrompt}}。",
 ].join("\n");
 
@@ -200,6 +247,7 @@ export interface StoredUiState {
     modelName: string;
     customModelName: string;
     codexJobId: string | null;
+    codexKnowledgeId: number | null;
   };
   blogFactory: {
     query: string;
@@ -1028,6 +1076,7 @@ export function buildBlogFactoryCoverImagePrompt(
   const topic = entities[0] || extractBlogFactoryCoverTopic(normalized, cleanSummary, title);
   const resolvedTitle = cleanBlogFactoryTitle(title) || topic || "技术文章封面";
   const resolvedConfig = normalizeBlogFactoryCoverPromptConfig(config);
+  const stylePreset = resolveBlogFactoryCoverStylePreset(resolvedConfig.stylePresetId);
   const resolvedSubject =
     !resolvedConfig.subject || resolvedConfig.subject === DEFAULT_BLOG_FACTORY_COVER_PROMPT_CONFIG.subject
       ? entities.slice(0, 3).join("、") || topic || "文章核心实体"
@@ -1041,14 +1090,18 @@ export function buildBlogFactoryCoverImagePrompt(
     entities: joinPromptList(entities) || resolvedTitle,
     subject: resolvedSubject,
     composition: resolvedConfig.composition,
-    style: joinPromptList(resolvedConfig.styles),
+    style: stylePreset.styleText,
     objects: joinPromptList([...entityObjects, ...resolvedConfig.objects]),
-    material: joinPromptList(resolvedConfig.materials),
-    lighting: joinPromptList(resolvedConfig.lightings),
+    material: stylePreset.materialText,
+    lighting: stylePreset.lightText,
     camera: joinPromptList(resolvedConfig.cameras),
     quality: joinPromptList(resolvedConfig.qualities),
     negativePrompt: joinPromptList(resolvedConfig.negativePrompts),
   });
+}
+
+export function resolveBlogFactoryCoverStylePreset(stylePresetId: string) {
+  return BLOG_FACTORY_COVER_STYLE_PRESETS.find((preset) => preset.id === stylePresetId) ?? BLOG_FACTORY_COVER_STYLE_PRESETS[0];
 }
 
 export function normalizeBlogFactoryCoverPromptConfig(value: unknown): BlogFactoryCoverPromptConfig {
@@ -1056,6 +1109,7 @@ export function normalizeBlogFactoryCoverPromptConfig(value: unknown): BlogFacto
   const defaults = DEFAULT_BLOG_FACTORY_COVER_PROMPT_CONFIG;
   const legacySubject = readString(record.subject).trim();
   const legacyComposition = readString(record.composition).trim();
+  const stylePreset = resolveBlogFactoryCoverStylePreset(readString(record.stylePresetId).trim());
   return {
     subject: BLOG_FACTORY_COVER_PROMPT_OPTIONS.subjects.includes(
       legacySubject as (typeof BLOG_FACTORY_COVER_PROMPT_OPTIONS.subjects)[number],
@@ -1067,10 +1121,11 @@ export function normalizeBlogFactoryCoverPromptConfig(value: unknown): BlogFacto
     )
       ? legacyComposition
       : defaults.composition,
-    styles: readPromptOptionArray(record.styles, defaults.styles, BLOG_FACTORY_COVER_PROMPT_OPTIONS.styles),
+    stylePresetId: stylePreset.id,
+    styles: [stylePreset.styleText],
     objects: readPromptOptionArray(record.objects, defaults.objects, BLOG_FACTORY_COVER_PROMPT_OPTIONS.objects),
-    materials: defaults.materials,
-    lightings: defaults.lightings,
+    materials: [stylePreset.materialText],
+    lightings: [stylePreset.lightText],
     cameras: defaults.cameras,
     qualities: defaults.qualities,
     negativePrompts: readPromptOptionArray(record.negativePrompts, defaults.negativePrompts, BLOG_FACTORY_COVER_PROMPT_OPTIONS.negativePrompts),
@@ -1079,7 +1134,13 @@ export function normalizeBlogFactoryCoverPromptConfig(value: unknown): BlogFacto
 
 export function resolveBlogFactoryCoverPromptTemplate(value: string) {
   const normalized = value.trim();
-  if (!normalized || normalized === LEGACY_BLOG_FACTORY_COVER_PROMPT_TEMPLATE) return DEFAULT_BLOG_FACTORY_COVER_PROMPT_TEMPLATE;
+  if (
+    !normalized ||
+    normalized === LEGACY_BLOG_FACTORY_COVER_PROMPT_TEMPLATE ||
+    normalized === COMPACT_BLOG_FACTORY_COVER_PROMPT_TEMPLATE
+  ) {
+    return DEFAULT_BLOG_FACTORY_COVER_PROMPT_TEMPLATE;
+  }
   return normalized;
 }
 
@@ -1197,6 +1258,7 @@ export function readStoredUiState(): StoredUiState {
         modelName: readString(factory.modelName) || defaults.factory.modelName,
         customModelName: readString(factory.customModelName),
         codexJobId: readNullableString(factory.codexJobId),
+        codexKnowledgeId: readNullablePositiveInteger(factory.codexKnowledgeId),
       },
       blogFactory: {
         query: readString(blogFactory.query),
@@ -1324,6 +1386,7 @@ function buildDefaultUiState(): StoredUiState {
       modelName: "__codex_cli_default__",
       customModelName: "",
       codexJobId: null,
+      codexKnowledgeId: null,
     },
     blogFactory: {
       query: "",

@@ -30,6 +30,12 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Changed / 变更
 
+- Moved the Blog Factory task-detail shortcuts for summary extraction, image-prompt generation, and blog publishing directly beneath the task-content `美化` / `增强美化` controls; the two assist shortcuts now take the user to the corresponding result area.
+- 将博客工厂任务详情的提取摘要、生图提示词和发布到博客快捷操作移至任务内容 `美化` / `增强美化` 控件下方；前两项会自动定位到相应的辅助结果区。
+
+- Changed Knowledge Factory generation so successful Codex results are automatically sent to Blog Factory, while the copy buttons now only copy unless they need to retry a failed save.
+- 调整知识加工生成流程：Codex 成功生成后自动发送到博客工厂；复制按钮默认只负责复制，仅在自动保存失败时作为重试入口。
+
 - Changed Personal Secrets detail so it only shows the selected secret summary and copy actions, with add/edit handled in a dedicated dialog.
 - 调整个人机密详情：详情区只展示选中机密摘要和复制操作，新增/编辑改为独立弹窗完成。
 
@@ -39,7 +45,13 @@ The format follows the common GitHub changelog convention inspired by
 - Simplified the Blog Factory cover-image prompt configuration to entity subject, aspect/composition, visual style, key objects, and exclusions, with Chinese UI labels and aspect-ratio-specific prompt wording.
 - 精简博客工厂封面生图配置，仅保留实体主题、画幅构图、视觉风格、关键元素和规避内容，界面常规文案改为中文，并在提示词中明确不同画幅构图。
 
+- Changed Blog Factory cover-image prompt generation to support one-click visual style switching across clear business, dark cyber, Apple matte minimal, and warm industrial matte presets, replacing only style, lighting, and material prompt sections.
+- 调整博客工厂封面生图提示词生成：新增清透商务、暗黑赛博、Apple 哑光极简、暖调工业哑光四套画面风格一键切换，仅替换风格、灯光、材质三段提示词。
+
 #### Fixed / 修复
+
+- Fixed Blog Factory task-detail summary and image-prompt shortcuts so they wait for the selected task's detail load to finish before scrolling, while stale detail requests from previously selected tasks can no longer overwrite the current selection.
+- 修复博客工厂任务详情的提取摘要、生图提示词快捷操作：现在会等待当前任务详情加载完成后再定位，同时旧任务的过期详情请求不再覆盖当前选中任务。
 
 - Fixed Personal Secrets creation so username and password are optional, with empty password values stored as missing secrets instead of blocking save.
 - 修复个人机密新增：用户名和密码不再必填，空密码会按未记录机密保存，不再阻止保存。
