@@ -13,6 +13,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Added / 新增
 
+- Added `复制标题` and `复制正文` buttons to Blog Factory enhanced-HTML exports, including the matching offline export script output.
+- 为博客工厂增强美化导出的 HTML 新增 `复制标题` 和 `复制正文` 顶部按钮，并同步到离线导出脚本输出。
+
 #### Changed / 变更
 
 #### Fixed / 修复
