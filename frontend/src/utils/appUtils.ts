@@ -720,8 +720,7 @@ function isSameUsageSnapshot(left: LlmUsageSample, right: LlmUsageSample) {
     isSameNumber(left.used_amount, right.used_amount) &&
     isSameNumber(left.total_budget, right.total_budget) &&
     isSameNumber(left.remaining_budget, right.remaining_budget) &&
-    left.budget_duration === right.budget_duration &&
-    left.next_reset_at === right.next_reset_at
+    left.budget_duration === right.budget_duration
   );
 }
 

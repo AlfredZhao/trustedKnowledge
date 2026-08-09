@@ -20,6 +20,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Fixed / 修复
 
+- Fixed AI Usage stable-sample folding so unchanged usage periods are no longer split apart by `NEXT_RESET_AT` timestamp drift or serialization differences.
+- 修复 AI 用量稳定采样折叠：`NEXT_RESET_AT` 的时间漂移或序列化差异不再把未变化的用量时段重新展开。
+
 ### [0.3.6] - 2026-08-08
 
 #### Added / 新增
