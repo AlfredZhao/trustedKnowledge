@@ -41,6 +41,12 @@ export async function getCodexJob(jobId: string): Promise<CodexJobSnapshot> {
   return request<CodexJobSnapshot>(`/api/codex/runs/jobs/${encodeURIComponent(jobId)}`);
 }
 
+export async function cancelCodexJob(jobId: string): Promise<CodexJobSnapshot> {
+  return request<CodexJobSnapshot>(`/api/codex/runs/jobs/${encodeURIComponent(jobId)}`, {
+    method: "DELETE",
+  });
+}
+
 export async function getLatestCodexJob(): Promise<CodexJobSnapshot> {
   return request<CodexJobSnapshot>("/api/codex/runs/jobs/latest");
 }

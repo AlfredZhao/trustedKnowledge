@@ -111,7 +111,7 @@ import {
 } from "./api/personalSecrets";
 import { fetchHistory, readCachedHistory } from "./api/history";
 import { askHistory, fetchHistoryAskLlmConfig, updateHistoryAskLlmConfig } from "./api/historyAsk";
-import { fetchCodexConfig, getCodexJob, getLatestCodexJobByOutputMode, startCodexJob } from "./api/codex";
+import { cancelCodexJob, fetchCodexConfig, getCodexJob, getLatestCodexJobByOutputMode, startCodexJob } from "./api/codex";
 import {
   createCurrentRecord,
   fetchCurrentRecordOptions,
@@ -4576,6 +4576,19 @@ function App() {
     }
   }
 
+  async function handleCancelCodex() {
+    if (!activeCodexJobId || !isCodexRunning) return;
+
+    setLiveCodexStatus("正在终止 Codex 任务...");
+    try {
+      const job = await cancelCodexJob(activeCodexJobId);
+      applyAiCodingJobSnapshot(job);
+    } catch (error) {
+      setCodexError(error instanceof Error ? error.message : "终止 Codex 任务失败，请稍后重试。");
+      setLiveCodexStatus("终止任务失败，Codex 仍可能在运行。");
+    }
+  }
+
   async function handleRestartServices() {
     if (restartConfirm !== "RESTART" || isRestartingServices) return;
 
@@ -4935,6 +4948,7 @@ function App() {
                 restartError={restartError}
                 restartResponse={restartResponse}
                 onArchiveMessage={handleArchiveCodexMessage}
+                onCancel={handleCancelCodex}
                 onClearGithubSyncStatus={handleClearGithubSyncStatus}
                 onModelChange={setAiCodingModelName}
                 onPromptChange={setAiCodingPrompt}

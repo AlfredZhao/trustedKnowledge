@@ -229,6 +229,34 @@ async def get_codex_job(job_id: str, auth_context: AuthContext = Depends(require
     return _snapshot_codex_job(job)
 
 
+@router.delete("/runs/jobs/{job_id}", response_model=CodexJobSnapshot)
+async def cancel_codex_job(job_id: str, auth_context: AuthContext = Depends(require_current_user)) -> CodexJobSnapshot:
+    await _reconcile_codex_jobs(auth_context.username)
+    job = _codex_jobs.get(job_id)
+    if job is None or job.owner_username != auth_context.username:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Codex task not found.")
+
+    if job.status != "running":
+        return _snapshot_codex_job(job)
+
+    _mark_codex_job_failed(job, "Codex task was terminated by the user.")
+    task = _codex_job_tasks.get(job.job_id)
+    if task is not None and not task.done():
+        task.cancel()
+        with suppress(asyncio.CancelledError, Exception):
+            await task
+
+    process = _codex_job_processes.get(job.job_id)
+    if process is not None and process.returncode is None:
+        with suppress(ProcessLookupError):
+            process.kill()
+        with suppress(Exception):
+            await process.wait()
+
+    await _release_job_slot(job)
+    return _snapshot_codex_job(job)
+
+
 def _build_prompt(
     user_prompt: str,
     skill_ids: list[str] | None = None,
@@ -647,7 +675,7 @@ def _handle_codex_job_task_done(job: CodexJobState, task: asyncio.Task[None]) ->
 
         _mark_codex_job_failed(job, f"Codex task failed unexpectedly: {exception}")
         return
-    else:
+    elif job.status == "running":
         _mark_codex_job_failed(job, "Codex task was cancelled before finishing.")
 
 

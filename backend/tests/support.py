@@ -47,7 +47,36 @@ def prepare_backend_imports() -> None:
                 self.status_code = status_code
                 self.detail = detail
 
-        sys.modules["fastapi"] = types.SimpleNamespace(
-            HTTPException=HTTPException,
-            status=types.SimpleNamespace(HTTP_403_FORBIDDEN=403),
+        class APIRouter:
+            def __init__(self, **_kwargs) -> None:
+                pass
+
+            def get(self, *_args, **_kwargs):
+                return lambda endpoint: endpoint
+
+            def post(self, *_args, **_kwargs):
+                return lambda endpoint: endpoint
+
+            def delete(self, *_args, **_kwargs):
+                return lambda endpoint: endpoint
+
+        fastapi_module = types.ModuleType("fastapi")
+        fastapi_module.APIRouter = APIRouter
+        fastapi_module.Depends = lambda dependency: dependency
+        fastapi_module.Header = lambda default=None, **_kwargs: default
+        fastapi_module.HTTPException = HTTPException
+        fastapi_module.Query = lambda default=None, **_kwargs: default
+        fastapi_module.status = types.SimpleNamespace(
+            HTTP_202_ACCEPTED=202,
+            HTTP_400_BAD_REQUEST=400,
+            HTTP_401_UNAUTHORIZED=401,
+            HTTP_403_FORBIDDEN=403,
+            HTTP_404_NOT_FOUND=404,
+            HTTP_409_CONFLICT=409,
+            HTTP_503_SERVICE_UNAVAILABLE=503,
+            HTTP_504_GATEWAY_TIMEOUT=504,
         )
+        responses_module = types.ModuleType("fastapi.responses")
+        responses_module.StreamingResponse = object
+        sys.modules["fastapi"] = fastapi_module
+        sys.modules["fastapi.responses"] = responses_module

@@ -47,6 +47,7 @@ export default function AiCodingWorkspace({
   restartError,
   restartResponse,
   onArchiveMessage,
+  onCancel,
   onClearGithubSyncStatus,
   onModelChange,
   onPromptChange,
@@ -76,6 +77,7 @@ export default function AiCodingWorkspace({
   restartError: string | null;
   restartResponse: SystemRestartResponse | null;
   onArchiveMessage: (message: AiCodingMessage) => void;
+  onCancel: () => void;
   onClearGithubSyncStatus: () => void;
   onModelChange: (value: string) => void;
   onPromptChange: (value: string) => void;
@@ -178,6 +180,13 @@ export default function AiCodingWorkspace({
                 </div>
                 <CodexOutputBlock title="Live Output" value={liveOutput || "等待 Codex 输出事件..."} />
                 {liveErrorOutput ? <CodexOutputBlock title="Live Error Output" value={liveErrorOutput} tone="warning" /> : null}
+                <button
+                  className="flex h-10 w-full items-center justify-center rounded-lg border border-red-300/35 bg-red-300/10 px-4 text-sm font-medium text-red-200 transition hover:bg-red-300/16"
+                  type="button"
+                  onClick={onCancel}
+                >
+                  终止当前任务
+                </button>
               </div>
             ) : !visibleLatestMessage ? (
               <div className="grid min-h-[260px] place-items-center rounded-lg border border-white/10 bg-white/[0.025] p-6 text-center">

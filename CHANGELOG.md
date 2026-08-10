@@ -29,6 +29,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Fixed / 修复
 
+- Added a terminate action for running AI Coding tasks. It cancels the current server-side Codex job, stops its subprocess, and releases the user's execution slot when live error output indicates a task will not recover.
+- 为执行中的 AI 编程任务新增终止操作：当实时错误输出表明任务无法恢复时，可取消当前服务端 Codex Job、停止其子进程并释放该用户的执行槽位。
+
 - Fixed Knowledge Factory's `其他模型` execution path so it uses the enabled AI 问数 OpenAI-compatible provider configuration (Base URL, configured model, and backend API Key) instead of passing that model name to Codex CLI.
 - 修复知识加工的 `其他模型` 执行链路：现在会使用 AI 问数中启用的 OpenAI 兼容供应商配置（Base URL、已配置模型和后端 API Key），不再仅将模型名传给 Codex CLI。
 
