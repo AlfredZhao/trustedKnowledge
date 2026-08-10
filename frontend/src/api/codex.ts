@@ -3,6 +3,7 @@ import { clearStoredApiKey } from "./auth";
 import { authFetch, buildQuery, readErrorMessage, request } from "./client";
 
 type CodexSandboxMode = "read-only" | "workspace-write";
+type CodexExecutionProvider = "codex" | "history_ask_llm";
 
 export async function runCodex(prompt: string): Promise<CodexRunResponse> {
   return request<CodexRunResponse>("/api/codex/runs", {
@@ -21,6 +22,7 @@ export async function startCodexJob(
   sandboxMode: CodexSandboxMode = "workspace-write",
   outputMode: CodexOutputMode = "full",
   modelName = "",
+  executionProvider: CodexExecutionProvider = "codex",
 ): Promise<CodexJobSnapshot> {
   return request<CodexJobSnapshot>("/api/codex/runs/jobs", {
     method: "POST",
@@ -30,6 +32,7 @@ export async function startCodexJob(
       sandbox_mode: sandboxMode,
       output_mode: outputMode,
       model_name: modelName,
+      execution_provider: executionProvider,
     }),
   });
 }

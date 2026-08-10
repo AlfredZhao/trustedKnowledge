@@ -17,6 +17,9 @@ from fastapi.responses import StreamingResponse
 
 from app.core.config import settings
 from app.core.security import require_admin_module, require_current_user
+from app.db.oracle import acquire_connection
+from app.repositories.history_ask import _call_history_ask_llm, _format_selected_skills_for_prompt
+from app.repositories.llm_config import ensure_llm_config_table, get_history_ask_llm_config
 from app.repositories.skills import get_prompt_skills
 from app.repositories.users import AuthContext
 from app.schemas.codex import CodexConfigResponse, CodexJobSnapshot, CodexJobStatus, CodexRunRequest, CodexRunResponse
@@ -44,6 +47,7 @@ class CodexJobState:
     skill_ids: list[str] = field(default_factory=list)
     sandbox_mode: str = "workspace-write"
     output_mode: str = "full"
+    execution_provider: str = "codex"
     status: CodexJobStatus = "running"
     output_parts: list[str] = field(default_factory=list)
     error_parts: list[str] = field(default_factory=list)
@@ -173,6 +177,11 @@ async def start_codex_job(
         )
 
     await _reconcile_codex_jobs(auth_context.username)
+    execution_provider = payload.execution_provider
+    model_name = _resolve_codex_model_name(payload.model_name)
+    if execution_provider == "history_ask_llm":
+        history_ask_config = await _get_enabled_history_ask_llm_config()
+        model_name = str(history_ask_config["model_name"])
     if not await _try_reserve_codex_slot(auth_context.username):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_codex_concurrency_conflict_detail())
 
@@ -180,10 +189,11 @@ async def start_codex_job(
         job_id=uuid4().hex,
         owner_username=auth_context.username,
         prompt=payload.prompt.strip(),
-        model_name=_resolve_codex_model_name(payload.model_name),
+        model_name=model_name,
         skill_ids=payload.skill_ids,
         sandbox_mode=payload.sandbox_mode,
         output_mode=payload.output_mode,
+        execution_provider=execution_provider,
         slot_reserved=True,
     )
     _codex_jobs[job.job_id] = job
@@ -282,6 +292,10 @@ def _build_prompt(
 
 async def _run_codex_job(job: CodexJobState, auth_context: AuthContext) -> None:
     try:
+        if job.execution_provider == "history_ask_llm":
+            await _run_history_ask_llm_job(job, auth_context)
+            return
+
         started_at = time.monotonic()
         prompt = _build_prompt(job.prompt, job.skill_ids, auth_context, job.output_mode)
         exec_args, output_path = _build_codex_exec_args(
@@ -367,6 +381,70 @@ async def _run_codex_job(job: CodexJobState, auth_context: AuthContext) -> None:
         _codex_job_processes.pop(job.job_id, None)
     finally:
         await _release_job_slot(job)
+
+
+async def _get_enabled_history_ask_llm_config() -> dict[str, object]:
+    async with acquire_connection() as connection:
+        await ensure_llm_config_table(connection)
+        config = await get_history_ask_llm_config(connection)
+
+    if not config["enabled"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="AI 问数模型配置未启用，请先在 AI 问数中保存并启用模型配置。",
+        )
+    if not config["base_url"] or not config["model_name"] or not config["has_api_key"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="AI 问数模型配置不完整，需要启用配置、Base URL、模型名和后端 API Key。",
+        )
+    return config
+
+
+def _build_history_ask_llm_prompt(job: CodexJobState, auth_context: AuthContext) -> tuple[str, str]:
+    selected_skills = get_prompt_skills(job.skill_ids, auth_context)
+    skill_instructions = _format_selected_skills_for_prompt(selected_skills)
+    prompt_parts = [
+        "这是知识加工任务。请仅输出最终加工结果，不要输出过程、计划、说明或代码修改建议。",
+    ]
+    if skill_instructions:
+        prompt_parts.extend(["", "已选择 Skill 的指令：", skill_instructions])
+    prompt_parts.extend(["", "用户请求：", job.prompt])
+    return (
+        "\n".join(prompt_parts),
+        "你是 trustedKnowledge 的知识加工助手。严格遵循用户提供的事实与 Skill 指令；若信息不足，保守处理且不要编造。",
+    )
+
+
+async def _run_history_ask_llm_job(job: CodexJobState, auth_context: AuthContext) -> None:
+    started_at = time.monotonic()
+    try:
+        config = await _get_enabled_history_ask_llm_config()
+        prompt, system = _build_history_ask_llm_prompt(job, auth_context)
+        output = await _call_history_ask_llm(
+            config=config,
+            prompt=prompt,
+            system=system,
+            max_tokens=4000,
+        )
+    except HTTPException as exc:
+        _mark_codex_job_failed(job, str(exc.detail))
+        return
+    except Exception as exc:
+        _mark_codex_job_failed(job, f"其他模型调用失败：{exc}")
+        return
+
+    job.output_parts.append(output)
+    job.response = CodexRunResponse(
+        output=output,
+        error_output="",
+        exit_code=0,
+        duration_seconds=round(time.monotonic() - started_at, 2),
+        git_status="",
+        model_name=job.model_name,
+    )
+    job.status = "completed"
+    job.completed_at = datetime.now(UTC)
 
 
 async def _stream_codex_events(

@@ -533,7 +533,6 @@ const englishMaterialFlagStyles: Record<EnglishMaterialDraft["flag"], string> = 
   "1": "border-mint-300/30 bg-mint-300/10 text-mint-300",
 };
 
-const FACTORY_HISTORY_ASK_MODEL = "__factory_history_ask_model__";
 const FACTORY_CUSTOM_MODEL = "__factory_custom_model__";
 
 function App() {
@@ -589,8 +588,11 @@ function App() {
   const [factorySelectedId, setFactorySelectedId] = useState<number | null>(restoredUiState.factory.selectedId);
   const [factoryTask, setFactoryTask] = useState(restoredUiState.factory.task);
   const [factorySkillIds, setFactorySkillIds] = useState<string[]>(restoredUiState.factory.skillIds);
-  const [factoryModelName, setFactoryModelName] = useState(restoredUiState.factory.modelName || AI_CODING_DEFAULT_MODEL);
-  const [factoryCustomModelName, setFactoryCustomModelName] = useState(restoredUiState.factory.customModelName);
+  const [factoryModelName, setFactoryModelName] = useState(
+    restoredUiState.factory.modelName === "__factory_history_ask_model__"
+      ? FACTORY_CUSTOM_MODEL
+      : restoredUiState.factory.modelName || AI_CODING_DEFAULT_MODEL,
+  );
   const [factoryError, setFactoryError] = useState<string | null>(null);
   const [isFactoryLoading, setIsFactoryLoading] = useState(false);
   const [isFactoryGenerating, setIsFactoryGenerating] = useState(Boolean(restoredUiState.factory.codexJobId));
@@ -970,31 +972,15 @@ function App() {
     return getLatestCodexJobByOutputMode("full");
   }
 
-  const factoryHistoryAskModelName =
-    historyAskLlmConfig?.enabled && historyAskLlmConfig.model_name.trim().length > 0
-      ? historyAskLlmConfig.model_name.trim()
-      : "";
   const factoryModelOptions = useMemo(() => {
     const options = buildAiCodingModelOptions(codexConfig);
-    if (factoryHistoryAskModelName) {
-      options.push({
-        value: FACTORY_HISTORY_ASK_MODEL,
-        label: `AI 问数配置（${factoryHistoryAskModelName}）`,
-      });
-    } else if (factoryModelName === FACTORY_HISTORY_ASK_MODEL) {
-      options.push({
-        value: FACTORY_HISTORY_ASK_MODEL,
-        label: "AI 问数配置（未启用）",
-      });
-    }
-    options.push({ value: FACTORY_CUSTOM_MODEL, label: "其他模型..." });
+    options.push({ value: FACTORY_CUSTOM_MODEL, label: "其他模型" });
     return options;
-  }, [codexConfig, factoryHistoryAskModelName, factoryModelName]);
+  }, [codexConfig]);
 
   function resolveFactoryModelName() {
     if (factoryModelName === AI_CODING_DEFAULT_MODEL) return "";
-    if (factoryModelName === FACTORY_HISTORY_ASK_MODEL) return factoryHistoryAskModelName;
-    if (factoryModelName === FACTORY_CUSTOM_MODEL) return factoryCustomModelName.trim();
+    if (factoryModelName === FACTORY_CUSTOM_MODEL) return "";
     return factoryModelName.trim();
   }
 
@@ -1259,7 +1245,7 @@ function App() {
         task: factoryTask,
         skillIds: factorySkillIds,
         modelName: factoryModelName,
-        customModelName: factoryCustomModelName,
+        customModelName: "",
         codexJobId: factoryCodexJobId,
         codexKnowledgeId: factoryCodexKnowledgeId,
       },
@@ -1383,7 +1369,6 @@ function App() {
     draft,
     factoryCodexJobId,
     factoryCodexKnowledgeId,
-    factoryCustomModelName,
     factoryModelName,
     factoryPage,
     factoryQuery,
@@ -1477,7 +1462,7 @@ function App() {
 
         if (job.status === "running") {
           setIsFactoryGenerating(true);
-          setFactoryCodexStatus("Codex 正在按所选 skill 加工...");
+          setFactoryCodexStatus("模型正在按所选 Skill 加工...");
           timer = window.setTimeout(pollFactoryCodexJob, 1500);
           return;
         }
@@ -1486,8 +1471,8 @@ function App() {
           setIsFactoryGenerating(false);
           setFactoryCodexJobId(null);
           setFactoryCodexKnowledgeId(null);
-          setFactoryCodexStatus("Codex 加工失败。");
-          setFactoryCopyError(job.error_message ?? "Codex 加工失败，请稍后重试。");
+          setFactoryCodexStatus("模型加工失败。");
+          setFactoryCopyError(job.error_message ?? "模型加工失败，请稍后重试。");
           return;
         }
 
@@ -1501,29 +1486,29 @@ function App() {
         if (!taskContent) {
           setFactoryCodexJobId(null);
           setFactoryCodexKnowledgeId(null);
-          setFactoryCodexStatus("Codex 加工完成，但没有生成可保存的内容。");
+          setFactoryCodexStatus("模型加工完成，但没有生成可保存的内容。");
           return;
         }
 
         if (!jobKnowledgeId) {
           setFactoryCodexJobId(null);
           setFactoryCodexKnowledgeId(null);
-          setFactoryCodexStatus("Codex 加工完成，但缺少源知识 ID，未自动发送到博客工厂。");
+          setFactoryCodexStatus("模型加工完成，但缺少源知识 ID，未自动发送到博客工厂。");
           setFactoryCopyError("缺少源知识 ID，请重新选择知识后再复制保存。");
           return;
         }
 
         setIsFactoryAutoSaving(true);
-        setFactoryCodexStatus("Codex 加工完成，正在自动发送到博客工厂...");
+        setFactoryCodexStatus("模型加工完成，正在自动发送到博客工厂...");
         try {
           await saveFactoryTaskToBlogFactory(jobKnowledgeId, taskContent);
           if (cancelled) return;
           setFactoryCopyError(null);
-          setFactoryCodexStatus("Codex 加工完成，已自动发送到博客工厂。");
+          setFactoryCodexStatus("模型加工完成，已自动发送到博客工厂。");
         } catch (error) {
           if (cancelled) return;
           setFactoryCopyError(error instanceof Error ? `自动发送到博客工厂失败：${error.message}` : "自动发送到博客工厂失败。");
-          setFactoryCodexStatus("Codex 加工完成，但自动发送到博客工厂失败。");
+          setFactoryCodexStatus("模型加工完成，但自动发送到博客工厂失败。");
         } finally {
           if (!cancelled) {
             setIsFactoryAutoSaving(false);
@@ -1537,8 +1522,8 @@ function App() {
         setFactoryCodexJobId(null);
         setFactoryCodexKnowledgeId(null);
         setIsFactoryAutoSaving(false);
-        setFactoryCodexStatus("Codex 加工失败。");
-        setFactoryCopyError(error instanceof Error ? error.message : "恢复 Codex 加工状态失败。");
+        setFactoryCodexStatus("模型加工失败。");
+        setFactoryCopyError(error instanceof Error ? error.message : "恢复模型加工状态失败。");
       }
     }
 
@@ -2897,7 +2882,6 @@ function App() {
     setFactoryTask("");
     setFactorySkillIds([]);
     setFactoryModelName(AI_CODING_DEFAULT_MODEL);
-    setFactoryCustomModelName("");
     setFactoryCodexJobId(null);
     setFactoryCodexKnowledgeId(null);
     setAdminModuleItems([]);
@@ -2978,40 +2962,37 @@ function App() {
       return;
     }
     const requestedModelName = resolveFactoryModelName();
-    if (factoryModelName === FACTORY_CUSTOM_MODEL && !requestedModelName) {
-      setFactoryCopyError("请输入要用于知识加工的模型名。");
-      setFactoryCodexStatus("");
-      return;
-    }
-    if (factoryModelName === FACTORY_HISTORY_ASK_MODEL && !requestedModelName) {
-      setFactoryCopyError("AI 问数模型配置未启用或模型名为空，请先在 AI 问数中保存模型配置。");
-      setFactoryCodexStatus("");
-      return;
-    }
-
     setIsFactoryGenerating(true);
     setIsFactoryAutoSaving(false);
     setFactorySelectedId(item.id);
     setFactoryCodexKnowledgeId(item.id);
     setFactoryTask("");
-    setFactoryCodexStatus("正在提交 Codex 加工任务...");
+    const usesHistoryAskModel = factoryModelName === FACTORY_CUSTOM_MODEL;
+    setFactoryCodexStatus(usesHistoryAskModel ? "正在提交其他模型加工任务..." : "正在提交 Codex 加工任务...");
     setHasCopiedFactoryTask(false);
     setFactoryCopyError(null);
     setFactorySavedKnowledgeId(null);
 
     try {
       const prompt = buildFactorySkillPrompt(item);
-      const job = await startCodexJob(prompt, factorySkillIds, "read-only", "final", requestedModelName);
+      const job = await startCodexJob(
+        prompt,
+        factorySkillIds,
+        "read-only",
+        "final",
+        requestedModelName,
+        usesHistoryAskModel ? "history_ask_llm" : "codex",
+      );
       setFactoryCodexJobId(job.job_id);
       setFactoryTask(job.output);
-      setFactoryCodexStatus("Codex 任务已提交，正在加工...");
+      setFactoryCodexStatus(usesHistoryAskModel ? "其他模型任务已提交，正在加工..." : "Codex 任务已提交，正在加工...");
     } catch (error) {
       setIsFactoryGenerating(false);
       setIsFactoryAutoSaving(false);
       setFactoryCodexJobId(null);
       setFactoryCodexKnowledgeId(null);
-      setFactoryCodexStatus("Codex 加工失败。");
-      setFactoryCopyError(error instanceof Error ? error.message : "Codex 加工失败，请稍后重试。");
+      setFactoryCodexStatus(usesHistoryAskModel ? "其他模型加工失败。" : "Codex 加工失败。");
+      setFactoryCopyError(error instanceof Error ? error.message : usesHistoryAskModel ? "其他模型加工失败，请稍后重试。" : "Codex 加工失败，请稍后重试。");
     }
   }
 
@@ -5365,12 +5346,10 @@ function App() {
               codexStatus={factoryCodexStatus}
               searchQuery={factoryQuery}
               username={factoryUsername}
-              customModelName={factoryCustomModelName}
               onClearSearch={() => {
                 setFactoryQuery("");
                 setFactoryPage(1);
               }}
-              onCustomModelNameChange={setFactoryCustomModelName}
               onCopyTask={handleCopyFactoryTask}
               onGenerateTask={handleGenerateFactoryTask}
               onMergeKnowledge={handleMergeFactoryKnowledge}
@@ -8019,9 +7998,7 @@ function KnowledgeFactory({
   codexStatus,
   searchQuery,
   username,
-  customModelName,
   onClearSearch,
-  onCustomModelNameChange,
   onCopyTask,
   onGenerateTask,
   onMergeKnowledge,
@@ -8055,9 +8032,7 @@ function KnowledgeFactory({
   codexStatus: string;
   searchQuery: string;
   username: string;
-  customModelName: string;
   onClearSearch: () => void;
-  onCustomModelNameChange: (modelName: string) => void;
   onCopyTask: (view: MarkdownContentView) => void;
   onGenerateTask: (item: KnowledgeItem) => void;
   onMergeKnowledge: (knowledgeIds: number[], mergeDraft: KnowledgeDraft) => Promise<KnowledgeItem>;
@@ -8313,15 +8288,9 @@ function KnowledgeFactory({
               </select>
             </Field>
             {modelName === FACTORY_CUSTOM_MODEL ? (
-              <Field label="自定义模型" icon={<Settings2 size={16} />}>
-                <input
-                  className="control h-10 sm:w-52"
-                  disabled={isGenerating}
-                  value={customModelName}
-                  onChange={(event) => onCustomModelNameChange(event.target.value)}
-                  placeholder="例如 deepseek-chat"
-                />
-              </Field>
+              <p className="max-w-sm text-xs leading-5 text-slate-500">
+                使用“AI 问数”中已启用的供应商、Base URL、模型名和后端 API Key 配置。
+              </p>
             ) : null}
             <Field label="选择 Skill" icon={<Layers3 size={16} />}>
               <select

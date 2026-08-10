@@ -9,6 +9,7 @@ class CodexRunRequest(BaseModel):
     sandbox_mode: Literal["read-only", "workspace-write"] = "workspace-write"
     output_mode: Literal["full", "final"] = "full"
     model_name: str = Field("", max_length=120)
+    execution_provider: Literal["codex", "history_ask_llm"] = "codex"
 
 
 class CodexRunResponse(BaseModel):

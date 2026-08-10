@@ -35,7 +35,29 @@ Keep action groups inside narrow grid columns as `min-w-0` wrapping flex contain
 
 ### Guardrail
 
-Verify Knowledge Factory with a selected item at desktop `xl` width and on a narrow mobile viewport: model, Skill, and `生成结果` must remain reachable, in order, and fully inside the source panel. Repeat with the custom-model input visible.
+Verify Knowledge Factory with a selected item at desktop `xl` width and on a narrow mobile viewport: model, Skill, and `生成结果` must remain reachable, in order, and fully inside the source panel. Repeat after selecting `其他模型`.
+
+## Knowledge Factory Other Model Must Reuse AI Ask Configuration
+
+### Symptom
+
+Choosing the AI Ask / other-model option in Knowledge Factory still attempted a Codex CLI call with `--model deepseek-chat`, so the separately configured OpenAI-compatible Base URL and API Key were ignored.
+
+### Trigger
+
+Enable an AI 问数 model configuration and select `其他模型` before generating a Knowledge Factory result.
+
+### Root Cause
+
+Both UI choices were resolved only to a model-name string and submitted through the Codex job endpoint, which has no access to the AI 问数 provider configuration.
+
+### Safe Pattern
+
+Keep one `其他模型` option and submit it with execution provider `history_ask_llm`. The backend must load the enabled AI 问数 configuration and use its Base URL, configured model name, and server-side API Key for the OpenAI-compatible request. Codex presets must remain on the `codex` provider path.
+
+### Guardrail
+
+Verify the Knowledge Factory request body uses `execution_provider: "history_ask_llm"` for `其他模型`, and unit-test that the provider job calls `_call_history_ask_llm` with the enabled configuration rather than spawning Codex.
 
 ## AI Usage Stable Samples Must Not Depend on Reset Timestamp Strings
 

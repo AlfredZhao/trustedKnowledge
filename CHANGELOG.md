@@ -29,6 +29,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Fixed / 修复
 
+- Fixed Knowledge Factory's `其他模型` execution path so it uses the enabled AI 问数 OpenAI-compatible provider configuration (Base URL, configured model, and backend API Key) instead of passing that model name to Codex CLI.
+- 修复知识加工的 `其他模型` 执行链路：现在会使用 AI 问数中启用的 OpenAI 兼容供应商配置（Base URL、已配置模型和后端 API Key），不再仅将模型名传给 Codex CLI。
+
 - Fixed the Knowledge Factory action bar so its model, Skill, and generation controls wrap inside the source panel instead of allowing `生成结果` to overflow on desktop layouts.
 - 修复知识加工操作区：执行模型、Skill 与“生成结果”会在原文面板内自动换行，避免桌面布局中“生成结果”越界。
 
