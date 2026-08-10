@@ -10652,6 +10652,7 @@ function TodoWorkspace({
   onUsernameFilterChange: (username: string) => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
 }) {
+  const [taskContentView, setTaskContentView] = useState<"edit" | "preview">("edit");
   const totalPages = Math.max(1, Math.ceil(total / TODO_PAGE_SIZE));
   const rangeStart = total === 0 ? 0 : (page - 1) * TODO_PAGE_SIZE + 1;
   const rangeEnd = Math.min(page * TODO_PAGE_SIZE, total);
@@ -10726,14 +10727,48 @@ function TodoWorkspace({
             />
           </Field>
 
-          <EditorField label="任务内容" icon={<FileText size={16} />}>
-            <MarkdownImageTextarea
-              className="control min-h-[320px] resize-none leading-7 xl:min-h-[380px]"
-              value={draft.content}
-              onChange={(content) => onDraftChange({ ...draft, content })}
-              placeholder="补充待办事项背景、验收标准或下一步动作。"
-            />
-          </EditorField>
+          <div className="block min-w-0">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-sm text-slate-300">
+                <span className="text-slate-500"><FileText size={16} /></span>
+                任务内容
+              </div>
+              <div className="flex rounded-lg border border-white/10 bg-white/[0.025] p-1 text-xs" role="group" aria-label="任务内容显示模式">
+                <button
+                  className={`rounded-md px-3 py-1.5 transition ${
+                    taskContentView === "edit" ? "bg-mint-300/15 text-mint-200" : "text-slate-400 hover:text-slate-200"
+                  }`}
+                  type="button"
+                  onClick={() => setTaskContentView("edit")}
+                >
+                  编辑
+                </button>
+                <button
+                  className={`rounded-md px-3 py-1.5 transition ${
+                    taskContentView === "preview" ? "bg-mint-300/15 text-mint-200" : "text-slate-400 hover:text-slate-200"
+                  }`}
+                  type="button"
+                  onClick={() => setTaskContentView("preview")}
+                >
+                  Markdown 预览
+                </button>
+              </div>
+            </div>
+            {taskContentView === "edit" ? (
+              <MarkdownImageTextarea
+                className="control min-h-[320px] resize-none leading-7 xl:min-h-[380px]"
+                value={draft.content}
+                onChange={(content) => onDraftChange({ ...draft, content })}
+                placeholder="补充待办事项背景、验收标准或下一步动作。"
+              />
+            ) : draft.content.trim() ? (
+              <MarkdownPreview markdown={draft.content} />
+            ) : (
+              <div className="grid min-h-[320px] place-items-center rounded-lg border border-dashed border-white/10 bg-white/[0.025] p-4 text-center text-sm text-slate-500 xl:min-h-[380px]">
+                暂无任务内容可预览。
+              </div>
+            )}
+          </div>
 
           <div className="grid gap-4 md:grid-cols-2">
             <Field label="来源" icon={<Database size={16} />}>

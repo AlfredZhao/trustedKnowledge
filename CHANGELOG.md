@@ -13,6 +13,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Added / 新增
 
+- Added an edit / Markdown preview toggle to Todo task content, rendering headings, lists, links, code blocks, tables, and Markdown images before saving.
+- 为待办事项“任务内容”新增编辑 / Markdown 预览切换，可在保存前渲染标题、列表、链接、代码块、表格和 Markdown 图片。
+
 - Added `复制标题` and `复制正文` buttons to Blog Factory enhanced-HTML exports, including the matching offline export script output.
 - 为博客工厂增强美化导出的 HTML 新增 `复制标题` 和 `复制正文` 顶部按钮，并同步到离线导出脚本输出。
 
