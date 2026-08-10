@@ -7515,6 +7515,7 @@ function KnowledgeForm({
   onSelectAdjacent: (direction: "previous" | "next") => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
 }) {
+  const [answerView, setAnswerView] = useState<"edit" | "preview">("edit");
   const canSubmit = draft.question.trim().length > 0 && draft.answer.trim().length > 0 && !isSaving;
   const isEditing = mode === "edit";
   const formTitle = isEditing ? "编辑可信知识" : isTodoEntry ? "录入待办事项" : "录入可信知识";
@@ -7609,14 +7610,59 @@ function KnowledgeForm({
           />
         </Field>
 
-        <EditorField label={contentFieldLabel} icon={<Archive size={16} />}>
-          <MarkdownImageTextarea
-            value={draft.answer}
-            className="control min-h-[330px] resize-none leading-7"
-            onChange={(answer) => onDraftChange({ ...draft, answer })}
-            placeholder={contentPlaceholder}
-          />
-        </EditorField>
+        {isEditing ? (
+          <div className="block min-w-0">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-sm text-slate-300">
+                <span className="text-slate-500"><Archive size={16} /></span>
+                {contentFieldLabel}
+              </div>
+              <div className="flex rounded-lg border border-white/10 bg-white/[0.025] p-1 text-xs" role="group" aria-label="可信答案显示模式">
+                <button
+                  className={`rounded-md px-3 py-1.5 transition ${
+                    answerView === "edit" ? "bg-mint-300/15 text-mint-200" : "text-slate-400 hover:text-slate-200"
+                  }`}
+                  type="button"
+                  onClick={() => setAnswerView("edit")}
+                >
+                  编辑
+                </button>
+                <button
+                  className={`rounded-md px-3 py-1.5 transition ${
+                    answerView === "preview" ? "bg-mint-300/15 text-mint-200" : "text-slate-400 hover:text-slate-200"
+                  }`}
+                  type="button"
+                  onClick={() => setAnswerView("preview")}
+                >
+                  Markdown 预览
+                </button>
+              </div>
+            </div>
+            {answerView === "edit" ? (
+              <MarkdownImageTextarea
+                value={draft.answer}
+                className="control min-h-[330px] resize-none leading-7"
+                onChange={(answer) => onDraftChange({ ...draft, answer })}
+                placeholder={contentPlaceholder}
+              />
+            ) : draft.answer.trim() ? (
+              <MarkdownPreview markdown={draft.answer} />
+            ) : (
+              <div className="grid min-h-[330px] place-items-center rounded-lg border border-dashed border-white/10 bg-white/[0.025] p-4 text-center text-sm text-slate-500">
+                暂无可信答案可预览。
+              </div>
+            )}
+          </div>
+        ) : (
+          <EditorField label={contentFieldLabel} icon={<Archive size={16} />}>
+            <MarkdownImageTextarea
+              value={draft.answer}
+              className="control min-h-[330px] resize-none leading-7"
+              onChange={(answer) => onDraftChange({ ...draft, answer })}
+              placeholder={contentPlaceholder}
+            />
+          </EditorField>
+        )}
 
         <div className={`grid gap-4 ${isTodoEntry ? "md:grid-cols-2" : "md:grid-cols-[1fr_1fr_220px]"}`}>
           <Field label="来源" icon={<Database size={16} />}>

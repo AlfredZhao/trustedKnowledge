@@ -13,6 +13,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Added / 新增
 
+- Added an edit / Markdown preview toggle to the Knowledge entry editor, rendering headings, lists, links, code blocks, tables, and Markdown images before saving.
+- 为信息录入的“编辑可信知识”新增编辑 / Markdown 预览切换，可在保存前渲染标题、列表、链接、代码块、表格和 Markdown 图片。
+
 - Added an edit / Markdown preview toggle to Todo task content, rendering headings, lists, links, code blocks, tables, and Markdown images before saving.
 - 为待办事项“任务内容”新增编辑 / Markdown 预览切换，可在保存前渲染标题、列表、链接、代码块、表格和 Markdown 图片。
 
