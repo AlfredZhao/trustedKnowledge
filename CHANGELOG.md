@@ -24,7 +24,13 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Changed / 变更
 
+- Moved Knowledge Factory model and Skill selectors before the generation action, using dropdown controls; the result panel now focuses solely on generated content.
+- 调整知识加工：将执行模型和 Skill 下拉选择移至“生成结果”按钮之前，加工结果区域仅聚焦展示生成内容。
+
 #### Fixed / 修复
+
+- Fixed the Knowledge Factory action bar so its model, Skill, and generation controls wrap inside the source panel instead of allowing `生成结果` to overflow on desktop layouts.
+- 修复知识加工操作区：执行模型、Skill 与“生成结果”会在原文面板内自动换行，避免桌面布局中“生成结果”越界。
 
 - Fixed AI Usage stable-sample folding so unchanged usage periods are no longer split apart by `NEXT_RESET_AT` timestamp drift or serialization differences.
 - 修复 AI 用量稳定采样折叠：`NEXT_RESET_AT` 的时间漂移或序列化差异不再把未变化的用量时段重新展开。

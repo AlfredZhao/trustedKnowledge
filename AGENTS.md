@@ -27,6 +27,7 @@
 - For frontend layout, navigation, display count, pagination, or pure presentation behavior changes, update `docs/frontend-overview.md` in the same change.
 - For UI changes involving navigation, filters, pagination, theme, loading states, dialogs, or reusable controls, check the same interaction pattern across related modules instead of fixing only the currently reported screen.
 - For UI fixes that can affect presentation states, verify desktop/mobile behavior and dark/light theme behavior when those modes exist, including dialog, loading, and empty-state readability.
+- Before completing any UI-affecting requirement, check the affected page at both desktop-web and mobile widths for clipped, overflowing, or unreachable controls; also check the relevant theme and state variants when they exist.
 - For user-scoped modules, default filters and `清空筛选条件` behavior should return to the current user's default visible scope unless the requirement explicitly says otherwise. Do not silently change a module to a global cross-user default.
 - Do not change API fields, database structure, or authentication behavior unless explicitly requested.
 - Do not delete user data, logs, or existing business code unless explicitly requested.

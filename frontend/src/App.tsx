@@ -607,7 +607,6 @@ function App() {
   const [factoryCodexStatus, setFactoryCodexStatus] = useState(
     restoredUiState.factory.codexJobId ? "正在恢复 Codex 加工状态..." : "",
   );
-  const [factoryCodexErrorOutput, setFactoryCodexErrorOutput] = useState("");
   const [factoryRefreshToken, setFactoryRefreshToken] = useState(0);
   const [blogFactoryItems, setBlogFactoryItems] = useState<BlogFactoryItem[]>([]);
   const [blogFactoryTotal, setBlogFactoryTotal] = useState(0);
@@ -1083,7 +1082,6 @@ function App() {
       setFactoryCodexJobId(null);
       setFactoryCodexKnowledgeId(null);
       setFactoryCodexStatus("");
-      setFactoryCodexErrorOutput("");
       setIsFactoryGenerating(false);
       setIsFactoryAutoSaving(false);
       setFactorySavedKnowledgeId(null);
@@ -1476,7 +1474,6 @@ function App() {
         if (cancelled) return;
 
         setFactoryTask(job.output);
-        setFactoryCodexErrorOutput(job.error_output);
 
         if (job.status === "running") {
           setIsFactoryGenerating(true);
@@ -2905,7 +2902,6 @@ function App() {
     setFactoryCodexKnowledgeId(null);
     setAdminModuleItems([]);
     setFactoryCodexStatus("");
-    setFactoryCodexErrorOutput("");
     setIsFactoryGenerating(false);
     setIsFactoryAutoSaving(false);
     setFactorySavedKnowledgeId(null);
@@ -2999,7 +2995,6 @@ function App() {
     setFactoryCodexKnowledgeId(item.id);
     setFactoryTask("");
     setFactoryCodexStatus("正在提交 Codex 加工任务...");
-    setFactoryCodexErrorOutput("");
     setHasCopiedFactoryTask(false);
     setFactoryCopyError(null);
     setFactorySavedKnowledgeId(null);
@@ -3009,7 +3004,6 @@ function App() {
       const job = await startCodexJob(prompt, factorySkillIds, "read-only", "final", requestedModelName);
       setFactoryCodexJobId(job.job_id);
       setFactoryTask(job.output);
-      setFactoryCodexErrorOutput(job.error_output);
       setFactoryCodexStatus("Codex 任务已提交，正在加工...");
     } catch (error) {
       setIsFactoryGenerating(false);
@@ -4206,9 +4200,7 @@ function App() {
   }
 
   function handleToggleFactorySkill(skillId: string) {
-    setFactorySkillIds((current) =>
-      current.includes(skillId) ? current.filter((item) => item !== skillId) : [...current, skillId].slice(0, 8),
-    );
+    setFactorySkillIds(skillId ? [skillId] : []);
   }
 
   function getPreferredSkillFile(files: SkillFile[]) {
@@ -5370,7 +5362,6 @@ function App() {
               modelName={factoryModelName}
               modelOptions={factoryModelOptions}
               copyError={factoryCopyError}
-              codexErrorOutput={factoryCodexErrorOutput}
               codexStatus={factoryCodexStatus}
               searchQuery={factoryQuery}
               username={factoryUsername}
@@ -5394,7 +5385,6 @@ function App() {
                 setFactorySelectedId(item.id);
                 setFactoryTask("");
                 setFactoryCodexStatus("");
-                setFactoryCodexErrorOutput("");
                 setHasCopiedFactoryTask(false);
                 setFactoryCopyError(null);
                 setFactorySavedKnowledgeId(null);
@@ -8026,7 +8016,6 @@ function KnowledgeFactory({
   modelName,
   modelOptions,
   copyError,
-  codexErrorOutput,
   codexStatus,
   searchQuery,
   username,
@@ -8063,7 +8052,6 @@ function KnowledgeFactory({
   modelName: string;
   modelOptions: { value: string; label: string }[];
   copyError: string | null;
-  codexErrorOutput: string;
   codexStatus: string;
   searchQuery: string;
   username: string;
@@ -8094,11 +8082,6 @@ function KnowledgeFactory({
   const isAdminUser = authUser?.is_admin ?? false;
   const hasSingleVisibleUser = !isAdminUser && visibleUsers.length <= 1;
   const allUsersLabel = isAdminUser ? "全部用户" : "全部可见用户";
-  const selectedModelLabel =
-    modelName === FACTORY_CUSTOM_MODEL
-      ? customModelName.trim() || "其他模型"
-      : (modelOptions.find((option) => option.value === modelName)?.label ?? modelName);
-
   useEffect(() => {
     setSelectedMergeItems((current) => current.map((selected) => items.find((item) => item.id === selected.id) ?? selected));
   }, [items]);
@@ -8306,7 +8289,7 @@ function KnowledgeFactory({
       </section>
 
       <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/68 p-4 backdrop-blur-xl">
-        <div className="mb-4 flex items-start justify-between gap-4">
+        <div className="mb-4 flex flex-col gap-4">
           <div>
             <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
               <FileText size={17} />
@@ -8314,19 +8297,76 @@ function KnowledgeFactory({
             </div>
             <h2 className="text-xl font-semibold text-slate-50">知识原文</h2>
           </div>
-          {selectedItem ? (
-            <button
-              className="flex h-10 items-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-3 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
-              disabled={isGenerating || selectedSkillIds.length === 0}
-              title={selectedSkillIds.length === 0 ? "请先选择 skill" : "使用所选 skill 直接生成结果"}
-              type="button"
-              onClick={() => onGenerateTask(selectedItem)}
-            >
-              {isGenerating ? <Loader2 className="animate-spin" size={17} /> : <Sparkles size={17} />}
-              {isGenerating ? "生成中" : "生成结果"}
-            </button>
-          ) : null}
+          <div className="flex w-full min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+            <Field label="执行模型" icon={<Settings2 size={16} />}>
+              <select
+                className="control h-10 sm:w-52"
+                disabled={isGenerating}
+                value={modelName}
+                onChange={(event) => onModelNameChange(event.target.value)}
+              >
+                {modelOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            {modelName === FACTORY_CUSTOM_MODEL ? (
+              <Field label="自定义模型" icon={<Settings2 size={16} />}>
+                <input
+                  className="control h-10 sm:w-52"
+                  disabled={isGenerating}
+                  value={customModelName}
+                  onChange={(event) => onCustomModelNameChange(event.target.value)}
+                  placeholder="例如 deepseek-chat"
+                />
+              </Field>
+            ) : null}
+            <Field label="选择 Skill" icon={<Layers3 size={16} />}>
+              <select
+                className="control h-10 sm:w-52"
+                disabled={isGenerating || skillsLoading || skills.length === 0}
+                value={selectedSkillIds[0] ?? ""}
+                onChange={(event) => onToggleSkill(event.target.value)}
+              >
+                <option value="">请选择 Skill</option>
+                {skills.map((skill) => (
+                  <option key={skill.id} value={skill.id}>
+                    {skill.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            {selectedItem ? (
+              <button
+                className="flex h-10 items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-3 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
+                disabled={isGenerating || selectedSkillIds.length === 0}
+                title={selectedSkillIds.length === 0 ? "请先选择 Skill" : "使用所选 Skill 直接生成结果"}
+                type="button"
+                onClick={() => onGenerateTask(selectedItem)}
+              >
+                {isGenerating ? <Loader2 className="animate-spin" size={17} /> : <Sparkles size={17} />}
+                {isGenerating ? "生成中" : "生成结果"}
+              </button>
+            ) : null}
+          </div>
         </div>
+
+        {skillsLoading ? <p className="mb-4 text-sm text-slate-500">正在加载可用 Skill...</p> : null}
+        {skillsError ? <p className="mb-4 text-sm text-red-200">{skillsError}</p> : null}
+        {copyError ? (
+          <div className="mb-4 flex items-start gap-2 rounded-lg border border-amberline/25 bg-amberline/10 px-3 py-3 text-sm text-amber-100">
+            <TriangleAlert className="mt-0.5 shrink-0 text-amberline" size={17} />
+            <span>{copyError}</span>
+          </div>
+        ) : null}
+        {codexStatus ? (
+          <div className="mb-4 flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.025] px-3 py-2 text-sm text-slate-400">
+            {isGenerating ? <Loader2 className="animate-spin text-mint-300" size={15} /> : <CheckCircle2 className="text-mint-300" size={15} />}
+            <span>{codexStatus}</span>
+          </div>
+        ) : null}
 
         {selectedItem ? (
           <article className="space-y-4">
@@ -8424,107 +8464,6 @@ function KnowledgeFactory({
           </div>
         </div>
 
-        <div className="mb-4 rounded-lg border border-white/10 bg-white/[0.025] p-3">
-          <Field label="执行模型" icon={<Settings2 size={16} />}>
-            <select
-              className="control h-10"
-              disabled={isGenerating}
-              value={modelName}
-              onChange={(event) => onModelNameChange(event.target.value)}
-            >
-              {modelOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </Field>
-          {modelName === FACTORY_CUSTOM_MODEL ? (
-            <input
-              className="control mt-3 h-10"
-              disabled={isGenerating}
-              value={customModelName}
-              onChange={(event) => onCustomModelNameChange(event.target.value)}
-              placeholder="输入模型名，例如 deepseek-chat"
-            />
-          ) : null}
-          <div className="mt-2 text-xs leading-5 text-slate-500">
-            当前模型：{selectedModelLabel}
-          </div>
-        </div>
-
-        <div className="mb-4 rounded-lg border border-white/10 bg-white/[0.025] p-3">
-          <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-2 text-sm font-medium text-slate-200">
-              <Layers3 className="text-mint-300" size={16} />
-              选择 Skill
-            </div>
-            <span className="text-xs text-slate-500">已选择 {formatAmount(selectedSkillIds.length)} 个</span>
-          </div>
-          {skillsLoading ? (
-            <div className="flex items-center gap-2 text-sm text-slate-500">
-              <Loader2 className="animate-spin" size={15} />
-              正在加载可用 skill...
-            </div>
-          ) : skillsError ? (
-            <div className="text-sm text-red-200">{skillsError}</div>
-          ) : skills.length > 0 ? (
-            <div className="grid gap-2">
-              {skills.map((skill) => {
-                const selected = selectedSkillIds.includes(skill.id);
-                return (
-                  <button
-                    key={skill.id}
-                    className={`min-h-16 rounded-lg border px-3 py-2 text-left transition ${
-                      selected
-                        ? "border-mint-300/30 bg-mint-300/10 text-mint-100"
-                        : "border-white/10 bg-white/[0.028] text-slate-300 hover:border-mint-300/25"
-                    }`}
-                    type="button"
-                    onClick={() => onToggleSkill(skill.id)}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="truncate text-sm font-medium">{skill.name}</span>
-                      {selected ? <CheckCircle2 className="shrink-0 text-mint-300" size={15} /> : null}
-                    </div>
-                    <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{skill.description || "无描述"}</p>
-                    <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-600">
-                      <span>{skill.skill_type === "system" ? "系统自带" : "用户自建"}</span>
-                      <span>{skill.owner_username ? skill.owner_username : "系统"}</span>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="text-sm text-slate-500">暂无启用的 skill，可在 Skill 管理中新增或上传。</div>
-          )}
-        </div>
-
-        <div className="mb-4 rounded-lg border border-mint-300/20 bg-mint-300/8 p-3 text-sm leading-6 text-mint-100/85">
-          选择知识和 skill 后会以只读模式提交 Codex，加工结果会显示在下方。
-        </div>
-
-        {copyError ? (
-          <div className="mb-4 flex items-start gap-2 rounded-lg border border-amberline/25 bg-amberline/10 px-3 py-3 text-sm text-amber-100">
-            <TriangleAlert className="mt-0.5 shrink-0 text-amberline" size={17} />
-            <span>{copyError}</span>
-          </div>
-        ) : null}
-
-        {codexStatus ? (
-          <div className="mb-4 flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.025] px-3 py-2 text-sm text-slate-400">
-            {isGenerating ? (
-              <Loader2 className="animate-spin text-mint-300" size={15} />
-            ) : copyError ? (
-              <TriangleAlert className="text-amberline" size={15} />
-            ) : (
-              <CheckCircle2 className="text-mint-300" size={15} />
-            )}
-            <span>{codexStatus}</span>
-          </div>
-        ) : null}
-
         {isGenerating ? (
           <div className="relative overflow-hidden rounded-lg border border-white/10 bg-white/[0.025] p-4">
             <div className="absolute inset-y-0 w-1/2 bg-gradient-to-r from-transparent via-white/[0.055] to-transparent animate-scan" />
@@ -8552,14 +8491,6 @@ function KnowledgeFactory({
             </div>
           </div>
         )}
-        {codexErrorOutput ? (
-          <details className="mt-4 rounded-lg border border-amberline/20 bg-amberline/8 p-3">
-            <summary className="cursor-pointer text-sm font-medium text-amber-100">Error Output</summary>
-            <pre className="mt-3 max-h-48 overflow-auto whitespace-pre-wrap break-words text-xs leading-5 text-amber-100/80">
-              {codexErrorOutput}
-            </pre>
-          </details>
-        ) : null}
       </aside>
       <MergeKnowledgeDialog
         draft={mergeDraft}

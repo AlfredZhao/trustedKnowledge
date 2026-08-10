@@ -15,6 +15,28 @@ When fixing a bug with meaningful regression risk, add a short entry with:
 
 Keep entries concrete. Prefer file paths, function names, SQL placeholders, and test names over broad advice.
 
+## Knowledge Factory Action Bar Must Wrap Within Its Source Panel
+
+### Symptom
+
+The `生成结果` button in the Knowledge Factory source-context action bar extended beyond the panel boundary on desktop browsers.
+
+### Trigger
+
+At the `xl` layout, the center panel can be as narrow as 440px while the execution-model and Skill controls use their desktop widths. Forcing all controls and the action button onto one line exceeds the panel's usable width.
+
+### Root Cause
+
+`frontend/src/App.tsx` applied `xl:flex-nowrap` and an `xl:w-auto` width override to the action bar, preventing its controls from wrapping inside the constrained center column.
+
+### Safe Pattern
+
+Keep action groups inside narrow grid columns as `min-w-0` wrapping flex containers. Do not force a one-line desktop layout unless the column's minimum width reserves space for every control and action. Let the heading and action bar stack when they cannot safely share a row.
+
+### Guardrail
+
+Verify Knowledge Factory with a selected item at desktop `xl` width and on a narrow mobile viewport: model, Skill, and `生成结果` must remain reachable, in order, and fully inside the source panel. Repeat with the custom-model input visible.
+
 ## AI Usage Stable Samples Must Not Depend on Reset Timestamp Strings
 
 ### Symptom
