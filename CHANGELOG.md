@@ -9,9 +9,12 @@ The format follows the common GitHub changelog convention inspired by
 
 ## 本次版本更新
 
-### [Unreleased]
+### [0.3.7] - 2026-08-11
 
 #### Added / 新增
+
+- Added shared execution-model selection to AI 问数: it can now use the enabled OpenAI-compatible configuration or a Codex CLI default/preset model, while preserving the existing evidence-based query boundary and Skill selection.
+- 为 AI 问数新增与知识加工一致的执行模型选择：可使用已启用的 OpenAI 兼容配置，或选择 Codex CLI 默认/预设模型；原有基于证据的问数边界和 Skill 选择保持不变。
 
 - Added a compact Markdown formatting toolbar to trusted-knowledge and Todo content editors. It applies heading levels, inline or fenced code, bullet/numbered/task lists, tables, and HTML comments to the current selection (or inserts an editable template at the cursor).
 - 为“编辑可信知识”和“编辑待办事项”的正文编辑器新增紧凑 Markdown 格式工具栏：可对当前选区应用标题层级、行内/代码块、无序/有序/任务列表、表格和 HTML 注释；未选中文本时会在光标处插入可继续编辑的模板。

@@ -55,7 +55,7 @@
 | `aiGraph` | AI图谱 | 以图谱方式展示当前项目功能模块实体、数据流和权限关系。 |
 | `users` | 用户管理 | 仅 super admin 可见；管理 `TK_USERS` 用户、admin 角色授权、AI 编程/AI 用量模块授权，以及 `TK_RELATIONS` 家长关系。 |
 | `skills` | Skill 管理 | 创建、上传、编辑、删除 Skill 包和文件。 |
-| `historyAsk` | AI 问数 | 基于历史记录做自然语言问答，可选择 Skill 和配置 LLM。 |
+| `historyAsk` | AI 问数 | 基于历史记录做自然语言问答，可选择执行模型、Skill 和 OpenAI 兼容模型配置。 |
 | `aiCoding` | AI 编程 | 默认仅 super admin 可见；可由 super admin 授权给 admin 角色用户访问 Codex 编程任务。 |
 | `usage` | AI 用量 | 默认仅 super admin 可见；可由 super admin 授权给 admin 角色用户查看 LLM 用量采样和重置状态。 |
 
@@ -433,6 +433,7 @@
 功能:
 
 - 基于历史记录进行自然语言问答。
+- 执行模型下拉与知识加工复用同一套 Codex CLI 默认/预设模型选项，并额外提供“已配置模型”；后者使用右侧已启用的 OpenAI-compatible 配置，前者以 read-only 模式调用 Codex CLI。两种执行器都只能获得后端已检索的统计和证据摘录，不会直接执行任意 SQL。
 - 提问时可选择已启用的 Skills。
 - 回答支持 Markdown 美化展示和裸文本模式。
 - 结果区顶部会展示本次参与问数的 Skill 标签；浅色主题下这些 sky 标签使用更深的前景色，避免长名称在浅背景上发白不可见。

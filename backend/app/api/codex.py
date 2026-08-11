@@ -1,8 +1,6 @@
 import asyncio
 import json
-import os
 import time
-import tomllib
 from collections.abc import AsyncIterator
 from contextlib import suppress
 from dataclasses import dataclass, field
@@ -21,6 +19,7 @@ from app.db.oracle import acquire_connection
 from app.repositories.history_ask import _call_history_ask_llm, _format_selected_skills_for_prompt
 from app.repositories.llm_config import ensure_llm_config_table, get_history_ask_llm_config
 from app.repositories.skills import get_prompt_skills
+from app.services.codex_cli import CODEX_AVAILABLE_MODELS, read_codex_default_model, resolve_codex_model_name
 from app.repositories.users import AuthContext
 from app.schemas.codex import CodexConfigResponse, CodexJobSnapshot, CodexJobStatus, CodexRunRequest, CodexRunResponse
 
@@ -29,7 +28,6 @@ router = APIRouter(prefix="/codex", tags=["codex"], dependencies=[Depends(requir
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 CODEX_TIMEOUT_SECONDS = 900
-CODEX_AVAILABLE_MODELS = ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex", "gpt-5.2"]
 _codex_state_locks: dict[str, asyncio.Lock] = {}
 _codex_active_run_counts: dict[str, int] = {}
 _codex_jobs: dict[str, "CodexJobState"] = {}
@@ -61,7 +59,7 @@ class CodexJobState:
 @router.get("/config", response_model=CodexConfigResponse)
 async def get_codex_config() -> CodexConfigResponse:
     return CodexConfigResponse(
-        default_model_name=_read_codex_default_model(PROJECT_ROOT),
+        default_model_name=read_codex_default_model(PROJECT_ROOT),
         available_models=CODEX_AVAILABLE_MODELS,
     )
 
@@ -84,7 +82,7 @@ async def run_codex(
     try:
         started_at = time.monotonic()
         prompt = _build_prompt(payload.prompt.strip(), payload.skill_ids, auth_context, payload.output_mode)
-        model_name = _resolve_codex_model_name(payload.model_name)
+        model_name = resolve_codex_model_name(payload.model_name, PROJECT_ROOT)
         exec_args, output_path = _build_codex_exec_args(payload.sandbox_mode, payload.output_mode, model_name=model_name)
 
         try:
@@ -178,7 +176,7 @@ async def start_codex_job(
 
     await _reconcile_codex_jobs(auth_context.username)
     execution_provider = payload.execution_provider
-    model_name = _resolve_codex_model_name(payload.model_name)
+    model_name = resolve_codex_model_name(payload.model_name, PROJECT_ROOT)
     if execution_provider == "history_ask_llm":
         history_ask_config = await _get_enabled_history_ask_llm_config()
         model_name = str(history_ask_config["model_name"])
@@ -490,7 +488,7 @@ async def _stream_codex_events(
         stdout_parts: list[str] = []
         stderr_parts: list[str] = []
         queue: asyncio.Queue[dict[str, str]] = asyncio.Queue()
-        effective_model_name = _resolve_codex_model_name(model_name)
+        effective_model_name = resolve_codex_model_name(model_name, PROJECT_ROOT)
         exec_args, output_path = _build_codex_exec_args(
             sandbox_mode,
             output_mode,
@@ -763,52 +761,6 @@ def _build_codex_exec_args(
         args.extend(["--output-last-message", str(output_path)])
     args.append("-")
     return args, output_path
-
-
-def _resolve_codex_model_name(model_name: str | None) -> str | None:
-    requested_model = (model_name or "").strip()
-    if requested_model:
-        return requested_model
-    return _read_codex_default_model(PROJECT_ROOT)
-
-
-def _read_codex_default_model(project_root: Path) -> str | None:
-    for config_path in _iter_codex_config_paths(project_root):
-        config = _read_toml_file(config_path)
-        if not config:
-            continue
-        model_name = config.get("model")
-        if isinstance(model_name, str) and model_name.strip():
-            return model_name.strip()
-    return None
-
-
-def _iter_codex_config_paths(project_root: Path) -> list[Path]:
-    paths: list[Path] = []
-    current = project_root
-    while True:
-        paths.append(current / ".codex" / "config.toml")
-        if current.parent == current:
-            break
-        current = current.parent
-
-    codex_home = os.environ.get("CODEX_HOME", "").strip()
-    if codex_home:
-        paths.append(Path(codex_home).expanduser() / "config.toml")
-    else:
-        paths.append(Path.home() / ".codex" / "config.toml")
-    return paths
-
-
-def _read_toml_file(path: Path) -> dict[str, object]:
-    if not path.exists() or not path.is_file():
-        return {}
-    try:
-        with path.open("rb") as handle:
-            data = tomllib.load(handle)
-    except (OSError, tomllib.TOMLDecodeError):
-        return {}
-    return data if isinstance(data, dict) else {}
 
 
 def _resolve_codex_output(

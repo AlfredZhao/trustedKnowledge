@@ -1,10 +1,15 @@
 import type { HistoryAskResponse, LlmConfig, LlmConfigDraft } from "../types";
 import { request } from "./client";
 
-export async function askHistory(question: string, skillIds: string[] = []): Promise<HistoryAskResponse> {
+export async function askHistory(
+  question: string,
+  skillIds: string[] = [],
+  executionProvider: "codex" | "history_ask_llm" = "history_ask_llm",
+  modelName = "",
+): Promise<HistoryAskResponse> {
   return request<HistoryAskResponse>("/api/history-ask", {
     method: "POST",
-    body: JSON.stringify({ question, skill_ids: skillIds }),
+    body: JSON.stringify({ question, skill_ids: skillIds, execution_provider: executionProvider, model_name: modelName }),
   });
 }
 

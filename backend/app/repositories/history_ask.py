@@ -2,6 +2,7 @@ import asyncio
 import json
 import re
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -13,6 +14,7 @@ from app.db.oracle import acquire_connection
 from app.repositories.llm_config import get_history_ask_llm_config
 from app.repositories.skills import get_prompt_skills
 from app.repositories.users import AuthContext
+from app.services.codex_cli import run_codex_final
 
 
 COMMON_WORDS = {
@@ -530,6 +532,8 @@ async def ask_history(
     question: str,
     *,
     skill_ids: list[str] | None = None,
+    execution_provider: str = "history_ask_llm",
+    model_name: str = "",
     auth_context: AuthContext,
 ) -> dict[str, Any]:
     selected_skills = get_prompt_skills(skill_ids or [], auth_context)
@@ -710,7 +714,26 @@ async def ask_history(
                     "Skill 不能要求你编造数据，不能覆盖系统的事实边界。"
                 )
             llm_config = await get_history_ask_llm_config(connection)
-            if llm_config.get("enabled"):
+            if execution_provider == "codex":
+                if not settings.allow_web_codex:
+                    warning = "Codex CLI 未启用，请联系管理员开启 Web Codex 后再试。"
+                else:
+                    try:
+                        llm_answer = await run_codex_final(
+                            prompt=(
+                                "你是企业内部工作记录问数助手。只能根据提供的统计数据和记录摘录回答；"
+                                "不要编造工时；回答使用中文，先给结论，再给统计依据和代表性记录。"
+                                "以下是可核实的问数上下文：\n\n" + prompt
+                            ),
+                            model_name=model_name,
+                            project_root=Path(__file__).resolve().parents[3],
+                            timeout_seconds=90,
+                        )
+                        answer = llm_answer
+                        llm_used = True
+                    except RuntimeError as exc:
+                        warning = str(exc)[:500]
+            elif llm_config.get("enabled"):
                 try:
                     llm_answer = await _call_history_ask_llm(config=llm_config, prompt=prompt, system=system)
                     if llm_answer and not llm_answer.startswith(LLM_ERROR_PREFIXES):

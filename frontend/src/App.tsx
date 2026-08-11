@@ -539,6 +539,7 @@ const englishMaterialFlagStyles: Record<EnglishMaterialDraft["flag"], string> = 
 };
 
 const FACTORY_CUSTOM_MODEL = "__factory_custom_model__";
+const HISTORY_ASK_CONFIGURED_MODEL = "__history_ask_configured_model__";
 
 function App() {
   // Restored UI state and long-lived workspace state.
@@ -850,6 +851,7 @@ function App() {
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [historyAskQuestion, setHistoryAskQuestion] = useState(restoredUiState.historyAsk.question);
+  const [historyAskModelName, setHistoryAskModelName] = useState(HISTORY_ASK_CONFIGURED_MODEL);
   const [historyAskAnswer, setHistoryAskAnswer] = useState<HistoryAskResponse | null>(restoredUiState.historyAsk.answer);
   const [historyAskError, setHistoryAskError] = useState<string | null>(null);
   const [hasCopiedHistoryAskAnswer, setHasCopiedHistoryAskAnswer] = useState(false);
@@ -983,6 +985,12 @@ function App() {
     return options;
   }, [codexConfig]);
 
+  const historyAskModelOptions = useMemo(() => {
+    const options = buildAiCodingModelOptions(codexConfig);
+    options.push({ value: HISTORY_ASK_CONFIGURED_MODEL, label: "已配置模型" });
+    return options;
+  }, [codexConfig]);
+
   function resolveFactoryModelName() {
     if (factoryModelName === AI_CODING_DEFAULT_MODEL) return "";
     if (factoryModelName === FACTORY_CUSTOM_MODEL) return "";
@@ -991,7 +999,7 @@ function App() {
 
   // Loading, polling, cache hydration, and persistence effects.
   useEffect(() => {
-    if (!apiKey || (activeView !== "aiCoding" && activeView !== "factory")) return;
+    if (!apiKey || (activeView !== "aiCoding" && activeView !== "factory" && activeView !== "historyAsk")) return;
     if (activeView === "aiCoding" && !canAccessAiCoding) return;
     if (isCodexConfigLoading || codexConfig) return;
 
@@ -4170,7 +4178,13 @@ function App() {
     setHistoryAskError(null);
     setHasCopiedHistoryAskAnswer(false);
     try {
-      const answer = await askHistory(question, historyAskSkillIds);
+      const usesConfiguredModel = historyAskModelName === HISTORY_ASK_CONFIGURED_MODEL;
+      const answer = await askHistory(
+        question,
+        historyAskSkillIds,
+        usesConfiguredModel ? "history_ask_llm" : "codex",
+        historyAskModelName === AI_CODING_DEFAULT_MODEL ? "" : historyAskModelName,
+      );
       setHistoryAskAnswer(answer);
     } catch (error) {
       setHistoryAskError(error instanceof Error ? error.message : "AI 问数失败，请稍后重试。");
@@ -4916,6 +4930,8 @@ function App() {
               llmConfigDraft={historyAskLlmConfigDraft}
               llmConfigError={historyAskLlmConfigError}
               llmConfigSaved={historyAskLlmConfigSaved}
+              modelName={historyAskModelName}
+              modelOptions={historyAskModelOptions}
               question={historyAskQuestion}
               selectedSkillIds={historyAskSkillIds}
               skills={skillItems}
@@ -4924,6 +4940,7 @@ function App() {
               onCopyAnswer={handleCopyHistoryAskAnswer}
               onLlmConfigDraftChange={setHistoryAskLlmConfigDraft}
               onLlmConfigSave={handleSaveHistoryAskLlmConfig}
+              onModelNameChange={setHistoryAskModelName}
               onOpenHistory={handleOpenHistoryFromAsk}
               onQuestionChange={setHistoryAskQuestion}
               onSubmit={handleAskHistory}
@@ -13830,6 +13847,8 @@ function HistoryAskPanel({
   llmConfigDraft,
   llmConfigError,
   llmConfigSaved,
+  modelName,
+  modelOptions,
   question,
   selectedSkillIds,
   skills,
@@ -13838,6 +13857,7 @@ function HistoryAskPanel({
   onCopyAnswer,
   onLlmConfigDraftChange,
   onLlmConfigSave,
+  onModelNameChange,
   onOpenHistory,
   onQuestionChange,
   onSubmit,
@@ -13853,6 +13873,8 @@ function HistoryAskPanel({
   llmConfigDraft: LlmConfigDraft;
   llmConfigError: string | null;
   llmConfigSaved: boolean;
+  modelName: string;
+  modelOptions: { value: string; label: string }[];
   question: string;
   selectedSkillIds: string[];
   skills: SkillSummary[];
@@ -13861,6 +13883,7 @@ function HistoryAskPanel({
   onCopyAnswer: (view: MarkdownContentView) => void;
   onLlmConfigDraftChange: (draft: LlmConfigDraft) => void;
   onLlmConfigSave: (event: React.FormEvent<HTMLFormElement>) => void;
+  onModelNameChange: (modelName: string) => void;
   onOpenHistory: () => void;
   onQuestionChange: (question: string) => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
@@ -13910,6 +13933,27 @@ function HistoryAskPanel({
                   {example}
                 </button>
               ))}
+            </div>
+            <div className="rounded-lg border border-white/10 bg-white/[0.025] p-3">
+              <Field label="执行模型" icon={<Settings2 size={16} />}>
+                <select
+                  className="control h-10"
+                  disabled={isLoading}
+                  value={modelName}
+                  onChange={(event) => onModelNameChange(event.target.value)}
+                >
+                  {modelOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <p className="mt-2 text-xs leading-5 text-slate-500">
+                {modelName === HISTORY_ASK_CONFIGURED_MODEL
+                  ? "使用右侧已启用的 OpenAI 兼容模型配置。"
+                  : "使用 Codex CLI 在只读模式下生成问数总结。"}
+              </p>
             </div>
             <div className="rounded-lg border border-white/10 bg-white/[0.025] p-3">
               <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">

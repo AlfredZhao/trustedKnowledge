@@ -1,11 +1,15 @@
 from datetime import date, datetime
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
 class HistoryAskRequest(BaseModel):
     question: str = Field(..., min_length=2, max_length=1000)
     skill_ids: list[str] = Field(default_factory=list, max_length=8)
+    execution_provider: Literal["codex", "history_ask_llm"] = "history_ask_llm"
+    model_name: str = Field("", max_length=120)
 
 
 class HistoryAskFilters(BaseModel):

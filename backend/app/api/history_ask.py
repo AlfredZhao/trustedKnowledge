@@ -59,7 +59,13 @@ async def post_history_ask(
     auth_context: AuthContext = Depends(require_current_user),
 ) -> HistoryAskResponse:
     try:
-        result = await ask_history(payload.question.strip(), skill_ids=payload.skill_ids, auth_context=auth_context)
+        result = await ask_history(
+            payload.question.strip(),
+            skill_ids=payload.skill_ids,
+            execution_provider=payload.execution_provider,
+            model_name=payload.model_name,
+            auth_context=auth_context,
+        )
     except oracledb.Error as exc:
         raise oracle_http_exception(exc, "Oracle rejected the history ask query") from exc
 
