@@ -9,6 +9,20 @@ The format follows the common GitHub changelog convention inspired by
 
 ## 本次版本更新
 
+### [Unreleased]
+
+#### Added / 新增
+
+- Added a `引用` action to the shared Markdown toolbar in the trusted-knowledge and Todo editors. It applies or removes the `> ` blockquote syntax for the current line or selection.
+- 为“编辑可信知识”和“编辑待办事项”共用的 Markdown 工具栏新增“引用”操作，可为当前行或选区添加或取消 `> ` 引用语法。
+
+#### Changed / 变更
+
+- Changed the shared Markdown toolbar in the trusted-knowledge and Todo editors so the `Markdown` label occupies its own row and all formatting actions appear below it.
+- 调整“编辑可信知识”和“编辑待办事项”共用的 Markdown 工具栏：`Markdown` 标识单独占一行，全部格式化操作显示在下一行。
+
+#### Fixed / 修复
+
 ### [0.3.7] - 2026-08-11
 
 #### Added / 新增

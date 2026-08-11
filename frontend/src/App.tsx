@@ -43,6 +43,7 @@ import {
   QrCode,
   Radio,
   RefreshCw,
+  Quote,
   Save,
   Search,
   Send,
@@ -7446,7 +7447,7 @@ function MarkdownImageTextarea({
       .map((line) => {
         if (!line) return line;
         if (shouldRemove) return line.replace(matchingPrefix, "");
-        const normalizedLine = line.replace(/^(?:#{1,6}\s+|- \[[ xX]\]\s+|[-*+]\s+|\d+\.\s+)/, "");
+        const normalizedLine = line.replace(/^(?:#{1,6}\s+|>\s?|- \[[ xX]\]\s+|[-*+]\s+|\d+\.\s+)/, "");
         if (prefix === "1. ") return `${orderedItemNumber++}. ${normalizedLine}`;
         return `${prefix}${normalizedLine}`;
       })
@@ -7548,58 +7549,63 @@ function MarkdownImageTextarea({
   return (
     <div className="space-y-2">
       <div className="markdown-toolbar rounded-lg p-2">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="mr-1 hidden text-[11px] font-medium uppercase tracking-[0.14em] text-slate-500 sm:inline">Markdown</span>
-          {[
-            { label: "H1", title: "一级标题", onClick: () => applyLineFormat("# ", "一级标题") },
-            { label: "H2", title: "二级标题", onClick: () => applyLineFormat("## ", "二级标题") },
-            { label: "H3", title: "三级标题", onClick: () => applyLineFormat("### ", "三级标题") },
-          ].map((tool) => (
-            <button
-              key={tool.label}
-              aria-label={tool.title}
-              className="markdown-tool-button markdown-tool-button-heading"
-              disabled={disabled}
-              title={tool.title}
-              type="button"
-              onClick={tool.onClick}
-            >
-              {tool.label}
+        <div className="space-y-2">
+          <span className="block text-[11px] font-medium uppercase tracking-[0.14em] text-slate-500">Markdown</span>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {[
+              { label: "H1", title: "一级标题", onClick: () => applyLineFormat("# ", "一级标题") },
+              { label: "H2", title: "二级标题", onClick: () => applyLineFormat("## ", "二级标题") },
+              { label: "H3", title: "三级标题", onClick: () => applyLineFormat("### ", "三级标题") },
+            ].map((tool) => (
+              <button
+                key={tool.label}
+                aria-label={tool.title}
+                className="markdown-tool-button markdown-tool-button-heading"
+                disabled={disabled}
+                title={tool.title}
+                type="button"
+                onClick={tool.onClick}
+              >
+                {tool.label}
+              </button>
+            ))}
+            <span className="hidden h-5 w-px bg-white/10 sm:block" />
+            <button className="markdown-tool-button" disabled={disabled} title="行内代码" type="button" onClick={applyInlineCode}>
+              <Code2 size={15} /> <span>行内代码</span>
             </button>
-          ))}
-          <span className="hidden h-5 w-px bg-white/10 sm:block" />
-          <button className="markdown-tool-button" disabled={disabled} title="行内代码" type="button" onClick={applyInlineCode}>
-            <Code2 size={15} /> <span>行内代码</span>
-          </button>
-          <button className="markdown-tool-button" disabled={disabled} title="代码块" type="button" onClick={applyCodeBlock}>
-            <Code2 size={15} /> <span>代码块</span>
-          </button>
-          <button className="markdown-tool-button" disabled={disabled} title="无序列表" type="button" onClick={() => applyLineFormat("- ", "列表项")}>
-            <List size={15} /> <span>列表</span>
-          </button>
-          <button className="markdown-tool-button" disabled={disabled} title="有序列表" type="button" onClick={() => applyLineFormat("1. ", "列表项")}>
-            <ListOrdered size={15} /> <span>编号</span>
-          </button>
-          <button className="markdown-tool-button" disabled={disabled} title="任务清单" type="button" onClick={() => applyLineFormat("- [ ] ", "待办项")}>
-            <ListChecks size={15} /> <span>清单</span>
-          </button>
-          <button className="markdown-tool-button" disabled={disabled} title="插入表格" type="button" onClick={insertTable}>
-            <Table2 size={15} /> <span>表格</span>
-          </button>
-          <button className="markdown-tool-button" disabled={disabled} title="HTML 注释" type="button" onClick={applyHtmlComment}>
-            <span className="font-mono text-[11px]">&lt;!--</span><span>注释</span>
-          </button>
-          <span className="hidden h-5 w-px bg-white/10 sm:block" />
-          <button
-            className="markdown-tool-button ml-auto"
-            disabled={disabled || isUploadingImage}
-            title="插入图片"
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            {isUploadingImage ? <Loader2 className="animate-spin" size={15} /> : <ImagePlus size={15} />}
-            <span>{isUploadingImage ? "上传中" : "图片"}</span>
-          </button>
+            <button className="markdown-tool-button" disabled={disabled} title="代码块" type="button" onClick={applyCodeBlock}>
+              <Code2 size={15} /> <span>代码块</span>
+            </button>
+            <button className="markdown-tool-button" disabled={disabled} title="无序列表" type="button" onClick={() => applyLineFormat("- ", "列表项")}>
+              <List size={15} /> <span>列表</span>
+            </button>
+            <button className="markdown-tool-button" disabled={disabled} title="有序列表" type="button" onClick={() => applyLineFormat("1. ", "列表项")}>
+              <ListOrdered size={15} /> <span>编号</span>
+            </button>
+            <button className="markdown-tool-button" disabled={disabled} title="任务清单" type="button" onClick={() => applyLineFormat("- [ ] ", "待办项")}>
+              <ListChecks size={15} /> <span>清单</span>
+            </button>
+            <button className="markdown-tool-button" disabled={disabled} title="引用" type="button" onClick={() => applyLineFormat("> ", "引用内容")}>
+              <Quote size={15} /> <span>引用</span>
+            </button>
+            <button className="markdown-tool-button" disabled={disabled} title="插入表格" type="button" onClick={insertTable}>
+              <Table2 size={15} /> <span>表格</span>
+            </button>
+            <button className="markdown-tool-button" disabled={disabled} title="HTML 注释" type="button" onClick={applyHtmlComment}>
+              <span className="font-mono text-[11px]">&lt;!--</span><span>注释</span>
+            </button>
+            <span className="hidden h-5 w-px bg-white/10 sm:block" />
+            <button
+              className="markdown-tool-button ml-auto"
+              disabled={disabled || isUploadingImage}
+              title="插入图片"
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              {isUploadingImage ? <Loader2 className="animate-spin" size={15} /> : <ImagePlus size={15} />}
+              <span>{isUploadingImage ? "上传中" : "图片"}</span>
+            </button>
+          </div>
         </div>
         {imageError ? (
           <span className="mt-2 block text-sm text-red-200">{imageError}</span>
