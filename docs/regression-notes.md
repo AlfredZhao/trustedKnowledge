@@ -15,6 +15,54 @@ When fixing a bug with meaningful regression risk, add a short entry with:
 
 Keep entries concrete. Prefer file paths, function names, SQL placeholders, and test names over broad advice.
 
+## Markdown Toolbar Must Toggle Without Crossing a Selected Line Boundary
+
+### Symptom
+
+In the trusted-knowledge and Todo editors, clicking a Markdown shortcut twice could add another wrapper instead of removing the existing one. Applying a heading to a selected line that included its terminating newline could also prefix the following line.
+
+### Trigger
+
+Select content, apply a heading/list/inline-code/code-block/HTML-comment shortcut, and apply the same shortcut again. For the line-boundary case, select a line including its trailing newline before applying H1, H2, or H3.
+
+### Root Cause
+
+`MarkdownImageTextarea` previously treated every shortcut as a one-way insertion. It also used the raw textarea selection end for line replacements; a browser selection ending immediately after `\n` was therefore treated as including the next line's start.
+
+### Safe Pattern
+
+In `frontend/src/App.tsx`, preserve a line selection's terminal newline outside `applyLineFormat()` replacements. For each toggleable shortcut, recognize both a selection containing the Markdown wrapper and the internal selection that the shortcut leaves between wrapper markers, then replace the full wrapper range when removing it.
+
+### Guardrail
+
+Manually verify in both the trusted-knowledge and Todo editors, at desktop and mobile widths:
+
+1. Apply and reapply each heading level, each list type, inline code, code block, and HTML comment; the second action must restore the original text.
+2. Select one visible line including its ending newline, apply a heading, and confirm the following line is unchanged.
+3. Check dark and light themes: toolbar buttons, hover/focus indication, and disabled state must remain legible and reachable after wrapping.
+
+## Markdown Table and Ordered-List Shortcuts Must Preserve Their Toggle Semantics
+
+### Symptom
+
+In the trusted-knowledge and Todo editors, clicking `表格` a second time nested another table instead of undoing the selected table. Applying `编号` to multiple lines also gave every line the `1.` marker.
+
+### Trigger
+
+Use `表格`, keep its automatically selected output, then click `表格` again; or select two or more non-empty lines and click `编号`.
+
+### Root Cause
+
+`insertTable()` treated table Markdown as ordinary selected text on every invocation, while `applyLineFormat()` reused its fixed ordered-list prefix for each line.
+
+### Safe Pattern
+
+In `frontend/src/App.tsx`, detect the toolbar's complete table selection (header, separator, and pipe-delimited body) before inserting a new table; convert its body’s first column back to plain lines. When applying `1. ` to multiple lines, generate the list marker from a counter that advances once per non-empty line.
+
+### Guardrail
+
+Manually verify in both the trusted-knowledge and Todo editors: selecting `甲` and `乙` then clicking `编号` produces `1. 甲` and `2. 乙`; click `表格` twice without changing the automatically selected output and confirm the second click restores the source lines rather than adding a nested table.
+
 ## Knowledge Factory Action Bar Must Wrap Within Its Source Panel
 
 ### Symptom

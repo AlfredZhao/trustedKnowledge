@@ -14,6 +14,7 @@ import {
   ClipboardCheck,
   ClipboardList,
   Copy,
+  Code2,
   Database,
   FilePlus2,
   Filter,
@@ -27,6 +28,9 @@ import {
   ImagePlus,
   Lock,
   Layers3,
+  List,
+  ListChecks,
+  ListOrdered,
   LogOut,
   Loader2,
   LockKeyhole,
@@ -47,6 +51,7 @@ import {
   Sparkles,
   Sun,
   Tags,
+  Table2,
   TriangleAlert,
   Trash2,
   UserCog,
@@ -7377,6 +7382,136 @@ function MarkdownImageTextarea({
     });
   }
 
+  function replaceSelection(
+    markdown: string,
+    selectionStart: number,
+    selectionEnd: number,
+    selectInserted = false,
+    replaceRange?: { start: number; end: number },
+  ) {
+    const textarea = textareaRef.current;
+    const start = replaceRange?.start ?? textarea?.selectionStart ?? value.length;
+    const end = replaceRange?.end ?? textarea?.selectionEnd ?? value.length;
+    onChange(`${value.slice(0, start)}${markdown}${value.slice(end)}`);
+
+    window.requestAnimationFrame(() => {
+      textareaRef.current?.focus();
+      const nextStart = start + selectionStart;
+      const nextEnd = start + selectionEnd;
+      textareaRef.current?.setSelectionRange(selectInserted ? nextStart : nextEnd, nextEnd);
+    });
+  }
+
+  function applyLineFormat(prefix: string, fallback: string) {
+    const textarea = textareaRef.current;
+    const start = textarea?.selectionStart ?? value.length;
+    const end = textarea?.selectionEnd ?? value.length;
+    const lineStart = value.lastIndexOf("\n", Math.max(0, start - 1)) + 1;
+    // Browser line selections can include the trailing newline. Keep that newline
+    // outside the replacement so a heading action never formats the next line.
+    const selectionEnd = end > start && value[end - 1] === "\n" ? end - 1 : end;
+    const lineEndIndex = value.indexOf("\n", selectionEnd);
+    const lineEnd = lineEndIndex === -1 ? value.length : lineEndIndex;
+    const selected = value.slice(start, selectionEnd);
+    const target = selected || value.slice(lineStart, lineEnd) || fallback;
+    const matchingPrefix =
+      prefix === "- "
+        ? /^(?:[-*+]\s+)/
+        : prefix === "1. "
+          ? /^\d+\.\s+/
+          : prefix === "- [ ] "
+            ? /^- \[[ xX]\]\s+/
+            : new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`);
+    const lines = target.split("\n");
+    const shouldRemove = lines.every((line) => !line || matchingPrefix.test(line));
+    let orderedItemNumber = 1;
+    const formatted = lines
+      .map((line) => {
+        if (!line) return line;
+        if (shouldRemove) return line.replace(matchingPrefix, "");
+        const normalizedLine = line.replace(/^(?:#{1,6}\s+|- \[[ xX]\]\s+|[-*+]\s+|\d+\.\s+)/, "");
+        if (prefix === "1. ") return `${orderedItemNumber++}. ${normalizedLine}`;
+        return `${prefix}${normalizedLine}`;
+      })
+      .join("\n");
+    const replaceStart = selected ? start : lineStart;
+    const replaceEnd = selected ? selectionEnd : lineEnd;
+    replaceSelection(formatted, 0, formatted.length, true, { start: replaceStart, end: replaceEnd });
+  }
+
+  function applyInlineCode() {
+    const textarea = textareaRef.current;
+    const start = textarea?.selectionStart ?? value.length;
+    const end = textarea?.selectionEnd ?? value.length;
+    const selected = value.slice(start, end);
+    const isWrappedSelection = selected.length > 0 && value[start - 1] === "`" && value[end] === "`";
+    const isFormatted =
+      (selected.length >= 2 && selected.startsWith("`") && selected.endsWith("`")) || isWrappedSelection;
+    const content = selected.startsWith("`") && selected.endsWith("`") ? selected.slice(1, -1) : selected || "代码";
+    const markdown = isFormatted ? content : `\`${content}\``;
+    const offset = isFormatted ? 0 : 1;
+    replaceSelection(markdown, offset, offset + content.length, true, isWrappedSelection ? { start: start - 1, end: end + 1 } : undefined);
+  }
+
+  function applyCodeBlock() {
+    const textarea = textareaRef.current;
+    const start = textarea?.selectionStart ?? value.length;
+    const end = textarea?.selectionEnd ?? value.length;
+    const selected = value.slice(start, end);
+    const isWrappedSelection = selected.length > 0 && value.slice(Math.max(0, start - 4), start) === "```\n" && value.slice(end, end + 4) === "\n```";
+    const isFormatted = (selected.startsWith("```\n") && selected.endsWith("\n```")) || isWrappedSelection;
+    const content = selected.startsWith("```\n") && selected.endsWith("\n```") ? selected.slice(4, -4) : selected || "代码内容";
+    const markdown = isFormatted ? content : `\`\`\`\n${content}\n\`\`\``;
+    const offset = isFormatted ? 0 : 4;
+    replaceSelection(markdown, offset, offset + content.length, true, isWrappedSelection ? { start: start - 4, end: end + 4 } : undefined);
+  }
+
+  function insertTable() {
+    const textarea = textareaRef.current;
+    const start = textarea?.selectionStart ?? value.length;
+    const end = textarea?.selectionEnd ?? value.length;
+    const selected = value.slice(start, end);
+    // The table action selects the inserted table. Recognize that selection on
+    // the next click so this shortcut behaves as a toggle instead of nesting
+    // another table in the first cell.
+    const tableLines = selected.trimEnd().split("\n");
+    const isTable =
+      tableLines.length >= 2 &&
+      /^\s*\|.*\|\s*$/.test(tableLines[0]) &&
+      /^\s*\|(?:\s*:?-{3,}:?\s*\|)+\s*$/.test(tableLines[1]) &&
+      tableLines.slice(2).every((line) => !line.trim() || /^\s*\|.*\|\s*$/.test(line));
+
+    if (isTable) {
+      const plainLines = tableLines
+        .slice(2)
+        .filter((line) => line.trim())
+        .map((line) => line.trim().replace(/^\|\s*/, "").split("|")[0].trim());
+      const markdown = plainLines.join("\n") || "内容";
+      replaceSelection(markdown, 0, markdown.length, true);
+      return;
+    }
+
+    const selectedLines = selected.split("\n").filter((line) => line.trim());
+    const rows = selectedLines.length
+      ? selectedLines.map((line) => `| ${line.trim()} |  |`).join("\n")
+      : "| 内容 | 内容 |";
+    const markdown = `| 标题 1 | 标题 2 |\n| --- | --- |\n${rows}`;
+    replaceSelection(markdown, 0, markdown.length, true);
+  }
+
+  function applyHtmlComment() {
+    const textarea = textareaRef.current;
+    const start = textarea?.selectionStart ?? value.length;
+    const end = textarea?.selectionEnd ?? value.length;
+    const selected = value.slice(start, end);
+    const isWrappedSelection = selected.length > 0 && value.slice(Math.max(0, start - 5), start) === "<!-- " && value.slice(end, end + 4) === " -->";
+    const isFormatted = (selected.startsWith("<!-- ") && selected.endsWith(" -->")) || isWrappedSelection;
+    const content = selected.startsWith("<!-- ") && selected.endsWith(" -->") ? selected.slice(5, -4) : selected || "备注";
+    const markdown = isFormatted ? content : `<!-- ${content} -->`;
+    const offset = isFormatted ? 0 : 5;
+    replaceSelection(markdown, offset, offset + content.length, true, isWrappedSelection ? { start: start - 5, end: end + 4 } : undefined);
+  }
+
   function handlePaste(event: React.ClipboardEvent<HTMLTextAreaElement>) {
     const files = Array.from(event.clipboardData.items)
       .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
@@ -7395,19 +7530,62 @@ function MarkdownImageTextarea({
 
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          className="flex h-9 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-sm font-medium text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600"
-          disabled={disabled || isUploadingImage}
-          title="插入图片"
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-        >
-          {isUploadingImage ? <Loader2 className="animate-spin" size={16} /> : <ImagePlus size={16} />}
-          {isUploadingImage ? "上传中" : "图片"}
-        </button>
+      <div className="markdown-toolbar rounded-lg p-2">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="mr-1 hidden text-[11px] font-medium uppercase tracking-[0.14em] text-slate-500 sm:inline">Markdown</span>
+          {[
+            { label: "H1", title: "一级标题", onClick: () => applyLineFormat("# ", "一级标题") },
+            { label: "H2", title: "二级标题", onClick: () => applyLineFormat("## ", "二级标题") },
+            { label: "H3", title: "三级标题", onClick: () => applyLineFormat("### ", "三级标题") },
+          ].map((tool) => (
+            <button
+              key={tool.label}
+              aria-label={tool.title}
+              className="markdown-tool-button markdown-tool-button-heading"
+              disabled={disabled}
+              title={tool.title}
+              type="button"
+              onClick={tool.onClick}
+            >
+              {tool.label}
+            </button>
+          ))}
+          <span className="hidden h-5 w-px bg-white/10 sm:block" />
+          <button className="markdown-tool-button" disabled={disabled} title="行内代码" type="button" onClick={applyInlineCode}>
+            <Code2 size={15} /> <span>行内代码</span>
+          </button>
+          <button className="markdown-tool-button" disabled={disabled} title="代码块" type="button" onClick={applyCodeBlock}>
+            <Code2 size={15} /> <span>代码块</span>
+          </button>
+          <button className="markdown-tool-button" disabled={disabled} title="无序列表" type="button" onClick={() => applyLineFormat("- ", "列表项")}>
+            <List size={15} /> <span>列表</span>
+          </button>
+          <button className="markdown-tool-button" disabled={disabled} title="有序列表" type="button" onClick={() => applyLineFormat("1. ", "列表项")}>
+            <ListOrdered size={15} /> <span>编号</span>
+          </button>
+          <button className="markdown-tool-button" disabled={disabled} title="任务清单" type="button" onClick={() => applyLineFormat("- [ ] ", "待办项")}>
+            <ListChecks size={15} /> <span>清单</span>
+          </button>
+          <button className="markdown-tool-button" disabled={disabled} title="插入表格" type="button" onClick={insertTable}>
+            <Table2 size={15} /> <span>表格</span>
+          </button>
+          <button className="markdown-tool-button" disabled={disabled} title="HTML 注释" type="button" onClick={applyHtmlComment}>
+            <span className="font-mono text-[11px]">&lt;!--</span><span>注释</span>
+          </button>
+          <span className="hidden h-5 w-px bg-white/10 sm:block" />
+          <button
+            className="markdown-tool-button ml-auto"
+            disabled={disabled || isUploadingImage}
+            title="插入图片"
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            {isUploadingImage ? <Loader2 className="animate-spin" size={15} /> : <ImagePlus size={15} />}
+            <span>{isUploadingImage ? "上传中" : "图片"}</span>
+          </button>
+        </div>
         {imageError ? (
-          <span className="text-sm text-red-200">{imageError}</span>
+          <span className="mt-2 block text-sm text-red-200">{imageError}</span>
         ) : null}
       </div>
       <input

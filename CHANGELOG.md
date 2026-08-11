@@ -13,6 +13,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Added / 新增
 
+- Added a compact Markdown formatting toolbar to trusted-knowledge and Todo content editors. It applies heading levels, inline or fenced code, bullet/numbered/task lists, tables, and HTML comments to the current selection (or inserts an editable template at the cursor).
+- 为“编辑可信知识”和“编辑待办事项”的正文编辑器新增紧凑 Markdown 格式工具栏：可对当前选区应用标题层级、行内/代码块、无序/有序/任务列表、表格和 HTML 注释；未选中文本时会在光标处插入可继续编辑的模板。
+
 - Added an edit / Markdown preview toggle to the Knowledge entry editor, rendering headings, lists, links, code blocks, tables, and Markdown images before saving.
 - 为信息录入的“编辑可信知识”新增编辑 / Markdown 预览切换，可在保存前渲染标题、列表、链接、代码块、表格和 Markdown 图片。
 
@@ -28,6 +31,12 @@ The format follows the common GitHub changelog convention inspired by
 - 调整知识加工：将执行模型和 Skill 下拉选择移至“生成结果”按钮之前，加工结果区域仅聚焦展示生成内容。
 
 #### Fixed / 修复
+
+- Fixed the shared Markdown toolbar in trusted-knowledge and Todo editors: clicking `表格` again on its selected table now converts it back to plain lines instead of nesting another table, and multi-line `编号` now increments list markers in sequence.
+- 修复“编辑可信知识”和“编辑待办事项”的共享 Markdown 工具栏：选中已插入表格后再次点击“表格”会还原为纯文本行，不再嵌套叠加表格；多行使用“编号”时序号会按顺序递增。
+
+- Fixed Markdown editor shortcuts in trusted-knowledge and Todo editors: applying the same heading, list, inline-code, code-block, or HTML-comment action to an already formatted selection now removes that format; line selections ending in a newline no longer format the following line. The toolbar also now uses theme-aware elevated controls with clearer hover, focus, and disabled states.
+- 修复“编辑可信知识”和“编辑待办事项”的 Markdown 快捷操作：已应用相同标题、列表、行内代码、代码块或 HTML 注释的选区再次操作时会取消格式；以换行结尾的行选区不再误格式化下一行。工具栏同时改用适配深浅主题的层次化按钮，并改善悬停、聚焦与禁用状态。
 
 - Added a terminate action for running AI Coding tasks. It cancels the current server-side Codex job, stops its subprocess, and releases the user's execution slot when live error output indicates a task will not recover.
 - 为执行中的 AI 编程任务新增终止操作：当实时错误输出表明任务无法恢复时，可取消当前服务端 Codex Job、停止其子进程并释放该用户的执行槽位。
