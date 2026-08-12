@@ -9,7 +9,7 @@ The format follows the common GitHub changelog convention inspired by
 
 ## 本次版本更新
 
-### [Unreleased]
+### [0.3.8] - 2026-08-12
 
 #### Added / 新增
 
