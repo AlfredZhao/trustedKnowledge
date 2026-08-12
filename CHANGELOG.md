@@ -36,6 +36,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Changed / 变更
 
+- Changed Overview and AI Usage budget displays to show amounts with a `$` prefix; the Overview summary now explicitly shows used and remaining amounts.
+- 调整总览和 AI 用量的预算展示：金额统一以 `$` 前缀标识美元，总览摘要明确显示“已使用”和“剩余”。
+
 - Moved AI Coding's project CHANGELOG.md panel from the narrow operations sidebar to the bottom of the main task workspace for a wider Markdown reading area.
 - 将 AI 编程的项目 CHANGELOG.md 面板从狭窄的右侧操作栏移至左侧主任务区底部，获得更宽的 Markdown 阅读区域。
 

@@ -6,9 +6,9 @@ import type { LlmUsageSample } from "../types";
 import {
   clampPercent,
   collapseStableUsageSamples,
-  formatAmount,
   formatDateTime,
   formatPercent,
+  formatUsdAmount,
   formatResetDate,
   formatResetDistance,
   formatTimeOnly,
@@ -102,13 +102,13 @@ export default function LlmUsageDashboard({
             </div>
 
             <div className="grid gap-4 md:grid-cols-3">
-              <MetricTile icon={<CircleGauge size={17} />} label="已使用" value={formatAmount(latest.used_amount)} detail={`${formatPercent(usagePercent)} / ${formatAmount(latest.total_budget)}`} />
-              <MetricTile icon={<Database size={17} />} label="剩余额度" value={formatAmount(latest.remaining_budget)} detail={`${formatPercent(remainingPercent)} 可用`} />
+              <MetricTile icon={<CircleGauge size={17} />} label="已使用" value={formatUsdAmount(latest.used_amount)} detail={`${formatPercent(usagePercent)} / 总额度 ${formatUsdAmount(latest.total_budget)}`} />
+              <MetricTile icon={<Database size={17} />} label="剩余额度" value={formatUsdAmount(latest.remaining_budget)} detail={`${formatPercent(remainingPercent)} 可用`} />
               <MetricTile
                 icon={<CalendarClock size={17} />}
                 label={hasRemainingBudget ? "本周期状态" : "下个周期可用"}
                 value={hasRemainingBudget ? "可用中" : formatResetDate(readyAt)}
-                detail={hasRemainingBudget ? `${formatAmount(latest.remaining_budget)} 额度剩余` : formatResetDistance(readyAt, "可用")}
+                detail={hasRemainingBudget ? `${formatUsdAmount(latest.remaining_budget)} 额度剩余` : formatResetDistance(readyAt, "可用")}
               />
             </div>
 
@@ -171,7 +171,7 @@ export default function LlmUsageDashboard({
                           <div
                             className="w-full rounded-t border border-mint-300/20 bg-mint-300/70 transition-all duration-300"
                             style={{ height: `${trendHeight}%` }}
-                            title={`${formatDateTime(item.sample_time)} · ${formatPercent(percent)} · ${formatAmount(item.used_amount)} used`}
+                            title={`${formatDateTime(item.sample_time)} · ${formatPercent(percent)} · 已使用 ${formatUsdAmount(item.used_amount)}`}
                           />
                         </div>
                       );
@@ -206,7 +206,7 @@ export default function LlmUsageDashboard({
               <div className="mb-4 rounded-lg border border-white/10 bg-white/[0.028] p-4">
                 <div className="mb-1 text-xs uppercase tracking-[0.18em] text-slate-500">CURRENT_CYCLE</div>
                 <div className="text-lg font-semibold leading-7 text-slate-100">可用中</div>
-                <div className="mt-2 text-sm text-slate-500">当前周期仍有 {formatAmount(latest.remaining_budget)} 额度，无需等待下个周期。</div>
+                <div className="mt-2 text-sm text-slate-500">当前周期仍有 {formatUsdAmount(latest.remaining_budget)} 额度，无需等待下个周期。</div>
               </div>
             ) : (
               <div className="mb-4 rounded-lg border border-white/10 bg-white/[0.028] p-4">
@@ -229,7 +229,7 @@ export default function LlmUsageDashboard({
                       <div className="h-full rounded-full bg-mint-300/80" style={{ width: `${percent}%` }} />
                     </div>
                     <div className="mt-2 text-xs text-slate-500">
-                      {formatAmount(item.used_amount)} used · {formatAmount(item.remaining_budget)} left
+                      已使用: {formatUsdAmount(item.used_amount)} · 剩余: {formatUsdAmount(item.remaining_budget)}
                       {item.sample_count > 1 ? ` · 合并 ${item.sample_count} 个采样` : ""}
                     </div>
                   </div>

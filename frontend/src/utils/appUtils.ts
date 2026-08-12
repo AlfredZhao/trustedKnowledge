@@ -620,6 +620,10 @@ export function formatAmount(value: number) {
   }).format(value);
 }
 
+export function formatUsdAmount(value: number) {
+  return `$${formatAmount(value)}`;
+}
+
 function formatHistoryAskVectorStatus(value: number | null | undefined) {
   if (value === 1) return "待更新";
   if (value === 0) return "已就绪";

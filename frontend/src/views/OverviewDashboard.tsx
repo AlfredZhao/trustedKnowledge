@@ -3,7 +3,7 @@ import { BookOpenCheck, ChartLine, CircleGauge, ClipboardCheck, FileText, Refres
 
 import { MetricTile, LoadingStack } from "../components/AppShellPrimitives";
 import type { AppView, EnglishMaterialItem, KnowledgeItem, LlmUsageSample, TodoItem } from "../types";
-import { formatAmount, formatDate, formatDateTime, formatPercent, getUsagePercent } from "../utils/appUtils";
+import { formatAmount, formatDate, formatDateTime, formatPercent, formatUsdAmount, getUsagePercent } from "../utils/appUtils";
 
 type OverviewData = {
   usageItems: LlmUsageSample[];
@@ -147,7 +147,7 @@ export default function OverviewDashboard({
             icon={<CircleGauge size={17} />}
             label="LLM 用量"
             value={latestUsage ? formatPercent(usagePercent) : "暂无"}
-            detail={latestUsage ? `${formatAmount(latestUsage.remaining_budget)} left` : "暂无采样"}
+            detail={latestUsage ? `已使用: ${formatUsdAmount(latestUsage.used_amount)} · 剩余: ${formatUsdAmount(latestUsage.remaining_budget)}` : "暂无采样"}
             actionLabel="查看用量"
             onAction={() => onOpenView("usage")}
           />
