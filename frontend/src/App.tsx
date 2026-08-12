@@ -405,7 +405,7 @@ const emptyLlmConfigDraft: LlmConfigDraft = {
   model_name: "",
   enabled: false,
 };
-const emptyHistoryOntologyDraft: HistoryOntologyDraft = { domain_code: "history", name: "", aliases: "", description: "" };
+const emptyHistoryOntologyDraft: HistoryOntologyDraft = { domain_code: "history", name: "", aliases: "", description: "", visibility: "PERSONAL", shared_with_usernames: "" };
 
 const emptySkillDraft: SkillDraft = {
   name: "",
@@ -966,6 +966,7 @@ function App() {
   const [codexConfig, setCodexConfig] = useState<CodexConfig | null>(null);
   const [isCodexConfigLoading, setIsCodexConfigLoading] = useState(false);
   const [codexConfigError, setCodexConfigError] = useState<string | null>(null);
+  const [projectChangelogRefreshToken, setProjectChangelogRefreshToken] = useState(0);
 
   const canAccessAiCoding = canAccessView("aiCoding", authUser);
   const canAccessUsage = canAccessView("usage", authUser);
@@ -4593,7 +4594,7 @@ function App() {
 
   function handleEditHistoryOntology(term: HistoryOntologyTerm) {
     setHistoryOntologyEditingId(term.id);
-    setHistoryOntologyDraft({ domain_code: term.domain_code, name: term.name, aliases: term.aliases.join("，"), description: term.description });
+    setHistoryOntologyDraft({ domain_code: term.domain_code, name: term.name, aliases: term.aliases.join("，"), description: term.description, visibility: term.visibility, shared_with_usernames: term.shared_with_usernames.join("，") });
     setHistoryOntologyError(null);
   }
 
@@ -4732,6 +4733,7 @@ function App() {
     try {
       const response = await syncCodeToGithub();
       setGithubSyncStatus(response);
+      if (response.success) setProjectChangelogRefreshToken((current) => current + 1);
     } catch (error) {
       setGithubSyncError(error instanceof Error ? error.message : "同步代码到 GitHub 失败，请稍后重试。");
     } finally {
@@ -4760,6 +4762,14 @@ function App() {
     } finally {
       setCodexArchiveLoadingId(null);
     }
+  }
+
+  function handleClearCodexMessageDisplay(message: AiCodingMessage) {
+    if (!message.response) return;
+
+    setAiCodingMessages((current) =>
+      current.map((item) => (item.id === message.id ? { ...item, isDisplayCleared: true } : item)),
+    );
   }
 
   if (!apiKey) {
@@ -5037,6 +5047,7 @@ function App() {
               ontologySaving={isHistoryOntologySaving}
               domainCode={historyAskDomainCode}
               domains={historyAskDomains}
+              canManageSystemOntology={Boolean(authUser?.is_admin)}
               modelName={historyAskModelName}
               modelOptions={historyAskModelOptions}
               question={historyAskQuestion}
@@ -5073,6 +5084,7 @@ function App() {
                 codexConfig={codexConfig}
                 codexConfigError={codexConfigError}
                 codexError={codexError}
+                changelogRefreshToken={projectChangelogRefreshToken}
                 githubSyncError={githubSyncError}
                 githubSyncStatus={githubSyncStatus}
                 isCodexConfigLoading={isCodexConfigLoading}
@@ -5091,6 +5103,7 @@ function App() {
                 restartError={restartError}
                 restartResponse={restartResponse}
                 onArchiveMessage={handleArchiveCodexMessage}
+                onClearMessageDisplay={handleClearCodexMessageDisplay}
                 onCancel={handleCancelCodex}
                 onClearGithubSyncStatus={handleClearGithubSyncStatus}
                 onModelChange={setAiCodingModelName}
@@ -13981,6 +13994,7 @@ function HistoryAskPanel({
   ontologySaving,
   domainCode,
   domains,
+  canManageSystemOntology,
   modelName,
   modelOptions,
   question,
@@ -14021,6 +14035,7 @@ function HistoryAskPanel({
   ontologySaving: boolean;
   domainCode: "history" | "todos";
   domains: HistoryAskDomain[];
+  canManageSystemOntology: boolean;
   modelName: string;
   modelOptions: { value: string; label: string }[];
   question: string;
@@ -14409,6 +14424,23 @@ function HistoryAskPanel({
                 onChange={(event) => onOntologyDraftChange({ ...ontologyDraft, description: event.target.value })}
                 placeholder="业务口径，例如：包含需求、联调和上线支持，不等同于工时"
               />
+              <select
+                className="control h-10"
+                value={ontologyDraft.visibility}
+                onChange={(event) => onOntologyDraftChange({ ...ontologyDraft, visibility: event.target.value as HistoryOntologyDraft["visibility"] })}
+              >
+                <option value="PERSONAL">个人词典（仅自己）</option>
+                <option value="TEAM">团队词典（指定用户）</option>
+                {canManageSystemOntology ? <option value="SYSTEM">系统词典（全员只读）</option> : null}
+              </select>
+              {ontologyDraft.visibility === "TEAM" ? (
+                <input
+                  className="control h-10"
+                  value={ontologyDraft.shared_with_usernames}
+                  onChange={(event) => onOntologyDraftChange({ ...ontologyDraft, shared_with_usernames: event.target.value })}
+                  placeholder="共享给的用户名，用逗号分隔"
+                />
+              ) : null}
               <div className="flex gap-2">
                 <button
                   className="flex h-9 flex-1 items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-3 text-xs font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
@@ -14439,11 +14471,16 @@ function HistoryAskPanel({
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <div className="truncate text-sm font-medium text-slate-200">{term.name}</div>
-                        {term.aliases.length ? <div className="mt-1 text-[11px] text-sky-200">别名：{term.aliases.join("、")}</div> : null}
+                        <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-sky-200">
+                          <span>{term.visibility === "SYSTEM" ? "系统词典" : term.visibility === "TEAM" ? "团队词典" : "个人词典"}</span>
+                          {term.aliases.length ? <span>别名：{term.aliases.join("、")}</span> : null}
+                        </div>
                       </div>
                       <div className="flex shrink-0 gap-1">
+                        {term.can_edit ? <>
                         <button className="p-1 text-slate-500 hover:text-mint-200" type="button" onClick={() => onOntologyEdit(term)} aria-label={`编辑 ${term.name}`}><Pencil size={14} /></button>
                         <button className="p-1 text-slate-500 hover:text-red-200" type="button" onClick={() => onOntologyDelete(term.id)} aria-label={`删除 ${term.name}`}><Trash2 size={14} /></button>
+                        </> : null}
                       </div>
                     </div>
                     {term.description ? <p className="mt-1.5 text-xs leading-5 text-slate-500">{term.description}</p> : null}

@@ -45,6 +45,8 @@ function ontologyBody(draft: HistoryOntologyDraft) {
     domain_code: draft.domain_code,
     aliases: draft.aliases.split(/[，,\n]/).map((item) => item.trim()).filter(Boolean),
     description: draft.description.trim(),
+    visibility: draft.visibility,
+    shared_with_usernames: draft.shared_with_usernames.split(/[，,\n]/).map((item) => item.trim()).filter(Boolean),
   };
 }
 

@@ -1,9 +1,10 @@
-import { useMemo, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   Archive,
   Bot,
   CheckCircle2,
   Github,
+  History,
   Loader2,
   RefreshCw,
   Settings2,
@@ -15,7 +16,9 @@ import {
 } from "lucide-react";
 
 import { Field } from "../components/AppShellPrimitives";
-import type { CodexConfig, GithubSyncResponse, SystemRestartResponse } from "../types";
+import { MarkdownPreview } from "../components/MarkdownPreview";
+import { fetchProjectChangelog } from "../api/codex";
+import type { CodexConfig, GithubSyncResponse, ProjectChangelog, SystemRestartResponse } from "../types";
 import {
   buildCodexKnowledgeDraft,
   extractCodexResultText,
@@ -29,6 +32,7 @@ export default function AiCodingWorkspace({
   codexConfig,
   codexConfigError,
   codexError,
+  changelogRefreshToken,
   githubSyncError,
   githubSyncStatus,
   isCodexConfigLoading,
@@ -47,6 +51,7 @@ export default function AiCodingWorkspace({
   restartError,
   restartResponse,
   onArchiveMessage,
+  onClearMessageDisplay,
   onCancel,
   onClearGithubSyncStatus,
   onModelChange,
@@ -59,6 +64,7 @@ export default function AiCodingWorkspace({
   codexConfig: CodexConfig | null;
   codexConfigError: string | null;
   codexError: string | null;
+  changelogRefreshToken: number;
   githubSyncError: string | null;
   githubSyncStatus: GithubSyncResponse | null;
   isCodexConfigLoading: boolean;
@@ -77,6 +83,7 @@ export default function AiCodingWorkspace({
   restartError: string | null;
   restartResponse: SystemRestartResponse | null;
   onArchiveMessage: (message: AiCodingMessage) => void;
+  onClearMessageDisplay: (message: AiCodingMessage) => void;
   onCancel: () => void;
   onClearGithubSyncStatus: () => void;
   onModelChange: (value: string) => void;
@@ -90,12 +97,30 @@ export default function AiCodingWorkspace({
   const canSyncCode = !isGithubSyncing;
   const canRestart = restartConfirm === "RESTART" && !isRestartingServices;
   const latestMessage = messages[0];
-  const visibleLatestMessage = latestMessage?.archivedKnowledgeId ? null : latestMessage;
+  const visibleLatestMessage = latestMessage?.archivedKnowledgeId || latestMessage?.isDisplayCleared ? null : latestMessage;
   const modelOptions = useMemo(() => buildAiCodingModelOptions(codexConfig), [codexConfig]);
   const selectedModelLabel = formatAiCodingModelLabel(
     modelName === AI_CODING_DEFAULT_MODEL ? null : modelName,
     codexConfig?.default_model_name,
   );
+  const [projectChangelog, setProjectChangelog] = useState<ProjectChangelog | null>(null);
+  const [projectChangelogError, setProjectChangelogError] = useState<string | null>(null);
+  const [isProjectChangelogLoading, setIsProjectChangelogLoading] = useState(true);
+
+  const loadProjectChangelog = () => {
+    setIsProjectChangelogLoading(true);
+    setProjectChangelogError(null);
+    return fetchProjectChangelog()
+      .then(setProjectChangelog)
+      .catch((error) => {
+        setProjectChangelogError(error instanceof Error ? error.message : "读取 CHANGELOG.md 失败，请稍后重试。");
+      })
+      .finally(() => setIsProjectChangelogLoading(false));
+  };
+
+  useEffect(() => {
+    void loadProjectChangelog();
+  }, [changelogRefreshToken]);
 
   return (
     <div className="flex-1 px-4 pb-4 pt-2">
@@ -202,9 +227,47 @@ export default function AiCodingWorkspace({
                 archiveLoadingId={archiveLoadingId}
                 message={visibleLatestMessage}
                 onArchiveMessage={onArchiveMessage}
+                onClearMessageDisplay={onClearMessageDisplay}
               />
             )}
           </div>
+
+          <section className="mt-5 rounded-lg border border-white/10 bg-white/[0.025] p-4">
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div>
+                <div className="mb-1 flex items-center gap-2 text-sm font-medium text-slate-100">
+                  <History size={16} />
+                  项目变更日志
+                </div>
+                <div className="text-xs leading-5 text-slate-500">当前项目的 CHANGELOG.md，代码同步成功后会自动刷新。</div>
+              </div>
+              <button
+                className="flex h-8 shrink-0 items-center justify-center gap-1 rounded-lg border border-white/10 bg-white/[0.035] px-2 text-xs text-slate-300 transition hover:border-mint-300/30 hover:text-mint-200 disabled:cursor-not-allowed disabled:text-slate-500"
+                disabled={isProjectChangelogLoading}
+                type="button"
+                onClick={() => void loadProjectChangelog()}
+              >
+                <RefreshCw className={isProjectChangelogLoading ? "animate-spin" : ""} size={14} />
+                刷新
+              </button>
+            </div>
+
+            {projectChangelog ? (
+              <>
+                <div className="mb-3 text-xs text-slate-500">文件更新时间：{formatDateTime(projectChangelog.updated_at)}</div>
+                <div className="max-h-[720px] overflow-auto rounded-lg">
+                  <MarkdownPreview markdown={projectChangelog.markdown} />
+                </div>
+              </>
+            ) : isProjectChangelogLoading ? (
+              <div className="flex min-h-32 items-center justify-center gap-2 rounded-lg border border-white/10 bg-black/10 text-sm text-slate-500">
+                <Loader2 className="animate-spin" size={16} />
+                正在读取 CHANGELOG.md...
+              </div>
+            ) : null}
+
+            {projectChangelogError ? <ErrorNotice message={projectChangelogError} tone="danger" /> : null}
+          </section>
         </section>
 
         <aside className="min-w-0 rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
@@ -322,6 +385,7 @@ export default function AiCodingWorkspace({
                 </div>
               ) : null}
             </div>
+
           </div>
         </aside>
       </div>
@@ -349,11 +413,13 @@ function AiCodingMessageCard({
   archiveLoadingId,
   message,
   onArchiveMessage,
+  onClearMessageDisplay,
 }: {
   defaultModelName: string | null;
   archiveLoadingId: number | null;
   message: AiCodingMessage;
   onArchiveMessage: (message: AiCodingMessage) => void;
+  onClearMessageDisplay: (message: AiCodingMessage) => void;
 }) {
   const resultText = message.response ? extractCodexResultText(message.response) : "";
   const failedWithoutResponse = message.status === "failed" && !message.response;
@@ -366,6 +432,7 @@ function AiCodingMessageCard({
           message={message}
           defaultModelName={defaultModelName}
           onArchive={() => onArchiveMessage(message)}
+          onClearDisplay={() => onClearMessageDisplay(message)}
         />
       ) : null}
 
@@ -454,11 +521,13 @@ function CodexCompletionSummaryCard({
   isArchiving,
   message,
   onArchive,
+  onClearDisplay,
 }: {
   defaultModelName: string | null;
   isArchiving: boolean;
   message: AiCodingMessage;
   onArchive: () => void;
+  onClearDisplay: () => void;
 }) {
   if (!message.response) return null;
 
@@ -483,15 +552,25 @@ function CodexCompletionSummaryCard({
           </div>
         </div>
 
-        <button
-          className="flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-sm font-medium text-slate-200 transition hover:border-mint-300/30 hover:text-mint-200 disabled:cursor-not-allowed disabled:text-slate-500"
-          disabled={isArchiving || Boolean(message.archivedKnowledgeId)}
-          type="button"
-          onClick={onArchive}
-        >
-          {isArchiving ? <Loader2 className="animate-spin" size={16} /> : <Archive size={16} />}
-          {message.archivedKnowledgeId ? `已归档 #${message.archivedKnowledgeId}` : isArchiving ? "归档中" : "归档精简记录"}
-        </button>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <button
+            className="flex h-10 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-sm font-medium text-slate-200 transition hover:border-mint-300/30 hover:text-mint-200 disabled:cursor-not-allowed disabled:text-slate-500"
+            disabled={isArchiving || Boolean(message.archivedKnowledgeId)}
+            type="button"
+            onClick={onArchive}
+          >
+            {isArchiving ? <Loader2 className="animate-spin" size={16} /> : <Archive size={16} />}
+            {message.archivedKnowledgeId ? `已归档 #${message.archivedKnowledgeId}` : isArchiving ? "归档中" : "归档精简记录"}
+          </button>
+          <button
+            className="flex h-10 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-sm font-medium text-slate-200 transition hover:border-red-400/30 hover:text-red-100"
+            type="button"
+            onClick={onClearDisplay}
+          >
+            <Trash2 size={16} />
+            清空当前展示
+          </button>
+        </div>
       </div>
 
       {resultText ? (

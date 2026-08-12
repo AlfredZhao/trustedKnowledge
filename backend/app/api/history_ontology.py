@@ -6,6 +6,7 @@ from app.core.security import require_api_key, require_current_user
 from app.db.oracle import acquire_connection
 from app.repositories.history_ontology import (
     HistoryOntologyNotFoundError,
+    HistoryOntologyPermissionError,
     create_history_ontology_term,
     delete_history_ontology_term,
     list_history_ontology_terms,
@@ -45,6 +46,8 @@ async def post_history_ontology(
             return HistoryOntologyTerm.model_validate(await create_history_ontology_term(connection, payload.model_dump(), auth_context))
     except oracledb.Error as exc:
         raise oracle_http_exception(exc, "Oracle rejected the ontology create") from exc
+    except HistoryOntologyPermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
 
 
 @router.put("/{term_id}", response_model=HistoryOntologyTerm)
@@ -56,6 +59,8 @@ async def put_history_ontology(
             return HistoryOntologyTerm.model_validate(await update_history_ontology_term(connection, term_id, payload.model_dump(), auth_context))
     except HistoryOntologyNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except HistoryOntologyPermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except oracledb.Error as exc:
         raise oracle_http_exception(exc, "Oracle rejected the ontology update") from exc
 
@@ -69,5 +74,7 @@ async def delete_history_ontology(
             await delete_history_ontology_term(connection, term_id, auth_context)
     except HistoryOntologyNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except HistoryOntologyPermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except oracledb.Error as exc:
         raise oracle_http_exception(exc, "Oracle rejected the ontology delete") from exc

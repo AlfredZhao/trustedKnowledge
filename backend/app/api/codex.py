@@ -21,12 +21,20 @@ from app.repositories.llm_config import ensure_llm_config_table, get_history_ask
 from app.repositories.skills import get_prompt_skills
 from app.services.codex_cli import CODEX_AVAILABLE_MODELS, read_codex_default_model, resolve_codex_model_name
 from app.repositories.users import AuthContext
-from app.schemas.codex import CodexConfigResponse, CodexJobSnapshot, CodexJobStatus, CodexRunRequest, CodexRunResponse
+from app.schemas.codex import (
+    CodexConfigResponse,
+    CodexJobSnapshot,
+    CodexJobStatus,
+    CodexRunRequest,
+    CodexRunResponse,
+    ProjectChangelogResponse,
+)
 
 
 router = APIRouter(prefix="/codex", tags=["codex"], dependencies=[Depends(require_admin_module("aiCoding"))])
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
+CHANGELOG_PATH = PROJECT_ROOT / "CHANGELOG.md"
 CODEX_TIMEOUT_SECONDS = 900
 _codex_state_locks: dict[str, asyncio.Lock] = {}
 _codex_active_run_counts: dict[str, int] = {}
@@ -61,6 +69,29 @@ async def get_codex_config() -> CodexConfigResponse:
     return CodexConfigResponse(
         default_model_name=read_codex_default_model(PROJECT_ROOT),
         available_models=CODEX_AVAILABLE_MODELS,
+    )
+
+
+@router.get("/project-changelog", response_model=ProjectChangelogResponse)
+async def get_project_changelog() -> ProjectChangelogResponse:
+    if not CHANGELOG_PATH.is_file():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project CHANGELOG.md was not found.",
+        )
+
+    try:
+        stat = CHANGELOG_PATH.stat()
+        markdown = CHANGELOG_PATH.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to read project CHANGELOG.md: {exc}",
+        ) from exc
+
+    return ProjectChangelogResponse(
+        markdown=markdown,
+        updated_at=datetime.fromtimestamp(stat.st_mtime, UTC).isoformat(),
     )
 
 

@@ -349,6 +349,7 @@ export interface AiCodingMessage {
   completedAt: string | null;
   response: CodexRunResponse | null;
   archivedKnowledgeId?: number;
+  isDisplayCleared?: boolean;
 }
 
 export interface CurrentAppendTarget {
@@ -1609,6 +1610,7 @@ function readAiCodingMessages(value: unknown): AiCodingMessage[] {
         completedAt,
         response,
         archivedKnowledgeId: readNullablePositiveInteger(item.archivedKnowledgeId) ?? undefined,
+        isDisplayCleared: item.isDisplayCleared === true || undefined,
       },
     ];
   });

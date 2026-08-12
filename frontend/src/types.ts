@@ -394,6 +394,10 @@ export interface HistoryOntologyTerm {
   created_at: string;
   updated_at: string;
   domain_code: "history" | "todos";
+  visibility: "PERSONAL" | "TEAM" | "SYSTEM";
+  shared_with_usernames: string[];
+  owner_username: string;
+  can_edit: boolean;
 }
 
 export interface HistoryOntologyDraft {
@@ -401,6 +405,8 @@ export interface HistoryOntologyDraft {
   name: string;
   aliases: string;
   description: string;
+  visibility: "PERSONAL" | "TEAM" | "SYSTEM";
+  shared_with_usernames: string;
 }
 
 export interface SkillPromptSummary {
@@ -495,6 +501,11 @@ export interface CodexJobSnapshot {
 export interface CodexConfig {
   default_model_name: string | null;
   available_models: string[];
+}
+
+export interface ProjectChangelog {
+  markdown: string;
+  updated_at: string;
 }
 
 export type CodexStreamEvent =

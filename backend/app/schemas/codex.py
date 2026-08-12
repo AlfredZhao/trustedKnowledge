@@ -40,3 +40,8 @@ class CodexJobSnapshot(BaseModel):
 class CodexConfigResponse(BaseModel):
     default_model_name: str | None = None
     available_models: list[str] = Field(default_factory=list)
+
+
+class ProjectChangelogResponse(BaseModel):
+    markdown: str
+    updated_at: str

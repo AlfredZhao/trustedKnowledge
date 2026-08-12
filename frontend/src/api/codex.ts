@@ -1,4 +1,4 @@
-import type { CodexConfig, CodexJobSnapshot, CodexOutputMode, CodexRunResponse, CodexStreamEvent } from "../types";
+import type { CodexConfig, CodexJobSnapshot, CodexOutputMode, CodexRunResponse, CodexStreamEvent, ProjectChangelog } from "../types";
 import { clearStoredApiKey } from "./auth";
 import { authFetch, buildQuery, readErrorMessage, request } from "./client";
 
@@ -14,6 +14,10 @@ export async function runCodex(prompt: string): Promise<CodexRunResponse> {
 
 export async function fetchCodexConfig(): Promise<CodexConfig> {
   return request<CodexConfig>("/api/codex/config");
+}
+
+export async function fetchProjectChangelog(): Promise<ProjectChangelog> {
+  return request<ProjectChangelog>("/api/codex/project-changelog", { cache: "no-store" });
 }
 
 export async function startCodexJob(

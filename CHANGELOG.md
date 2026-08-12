@@ -13,6 +13,15 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Added / 新增
 
+- Added a `清空当前展示` action to completed AI Coding tasks. It hides the current task card without creating a trusted-knowledge archive.
+- 为已完成的 AI 编程任务新增“清空当前展示”操作：仅隐藏当前任务卡片，不会创建可信知识归档。
+
+- Added personal, named-user team, and admin-managed system dictionaries to the domain-scoped AI 问数 ontology. Matching resolves duplicate concept names with personal definitions taking precedence over team and system definitions.
+- 为按业务域隔离的 AI 问数本体新增个人词典、指定用户名的团队词典和管理员维护的系统词典；同名概念命中时，个人定义优先于团队和系统定义。
+
+- Added a rendered `CHANGELOG.md` panel to AI Coding. It reads the current project file through the existing AI Coding permission boundary, supports manual refresh, and automatically refreshes after a successful GitHub code sync.
+- 为 AI 编程新增 `CHANGELOG.md` Markdown 展示区：通过既有 AI 编程权限边界读取当前项目文件，支持手动刷新，并会在 GitHub 代码同步成功后自动更新。
+
 - Added controlled multi-domain AI 问数 for History and Todo data. Users select a business domain while backend adapters retain field allowlists and the existing visible-user boundary; lightweight ontology terms are now domain-scoped.
 - 为 AI 问数新增受控多业务域能力，首期支持历史记录与待办事项。用户可选择业务域，后端适配器保持字段白名单和既有可见用户边界；轻量本体词条同步按业务域隔离。
 
@@ -26,6 +35,9 @@ The format follows the common GitHub changelog convention inspired by
 - 为“编辑可信知识”和“编辑待办事项”共用的 Markdown 工具栏新增“引用”操作，可为当前行或选区添加或取消 `> ` 引用语法。
 
 #### Changed / 变更
+
+- Moved AI Coding's project CHANGELOG.md panel from the narrow operations sidebar to the bottom of the main task workspace for a wider Markdown reading area.
+- 将 AI 编程的项目 CHANGELOG.md 面板从狭窄的右侧操作栏移至左侧主任务区底部，获得更宽的 Markdown 阅读区域。
 
 - Changed the shared Markdown toolbar in the trusted-knowledge and Todo editors so the `Markdown` label occupies its own row and all formatting actions appear below it.
 - 调整“编辑可信知识”和“编辑待办事项”共用的 Markdown 工具栏：`Markdown` 标识单独占一行，全部格式化操作显示在下一行。
