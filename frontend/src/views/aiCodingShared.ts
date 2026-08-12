@@ -1,7 +1,10 @@
 import type { CodexConfig } from "../types";
 
 export const AI_CODING_DEFAULT_MODEL = "__codex_cli_default__";
-export const AI_CODING_MODEL_FALLBACK_OPTIONS = ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex", "gpt-5.2"];
+// Keep this in sync with the Codex CLI model presets returned by the backend.
+// `gpt-5.6` is a CLI default alias; the explicit choices are the three
+// GPT-5.6 family models.
+export const AI_CODING_MODEL_FALLBACK_OPTIONS = ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"];
 
 export function buildAiCodingModelOptions(config: CodexConfig | null) {
   const uniqueValues = Array.from(new Set([...(config?.available_models ?? []), ...AI_CODING_MODEL_FALLBACK_OPTIONS]));

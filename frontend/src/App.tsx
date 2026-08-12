@@ -953,7 +953,10 @@ function App() {
   const [overviewRefreshToken, setOverviewRefreshToken] = useState(0);
   const [aiCodingPrompt, setAiCodingPrompt] = useState(restoredUiState.aiCoding.prompt);
   const [aiCodingModelName, setAiCodingModelName] = useState(
-    restoredUiState.aiCoding.modelName || AI_CODING_DEFAULT_MODEL,
+    restoredUiState.aiCoding.modelName === AI_CODING_DEFAULT_MODEL ||
+      AI_CODING_MODEL_FALLBACK_OPTIONS.includes(restoredUiState.aiCoding.modelName)
+      ? restoredUiState.aiCoding.modelName
+      : AI_CODING_DEFAULT_MODEL,
   );
   const [aiCodingMessages, setAiCodingMessages] = useState<AiCodingMessage[]>(restoredUiState.aiCoding.messages);
   const [activeCodexJobId, setActiveCodexJobId] = useState<string | null>(restoredUiState.aiCoding.activeJobId);

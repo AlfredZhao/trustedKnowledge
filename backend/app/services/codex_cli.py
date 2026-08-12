@@ -9,7 +9,9 @@ from tempfile import NamedTemporaryFile
 from app.core.config import settings
 
 
-CODEX_AVAILABLE_MODELS = ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex", "gpt-5.2"]
+# Keep this list aligned with the GPT-5.6 Codex model family.  The generic
+# `gpt-5.6` name is a CLI default alias, not one of the selectable family tiers.
+CODEX_AVAILABLE_MODELS = ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"]
 
 
 def resolve_codex_model_name(model_name: str | None, project_root: Path) -> str | None:

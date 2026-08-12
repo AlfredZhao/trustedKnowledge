@@ -48,6 +48,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Changed / 变更
 
+- Changed AI Coding's Codex preset-model list to retain the supported `gpt-5.6-sol`, `gpt-5.6-terra`, and `gpt-5.6-luna` family while keeping `CLI 默认` available.
+- 调整 AI 编程的 Codex 预置模型列表：仅保留当前支持的 `gpt-5.6-sol`、`gpt-5.6-terra`、`gpt-5.6-luna` 系列，并继续提供 `CLI 默认`。
+
 - Simplified AI Coding's model area to retain only the execution-model selector. The redundant current CLI-default card and its automatic configuration refresh have been removed.
 - 精简 AI 编程的模型区域，仅保留执行模型选择器；移除重复的当前 CLI 默认模型卡片及其自动配置读取。
 
