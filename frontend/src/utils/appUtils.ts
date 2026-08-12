@@ -636,6 +636,7 @@ export function getHistoryAskFilterEntries(filters: HistoryAskResponse["filters"
   const vectorStatus = formatHistoryAskVectorStatus(filters.vector_status);
 
   if (filters.keyword) entries.push({ label: "关键词", value: filters.keyword });
+  if (filters.semantic_terms?.length) entries.push({ label: "业务概念", value: filters.semantic_terms.join("、") });
   if (filters.username) entries.push({ label: "用户", value: filters.username });
   if (filters.type) entries.push({ label: "类型", value: filters.type });
   if (filters.week) entries.push({ label: "周期", value: filters.week });

@@ -13,6 +13,15 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Added / 新增
 
+- Added controlled multi-domain AI 问数 for History and Todo data. Users select a business domain while backend adapters retain field allowlists and the existing visible-user boundary; lightweight ontology terms are now domain-scoped.
+- 为 AI 问数新增受控多业务域能力，首期支持历史记录与待办事项。用户可选择业务域，后端适配器保持字段白名单和既有可见用户边界；轻量本体词条同步按业务域隔离。
+
+- Added a default data-result view for AI 问数 with no selected Skill, including query metrics, type/week bar charts, and representative records.
+- 为未选择 Skill 的 AI 问数新增默认数据结果视图，展示查询指标、类型/周期条形图和代表性记录。
+
+- Added a user-scoped lightweight semantic layer to AI 问数. Users can define business concepts with aliases and an interpretation note; matched aliases expand the evidence query and provide bounded business context to the answer.
+- 为 AI 问数新增按用户隔离的轻量语义层：可维护业务概念、别名和口径说明；命中别名会扩展证据检索，并在事实边界内为回答提供业务上下文。
+
 - Added a `引用` action to the shared Markdown toolbar in the trusted-knowledge and Todo editors. It applies or removes the `> ` blockquote syntax for the current line or selection.
 - 为“编辑可信知识”和“编辑待办事项”共用的 Markdown 工具栏新增“引用”操作，可为当前行或选区添加或取消 `> ` 引用语法。
 

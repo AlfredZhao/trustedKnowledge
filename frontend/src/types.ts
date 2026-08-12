@@ -346,6 +346,7 @@ export interface HistoryAskFilters {
   vector_status?: number | null;
   date_from?: string | null;
   date_to?: string | null;
+  semantic_terms?: string[];
 }
 
 export interface HistoryAskStats {
@@ -376,6 +377,30 @@ export interface HistoryAskResponse {
   llm_used: boolean;
   warning: string | null;
   selected_skills: SkillPromptSummary[];
+  domain: HistoryAskDomain;
+}
+
+export interface HistoryAskDomain {
+  code: "history" | "todos";
+  name: string;
+  description: string;
+}
+
+export interface HistoryOntologyTerm {
+  id: number;
+  name: string;
+  aliases: string[];
+  description: string;
+  created_at: string;
+  updated_at: string;
+  domain_code: "history" | "todos";
+}
+
+export interface HistoryOntologyDraft {
+  domain_code: "history" | "todos";
+  name: string;
+  aliases: string;
+  description: string;
 }
 
 export interface SkillPromptSummary {

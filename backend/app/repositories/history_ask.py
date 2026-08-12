@@ -12,8 +12,10 @@ import oracledb
 from app.core.config import settings
 from app.db.oracle import acquire_connection
 from app.repositories.llm_config import get_history_ask_llm_config
+from app.repositories.history_ontology import find_matching_history_ontology_terms
 from app.repositories.skills import get_prompt_skills
-from app.repositories.users import AuthContext
+from app.repositories.todos import _ensure_todo_table
+from app.repositories.users import AuthContext, append_requested_username_clause, append_user_visibility_clause
 from app.services.codex_cli import run_codex_final
 
 
@@ -242,6 +244,7 @@ def _append_filter_clauses(
     params: dict[str, Any],
     *,
     keyword: str | None,
+    keyword_terms: list[str] | None = None,
     username: str | None,
     history_type: str | None,
     week: str | None,
@@ -252,9 +255,14 @@ def _append_filter_clauses(
     date_to: date | None = None,
     auth_context: AuthContext | None = None,
 ) -> None:
-    if keyword:
-        clauses.append("lower(history_record.content) like '%' || lower(:keyword) || '%'")
-        params["keyword"] = keyword
+    search_terms = list(dict.fromkeys(item for item in [keyword, *(keyword_terms or [])] if item))
+    if search_terms:
+        keyword_clauses = []
+        for index, value in enumerate(search_terms):
+            bind_name = f"keyword_{index}"
+            keyword_clauses.append(f"lower(history_record.content) like '%' || lower(:{bind_name}) || '%'")
+            params[bind_name] = value
+        clauses.append("(" + " or ".join(keyword_clauses) + ")")
     if username:
         clauses.append("lower(coalesce(record_user.username, history_record.username)) = lower(:username)")
         params["username"] = username
@@ -287,6 +295,7 @@ async def _fetch_latest_history_date(
     cursor: Any,
     *,
     keyword: str | None,
+    keyword_terms: list[str] | None = None,
     username: str | None,
     history_type: str | None,
     week: str | None,
@@ -301,6 +310,7 @@ async def _fetch_latest_history_date(
         clauses,
         params,
         keyword=keyword,
+        keyword_terms=keyword_terms,
         username=username,
         history_type=history_type,
         week=week,
@@ -388,7 +398,7 @@ def _build_fallback_answer(
 
     filter_text = _format_filter_summary(filters)
     lines = [
-        f"根据当前可检索的 t_history 记录，{user_text}{subject} 相关记录共 {stats['matched_count']} 条，覆盖 {stats['active_days']} 个活跃日期。",
+        f"根据当前可检索的业务记录，{user_text}{subject} 相关记录共 {stats['matched_count']} 条，覆盖 {stats['active_days']} 个活跃日期。",
     ]
     if filter_text:
         lines.append(f"识别条件：{filter_text}。")
@@ -534,8 +544,17 @@ async def ask_history(
     skill_ids: list[str] | None = None,
     execution_provider: str = "history_ask_llm",
     model_name: str = "",
+    domain_code: str = "history",
     auth_context: AuthContext,
 ) -> dict[str, Any]:
+    if domain_code == "todos":
+        return await _ask_todos(
+            question,
+            skill_ids=skill_ids,
+            execution_provider=execution_provider,
+            model_name=model_name,
+            auth_context=auth_context,
+        )
     selected_skills = get_prompt_skills(skill_ids or [], auth_context)
     async with acquire_connection() as connection:
         cursor = connection.cursor()
@@ -569,6 +588,16 @@ async def ask_history(
         history_types = [row[0] for row in await cursor.fetchall()]
 
         keyword = _extract_keyword(question)
+        matched_semantic_terms = await find_matching_history_ontology_terms(connection, question, auth_context, "history")
+        semantic_keywords = list(
+            dict.fromkeys(
+                label
+                for term in matched_semantic_terms
+                for label in [term["name"], *term["aliases"]]
+            )
+        )
+        if matched_semantic_terms and not keyword:
+            keyword = matched_semantic_terms[0]["name"]
         username = _extract_username(question, users)
         history_type = _extract_existing_value(question, history_types)
         week = _extract_week(question)
@@ -578,6 +607,7 @@ async def ask_history(
         anchor_date = await _fetch_latest_history_date(
             cursor,
             keyword=keyword,
+            keyword_terms=semantic_keywords,
             username=username,
             history_type=history_type,
             week=week,
@@ -594,6 +624,7 @@ async def ask_history(
             clauses,
             params,
             keyword=keyword,
+            keyword_terms=semantic_keywords,
             username=username,
             history_type=history_type,
             week=week,
@@ -616,6 +647,7 @@ async def ask_history(
             "vector_status": vector_status,
             "date_from": date_from,
             "date_to": date_to,
+            "semantic_terms": [term["name"] for term in matched_semantic_terms],
         }
         stats_sql = f"""
             select
@@ -702,6 +734,12 @@ async def ask_history(
                 evidence=rows[:16],
                 selected_skills=selected_skills,
             )
+            if matched_semantic_terms:
+                semantic_context = "\n".join(
+                    f"- {term['name']}：{term['description'] or '用户定义业务概念'}（同义词：{'、'.join(term['aliases']) or '无'}）"
+                    for term in matched_semantic_terms
+                )
+                prompt += "\n\n命中的用户业务概念（用于解释口径，不得补充未提供的事实）：\n" + semantic_context
             system = (
                 "你是企业内部工作记录问数助手。只能根据提供的统计数据和记录摘录回答。"
                 "不要编造工时；如果没有工时字段，明确说明工作量按记录数、活跃日期和类型分布衡量。"
@@ -755,6 +793,166 @@ async def ask_history(
             {"id": item["id"], "name": item["name"], "description": item.get("description", "")}
             for item in selected_skills
         ],
+        "domain": {"code": "history", "name": "历史工作记录", "description": "基于 T_HISTORY 的工作记录、类型、周期和学习等级。"},
+    }
+
+
+async def _ask_todos(
+    question: str,
+    *,
+    skill_ids: list[str] | None,
+    execution_provider: str,
+    model_name: str,
+    auth_context: AuthContext,
+) -> dict[str, Any]:
+    selected_skills = get_prompt_skills(skill_ids or [], auth_context)
+    async with acquire_connection() as connection:
+        await _ensure_todo_table(connection)
+        cursor = connection.cursor()
+        keyword = _extract_keyword(question)
+        matched_terms = await find_matching_history_ontology_terms(connection, question, auth_context, "todos")
+        semantic_keywords = list(dict.fromkeys(label for term in matched_terms for label in [term["name"], *term["aliases"]]))
+        if matched_terms and not keyword:
+            keyword = matched_terms[0]["name"]
+        if auth_context.is_admin or auth_context.visible_user_ids is None:
+            await cursor.execute("select username from tk_users where status = 'ACTIVE'")
+        else:
+            bind_names = []
+            user_params: dict[str, Any] = {}
+            for index, user_id in enumerate(auth_context.visible_user_ids):
+                bind_name = f"todo_visible_user_{index}"
+                bind_names.append(f":{bind_name}")
+                user_params[bind_name] = user_id
+            await cursor.execute(
+                f"select username from tk_users where user_id in ({', '.join(bind_names)}) and status = 'ACTIVE'",
+                user_params,
+            )
+        visible_usernames = [str(row[0]) for row in await cursor.fetchall()]
+        username = _extract_username(question, visible_usernames)
+        todo_status = _extract_existing_value(question, ["待处理", "处理中", "已完成"])
+        date_from, date_to = _extract_date_range(question)
+        clauses: list[str] = []
+        params: dict[str, Any] = {}
+        search_terms = list(dict.fromkeys(item for item in [keyword, *semantic_keywords] if item))
+        if search_terms:
+            expressions = []
+            for index, value in enumerate(search_terms):
+                bind_name = f"todo_keyword_{index}"
+                expressions.append(
+                    f"(lower(dbms_lob.substr(todo_item.title, 4000, 1)) like '%' || lower(:{bind_name}) || '%' "
+                    f"or lower(dbms_lob.substr(todo_item.content, 4000, 1)) like '%' || lower(:{bind_name}) || '%' "
+                    f"or lower(todo_item.source) like '%' || lower(:{bind_name}) || '%' "
+                    f"or lower(todo_item.topic_tag) like '%' || lower(:{bind_name}) || '%')"
+                )
+                params[bind_name] = value
+            clauses.append("(" + " or ".join(expressions) + ")")
+        if todo_status:
+            clauses.append("todo_item.todo_status = :todo_status")
+            params["todo_status"] = todo_status
+        if date_from:
+            clauses.append("todo_item.created_at >= :date_from")
+            params["date_from"] = date_from
+        if date_to:
+            clauses.append("todo_item.created_at < :date_to + 1")
+            params["date_to"] = date_to
+        append_user_visibility_clause(clauses, params, auth_context, "todo_item.user_id")
+        await append_requested_username_clause(connection, clauses, params, auth_context, username, "todo_item.user_id")
+        where_sql = " where " + " and ".join(clauses) if clauses else ""
+        from_sql = "from ai_todo_items todo_item left join tk_users todo_user on todo_user.user_id = todo_item.user_id"
+        await cursor.execute(
+            f"""
+            select count(*), count(distinct trunc(todo_item.created_at)), min(trunc(todo_item.created_at)), max(trunc(todo_item.created_at))
+            {from_sql} {where_sql}
+            """,
+            params,
+        )
+        stats_row = await cursor.fetchone()
+        await cursor.execute(
+            f"""
+            select todo_item.id, todo_item.created_at, todo_item.todo_status, todo_item.topic_tag, null,
+                   todo_user.username, dbms_lob.substr(todo_item.title, 1000, 1) || case when todo_item.content is not null then '：' || dbms_lob.substr(todo_item.content, 3000, 1) end
+            {from_sql} {where_sql}
+            order by todo_item.created_at desc nulls last, todo_item.id desc fetch next 80 rows only
+            """,
+            params,
+        )
+        rows = [_evidence_row_to_dict(row) for row in await cursor.fetchall()]
+
+        async def distribution(expression: str) -> dict[str, int]:
+            await cursor.execute(
+                f"select {expression}, count(*) {from_sql} {where_sql} group by {expression} order by count(*) desc fetch next 12 rows only",
+                params,
+            )
+            return _count_rows_to_dict(await cursor.fetchall())
+
+        stats = {
+            "matched_count": int(stats_row[0]) if stats_row else 0,
+            "active_days": int(stats_row[1]) if stats_row else 0,
+            "min_date": stats_row[2] if stats_row else None,
+            "max_date": stats_row[3] if stats_row else None,
+            "type_counts": await distribution("todo_item.todo_status"),
+            "week_counts": await distribution("coalesce(todo_item.topic_tag, '未标记')"),
+            "learn_level_counts": {},
+        }
+        filters = {
+            "keyword": keyword,
+            "username": username,
+            "type": todo_status,
+            "week": None,
+            "day": None,
+            "learn_level": None,
+            "vector_status": None,
+            "date_from": date_from,
+            "date_to": date_to,
+            "semantic_terms": [term["name"] for term in matched_terms],
+        }
+        answer = _build_fallback_answer(question=question, filters=filters, stats=stats, evidence=rows, selected_skills=selected_skills)
+        llm_used = False
+        warning = None
+        if rows:
+            prompt = _build_llm_prompt(question=question, filters=filters, stats=stats, evidence=rows[:16], selected_skills=selected_skills)
+            if matched_terms:
+                prompt += "\n\n命中的待办业务概念：\n" + "\n".join(
+                    f"- {term['name']}：{term['description'] or '用户定义业务概念'}（同义词：{'、'.join(term['aliases']) or '无'}）"
+                    for term in matched_terms
+                )
+            if execution_provider == "codex" and settings.allow_web_codex:
+                try:
+                    answer = await run_codex_final(
+                        prompt="你是企业内部待办事项问数助手。只能根据提供的统计和摘录回答，使用中文。\n\n" + prompt,
+                        model_name=model_name,
+                        project_root=Path(__file__).resolve().parents[3],
+                        timeout_seconds=90,
+                    )
+                    llm_used = True
+                except RuntimeError as exc:
+                    warning = str(exc)[:500]
+            elif execution_provider == "codex":
+                warning = "Codex CLI 未启用，请联系管理员开启 Web Codex 后再试。"
+            else:
+                config = await get_history_ask_llm_config(connection)
+                if config.get("enabled"):
+                    try:
+                        llm_answer = await _call_history_ask_llm(
+                            config=config,
+                            prompt=prompt,
+                            system="你是企业内部待办事项问数助手。只能依据统计和待办摘录回答，不得编造事实。使用中文，先给结论再说明依据。",
+                        )
+                        if llm_answer and not llm_answer.startswith(LLM_ERROR_PREFIXES):
+                            answer, llm_used = llm_answer, True
+                        elif llm_answer:
+                            warning = llm_answer[:500]
+                    except RuntimeError as exc:
+                        warning = str(exc)[:500]
+    return {
+        "answer": answer,
+        "filters": filters,
+        "stats": stats,
+        "evidence": rows[:12],
+        "llm_used": llm_used,
+        "warning": warning,
+        "selected_skills": [{"id": item["id"], "name": item["name"], "description": item.get("description", "")} for item in selected_skills],
+        "domain": {"code": "todos", "name": "待办事项", "description": "基于待办标题、内容、状态、标签和来源。"},
     }
 
 

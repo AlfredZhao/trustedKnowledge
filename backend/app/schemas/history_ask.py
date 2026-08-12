@@ -10,6 +10,17 @@ class HistoryAskRequest(BaseModel):
     skill_ids: list[str] = Field(default_factory=list, max_length=8)
     execution_provider: Literal["codex", "history_ask_llm"] = "history_ask_llm"
     model_name: str = Field("", max_length=120)
+    domain_code: Literal["history", "todos"] = "history"
+
+
+class HistoryAskDomain(BaseModel):
+    code: Literal["history", "todos"]
+    name: str
+    description: str
+
+
+class HistoryAskDomainListResponse(BaseModel):
+    items: list[HistoryAskDomain]
 
 
 class HistoryAskFilters(BaseModel):
@@ -22,6 +33,7 @@ class HistoryAskFilters(BaseModel):
     vector_status: int | None = None
     date_from: date | None = None
     date_to: date | None = None
+    semantic_terms: list[str] = Field(default_factory=list)
 
 
 class HistoryAskStats(BaseModel):
@@ -54,3 +66,4 @@ class HistoryAskResponse(BaseModel):
     llm_used: bool
     warning: str | None = None
     selected_skills: list[dict[str, str]] = Field(default_factory=list)
+    domain: HistoryAskDomain

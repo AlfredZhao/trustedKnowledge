@@ -116,7 +116,16 @@ import {
   updatePersonalSecret,
 } from "./api/personalSecrets";
 import { fetchHistory, readCachedHistory } from "./api/history";
-import { askHistory, fetchHistoryAskLlmConfig, updateHistoryAskLlmConfig } from "./api/historyAsk";
+import {
+  askHistory,
+  createHistoryOntology,
+  deleteHistoryOntology,
+  fetchHistoryAskLlmConfig,
+  fetchHistoryAskDomains,
+  fetchHistoryOntology,
+  updateHistoryAskLlmConfig,
+  updateHistoryOntology,
+} from "./api/historyAsk";
 import { cancelCodexJob, fetchCodexConfig, getCodexJob, getLatestCodexJobByOutputMode, startCodexJob } from "./api/codex";
 import {
   createCurrentRecord,
@@ -324,6 +333,9 @@ import type {
   EnglishMaterialItem,
   GithubSyncResponse,
   HistoryAskResponse,
+  HistoryAskDomain,
+  HistoryOntologyDraft,
+  HistoryOntologyTerm,
   HistoryItem,
   HistorySummary,
   KnowledgeDraft,
@@ -393,6 +405,7 @@ const emptyLlmConfigDraft: LlmConfigDraft = {
   model_name: "",
   enabled: false,
 };
+const emptyHistoryOntologyDraft: HistoryOntologyDraft = { domain_code: "history", name: "", aliases: "", description: "" };
 
 const emptySkillDraft: SkillDraft = {
   name: "",
@@ -864,6 +877,14 @@ function App() {
   const [historyAskLlmConfigError, setHistoryAskLlmConfigError] = useState<string | null>(null);
   const [historyAskLlmConfigSaved, setHistoryAskLlmConfigSaved] = useState(false);
   const [historyAskSkillIds, setHistoryAskSkillIds] = useState<string[]>(restoredUiState.historyAsk.skillIds);
+  const [historyAskDomains, setHistoryAskDomains] = useState<HistoryAskDomain[]>([]);
+  const [historyAskDomainCode, setHistoryAskDomainCode] = useState<"history" | "todos">("history");
+  const [historyOntologyTerms, setHistoryOntologyTerms] = useState<HistoryOntologyTerm[]>([]);
+  const [historyOntologyDraft, setHistoryOntologyDraft] = useState<HistoryOntologyDraft>(emptyHistoryOntologyDraft);
+  const [historyOntologyEditingId, setHistoryOntologyEditingId] = useState<number | null>(null);
+  const [isHistoryOntologyLoading, setIsHistoryOntologyLoading] = useState(false);
+  const [isHistoryOntologySaving, setIsHistoryOntologySaving] = useState(false);
+  const [historyOntologyError, setHistoryOntologyError] = useState<string | null>(null);
   const [skillItems, setSkillItems] = useState<SkillSummary[]>([]);
   const [skillTotal, setSkillTotal] = useState(0);
   const [skillQuery, setSkillQuery] = useState("");
@@ -1619,6 +1640,35 @@ function App() {
     return () => {
       mounted = false;
     };
+  }, [activeView, apiKey]);
+
+  useEffect(() => {
+    if (!apiKey || activeView !== "historyAsk") return;
+    let cancelled = false;
+    setIsHistoryOntologyLoading(true);
+    fetchHistoryOntology(historyAskDomainCode)
+      .then((response) => {
+        if (!cancelled) {
+          setHistoryOntologyTerms(response.items);
+          setHistoryOntologyError(null);
+        }
+      })
+      .catch((error: Error) => {
+        if (!cancelled) setHistoryOntologyError(error.message);
+      })
+      .finally(() => {
+        if (!cancelled) setIsHistoryOntologyLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeView, apiKey, historyAskDomainCode]);
+
+  useEffect(() => {
+    if (!apiKey || activeView !== "historyAsk") return;
+    fetchHistoryAskDomains()
+      .then((response) => setHistoryAskDomains(response.items))
+      .catch((error: Error) => setHistoryAskError(error.message));
   }, [activeView, apiKey]);
 
   useEffect(() => {
@@ -4185,6 +4235,7 @@ function App() {
         historyAskSkillIds,
         usesConfiguredModel ? "history_ask_llm" : "codex",
         historyAskModelName === AI_CODING_DEFAULT_MODEL ? "" : historyAskModelName,
+        historyAskDomainCode,
       );
       setHistoryAskAnswer(answer);
     } catch (error) {
@@ -4514,6 +4565,53 @@ function App() {
       setHistoryAskLlmConfigError(error instanceof Error ? error.message : "LLM 配置保存失败，请稍后重试。");
     } finally {
       setIsHistoryAskLlmConfigSaving(false);
+    }
+  }
+
+  async function handleSaveHistoryOntology(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!historyOntologyDraft.name.trim() || isHistoryOntologySaving) return;
+    setIsHistoryOntologySaving(true);
+    setHistoryOntologyError(null);
+    try {
+      const saved = historyOntologyEditingId
+        ? await updateHistoryOntology(historyOntologyEditingId, historyOntologyDraft)
+        : await createHistoryOntology(historyOntologyDraft);
+      setHistoryOntologyTerms((current) =>
+        historyOntologyEditingId
+          ? current.map((item) => (item.id === saved.id ? saved : item))
+          : [saved, ...current],
+      );
+      setHistoryOntologyDraft({ ...emptyHistoryOntologyDraft, domain_code: historyAskDomainCode });
+      setHistoryOntologyEditingId(null);
+    } catch (error) {
+      setHistoryOntologyError(error instanceof Error ? error.message : "业务概念保存失败，请稍后重试。");
+    } finally {
+      setIsHistoryOntologySaving(false);
+    }
+  }
+
+  function handleEditHistoryOntology(term: HistoryOntologyTerm) {
+    setHistoryOntologyEditingId(term.id);
+    setHistoryOntologyDraft({ domain_code: term.domain_code, name: term.name, aliases: term.aliases.join("，"), description: term.description });
+    setHistoryOntologyError(null);
+  }
+
+  async function handleDeleteHistoryOntology(termId: number) {
+    if (isHistoryOntologySaving) return;
+    setIsHistoryOntologySaving(true);
+    setHistoryOntologyError(null);
+    try {
+      await deleteHistoryOntology(termId);
+      setHistoryOntologyTerms((current) => current.filter((item) => item.id !== termId));
+      if (historyOntologyEditingId === termId) {
+        setHistoryOntologyEditingId(null);
+        setHistoryOntologyDraft({ ...emptyHistoryOntologyDraft, domain_code: historyAskDomainCode });
+      }
+    } catch (error) {
+      setHistoryOntologyError(error instanceof Error ? error.message : "业务概念删除失败，请稍后重试。");
+    } finally {
+      setIsHistoryOntologySaving(false);
     }
   }
 
@@ -4931,6 +5029,14 @@ function App() {
               llmConfigDraft={historyAskLlmConfigDraft}
               llmConfigError={historyAskLlmConfigError}
               llmConfigSaved={historyAskLlmConfigSaved}
+              ontologyTerms={historyOntologyTerms}
+              ontologyDraft={historyOntologyDraft}
+              ontologyEditingId={historyOntologyEditingId}
+              ontologyError={historyOntologyError}
+              ontologyLoading={isHistoryOntologyLoading}
+              ontologySaving={isHistoryOntologySaving}
+              domainCode={historyAskDomainCode}
+              domains={historyAskDomains}
               modelName={historyAskModelName}
               modelOptions={historyAskModelOptions}
               question={historyAskQuestion}
@@ -4941,6 +5047,20 @@ function App() {
               onCopyAnswer={handleCopyHistoryAskAnswer}
               onLlmConfigDraftChange={setHistoryAskLlmConfigDraft}
               onLlmConfigSave={handleSaveHistoryAskLlmConfig}
+              onOntologyDraftChange={setHistoryOntologyDraft}
+              onOntologySave={handleSaveHistoryOntology}
+              onOntologyEdit={handleEditHistoryOntology}
+              onOntologyDelete={handleDeleteHistoryOntology}
+              onOntologyCancel={() => {
+                setHistoryOntologyEditingId(null);
+                setHistoryOntologyDraft({ ...emptyHistoryOntologyDraft, domain_code: historyAskDomainCode });
+              }}
+              onDomainChange={(code) => {
+                setHistoryAskDomainCode(code);
+                setHistoryAskAnswer(null);
+                setHistoryOntologyEditingId(null);
+                setHistoryOntologyDraft({ ...emptyHistoryOntologyDraft, domain_code: code });
+              }}
               onModelNameChange={setHistoryAskModelName}
               onOpenHistory={handleOpenHistoryFromAsk}
               onQuestionChange={setHistoryAskQuestion}
@@ -13853,6 +13973,14 @@ function HistoryAskPanel({
   llmConfigDraft,
   llmConfigError,
   llmConfigSaved,
+  ontologyTerms,
+  ontologyDraft,
+  ontologyEditingId,
+  ontologyError,
+  ontologyLoading,
+  ontologySaving,
+  domainCode,
+  domains,
   modelName,
   modelOptions,
   question,
@@ -13863,6 +13991,12 @@ function HistoryAskPanel({
   onCopyAnswer,
   onLlmConfigDraftChange,
   onLlmConfigSave,
+  onOntologyDraftChange,
+  onOntologySave,
+  onOntologyEdit,
+  onOntologyDelete,
+  onOntologyCancel,
+  onDomainChange,
   onModelNameChange,
   onOpenHistory,
   onQuestionChange,
@@ -13879,6 +14013,14 @@ function HistoryAskPanel({
   llmConfigDraft: LlmConfigDraft;
   llmConfigError: string | null;
   llmConfigSaved: boolean;
+  ontologyTerms: HistoryOntologyTerm[];
+  ontologyDraft: HistoryOntologyDraft;
+  ontologyEditingId: number | null;
+  ontologyError: string | null;
+  ontologyLoading: boolean;
+  ontologySaving: boolean;
+  domainCode: "history" | "todos";
+  domains: HistoryAskDomain[];
   modelName: string;
   modelOptions: { value: string; label: string }[];
   question: string;
@@ -13889,6 +14031,12 @@ function HistoryAskPanel({
   onCopyAnswer: (view: MarkdownContentView) => void;
   onLlmConfigDraftChange: (draft: LlmConfigDraft) => void;
   onLlmConfigSave: (event: React.FormEvent<HTMLFormElement>) => void;
+  onOntologyDraftChange: (draft: HistoryOntologyDraft) => void;
+  onOntologySave: (event: React.FormEvent<HTMLFormElement>) => void;
+  onOntologyEdit: (term: HistoryOntologyTerm) => void;
+  onOntologyDelete: (termId: number) => void;
+  onOntologyCancel: () => void;
+  onDomainChange: (code: "history" | "todos") => void;
   onModelNameChange: (modelName: string) => void;
   onOpenHistory: () => void;
   onQuestionChange: (question: string) => void;
@@ -13939,6 +14087,16 @@ function HistoryAskPanel({
                   {example}
                 </button>
               ))}
+            </div>
+            <div className="rounded-lg border border-white/10 bg-white/[0.025] p-3">
+              <Field label="业务域" icon={<Database size={16} />}>
+                <select className="control h-10" disabled={isLoading} value={domainCode} onChange={(event) => onDomainChange(event.target.value as "history" | "todos")}>
+                  {domains.map((domain) => <option key={domain.code} value={domain.code}>{domain.name}</option>)}
+                </select>
+              </Field>
+              <p className="mt-2 text-xs leading-5 text-slate-500">
+                {domains.find((domain) => domain.code === domainCode)?.description ?? "正在加载可用业务域..."}
+              </p>
             </div>
             <div className="rounded-lg border border-white/10 bg-white/[0.025] p-3">
               <Field label="执行模型" icon={<Settings2 size={16} />}>
@@ -14052,6 +14210,11 @@ function HistoryAskPanel({
                     <span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-slate-400">
                       {formatAmount(answer.stats.active_days)} 个活跃日期
                     </span>
+                    {(answer.filters.semantic_terms ?? []).map((term) => (
+                      <span key={term} className="rounded-md border border-fuchsia-300/25 bg-fuchsia-300/10 px-2 py-1 text-fuchsia-100">
+                        概念：{term}
+                      </span>
+                    ))}
                     {(answer.selected_skills ?? []).map((skill) => (
                       <span
                         key={skill.id}
@@ -14100,7 +14263,9 @@ function HistoryAskPanel({
                     </button>
                   </div>
                 </div>
-                {answerView === "rendered" ? (
+                {(answer.selected_skills ?? []).length === 0 ? (
+                  <HistoryAskDefaultResult answer={answer} />
+                ) : answerView === "rendered" ? (
                   <MarkdownPreview markdown={answer.answer} />
                 ) : (
                   <div className="whitespace-pre-wrap break-words rounded-lg border border-white/8 bg-black/15 p-4 font-mono text-xs leading-6 text-slate-300 [overflow-wrap:anywhere]">
@@ -14216,6 +14381,80 @@ function HistoryAskPanel({
             ) : null}
           </div>
 
+          <div className="mb-5 rounded-lg border border-white/10 bg-white/[0.025] p-4">
+            <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
+              <Network size={17} />
+              Semantic Layer
+            </div>
+            <h2 className="mb-2 text-lg font-semibold text-slate-50">业务概念</h2>
+            <p className="mb-3 text-xs leading-5 text-slate-500">
+              定义业务名称、别名和口径说明。提问命中别名时，系统会扩展检索并把口径提供给 AI。
+            </p>
+            <form className="space-y-2" onSubmit={onOntologySave}>
+              <input
+                className="control h-10"
+                value={ontologyDraft.name}
+                onChange={(event) => onOntologyDraftChange({ ...ontologyDraft, name: event.target.value })}
+                placeholder="概念名称，例如：中信泰富项目"
+              />
+              <input
+                className="control h-10"
+                value={ontologyDraft.aliases}
+                onChange={(event) => onOntologyDraftChange({ ...ontologyDraft, aliases: event.target.value })}
+                placeholder="别名，用逗号分隔，例如：CITIC、泰富"
+              />
+              <textarea
+                className="control min-h-20 resize-y text-sm leading-6"
+                value={ontologyDraft.description}
+                onChange={(event) => onOntologyDraftChange({ ...ontologyDraft, description: event.target.value })}
+                placeholder="业务口径，例如：包含需求、联调和上线支持，不等同于工时"
+              />
+              <div className="flex gap-2">
+                <button
+                  className="flex h-9 flex-1 items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-3 text-xs font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
+                  disabled={!ontologyDraft.name.trim() || ontologySaving}
+                  type="submit"
+                >
+                  {ontologySaving ? <Loader2 className="animate-spin" size={14} /> : <Save size={14} />}
+                  {ontologyEditingId ? "更新概念" : "添加概念"}
+                </button>
+                {ontologyEditingId ? (
+                  <button
+                    className="h-9 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-xs text-slate-300 transition hover:text-mint-200"
+                    type="button"
+                    onClick={onOntologyCancel}
+                  >
+                    取消
+                  </button>
+                ) : null}
+              </div>
+            </form>
+            {ontologyError ? <div className="mt-3 text-xs leading-5 text-red-200">{ontologyError}</div> : null}
+            <div className="mt-4 space-y-2">
+              {ontologyLoading ? (
+                <div className="flex items-center gap-2 text-xs text-slate-500"><Loader2 className="animate-spin" size={14} />正在加载概念...</div>
+              ) : ontologyTerms.length ? (
+                ontologyTerms.map((term) => (
+                  <div key={term.id} className="rounded-lg border border-white/10 bg-white/[0.028] p-2.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-medium text-slate-200">{term.name}</div>
+                        {term.aliases.length ? <div className="mt-1 text-[11px] text-sky-200">别名：{term.aliases.join("、")}</div> : null}
+                      </div>
+                      <div className="flex shrink-0 gap-1">
+                        <button className="p-1 text-slate-500 hover:text-mint-200" type="button" onClick={() => onOntologyEdit(term)} aria-label={`编辑 ${term.name}`}><Pencil size={14} /></button>
+                        <button className="p-1 text-slate-500 hover:text-red-200" type="button" onClick={() => onOntologyDelete(term.id)} aria-label={`删除 ${term.name}`}><Trash2 size={14} /></button>
+                      </div>
+                    </div>
+                    {term.description ? <p className="mt-1.5 text-xs leading-5 text-slate-500">{term.description}</p> : null}
+                  </div>
+                ))
+              ) : (
+                <div className="text-xs leading-5 text-slate-500">尚未定义业务概念。建议先添加常用项目简称、系统名称或团队术语。</div>
+              )}
+            </div>
+          </div>
+
           <div className="mb-5">
             <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
               <CircleGauge size={17} />
@@ -14248,9 +14487,9 @@ function HistoryAskPanel({
               </div>
 
               <HistoryAskFilterSummary filters={answer.filters} />
-              <HistoryAskDistribution title="类型分布" items={answer.stats.type_counts} />
-              <HistoryAskDistribution title="周期分布" items={answer.stats.week_counts} />
-              <HistoryAskDistribution title="等级分布" items={answer.stats.learn_level_counts} />
+              <HistoryAskDistribution title={(answer.domain?.code ?? "history") === "todos" ? "状态分布" : "类型分布"} items={answer.stats.type_counts} />
+              <HistoryAskDistribution title={(answer.domain?.code ?? "history") === "todos" ? "标签分布" : "周期分布"} items={answer.stats.week_counts} />
+              {(answer.domain?.code ?? "history") === "history" ? <HistoryAskDistribution title="等级分布" items={answer.stats.learn_level_counts} /> : null}
 
               <div className="space-y-3">
                 {answer.evidence.map((item) => (
@@ -14300,6 +14539,72 @@ function HistoryAskDistribution({
           <div className="text-sm text-slate-500">暂无分布数据</div>
         )}
       </div>
+    </div>
+  );
+}
+
+function HistoryAskDefaultResult({ answer }: { answer: HistoryAskResponse }) {
+  return (
+    <div className="space-y-4">
+      <div className="rounded-lg border border-mint-300/20 bg-mint-300/[0.06] p-4">
+        <div className="mb-2 flex items-center gap-2 text-sm font-medium text-mint-200">
+          <ChartLine size={16} />
+          基础查询结果
+        </div>
+        <p className="text-sm leading-6 text-slate-300">
+          本次查询匹配 <span className="font-semibold text-mint-200">{formatAmount(answer.stats.matched_count)}</span> 条记录，覆盖{" "}
+          <span className="font-semibold text-mint-200">{formatAmount(answer.stats.active_days)}</span> 个活跃日期，时间范围为{" "}
+          {formatDateOnly(answer.stats.min_date)} 至 {formatDateOnly(answer.stats.max_date)}。
+        </p>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <HistoryAskBarChart title={(answer.domain?.code ?? "history") === "todos" ? "状态分布" : "类型分布"} items={answer.stats.type_counts} tone="bg-sky-300" />
+        <HistoryAskBarChart title={(answer.domain?.code ?? "history") === "todos" ? "标签分布" : "周期分布"} items={answer.stats.week_counts} tone="bg-fuchsia-300" />
+      </div>
+      <div className="rounded-lg border border-white/10 bg-white/[0.028] p-3">
+        <div className="mb-3 text-sm font-medium text-slate-200">代表性记录</div>
+        {answer.evidence.length ? (
+          <div className="space-y-2">
+            {answer.evidence.slice(0, 5).map((item) => (
+              <div key={item.id} className="rounded-md border border-white/8 bg-black/10 px-3 py-2">
+                <div className="mb-1 flex flex-wrap gap-2 text-[11px] text-slate-500">
+                  <span>#{item.id}</span><span>{formatHistoryDate(item.history_date)}</span><span>{item.type || "未分类"}</span>
+                </div>
+                <p className="line-clamp-2 text-xs leading-5 text-slate-300">{item.content || "无内容"}</p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-sm text-slate-500">没有可展示的匹配记录。</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function HistoryAskBarChart({ title, items, tone }: { title: string; items: Record<string, number>; tone: string }) {
+  const entries = Object.entries(items).slice(0, 8);
+  const max = Math.max(1, ...entries.map(([, value]) => value));
+  return (
+    <div className="rounded-lg border border-white/10 bg-white/[0.028] p-3">
+      <div className="mb-3 text-sm font-medium text-slate-200">{title}</div>
+      {entries.length ? (
+        <div className="space-y-2.5">
+          {entries.map(([label, value]) => (
+            <div key={label} className="grid grid-cols-[minmax(0,1fr)_34px] items-center gap-2 text-xs">
+              <div className="min-w-0">
+                <div className="mb-1 truncate text-slate-400">{label}</div>
+                <div className="h-2 overflow-hidden rounded-full bg-white/8">
+                  <div className={`h-full rounded-full ${tone}`} style={{ width: `${Math.max(6, (value / max) * 100)}%` }} />
+                </div>
+              </div>
+              <span className="text-right text-slate-200">{formatAmount(value)}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="text-sm text-slate-500">暂无分布数据</div>
+      )}
     </div>
   );
 }

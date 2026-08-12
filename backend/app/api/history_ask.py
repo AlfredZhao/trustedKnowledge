@@ -11,11 +11,21 @@ from app.repositories.llm_config import (
     get_history_ask_llm_config,
     update_history_ask_llm_config,
 )
-from app.schemas.history_ask import HistoryAskRequest, HistoryAskResponse
+from app.schemas.history_ask import HistoryAskDomain, HistoryAskDomainListResponse, HistoryAskRequest, HistoryAskResponse
 from app.schemas.llm_config import LlmConfigResponse, LlmConfigUpdate
 
 
 router = APIRouter(prefix="/history-ask", tags=["history-ask"], dependencies=[Depends(require_api_key)])
+
+DOMAINS = [
+    HistoryAskDomain(code="history", name="历史工作记录", description="基于 T_HISTORY 的工作记录、类型、周期和学习等级。"),
+    HistoryAskDomain(code="todos", name="待办事项", description="基于待办标题、内容、状态、标签和来源。"),
+]
+
+
+@router.get("/domains", response_model=HistoryAskDomainListResponse)
+async def get_history_ask_domains() -> HistoryAskDomainListResponse:
+    return HistoryAskDomainListResponse(items=DOMAINS)
 
 
 @router.get("/llm-config", response_model=LlmConfigResponse)
@@ -64,6 +74,7 @@ async def post_history_ask(
             skill_ids=payload.skill_ids,
             execution_provider=payload.execution_provider,
             model_name=payload.model_name,
+            domain_code=payload.domain_code,
             auth_context=auth_context,
         )
     except oracledb.Error as exc:
