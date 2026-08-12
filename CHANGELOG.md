@@ -48,6 +48,15 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Changed / 变更
 
+- Simplified AI Coding's model area to retain only the execution-model selector. The redundant current CLI-default card and its automatic configuration refresh have been removed.
+- 精简 AI 编程的模型区域，仅保留执行模型选择器；移除重复的当前 CLI 默认模型卡片及其自动配置读取。
+
+- Changed AI Coding model information to a compact two-line layout, merged the default-model loading state into that area, and added a configuration refresh action.
+- 调整 AI 编程模型信息为两行紧凑展示，并将默认模型读取状态合并到该区域；新增模型配置刷新操作。
+
+- Changed the AI 问数 English heading from `Ask History` to `Ask Data` to reflect its multi-domain data-query capability.
+- 将 AI 问数英文标题从 `Ask History` 调整为 `Ask Data`，与当前多业务域问数能力保持一致。
+
 - Changed the AI 问数 workspace to prioritize asking and results: Skill selection, model configuration, and ontology maintenance now default to compact collapsed states; the right rail shows only a concise query summary after execution; SQL and prompt controls are grouped under `审计`; and the empty state now follows the selected business domain.
 - 调整 AI 问数工作区的主次关系：Skill 选择、模型配置和本体维护默认以紧凑折叠状态呈现；执行后右侧仅展示查询摘要；SQL 与提示词操作归入“审计”；空状态文案会跟随当前业务域。
 
@@ -70,6 +79,12 @@ The format follows the common GitHub changelog convention inspired by
 - 调整“编辑可信知识”和“编辑待办事项”共用的 Markdown 工具栏：`Markdown` 标识单独占一行，全部格式化操作显示在下一行。
 
 #### Fixed / 修复
+
+- Fixed AI 编程的 Codex 配置读取请求 so it times out after 6 seconds instead of leaving the loading message visible indefinitely; the UI falls back to its built-in model list and shows the retry control.
+- 修复 AI 编程 Codex 配置读取：请求将在 6 秒后超时收敛，不再无限显示加载提示；界面会回退到内置模型列表并提供重试入口。
+
+- Fixed AI 问数的业务记录跳转：不再总是跳转到历史查询。待办、可信知识和英语素材现在会分别打开对应模块，并仅带入该模块支持的筛选条件。
+- 修复 AI 问数业务记录跳转：不再无条件跳转到历史记录查询；待办、可信知识和英语素材会分别打开对应模块，并仅带入其支持的筛选条件。
 
 - Fixed AI 问数 ontology migration SQL so default values for visibility and shared-user JSON are correctly escaped inside Oracle dynamic DDL; existing ontology tables can now be upgraded without `ORA-06550` / `PLS-00103`.
 - 修复 AI 问数本体迁移 SQL：可见范围和共享用户 JSON 的默认值现在会在 Oracle 动态 DDL 中正确转义，已有本体表升级不再出现 `ORA-06550` / `PLS-00103`。

@@ -116,8 +116,8 @@ const graphNodes: GraphNode[] = [
   {
     id: "historyAsk",
     label: "AI 问数",
-    subtitle: "Ask History",
-    description: "基于历史记录进行自然语言问答，并展示筛选条件、统计和证据。",
+    subtitle: "Ask Data",
+    description: "基于受控业务域进行自然语言问答，并展示筛选条件、统计和证据。",
     group: "ai",
     x: 805,
     y: 425,

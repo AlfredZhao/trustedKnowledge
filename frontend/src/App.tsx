@@ -1031,8 +1031,7 @@ function App() {
 
   // Loading, polling, cache hydration, and persistence effects.
   useEffect(() => {
-    if (!apiKey || (activeView !== "aiCoding" && activeView !== "factory" && activeView !== "historyAsk")) return;
-    if (activeView === "aiCoding" && !canAccessAiCoding) return;
+    if (!apiKey || (activeView !== "factory" && activeView !== "historyAsk")) return;
     if (isCodexConfigLoading || codexConfig) return;
 
     let cancelled = false;
@@ -1063,7 +1062,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [activeView, apiKey, canAccessAiCoding, codexConfig, isCodexConfigLoading]);
+  }, [activeView, apiKey, codexConfig, isCodexConfigLoading]);
 
   useEffect(() => {
     if (!isMobileViewport()) return;
@@ -4697,6 +4696,45 @@ function App() {
 
     const keyword = historyAskAnswer.filters.keyword ?? "";
     const username = historyAskAnswer.filters.username ?? "";
+    const domainCode = historyAskAnswer.domain.code;
+
+    if (domainCode === "todos") {
+      setTodoPage(1);
+      setTodoQuery(keyword);
+      setTodoUsername(username);
+      setTodoStatus(
+        historyAskAnswer.filters.type === "待处理" || historyAskAnswer.filters.type === "处理中" || historyAskAnswer.filters.type === "已完成"
+          ? historyAskAnswer.filters.type
+          : "all",
+      );
+      setActiveView("todos");
+      return;
+    }
+
+    if (domainCode === "knowledge") {
+      setPage(1);
+      setQuery(keyword);
+      setWorkbenchUsername(username);
+      setStatusFilter(
+        historyAskAnswer.filters.type === "未发布" || historyAskAnswer.filters.type === "已发布" || historyAskAnswer.filters.type === "跳过"
+          ? historyAskAnswer.filters.type
+          : "all",
+      );
+      setActiveView("workbench");
+      return;
+    }
+
+    if (domainCode === "english_materials") {
+      setEnglishMaterialPage(1);
+      setEnglishMaterialQuery(keyword);
+      setEnglishMaterialUsername(username);
+      setEnglishMaterialFlag(
+        historyAskAnswer.filters.type === "已标记" ? "1" : historyAskAnswer.filters.type === "未标记" ? "0" : "",
+      );
+      setActiveView("englishMaterials");
+      return;
+    }
+
     setHistoryPage(1);
     setHistoryQuery(keyword);
     setHistoryUsername(username);
@@ -4908,7 +4946,7 @@ function App() {
               : activeView === "skills"
                 ? "Skill Registry"
               : activeView === "historyAsk"
-                ? "Ask History"
+                ? "Ask Data"
                 : activeView === "aiCoding"
                   ? "Codex Workspace"
               : "AI Usage";
@@ -5164,13 +5202,10 @@ function App() {
           ) : activeView === "aiCoding" ? (
             <Suspense fallback={lazyViewFallback}>
               <AiCodingWorkspace
-                codexConfig={codexConfig}
-                codexConfigError={codexConfigError}
                 codexError={codexError}
                 changelogRefreshToken={projectChangelogRefreshToken}
                 githubSyncError={githubSyncError}
                 githubSyncStatus={githubSyncStatus}
-                isCodexConfigLoading={isCodexConfigLoading}
                 isCodexRunning={isCodexRunning}
                 isGithubSyncing={isGithubSyncing}
                 isRestartingServices={isRestartingServices}
@@ -14180,6 +14215,7 @@ function HistoryAskPanel({
   };
   const examples = quickQuestions.length ? quickQuestions.map((item) => item.question) : examplesByDomain[domainCode];
   const selectedDomain = domains.find((domain) => domain.code === domainCode);
+  const recordDestinationLabel = answer?.domain.code === "todos" ? "查看待办事项" : answer?.domain.code === "knowledge" ? "查看可信知识" : answer?.domain.code === "english_materials" ? "查看英语素材" : "查看历史记录";
 
   useEffect(() => {
     setIsQuickQuestionManagerOpen(false);
@@ -14195,7 +14231,7 @@ function HistoryAskPanel({
             <div>
               <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
                 <Bot size={17} />
-                Ask History
+                Ask Data
               </div>
               <h2 className="text-xl font-semibold text-slate-50">自然语言问数</h2>
             </div>
@@ -14464,8 +14500,8 @@ function HistoryAskPanel({
                       type="button"
                       onClick={onOpenHistory}
                     >
-                      <History size={15} />
-                      查看记录
+                      <Database size={15} />
+                      {recordDestinationLabel}
                     </button>
                   </div>
                 </div>

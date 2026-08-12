@@ -13,7 +13,10 @@ export async function runCodex(prompt: string): Promise<CodexRunResponse> {
 }
 
 export async function fetchCodexConfig(): Promise<CodexConfig> {
-  return request<CodexConfig>("/api/codex/config");
+  return request<CodexConfig>("/api/codex/config", {
+    timeoutMs: 6000,
+    timeoutErrorMessage: "读取 Codex 默认模型配置超时，已改用内置模型列表。",
+  });
 }
 
 export async function fetchProjectChangelog(): Promise<ProjectChangelog> {

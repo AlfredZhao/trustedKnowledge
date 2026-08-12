@@ -18,7 +18,7 @@ import {
 import { Field } from "../components/AppShellPrimitives";
 import { MarkdownPreview } from "../components/MarkdownPreview";
 import { fetchProjectChangelog } from "../api/codex";
-import type { CodexConfig, GithubSyncResponse, ProjectChangelog, SystemRestartResponse } from "../types";
+import type { GithubSyncResponse, ProjectChangelog, SystemRestartResponse } from "../types";
 import {
   buildCodexKnowledgeDraft,
   extractCodexResultText,
@@ -26,16 +26,13 @@ import {
   getCodexCompletionSummary,
   type AiCodingMessage,
 } from "../utils/appUtils";
-import { AI_CODING_DEFAULT_MODEL, buildAiCodingModelOptions, formatAiCodingModelLabel } from "./aiCodingShared";
+import { buildAiCodingModelOptions, formatAiCodingModelLabel } from "./aiCodingShared";
 
 export default function AiCodingWorkspace({
-  codexConfig,
-  codexConfigError,
   codexError,
   changelogRefreshToken,
   githubSyncError,
   githubSyncStatus,
-  isCodexConfigLoading,
   isCodexRunning,
   isGithubSyncing,
   isRestartingServices,
@@ -61,13 +58,10 @@ export default function AiCodingWorkspace({
   onSyncCodeToGithub,
   onSubmit,
 }: {
-  codexConfig: CodexConfig | null;
-  codexConfigError: string | null;
   codexError: string | null;
   changelogRefreshToken: number;
   githubSyncError: string | null;
   githubSyncStatus: GithubSyncResponse | null;
-  isCodexConfigLoading: boolean;
   isCodexRunning: boolean;
   isGithubSyncing: boolean;
   isRestartingServices: boolean;
@@ -98,11 +92,7 @@ export default function AiCodingWorkspace({
   const canRestart = restartConfirm === "RESTART" && !isRestartingServices;
   const latestMessage = messages[0];
   const visibleLatestMessage = latestMessage?.archivedKnowledgeId || latestMessage?.isDisplayCleared ? null : latestMessage;
-  const modelOptions = useMemo(() => buildAiCodingModelOptions(codexConfig), [codexConfig]);
-  const selectedModelLabel = formatAiCodingModelLabel(
-    modelName === AI_CODING_DEFAULT_MODEL ? null : modelName,
-    codexConfig?.default_model_name,
-  );
+  const modelOptions = useMemo(() => buildAiCodingModelOptions(null), []);
   const [projectChangelog, setProjectChangelog] = useState<ProjectChangelog | null>(null);
   const [projectChangelogError, setProjectChangelogError] = useState<string | null>(null);
   const [isProjectChangelogLoading, setIsProjectChangelogLoading] = useState(true);
@@ -135,7 +125,7 @@ export default function AiCodingWorkspace({
           </div>
 
           <form className="space-y-4" onSubmit={onSubmit}>
-            <div className="grid gap-3 lg:grid-cols-[minmax(0,220px)_minmax(0,1fr)]">
+            <div className="max-w-xs">
               <Field label="执行模型" icon={<Settings2 size={16} />}>
                 <select
                   className="control h-10"
@@ -150,15 +140,6 @@ export default function AiCodingWorkspace({
                   ))}
                 </select>
               </Field>
-              <div className="rounded-lg border border-white/10 bg-white/[0.028] px-3 py-3 text-sm leading-6 text-slate-400">
-                <div className="mb-1 text-xs uppercase tracking-[0.18em] text-slate-500">Current Model</div>
-                <div className="font-medium text-slate-100">{selectedModelLabel}</div>
-                <div className="mt-1 text-xs text-slate-500">
-                  {modelName === AI_CODING_DEFAULT_MODEL
-                    ? "不强制指定 --model，沿用服务端 Codex CLI 当前默认模型。"
-                    : "本次任务会显式传给 Codex CLI 的 --model。"}
-                </div>
-              </div>
             </div>
             <textarea
               className="control min-h-[170px] resize-none leading-7"
@@ -182,16 +163,6 @@ export default function AiCodingWorkspace({
               </button>
             </div>
           </form>
-
-          {isCodexConfigLoading ? (
-            <div className="mt-4 rounded-lg border border-white/10 bg-white/[0.025] px-3 py-3 text-sm text-slate-400">
-              正在读取 Codex 默认模型配置...
-            </div>
-          ) : null}
-
-          {codexConfigError ? (
-            <ErrorNotice message={codexConfigError} tone="warning" />
-          ) : null}
 
           {codexError ? <ErrorNotice message={codexError} tone="danger" /> : null}
           {archiveError ? <ErrorNotice message={archiveError} tone="danger" /> : null}
@@ -223,7 +194,7 @@ export default function AiCodingWorkspace({
               </div>
             ) : (
               <AiCodingMessageCard
-                defaultModelName={codexConfig?.default_model_name ?? null}
+                defaultModelName={null}
                 archiveLoadingId={archiveLoadingId}
                 message={visibleLatestMessage}
                 onArchiveMessage={onArchiveMessage}
