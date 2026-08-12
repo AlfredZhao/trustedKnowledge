@@ -270,3 +270,25 @@ Do not update the original source knowledge in place for this workflow.
 ### Guardrail
 
 `backend/tests/test_conversions.py` covers `send_blog_factory_item_to_processing()` inserting into `ai_qa_lib` with the factory row's `user_id`, using the current task draft as the new knowledge answer, marking the factory task as `跳过`, and refusing non-`待处理` tasks.
+
+## LLM Usage Ready Time Must Equal Reset Time
+
+### Symptom
+
+When the current-cycle budget was exhausted, `NEXT_CYCLE_READY` appeared one hour later than `NEXT_RESET_AT`.
+
+### Trigger
+
+View `LLM 使用情况` with `remaining_budget = 0` and a valid `next_reset_at` value.
+
+### Root Cause
+
+The frontend correctly parsed the reset value as UTC and displayed it in `Asia/Shanghai` (UTC+8), but then added an unrelated one-hour ready-time buffer.
+
+### Safe Pattern
+
+Treat `NEXT_RESET_AT` as the exact availability time. `getResetReadyAt()` may validate the value but must not add a delay or apply another timezone conversion.
+
+### Guardrail
+
+For a reset timestamp such as `2026-08-12T00:00:00Z`, verify both `NEXT_RESET_AT` and `NEXT_CYCLE_READY` render as `08-12 08:00` in Shanghai time and have the same countdown.

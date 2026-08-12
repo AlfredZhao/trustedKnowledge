@@ -40,7 +40,6 @@ import type {
 } from "../types";
 import { removeLeakedMarkdownCodePlaceholders } from "./markdown";
 
-const RESET_READY_DELAY_MS = 60 * 60 * 1000;
 export const NEW_KNOWLEDGE_DRAFT_STORAGE_KEY = "trustedKnowledge.newDraft";
 const UI_STATE_STORAGE_KEY = "trustedKnowledge.uiState.v1";
 export type AiCodingNoticeStatus = "running" | "completed" | "failed";
@@ -694,7 +693,7 @@ export function parseUtcDate(value: string | null) {
 
 export function getResetReadyAt(resetAt: Date | null) {
   if (!resetAt || Number.isNaN(resetAt.getTime())) return null;
-  return new Date(resetAt.getTime() + RESET_READY_DELAY_MS);
+  return resetAt;
 }
 
 export function collapseStableUsageSamples(items: LlmUsageSample[]): UsageChangeItem[] {

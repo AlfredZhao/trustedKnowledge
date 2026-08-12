@@ -47,6 +47,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Fixed / 修复
 
+- Fixed LLM Usage `NEXT_CYCLE_READY` so an exhausted cycle becomes available exactly at `NEXT_RESET_AT`, without an extra one-hour delay after UTC+8 display conversion.
+- 修复 LLM 使用情况的 `NEXT_CYCLE_READY`：额度耗尽后会在 `NEXT_RESET_AT` 的准确时刻恢复可用，不再在 UTC+8 展示换算后额外延迟 1 小时。
+
 - Fixed shared Markdown rendering so level-four headings written as `####` are recognized and styled instead of being displayed as literal hash characters.
 - 修复共用 Markdown 渲染：`####` 四级标题现在会被识别并按标题样式展示，不再直接显示井号字符。
 
