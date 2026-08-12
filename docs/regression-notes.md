@@ -271,6 +271,28 @@ Do not update the original source knowledge in place for this workflow.
 
 `backend/tests/test_conversions.py` covers `send_blog_factory_item_to_processing()` inserting into `ai_qa_lib` with the factory row's `user_id`, using the current task draft as the new knowledge answer, marking the factory task as `跳过`, and refusing non-`待处理` tasks.
 
+## Oracle Dynamic DDL Defaults Must Escape Nested Quotes
+
+### Symptom
+
+Opening AI 问数业务概念 failed with `ORA-06550` / `PLS-00103` mentioning `PERSONAL`.
+
+### Trigger
+
+The ontology table already exists and the application attempts to add the newer `visibility` or `shared_with_json` columns.
+
+### Root Cause
+
+The migration used `execute immediate '...'` but embedded the default literals as single-quoted values. Oracle ended the dynamic SQL string before `PERSONAL` or `[]`.
+
+### Safe Pattern
+
+Within an Oracle dynamic SQL string, escape every literal quote again: use `default ''PERSONAL''` and `default ''[]''` in the PL/SQL source so the executed DDL receives `default 'PERSONAL'` and `default '[]'`.
+
+### Guardrail
+
+Review every `execute immediate` statement that contains text defaults. Existing-table migrations must be exercised, not just the fresh-table `create table` path.
+
 ## LLM Usage Ready Time Must Equal Reset Time
 
 ### Symptom

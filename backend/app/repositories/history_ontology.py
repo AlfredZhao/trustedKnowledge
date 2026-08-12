@@ -51,8 +51,8 @@ async def ensure_history_ontology_table(connection: oracledb.AsyncConnection) ->
         """
     )
     for column in (
-        "visibility varchar2(20) default 'PERSONAL' not null",
-        "shared_with_json varchar2(2000) default '[]' not null",
+        "visibility varchar2(20) default ''PERSONAL'' not null",
+        "shared_with_json varchar2(2000) default ''[]'' not null",
     ):
         await cursor.execute(
             f"""

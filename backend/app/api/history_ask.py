@@ -18,8 +18,8 @@ from app.schemas.llm_config import LlmConfigResponse, LlmConfigUpdate
 router = APIRouter(prefix="/history-ask", tags=["history-ask"], dependencies=[Depends(require_api_key)])
 
 DOMAINS = [
-    HistoryAskDomain(code="history", name="历史工作记录", description="基于 T_HISTORY 的工作记录、类型、周期和学习等级。"),
-    HistoryAskDomain(code="todos", name="待办事项", description="基于待办标题、内容、状态、标签和来源。"),
+    HistoryAskDomain(code="history", name="历史工作记录", description="基于工作记录、类型、周期和学习等级。", source_tables=["T_HISTORY", "TK_USERS"]),
+    HistoryAskDomain(code="todos", name="待办事项", description="基于待办标题、内容、状态、标签和来源。", source_tables=["AI_TODO_ITEMS", "TK_USERS"]),
 ]
 
 

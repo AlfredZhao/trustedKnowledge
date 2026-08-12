@@ -384,6 +384,7 @@ export interface HistoryAskDomain {
   code: "history" | "todos";
   name: string;
   description: string;
+  source_tables: string[];
 }
 
 export interface HistoryOntologyTerm {

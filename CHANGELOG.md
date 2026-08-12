@@ -13,6 +13,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Added / 新增
 
+- Added controlled source-table labels beneath the AI 问数 business-domain selector so users can see the read-only data sources used by each domain.
+- 在 AI 问数业务域选择框下新增受控来源表说明，让用户可查看每个业务域使用的只读数据源。
+
 - Added a `清空当前展示` action to completed AI Coding tasks. It hides the current task card without creating a trusted-knowledge archive.
 - 为已完成的 AI 编程任务新增“清空当前展示”操作：仅隐藏当前任务卡片，不会创建可信知识归档。
 
@@ -36,6 +39,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Changed / 变更
 
+- Changed AI 问数 so its execution-model selector defaults to `CLI 默认` instead of the configured OpenAI-compatible model.
+- 调整 AI 问数执行模型选择器：默认值改为 `CLI 默认`，不再默认使用已配置的 OpenAI-compatible 模型。
+
 - Changed Overview and AI Usage budget displays to show amounts with a `$` prefix; the Overview summary now explicitly shows used and remaining amounts.
 - 调整总览和 AI 用量的预算展示：金额统一以 `$` 前缀标识美元，总览摘要明确显示“已使用”和“剩余”。
 
@@ -46,6 +52,9 @@ The format follows the common GitHub changelog convention inspired by
 - 调整“编辑可信知识”和“编辑待办事项”共用的 Markdown 工具栏：`Markdown` 标识单独占一行，全部格式化操作显示在下一行。
 
 #### Fixed / 修复
+
+- Fixed AI 问数 ontology migration SQL so default values for visibility and shared-user JSON are correctly escaped inside Oracle dynamic DDL; existing ontology tables can now be upgraded without `ORA-06550` / `PLS-00103`.
+- 修复 AI 问数本体迁移 SQL：可见范围和共享用户 JSON 的默认值现在会在 Oracle 动态 DDL 中正确转义，已有本体表升级不再出现 `ORA-06550` / `PLS-00103`。
 
 - Fixed LLM Usage `NEXT_CYCLE_READY` so an exhausted cycle becomes available exactly at `NEXT_RESET_AT`, without an extra one-hour delay after UTC+8 display conversion.
 - 修复 LLM 使用情况的 `NEXT_CYCLE_READY`：额度耗尽后会在 `NEXT_RESET_AT` 的准确时刻恢复可用，不再在 UTC+8 展示换算后额外延迟 1 小时。

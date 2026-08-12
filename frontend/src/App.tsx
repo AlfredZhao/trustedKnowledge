@@ -865,7 +865,7 @@ function App() {
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [historyAskQuestion, setHistoryAskQuestion] = useState(restoredUiState.historyAsk.question);
-  const [historyAskModelName, setHistoryAskModelName] = useState(HISTORY_ASK_CONFIGURED_MODEL);
+  const [historyAskModelName, setHistoryAskModelName] = useState(AI_CODING_DEFAULT_MODEL);
   const [historyAskAnswer, setHistoryAskAnswer] = useState<HistoryAskResponse | null>(restoredUiState.historyAsk.answer);
   const [historyAskError, setHistoryAskError] = useState<string | null>(null);
   const [hasCopiedHistoryAskAnswer, setHasCopiedHistoryAskAnswer] = useState(false);
@@ -14112,6 +14112,11 @@ function HistoryAskPanel({
               <p className="mt-2 text-xs leading-5 text-slate-500">
                 {domains.find((domain) => domain.code === domainCode)?.description ?? "正在加载可用业务域..."}
               </p>
+              {domains.find((domain) => domain.code === domainCode)?.source_tables.length ? (
+                <div className="mt-2 text-xs leading-5 text-slate-500">
+                  数据来源（受控只读）：{domains.find((domain) => domain.code === domainCode)?.source_tables.join("、")}
+                </div>
+              ) : null}
             </div>
             <div className="rounded-lg border border-white/10 bg-white/[0.025] p-3">
               <Field label="执行模型" icon={<Settings2 size={16} />}>

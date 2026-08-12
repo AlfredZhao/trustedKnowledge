@@ -793,7 +793,7 @@ async def ask_history(
             {"id": item["id"], "name": item["name"], "description": item.get("description", "")}
             for item in selected_skills
         ],
-        "domain": {"code": "history", "name": "历史工作记录", "description": "基于 T_HISTORY 的工作记录、类型、周期和学习等级。"},
+        "domain": {"code": "history", "name": "历史工作记录", "description": "基于工作记录、类型、周期和学习等级。", "source_tables": ["T_HISTORY", "TK_USERS"]},
     }
 
 
@@ -952,7 +952,7 @@ async def _ask_todos(
         "llm_used": llm_used,
         "warning": warning,
         "selected_skills": [{"id": item["id"], "name": item["name"], "description": item.get("description", "")} for item in selected_skills],
-        "domain": {"code": "todos", "name": "待办事项", "description": "基于待办标题、内容、状态、标签和来源。"},
+        "domain": {"code": "todos", "name": "待办事项", "description": "基于待办标题、内容、状态、标签和来源。", "source_tables": ["AI_TODO_ITEMS", "TK_USERS"]},
     }
 
 

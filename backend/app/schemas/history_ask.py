@@ -17,6 +17,7 @@ class HistoryAskDomain(BaseModel):
     code: Literal["history", "todos"]
     name: str
     description: str
+    source_tables: list[str] = Field(default_factory=list)
 
 
 class HistoryAskDomainListResponse(BaseModel):
