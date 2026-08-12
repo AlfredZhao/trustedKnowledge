@@ -117,7 +117,7 @@ export function markdownToHtml(markdown: string) {
       continue;
     }
 
-    const heading = line.match(/^(#{1,3})\s+(.+)$/);
+    const heading = line.match(/^(#{1,4})\s+(.+)$/);
     if (heading) {
       flushParagraph();
       flushList();

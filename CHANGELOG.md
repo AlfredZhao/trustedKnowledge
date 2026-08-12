@@ -44,6 +44,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Fixed / 修复
 
+- Fixed shared Markdown rendering so level-four headings written as `####` are recognized and styled instead of being displayed as literal hash characters.
+- 修复共用 Markdown 渲染：`####` 四级标题现在会被识别并按标题样式展示，不再直接显示井号字符。
+
 ### [0.3.7] - 2026-08-11
 
 #### Added / 新增
