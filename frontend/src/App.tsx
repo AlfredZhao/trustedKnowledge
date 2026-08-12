@@ -14059,6 +14059,8 @@ function HistoryAskPanel({
   onToggleSkill: (skillId: string) => void;
 }) {
   const [answerView, setAnswerView] = useState<MarkdownContentView>("rendered");
+  const [showQuerySql, setShowQuerySql] = useState(false);
+  const [showPrompt, setShowPrompt] = useState(false);
   const canSubmit = question.trim().length >= 2 && !isLoading;
   const canSaveLlmConfig =
     !isLlmConfigSaving &&
@@ -14274,6 +14276,30 @@ function HistoryAskPanel({
                       {hasCopiedAnswer ? "已复制" : answerView === "rendered" ? "复制美化" : "复制裸文本"}
                     </button>
                     <button
+                      className={`flex h-9 items-center gap-2 rounded-lg border px-3 text-xs transition ${
+                        showQuerySql
+                          ? "border-mint-300/30 bg-mint-300/10 text-mint-200"
+                          : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-mint-300/30 hover:text-mint-200"
+                      }`}
+                      type="button"
+                      onClick={() => setShowQuerySql((visible) => !visible)}
+                    >
+                      <Code2 size={15} />
+                      {showQuerySql ? "隐藏 SQL" : "显示 SQL"}
+                    </button>
+                    <button
+                      className={`flex h-9 items-center gap-2 rounded-lg border px-3 text-xs transition ${
+                        showPrompt
+                          ? "border-mint-300/30 bg-mint-300/10 text-mint-200"
+                          : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-mint-300/30 hover:text-mint-200"
+                      }`}
+                      type="button"
+                      onClick={() => setShowPrompt((visible) => !visible)}
+                    >
+                      <Bot size={15} />
+                      {showPrompt ? "隐藏提示词" : "显示提示词"}
+                    </button>
+                    <button
                       className="flex h-9 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-xs text-slate-300 transition hover:border-mint-300/30 hover:text-mint-200"
                       type="button"
                       onClick={onOpenHistory}
@@ -14283,6 +14309,8 @@ function HistoryAskPanel({
                     </button>
                   </div>
                 </div>
+                {showQuerySql ? <HistoryAskQueryAudit queryDebug={answer.query_debug} /> : null}
+                {showPrompt ? <HistoryAskPromptAudit promptDebug={answer.prompt_debug} /> : null}
                 {(answer.selected_skills ?? []).length === 0 ? (
                   <HistoryAskDefaultResult answer={answer} />
                 ) : answerView === "rendered" ? (
@@ -14585,7 +14613,78 @@ function HistoryAskDistribution({
   );
 }
 
+function HistoryAskQueryAudit({ queryDebug }: { queryDebug: HistoryAskResponse["query_debug"] }) {
+  const parameters = Object.entries(queryDebug.parameters ?? {});
+  return (
+    <div className="rounded-lg border border-sky-300/20 bg-sky-300/[0.05] p-4">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-sm font-medium text-sky-100">
+          <Code2 size={16} />
+          本次执行 SQL（只读）
+        </div>
+        <span className="text-xs text-slate-500">固定查询模板，绑定参数已脱敏</span>
+      </div>
+      <pre className="max-h-80 overflow-auto rounded-md border border-white/10 bg-black/20 p-3 text-xs leading-5 text-slate-200 [overflow-wrap:anywhere]">
+        {queryDebug.sql}
+      </pre>
+      <div className="mt-3">
+        <div className="mb-2 text-xs font-medium text-slate-400">绑定参数</div>
+        {parameters.length ? (
+          <div className="flex flex-wrap gap-2">
+            {parameters.map(([name, value]) => (
+              <span key={name} className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 font-mono text-[11px] text-slate-300">
+                {name} = {value}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <div className="text-xs text-slate-500">本次未使用筛选参数。</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function HistoryAskPromptAudit({ promptDebug }: { promptDebug: HistoryAskResponse["prompt_debug"] }) {
+  return (
+    <div className="rounded-lg border border-fuchsia-300/20 bg-fuchsia-300/[0.05] p-4">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-sm font-medium text-fuchsia-100">
+          <Bot size={16} />
+          本次生成提示词
+        </div>
+        <span className="text-xs text-slate-500">
+          {promptDebug.llm_requested ? "本次已请求 LLM" : "本次未请求 LLM，展示查询解析上下文"}
+        </span>
+      </div>
+      <div className="space-y-3">
+        <div>
+          <div className="mb-1 text-xs font-medium text-slate-400">系统提示词</div>
+          <pre className="max-h-48 overflow-auto rounded-md border border-white/10 bg-black/20 p-3 text-xs leading-5 text-slate-200 [overflow-wrap:anywhere]">
+            {promptDebug.system}
+          </pre>
+        </div>
+        <div>
+          <div className="mb-1 text-xs font-medium text-slate-400">查询上下文（含命中的业务概念和 Skill）</div>
+          <pre className="max-h-80 overflow-auto rounded-md border border-white/10 bg-black/20 p-3 text-xs leading-5 text-slate-200 [overflow-wrap:anywhere]">
+            {promptDebug.prompt}
+          </pre>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function HistoryAskDefaultResult({ answer }: { answer: HistoryAskResponse }) {
+  const pageSize = 10;
+  const records = answer.query_results ?? answer.evidence;
+  const [page, setPage] = useState(1);
+  const totalPages = Math.max(1, Math.ceil(records.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const currentRecords = records.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
+  useEffect(() => setPage(1), [answer]);
+
   return (
     <div className="space-y-4">
       <div className="rounded-lg border border-mint-300/20 bg-mint-300/[0.06] p-4">
@@ -14604,17 +14703,45 @@ function HistoryAskDefaultResult({ answer }: { answer: HistoryAskResponse }) {
         <HistoryAskBarChart title={(answer.domain?.code ?? "history") === "todos" ? "标签分布" : "周期分布"} items={answer.stats.week_counts} tone="bg-fuchsia-300" />
       </div>
       <div className="rounded-lg border border-white/10 bg-white/[0.028] p-3">
-        <div className="mb-3 text-sm font-medium text-slate-200">代表性记录</div>
-        {answer.evidence.length ? (
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="text-sm font-medium text-slate-200">查询记录</div>
+          <div className="text-xs text-slate-500">
+            当前展示 {records.length} 条{answer.query_debug.result_truncated ? `（最多 ${answer.query_debug.result_limit} 条）` : ""}
+          </div>
+        </div>
+        {records.length ? (
           <div className="space-y-2">
-            {answer.evidence.slice(0, 5).map((item) => (
+            {currentRecords.map((item) => (
               <div key={item.id} className="rounded-md border border-white/8 bg-black/10 px-3 py-2">
                 <div className="mb-1 flex flex-wrap gap-2 text-[11px] text-slate-500">
                   <span>#{item.id}</span><span>{formatHistoryDate(item.history_date)}</span><span>{item.type || "未分类"}</span>
                 </div>
-                <p className="line-clamp-2 text-xs leading-5 text-slate-300">{item.content || "无内容"}</p>
+                <p className="whitespace-pre-wrap break-words text-xs leading-5 text-slate-300">{item.content || "无内容"}</p>
               </div>
             ))}
+            {totalPages > 1 ? (
+              <div className="flex items-center justify-between gap-3 pt-2 text-xs text-slate-400">
+                <span>第 {currentPage} / {totalPages} 页</span>
+                <div className="flex gap-2">
+                  <button
+                    className="rounded-md border border-white/10 px-2 py-1 transition hover:border-mint-300/30 disabled:cursor-not-allowed disabled:opacity-40"
+                    disabled={currentPage <= 1}
+                    type="button"
+                    onClick={() => setPage((value) => Math.max(1, value - 1))}
+                  >
+                    上一页
+                  </button>
+                  <button
+                    className="rounded-md border border-white/10 px-2 py-1 transition hover:border-mint-300/30 disabled:cursor-not-allowed disabled:opacity-40"
+                    disabled={currentPage >= totalPages}
+                    type="button"
+                    onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
+                  >
+                    下一页
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </div>
         ) : (
           <div className="text-sm text-slate-500">没有可展示的匹配记录。</div>

@@ -59,11 +59,31 @@ class HistoryAskEvidence(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class HistoryAskQueryDebug(BaseModel):
+    """Read-only audit data for the fixed evidence query executed by the server."""
+
+    sql: str
+    parameters: dict[str, str] = Field(default_factory=dict)
+    result_limit: int
+    result_truncated: bool
+
+
+class HistoryAskPromptDebug(BaseModel):
+    """Prompt audit data, returned for adjustment and troubleshooting only."""
+
+    system: str
+    prompt: str
+    llm_requested: bool
+
+
 class HistoryAskResponse(BaseModel):
     answer: str
     filters: HistoryAskFilters
     stats: HistoryAskStats
     evidence: list[HistoryAskEvidence]
+    query_results: list[HistoryAskEvidence] = Field(default_factory=list)
+    query_debug: HistoryAskQueryDebug
+    prompt_debug: HistoryAskPromptDebug
     llm_used: bool
     warning: str | None = None
     selected_skills: list[dict[str, str]] = Field(default_factory=list)

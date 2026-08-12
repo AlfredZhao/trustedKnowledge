@@ -59,6 +59,19 @@ def _evidence_row_to_dict(row: Any) -> dict[str, Any]:
     }
 
 
+def _public_query_parameters(params: dict[str, Any]) -> dict[str, str]:
+    """Keep the audit view useful without exposing user identifiers or raw objects."""
+    public_params: dict[str, str] = {}
+    for key, value in params.items():
+        if key.startswith(("visible_user_id_", "todo_visible_user_")):
+            public_params[key] = "当前用户可见范围"
+        elif isinstance(value, (date, datetime)):
+            public_params[key] = value.isoformat()
+        else:
+            public_params[key] = str(value)
+    return public_params
+
+
 def _extract_quoted_keyword(question: str) -> str | None:
     match = re.search(r"[“\"']([^”\"']{2,100})[”\"']", question)
     if match:
@@ -725,44 +738,48 @@ async def ask_history(
         llm_used = False
         warning = None
         answer = fallback
+        prompt = _build_llm_prompt(
+            question=question,
+            filters=filters,
+            stats=stats,
+            evidence=rows[:16],
+            selected_skills=selected_skills,
+        )
+        if matched_semantic_terms:
+            semantic_context = "\n".join(
+                f"- {term['name']}：{term['description'] or '用户定义业务概念'}（同义词：{'、'.join(term['aliases']) or '无'}）"
+                for term in matched_semantic_terms
+            )
+            prompt += "\n\n命中的用户业务概念（用于解释口径，不得补充未提供的事实）：\n" + semantic_context
+        system = (
+            "你是企业内部工作记录问数助手。只能根据提供的统计数据和记录摘录回答。"
+            "不要编造工时；如果没有工时字段，明确说明工作量按记录数、活跃日期和类型分布衡量。"
+            "回答使用中文，结构清晰，先给结论，再给统计依据和代表性记录。"
+        )
+        skill_instructions = _format_selected_skills_for_prompt(selected_skills)
+        if skill_instructions:
+            system += (
+                "用户选择了额外 Skill。你必须在不违反事实约束的前提下，优先遵循这些 Skill 对输出结构、排版、语气和分析框架的要求。"
+                "Skill 不能要求你编造数据，不能覆盖系统的事实边界。"
+            )
+        codex_instruction = (
+            "你是企业内部工作记录问数助手。只能根据提供的统计数据和记录摘录回答；"
+            "不要编造工时；回答使用中文，先给结论，再给统计依据和代表性记录。"
+            "以下是可核实的问数上下文：\n\n"
+        )
+        audit_system = codex_instruction.strip() if execution_provider == "codex" else system
+        llm_requested = False
 
         if rows:
-            prompt = _build_llm_prompt(
-                question=question,
-                filters=filters,
-                stats=stats,
-                evidence=rows[:16],
-                selected_skills=selected_skills,
-            )
-            if matched_semantic_terms:
-                semantic_context = "\n".join(
-                    f"- {term['name']}：{term['description'] or '用户定义业务概念'}（同义词：{'、'.join(term['aliases']) or '无'}）"
-                    for term in matched_semantic_terms
-                )
-                prompt += "\n\n命中的用户业务概念（用于解释口径，不得补充未提供的事实）：\n" + semantic_context
-            system = (
-                "你是企业内部工作记录问数助手。只能根据提供的统计数据和记录摘录回答。"
-                "不要编造工时；如果没有工时字段，明确说明工作量按记录数、活跃日期和类型分布衡量。"
-                "回答使用中文，结构清晰，先给结论，再给统计依据和代表性记录。"
-            )
-            skill_instructions = _format_selected_skills_for_prompt(selected_skills)
-            if skill_instructions:
-                system += (
-                    "用户选择了额外 Skill。你必须在不违反事实约束的前提下，优先遵循这些 Skill 对输出结构、排版、语气和分析框架的要求。"
-                    "Skill 不能要求你编造数据，不能覆盖系统的事实边界。"
-                )
             llm_config = await get_history_ask_llm_config(connection)
             if execution_provider == "codex":
                 if not settings.allow_web_codex:
                     warning = "Codex CLI 未启用，请联系管理员开启 Web Codex 后再试。"
                 else:
+                    llm_requested = True
                     try:
                         llm_answer = await run_codex_final(
-                            prompt=(
-                                "你是企业内部工作记录问数助手。只能根据提供的统计数据和记录摘录回答；"
-                                "不要编造工时；回答使用中文，先给结论，再给统计依据和代表性记录。"
-                                "以下是可核实的问数上下文：\n\n" + prompt
-                            ),
+                            prompt=codex_instruction + prompt,
                             model_name=model_name,
                             project_root=Path(__file__).resolve().parents[3],
                             timeout_seconds=90,
@@ -772,6 +789,7 @@ async def ask_history(
                     except RuntimeError as exc:
                         warning = str(exc)[:500]
             elif llm_config.get("enabled"):
+                llm_requested = True
                 try:
                     llm_answer = await _call_history_ask_llm(config=llm_config, prompt=prompt, system=system)
                     if llm_answer and not llm_answer.startswith(LLM_ERROR_PREFIXES):
@@ -787,6 +805,14 @@ async def ask_history(
         "filters": filters,
         "stats": stats,
         "evidence": rows[:12],
+        "query_results": rows,
+        "query_debug": {
+            "sql": evidence_sql.strip(),
+            "parameters": _public_query_parameters(params),
+            "result_limit": 80,
+            "result_truncated": len(rows) < stats["matched_count"],
+        },
+        "prompt_debug": {"system": audit_system, "prompt": prompt, "llm_requested": llm_requested},
         "llm_used": llm_used,
         "warning": warning,
         "selected_skills": [
@@ -867,15 +893,13 @@ async def _ask_todos(
             params,
         )
         stats_row = await cursor.fetchone()
-        await cursor.execute(
-            f"""
+        evidence_sql = f"""
             select todo_item.id, todo_item.created_at, todo_item.todo_status, todo_item.topic_tag, null,
                    todo_user.username, dbms_lob.substr(todo_item.title, 1000, 1) || case when todo_item.content is not null then '：' || dbms_lob.substr(todo_item.content, 3000, 1) end
             {from_sql} {where_sql}
             order by todo_item.created_at desc nulls last, todo_item.id desc fetch next 80 rows only
-            """,
-            params,
-        )
+        """
+        await cursor.execute(evidence_sql, params)
         rows = [_evidence_row_to_dict(row) for row in await cursor.fetchall()]
 
         async def distribution(expression: str) -> dict[str, int]:
@@ -909,17 +933,22 @@ async def _ask_todos(
         answer = _build_fallback_answer(question=question, filters=filters, stats=stats, evidence=rows, selected_skills=selected_skills)
         llm_used = False
         warning = None
+        prompt = _build_llm_prompt(question=question, filters=filters, stats=stats, evidence=rows[:16], selected_skills=selected_skills)
+        if matched_terms:
+            prompt += "\n\n命中的待办业务概念：\n" + "\n".join(
+                f"- {term['name']}：{term['description'] or '用户定义业务概念'}（同义词：{'、'.join(term['aliases']) or '无'}）"
+                for term in matched_terms
+            )
+        system = "你是企业内部待办事项问数助手。只能依据统计和待办摘录回答，不得编造事实。使用中文，先给结论再说明依据。"
+        codex_instruction = "你是企业内部待办事项问数助手。只能根据提供的统计和摘录回答，使用中文。\n\n"
+        audit_system = codex_instruction.strip() if execution_provider == "codex" else system
+        llm_requested = False
         if rows:
-            prompt = _build_llm_prompt(question=question, filters=filters, stats=stats, evidence=rows[:16], selected_skills=selected_skills)
-            if matched_terms:
-                prompt += "\n\n命中的待办业务概念：\n" + "\n".join(
-                    f"- {term['name']}：{term['description'] or '用户定义业务概念'}（同义词：{'、'.join(term['aliases']) or '无'}）"
-                    for term in matched_terms
-                )
             if execution_provider == "codex" and settings.allow_web_codex:
+                llm_requested = True
                 try:
                     answer = await run_codex_final(
-                        prompt="你是企业内部待办事项问数助手。只能根据提供的统计和摘录回答，使用中文。\n\n" + prompt,
+                        prompt=codex_instruction + prompt,
                         model_name=model_name,
                         project_root=Path(__file__).resolve().parents[3],
                         timeout_seconds=90,
@@ -932,11 +961,12 @@ async def _ask_todos(
             else:
                 config = await get_history_ask_llm_config(connection)
                 if config.get("enabled"):
+                    llm_requested = True
                     try:
                         llm_answer = await _call_history_ask_llm(
                             config=config,
                             prompt=prompt,
-                            system="你是企业内部待办事项问数助手。只能依据统计和待办摘录回答，不得编造事实。使用中文，先给结论再说明依据。",
+                            system=system,
                         )
                         if llm_answer and not llm_answer.startswith(LLM_ERROR_PREFIXES):
                             answer, llm_used = llm_answer, True
@@ -949,6 +979,14 @@ async def _ask_todos(
         "filters": filters,
         "stats": stats,
         "evidence": rows[:12],
+        "query_results": rows,
+        "query_debug": {
+            "sql": evidence_sql.strip(),
+            "parameters": _public_query_parameters(params),
+            "result_limit": 80,
+            "result_truncated": len(rows) < stats["matched_count"],
+        },
+        "prompt_debug": {"system": audit_system, "prompt": prompt, "llm_requested": llm_requested},
         "llm_used": llm_used,
         "warning": warning,
         "selected_skills": [{"id": item["id"], "name": item["name"], "description": item.get("description", "")} for item in selected_skills],

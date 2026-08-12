@@ -13,6 +13,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Added / 新增
 
+- Added read-only query auditing to AI 问数: the default no-Skill result now shows the actual matched records (up to the controlled 80-row limit), and users can view the server-generated SQL template, masked bind parameters, and complete prompt context including matched ontology concepts and Skills.
+- 为 AI 问数新增只读查询审计：未选择 Skill 的基础结果现在展示实际命中记录（受控上限 80 条），并可查看服务端生成的 SQL 模板、脱敏绑定参数，以及包含命中本体概念和 Skill 的完整提示词上下文。
+
 - Added controlled source-table labels beneath the AI 问数 business-domain selector so users can see the read-only data sources used by each domain.
 - 在 AI 问数业务域选择框下新增受控来源表说明，让用户可查看每个业务域使用的只读数据源。
 

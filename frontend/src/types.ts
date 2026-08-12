@@ -369,11 +369,27 @@ export interface HistoryAskEvidence {
   content: string | null;
 }
 
+export interface HistoryAskQueryDebug {
+  sql: string;
+  parameters: Record<string, string>;
+  result_limit: number;
+  result_truncated: boolean;
+}
+
+export interface HistoryAskPromptDebug {
+  system: string;
+  prompt: string;
+  llm_requested: boolean;
+}
+
 export interface HistoryAskResponse {
   answer: string;
   filters: HistoryAskFilters;
   stats: HistoryAskStats;
   evidence: HistoryAskEvidence[];
+  query_results: HistoryAskEvidence[];
+  query_debug: HistoryAskQueryDebug;
+  prompt_debug: HistoryAskPromptDebug;
   llm_used: boolean;
   warning: string | null;
   selected_skills: SkillPromptSummary[];
