@@ -13,6 +13,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Added / 新增
 
+- Added user-owned, domain-scoped quick questions to AI 问数. Users can maintain up to 12 shortcuts per business domain; their saved questions replace the built-in examples for that domain.
+- 为 AI 问数新增按用户、业务域隔离的快捷问题维护能力：每个业务域最多维护 12 个快捷问题，保存后会替代该业务域的内置示例。
+
 - Added the `可信知识` and `英语素材` business domains to AI 问数. Both use fixed read-only query adapters, user-visible data boundaries, domain-scoped ontology terms, and the existing SQL/prompt audit view.
 - 为 AI 问数新增 `可信知识` 与 `英语素材` 业务域：两者均使用固定只读查询适配器、当前用户可见数据边界、按业务域隔离的本体词条，以及既有 SQL/提示词审计视图。
 
@@ -44,6 +47,15 @@ The format follows the common GitHub changelog convention inspired by
 - 为“编辑可信知识”和“编辑待办事项”共用的 Markdown 工具栏新增“引用”操作，可为当前行或选区添加或取消 `> ` 引用语法。
 
 #### Changed / 变更
+
+- Changed the AI 问数 workspace to prioritize asking and results: Skill selection, model configuration, and ontology maintenance now default to compact collapsed states; the right rail shows only a concise query summary after execution; SQL and prompt controls are grouped under `审计`; and the empty state now follows the selected business domain.
+- 调整 AI 问数工作区的主次关系：Skill 选择、模型配置和本体维护默认以紧凑折叠状态呈现；执行后右侧仅展示查询摘要；SQL 与提示词操作归入“审计”；空状态文案会跟随当前业务域。
+
+- Changed the AI 问数 layout so the business-domain and execution-model selectors sit beside the `自然语言问数` title on desktop. Their source/model explanations now occupy one compact helper row, while mobile automatically stacks the controls beneath the title.
+- 调整 AI 问数布局：桌面端“业务域”和“执行模型”选择器移至“自然语言问数”标题右侧；数据来源和模型说明合并为一行紧凑辅助信息，移动端自动堆叠到标题下方。
+
+- Changed shared form controls so standard inputs and dropdowns use the same `h-10` height as adjacent filter/action buttons. This removes uneven controls across Current Records, History, Todo, English Materials, and other pages while retaining explicit compact and multiline controls.
+- 统一共用表单控件：标准输入框与下拉框现在使用与相邻筛选/操作按钮一致的 `h-10` 高度。当前记录、历史、待办、英语素材等页面不再出现控件高低不齐；明确使用的紧凑按钮和多行输入框保持原尺寸。
 
 - Changed AI 问数 so its execution-model selector defaults to `CLI 默认` instead of the configured OpenAI-compatible model.
 - 调整 AI 问数执行模型选择器：默认值改为 `CLI 默认`，不再默认使用已配置的 OpenAI-compatible 模型。

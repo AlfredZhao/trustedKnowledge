@@ -403,6 +403,14 @@ export interface HistoryAskDomain {
   source_tables: string[];
 }
 
+export interface HistoryAskQuickQuestion {
+  id: number;
+  question: string;
+  domain_code: "history" | "todos" | "knowledge" | "english_materials";
+  created_at: string;
+  updated_at: string;
+}
+
 export interface HistoryOntologyTerm {
   id: number;
   name: string;

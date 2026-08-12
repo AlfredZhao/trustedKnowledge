@@ -118,12 +118,16 @@ import {
 import { fetchHistory, readCachedHistory } from "./api/history";
 import {
   askHistory,
+  createHistoryAskQuickQuestion,
   createHistoryOntology,
+  deleteHistoryAskQuickQuestion,
   deleteHistoryOntology,
   fetchHistoryAskLlmConfig,
   fetchHistoryAskDomains,
+  fetchHistoryAskQuickQuestions,
   fetchHistoryOntology,
   updateHistoryAskLlmConfig,
+  updateHistoryAskQuickQuestion,
   updateHistoryOntology,
 } from "./api/historyAsk";
 import { cancelCodexJob, fetchCodexConfig, getCodexJob, getLatestCodexJobByOutputMode, startCodexJob } from "./api/codex";
@@ -334,6 +338,7 @@ import type {
   GithubSyncResponse,
   HistoryAskResponse,
   HistoryAskDomain,
+  HistoryAskQuickQuestion,
   HistoryOntologyDraft,
   HistoryOntologyTerm,
   HistoryItem,
@@ -879,6 +884,10 @@ function App() {
   const [historyAskSkillIds, setHistoryAskSkillIds] = useState<string[]>(restoredUiState.historyAsk.skillIds);
   const [historyAskDomains, setHistoryAskDomains] = useState<HistoryAskDomain[]>([]);
   const [historyAskDomainCode, setHistoryAskDomainCode] = useState<"history" | "todos" | "knowledge" | "english_materials">("history");
+  const [historyAskQuickQuestions, setHistoryAskQuickQuestions] = useState<HistoryAskQuickQuestion[]>([]);
+  const [isHistoryAskQuickQuestionsLoading, setIsHistoryAskQuickQuestionsLoading] = useState(false);
+  const [isHistoryAskQuickQuestionSaving, setIsHistoryAskQuickQuestionSaving] = useState(false);
+  const [historyAskQuickQuestionError, setHistoryAskQuickQuestionError] = useState<string | null>(null);
   const [historyOntologyTerms, setHistoryOntologyTerms] = useState<HistoryOntologyTerm[]>([]);
   const [historyOntologyDraft, setHistoryOntologyDraft] = useState<HistoryOntologyDraft>(emptyHistoryOntologyDraft);
   const [historyOntologyEditingId, setHistoryOntologyEditingId] = useState<number | null>(null);
@@ -1671,6 +1680,28 @@ function App() {
       .then((response) => setHistoryAskDomains(response.items))
       .catch((error: Error) => setHistoryAskError(error.message));
   }, [activeView, apiKey]);
+
+  useEffect(() => {
+    if (!apiKey || activeView !== "historyAsk") return;
+    let cancelled = false;
+    setIsHistoryAskQuickQuestionsLoading(true);
+    fetchHistoryAskQuickQuestions(historyAskDomainCode)
+      .then((response) => {
+        if (!cancelled) {
+          setHistoryAskQuickQuestions(response.items);
+          setHistoryAskQuickQuestionError(null);
+        }
+      })
+      .catch((error: Error) => {
+        if (!cancelled) setHistoryAskQuickQuestionError(error.message);
+      })
+      .finally(() => {
+        if (!cancelled) setIsHistoryAskQuickQuestionsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeView, apiKey, historyAskDomainCode]);
 
   useEffect(() => {
     if (!apiKey || (activeView !== "skills" && activeView !== "historyAsk" && activeView !== "factory")) return;
@@ -4246,6 +4277,51 @@ function App() {
     }
   }
 
+  async function handleCreateHistoryAskQuickQuestion(question: string) {
+    setIsHistoryAskQuickQuestionSaving(true);
+    setHistoryAskQuickQuestionError(null);
+    try {
+      const item = await createHistoryAskQuickQuestion(question, historyAskDomainCode);
+      setHistoryAskQuickQuestions((items) => [item, ...items]);
+      return true;
+    } catch (error) {
+      setHistoryAskQuickQuestionError(error instanceof Error ? error.message : "保存快捷问题失败，请稍后重试。");
+      return false;
+    } finally {
+      setIsHistoryAskQuickQuestionSaving(false);
+    }
+  }
+
+  async function handleUpdateHistoryAskQuickQuestion(id: number, question: string) {
+    setIsHistoryAskQuickQuestionSaving(true);
+    setHistoryAskQuickQuestionError(null);
+    try {
+      const item = await updateHistoryAskQuickQuestion(id, question);
+      setHistoryAskQuickQuestions((items) => items.map((current) => current.id === item.id ? item : current));
+      return true;
+    } catch (error) {
+      setHistoryAskQuickQuestionError(error instanceof Error ? error.message : "更新快捷问题失败，请稍后重试。");
+      return false;
+    } finally {
+      setIsHistoryAskQuickQuestionSaving(false);
+    }
+  }
+
+  async function handleDeleteHistoryAskQuickQuestion(id: number) {
+    setIsHistoryAskQuickQuestionSaving(true);
+    setHistoryAskQuickQuestionError(null);
+    try {
+      await deleteHistoryAskQuickQuestion(id);
+      setHistoryAskQuickQuestions((items) => items.filter((item) => item.id !== id));
+      return true;
+    } catch (error) {
+      setHistoryAskQuickQuestionError(error instanceof Error ? error.message : "删除快捷问题失败，请稍后重试。");
+      return false;
+    } finally {
+      setIsHistoryAskQuickQuestionSaving(false);
+    }
+  }
+
   function handleToggleHistoryAskSkill(skillId: string) {
     setHistoryAskSkillIds((current) =>
       current.includes(skillId) ? current.filter((item) => item !== skillId) : [...current, skillId].slice(0, 8),
@@ -5047,6 +5123,10 @@ function App() {
               ontologySaving={isHistoryOntologySaving}
               domainCode={historyAskDomainCode}
               domains={historyAskDomains}
+              quickQuestions={historyAskQuickQuestions}
+              quickQuestionsError={historyAskQuickQuestionError}
+              quickQuestionsLoading={isHistoryAskQuickQuestionsLoading}
+              quickQuestionSaving={isHistoryAskQuickQuestionSaving}
               canManageSystemOntology={Boolean(authUser?.is_admin)}
               modelName={historyAskModelName}
               modelOptions={historyAskModelOptions}
@@ -5072,6 +5152,9 @@ function App() {
                 setHistoryOntologyEditingId(null);
                 setHistoryOntologyDraft({ ...emptyHistoryOntologyDraft, domain_code: code });
               }}
+              onCreateQuickQuestion={handleCreateHistoryAskQuickQuestion}
+              onUpdateQuickQuestion={handleUpdateHistoryAskQuickQuestion}
+              onDeleteQuickQuestion={handleDeleteHistoryAskQuickQuestion}
               onModelNameChange={setHistoryAskModelName}
               onOpenHistory={handleOpenHistoryFromAsk}
               onQuestionChange={setHistoryAskQuestion}
@@ -13994,6 +14077,10 @@ function HistoryAskPanel({
   ontologySaving,
   domainCode,
   domains,
+  quickQuestions,
+  quickQuestionsError,
+  quickQuestionsLoading,
+  quickQuestionSaving,
   canManageSystemOntology,
   modelName,
   modelOptions,
@@ -14011,6 +14098,9 @@ function HistoryAskPanel({
   onOntologyDelete,
   onOntologyCancel,
   onDomainChange,
+  onCreateQuickQuestion,
+  onUpdateQuickQuestion,
+  onDeleteQuickQuestion,
   onModelNameChange,
   onOpenHistory,
   onQuestionChange,
@@ -14035,6 +14125,10 @@ function HistoryAskPanel({
   ontologySaving: boolean;
   domainCode: "history" | "todos" | "knowledge" | "english_materials";
   domains: HistoryAskDomain[];
+  quickQuestions: HistoryAskQuickQuestion[];
+  quickQuestionsError: string | null;
+  quickQuestionsLoading: boolean;
+  quickQuestionSaving: boolean;
   canManageSystemOntology: boolean;
   modelName: string;
   modelOptions: { value: string; label: string }[];
@@ -14052,6 +14146,9 @@ function HistoryAskPanel({
   onOntologyDelete: (termId: number) => void;
   onOntologyCancel: () => void;
   onDomainChange: (code: "history" | "todos" | "knowledge" | "english_materials") => void;
+  onCreateQuickQuestion: (question: string) => Promise<boolean>;
+  onUpdateQuickQuestion: (id: number, question: string) => Promise<boolean>;
+  onDeleteQuickQuestion: (id: number) => Promise<boolean>;
   onModelNameChange: (modelName: string) => void;
   onOpenHistory: () => void;
   onQuestionChange: (question: string) => void;
@@ -14059,6 +14156,13 @@ function HistoryAskPanel({
   onToggleSkill: (skillId: string) => void;
 }) {
   const [answerView, setAnswerView] = useState<MarkdownContentView>("rendered");
+  const [isSkillsExpanded, setIsSkillsExpanded] = useState(false);
+  const [isModelConfigExpanded, setIsModelConfigExpanded] = useState(false);
+  const [isOntologyExpanded, setIsOntologyExpanded] = useState(false);
+  const [isAuditExpanded, setIsAuditExpanded] = useState(false);
+  const [isQuickQuestionManagerOpen, setIsQuickQuestionManagerOpen] = useState(false);
+  const [quickQuestionDraft, setQuickQuestionDraft] = useState("");
+  const [editingQuickQuestionId, setEditingQuickQuestionId] = useState<number | null>(null);
   const [showQuerySql, setShowQuerySql] = useState(false);
   const [showPrompt, setShowPrompt] = useState(false);
   const canSubmit = question.trim().length >= 2 && !isLoading;
@@ -14068,62 +14172,47 @@ function HistoryAskPanel({
       (llmConfigDraft.base_url.trim().length > 0 &&
         llmConfigDraft.model_name.trim().length > 0 &&
         Boolean(llmConfig?.has_api_key)));
-  const examples = [
-    "总结最近30天关于“中信泰富”的工作记录。",
-    "针对 alfred 最近一周的工作记录，总结一份周报。",
-    "向量待更新的历史记录里哪类工作最多？",
-  ];
+  const examplesByDomain: Record<typeof domainCode, string[]> = {
+    history: ["总结最近30天关于“中信泰富”的工作记录。", "针对 alfred 最近一周的工作记录，总结一份周报。", "向量待更新的历史记录里哪类工作最多？"],
+    todos: ["列出最近一周待处理的事项。", "总结本月已完成待办的主题分布。"],
+    knowledge: ["查询与“项目上线”相关的可信知识。", "总结本月新增的未发布知识。"],
+    english_materials: ["查询与会议沟通相关的英语表达。", "列出已标记的英语素材。"],
+  };
+  const examples = quickQuestions.length ? quickQuestions.map((item) => item.question) : examplesByDomain[domainCode];
+  const selectedDomain = domains.find((domain) => domain.code === domainCode);
+
+  useEffect(() => {
+    setIsQuickQuestionManagerOpen(false);
+    setQuickQuestionDraft("");
+    setEditingQuickQuestionId(null);
+  }, [domainCode]);
 
   return (
     <div className="flex-1 px-4 pb-4 pt-2">
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
         <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/72 p-4 shadow-soft-glow backdrop-blur-xl">
-          <div className="mb-5">
-            <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
-              <Bot size={17} />
-              Ask History
+          <div className="mb-3 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
+                <Bot size={17} />
+                Ask History
+              </div>
+              <h2 className="text-xl font-semibold text-slate-50">自然语言问数</h2>
             </div>
-            <h2 className="text-xl font-semibold text-slate-50">自然语言问数</h2>
-          </div>
-
-          <form className="space-y-4" onSubmit={onSubmit}>
-            <textarea
-              className="control min-h-[150px] resize-none leading-7"
-              value={question}
-              onChange={(event) => onQuestionChange(event.target.value)}
-              placeholder="例如：针对 alfred 的工作记录，请总结关于“中信泰富”项目的工作量统计。"
-            />
-            <div className="flex flex-wrap gap-2">
-              {examples.map((example) => (
-                <button
-                  key={example}
-                  className="rounded-md border border-white/10 bg-white/[0.035] px-3 py-1.5 text-xs text-slate-400 transition hover:border-mint-300/30 hover:text-mint-200"
-                  type="button"
-                  onClick={() => onQuestionChange(example)}
-                >
-                  {example}
-                </button>
-              ))}
-            </div>
-            <div className="rounded-lg border border-white/10 bg-white/[0.025] p-3">
+            <div className="grid w-full gap-3 sm:grid-cols-2 lg:w-[420px]">
               <Field label="业务域" icon={<Database size={16} />}>
-                <select className="control h-10" disabled={isLoading} value={domainCode} onChange={(event) => onDomainChange(event.target.value as "history" | "todos" | "knowledge" | "english_materials")}>
+                <select
+                  className="control"
+                  disabled={isLoading}
+                  value={domainCode}
+                  onChange={(event) => onDomainChange(event.target.value as "history" | "todos" | "knowledge" | "english_materials")}
+                >
                   {domains.map((domain) => <option key={domain.code} value={domain.code}>{domain.name}</option>)}
                 </select>
               </Field>
-              <p className="mt-2 text-xs leading-5 text-slate-500">
-                {domains.find((domain) => domain.code === domainCode)?.description ?? "正在加载可用业务域..."}
-              </p>
-              {domains.find((domain) => domain.code === domainCode)?.source_tables.length ? (
-                <div className="mt-2 text-xs leading-5 text-slate-500">
-                  数据来源（受控只读）：{domains.find((domain) => domain.code === domainCode)?.source_tables.join("、")}
-                </div>
-              ) : null}
-            </div>
-            <div className="rounded-lg border border-white/10 bg-white/[0.025] p-3">
               <Field label="执行模型" icon={<Settings2 size={16} />}>
                 <select
-                  className="control h-10"
+                  className="control"
                   disabled={isLoading}
                   value={modelName}
                   onChange={(event) => onModelNameChange(event.target.value)}
@@ -14135,28 +14224,103 @@ function HistoryAskPanel({
                   ))}
                 </select>
               </Field>
-              <p className="mt-2 text-xs leading-5 text-slate-500">
-                {modelName === HISTORY_ASK_CONFIGURED_MODEL
-                  ? "使用右侧已启用的 OpenAI 兼容模型配置。"
-                  : "使用 Codex CLI 在只读模式下生成问数总结。"}
-              </p>
+            </div>
+          </div>
+          <div className="mb-5 flex flex-wrap gap-x-4 gap-y-1 text-xs leading-5 text-slate-500">
+            <span>{selectedDomain?.description ?? "正在加载可用业务域..."}</span>
+            {selectedDomain?.source_tables.length ? <span>数据来源（受控只读）：{selectedDomain.source_tables.join("、")}</span> : null}
+            <span>{modelName === HISTORY_ASK_CONFIGURED_MODEL ? "使用已启用的 OpenAI 兼容模型配置。" : "使用 Codex CLI 在只读模式下生成问数总结。"}</span>
+          </div>
+
+          <form className="space-y-4" onSubmit={onSubmit}>
+            <textarea
+              className="control min-h-[150px] resize-none leading-7"
+              value={question}
+              onChange={(event) => onQuestionChange(event.target.value)}
+              placeholder="例如：针对 alfred 的工作记录，请总结关于“中信泰富”项目的工作量统计。"
+            />
+            <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-xs font-medium text-slate-300"><Sparkles size={14} className="text-mint-300" />快捷问题</div>
+                <button className="text-xs text-mint-200 transition hover:text-mint-100" type="button" onClick={() => setIsQuickQuestionManagerOpen((open) => !open)}>
+                  {isQuickQuestionManagerOpen ? "收起维护" : "维护快捷问题"}
+                </button>
+              </div>
+              {quickQuestionsLoading ? (
+                <div className="flex items-center gap-2 text-xs text-slate-500"><Loader2 className="animate-spin" size={14} />正在加载快捷问题...</div>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {examples.map((example) => (
+                    <button key={example} className="rounded-md border border-white/10 bg-white/[0.035] px-3 py-1.5 text-xs text-slate-400 transition hover:border-mint-300/30 hover:text-mint-200" type="button" onClick={() => onQuestionChange(example)}>
+                      {example}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {!quickQuestions.length && !quickQuestionsLoading ? <p className="mt-2 text-xs leading-5 text-slate-500">当前展示系统示例；添加后将仅展示你在该业务域维护的问题。</p> : null}
+              {isQuickQuestionManagerOpen ? (
+                <div className="mt-3 border-t border-white/10 pt-3">
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <input className="control flex-1" disabled={quickQuestionSaving} value={quickQuestionDraft} onChange={(event) => setQuickQuestionDraft(event.target.value)} placeholder="输入一个常用自然语言问题" />
+                    <button
+                      className="flex h-10 items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-3 text-xs font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:text-slate-500"
+                      disabled={quickQuestionSaving || quickQuestionDraft.trim().length < 2}
+                      type="button"
+                      onClick={async () => {
+                        const saved = editingQuickQuestionId
+                          ? await onUpdateQuickQuestion(editingQuickQuestionId, quickQuestionDraft.trim())
+                          : await onCreateQuickQuestion(quickQuestionDraft.trim());
+                        if (saved) {
+                          setQuickQuestionDraft("");
+                          setEditingQuickQuestionId(null);
+                        }
+                      }}
+                    >
+                      {quickQuestionSaving ? <Loader2 className="animate-spin" size={14} /> : <Save size={14} />}
+                      {editingQuickQuestionId ? "更新" : "添加"}
+                    </button>
+                    {editingQuickQuestionId ? <button className="h-10 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-xs text-slate-300 transition hover:text-mint-200" type="button" onClick={() => { setEditingQuickQuestionId(null); setQuickQuestionDraft(""); }}>取消</button> : null}
+                  </div>
+                  {quickQuestionsError ? <p className="mt-2 text-xs text-red-200">{quickQuestionsError}</p> : null}
+                  {quickQuestions.length ? (
+                    <div className="mt-3 space-y-2">
+                      {quickQuestions.map((item) => (
+                        <div key={item.id} className="flex items-center gap-2 rounded-md border border-white/8 bg-black/10 px-2 py-2">
+                          <button className="min-w-0 flex-1 truncate text-left text-xs text-slate-300 hover:text-mint-200" type="button" onClick={() => { setEditingQuickQuestionId(item.id); setQuickQuestionDraft(item.question); }}>{item.question}</button>
+                          <button className="p-1 text-slate-500 transition hover:text-mint-200" type="button" aria-label={`编辑快捷问题 ${item.question}`} onClick={() => { setEditingQuickQuestionId(item.id); setQuickQuestionDraft(item.question); }}><Pencil size={14} /></button>
+                          <button className="p-1 text-slate-500 transition hover:text-red-200 disabled:opacity-50" disabled={quickQuestionSaving} type="button" aria-label={`删除快捷问题 ${item.question}`} onClick={() => void onDeleteQuickQuestion(item.id)}><Trash2 size={14} /></button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
             <div className="rounded-lg border border-white/10 bg-white/[0.025] p-3">
-              <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-2 text-sm font-medium text-slate-200">
                   <Layers3 className="text-mint-300" size={16} />
                   调用 Skill
                 </div>
-                <span className="text-xs text-slate-500">已选择 {formatAmount(selectedSkillIds.length)} 个</span>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-slate-500">已选择 {formatAmount(selectedSkillIds.length)} 个</span>
+                  <button
+                    className="text-xs text-mint-200 transition hover:text-mint-100"
+                    type="button"
+                    onClick={() => setIsSkillsExpanded((expanded) => !expanded)}
+                  >
+                    {isSkillsExpanded ? "收起" : "选择 Skill"}
+                  </button>
+                </div>
               </div>
-              {skillsLoading ? (
+              {isSkillsExpanded && skillsLoading ? (
                 <div className="flex items-center gap-2 text-sm text-slate-500">
                   <Loader2 className="animate-spin" size={15} />
                   正在加载可用 skill...
                 </div>
-              ) : skillsError ? (
+              ) : isSkillsExpanded && skillsError ? (
                 <div className="text-sm text-red-200">{skillsError}</div>
-              ) : skills.length > 0 ? (
+              ) : isSkillsExpanded && skills.length > 0 ? (
                 <div className="grid gap-2 sm:grid-cols-2">
                   {skills.map((skill) => {
                     const selected = selectedSkillIds.includes(skill.id);
@@ -14184,8 +14348,10 @@ function HistoryAskPanel({
                     );
                   })}
                 </div>
-              ) : (
+              ) : isSkillsExpanded ? (
                 <div className="text-sm text-slate-500">暂无启用的 skill，可在 Skill 管理中新增或上传。</div>
+              ) : (
+                <p className="mt-2 text-xs leading-5 text-slate-500">默认按基础查询展示实际数据结果；需要自定义输出结构或分析框架时再选择 Skill。</p>
               )}
             </div>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -14277,27 +14443,21 @@ function HistoryAskPanel({
                     </button>
                     <button
                       className={`flex h-9 items-center gap-2 rounded-lg border px-3 text-xs transition ${
-                        showQuerySql
+                        isAuditExpanded
                           ? "border-mint-300/30 bg-mint-300/10 text-mint-200"
                           : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-mint-300/30 hover:text-mint-200"
                       }`}
                       type="button"
-                      onClick={() => setShowQuerySql((visible) => !visible)}
+                      onClick={() => setIsAuditExpanded((expanded) => {
+                        if (expanded) {
+                          setShowQuerySql(false);
+                          setShowPrompt(false);
+                        }
+                        return !expanded;
+                      })}
                     >
                       <Code2 size={15} />
-                      {showQuerySql ? "隐藏 SQL" : "显示 SQL"}
-                    </button>
-                    <button
-                      className={`flex h-9 items-center gap-2 rounded-lg border px-3 text-xs transition ${
-                        showPrompt
-                          ? "border-mint-300/30 bg-mint-300/10 text-mint-200"
-                          : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-mint-300/30 hover:text-mint-200"
-                      }`}
-                      type="button"
-                      onClick={() => setShowPrompt((visible) => !visible)}
-                    >
-                      <Bot size={15} />
-                      {showPrompt ? "隐藏提示词" : "显示提示词"}
+                      {isAuditExpanded ? "收起审计" : "审计"}
                     </button>
                     <button
                       className="flex h-9 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-xs text-slate-300 transition hover:border-mint-300/30 hover:text-mint-200"
@@ -14309,6 +14469,24 @@ function HistoryAskPanel({
                     </button>
                   </div>
                 </div>
+                {isAuditExpanded ? (
+                  <div className="flex flex-wrap gap-2 rounded-lg border border-white/10 bg-white/[0.02] p-2">
+                    <button
+                      className={`flex h-9 items-center gap-2 rounded-md border px-3 text-xs transition ${showQuerySql ? "border-mint-300/30 bg-mint-300/10 text-mint-200" : "border-white/10 bg-white/[0.035] text-slate-300 hover:text-mint-200"}`}
+                      type="button"
+                      onClick={() => setShowQuerySql((visible) => !visible)}
+                    >
+                      <Code2 size={15} /> {showQuerySql ? "隐藏 SQL" : "显示 SQL"}
+                    </button>
+                    <button
+                      className={`flex h-9 items-center gap-2 rounded-md border px-3 text-xs transition ${showPrompt ? "border-mint-300/30 bg-mint-300/10 text-mint-200" : "border-white/10 bg-white/[0.035] text-slate-300 hover:text-mint-200"}`}
+                      type="button"
+                      onClick={() => setShowPrompt((visible) => !visible)}
+                    >
+                      <Bot size={15} /> {showPrompt ? "隐藏提示词" : "显示提示词"}
+                    </button>
+                  </div>
+                ) : null}
                 {showQuerySql ? <HistoryAskQueryAudit queryDebug={answer.query_debug} /> : null}
                 {showPrompt ? <HistoryAskPromptAudit promptDebug={answer.prompt_debug} /> : null}
                 {(answer.selected_skills ?? []).length === 0 ? (
@@ -14331,7 +14509,7 @@ function HistoryAskPanel({
                 <div>
                   <Bot className="mx-auto mb-3 text-slate-600" size={36} />
                   <div className="mb-1 font-medium text-slate-300">等待提问</div>
-                  <p className="text-sm text-slate-500">输入自然语言问题后，系统会检索 t_history 并生成统计总结。</p>
+                  <p className="text-sm text-slate-500">输入自然语言问题后，系统会检索{selectedDomain?.name ?? "当前业务域"}并生成受控统计结果。</p>
                 </div>
               </div>
             )}
@@ -14340,7 +14518,7 @@ function HistoryAskPanel({
 
         <aside className="min-w-0 rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
           <div className="mb-5 rounded-lg border border-white/10 bg-white/[0.025] p-4">
-            <div className="mb-4 flex items-start justify-between gap-3">
+            <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
                   <ShieldCheck size={17} />
@@ -14348,20 +14526,29 @@ function HistoryAskPanel({
                 </div>
                 <h2 className="text-lg font-semibold text-slate-50">模型配置</h2>
               </div>
-              <span
-                className={`rounded-md border px-2 py-1 text-xs ${
-                  llmConfig?.enabled
-                    ? "border-mint-300/25 bg-mint-300/10 text-mint-200"
-                    : "border-white/10 bg-white/[0.035] text-slate-400"
-                }`}
-              >
-                {llmConfig?.enabled ? "已启用" : "未启用"}
-              </span>
+              <div className="flex items-center gap-2">
+                <span
+                  className={`rounded-md border px-2 py-1 text-xs ${
+                    llmConfig?.enabled
+                      ? "border-mint-300/25 bg-mint-300/10 text-mint-200"
+                      : "border-white/10 bg-white/[0.035] text-slate-400"
+                  }`}
+                >
+                  {llmConfig?.enabled ? "已启用" : "未启用"}
+                </span>
+                <button
+                  className="text-xs text-mint-200 transition hover:text-mint-100"
+                  type="button"
+                  onClick={() => setIsModelConfigExpanded((expanded) => !expanded)}
+                >
+                  {isModelConfigExpanded ? "收起" : "配置"}
+                </button>
+              </div>
             </div>
 
-            {isLlmConfigLoading ? (
+            {isModelConfigExpanded && isLlmConfigLoading ? (
               <LoadingStack />
-            ) : (
+            ) : isModelConfigExpanded ? (
               <form className="space-y-3" onSubmit={onLlmConfigSave}>
                 <label className="block text-xs font-medium text-slate-500">
                   供应商
@@ -14419,9 +14606,11 @@ function HistoryAskPanel({
                   {llmConfigSaved ? "已保存" : "保存配置"}
                 </button>
               </form>
+            ) : (
+              <p className="mt-3 text-xs leading-5 text-slate-500">模型配置仅在切换供应商或维护连接时需要展开；日常问数可直接在标题区选择执行模型。</p>
             )}
 
-            {llmConfigError ? (
+            {isModelConfigExpanded && llmConfigError ? (
               <div className="mt-3 flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-2 text-xs leading-5 text-red-100">
                 <TriangleAlert className="mt-0.5 shrink-0 text-red-300" size={15} />
                 <span>{llmConfigError}</span>
@@ -14430,12 +14619,24 @@ function HistoryAskPanel({
           </div>
 
           <div className="mb-5 rounded-lg border border-white/10 bg-white/[0.025] p-4">
-            <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
-              <Network size={17} />
-              Semantic Layer
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
+                  <Network size={17} />
+                  Semantic Layer
+                </div>
+                <h2 className="text-lg font-semibold text-slate-50">业务概念</h2>
+              </div>
+              <button
+                className="text-xs text-mint-200 transition hover:text-mint-100"
+                type="button"
+                onClick={() => setIsOntologyExpanded((expanded) => !expanded)}
+              >
+                {isOntologyExpanded ? "收起" : "维护"}
+              </button>
             </div>
-            <h2 className="mb-2 text-lg font-semibold text-slate-50">业务概念</h2>
-            <p className="mb-3 text-xs leading-5 text-slate-500">
+            {isOntologyExpanded ? <>
+            <p className="mb-3 mt-2 text-xs leading-5 text-slate-500">
               定义业务名称、别名和口径说明。提问命中别名时，系统会扩展检索并把口径提供给 AI。
             </p>
             <form className="space-y-2" onSubmit={onOntologySave}>
@@ -14523,91 +14724,23 @@ function HistoryAskPanel({
                 <div className="text-xs leading-5 text-slate-500">尚未定义业务概念。建议先添加常用项目简称、系统名称或团队术语。</div>
               )}
             </div>
-          </div>
-
-          <div className="mb-5">
-            <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
-              <CircleGauge size={17} />
-              Evidence
-            </div>
-            <h2 className="text-lg font-semibold text-slate-50">统计依据</h2>
+            </> : (
+              <p className="mt-3 text-xs leading-5 text-slate-500">维护当前业务域的别名与业务口径；提问命中后会扩展检索并进入提示词上下文。</p>
+            )}
           </div>
 
           {answer ? (
-            <div className="space-y-4">
-              <div className="grid gap-3">
-                <MetricTile
-                  icon={<Database size={17} />}
-                  label="匹配记录"
-                  value={formatAmount(answer.stats.matched_count)}
-                  detail={`${formatAmount(answer.stats.active_days)} ${(answer.domain?.code ?? "history") === "english_materials" ? "个素材分类" : "个活跃日期"}`}
-                />
-                <MetricTile
-                  icon={<Search size={17} />}
-                  label="识别条件"
-                  value={formatAmount(getHistoryAskFilterEntries(answer.filters).length)}
-                  detail="可带入历史筛选"
-                />
-                <MetricTile
-                  icon={<CalendarClock size={17} />}
-                  label={(answer.domain?.code ?? "history") === "english_materials" ? "数据维度" : "日期范围"}
-                  value={(answer.domain?.code ?? "history") === "english_materials" ? "表达素材" : formatDateOnly(answer.stats.max_date)}
-                  detail={(answer.domain?.code ?? "history") === "english_materials" ? "无日期字段" : `起始 ${formatDateOnly(answer.stats.min_date)}`}
-                />
+            <div className="rounded-lg border border-white/10 bg-white/[0.025] p-4">
+              <div className="mb-2 flex items-center gap-2 text-sm text-mint-300"><CircleGauge size={16} />查询摘要</div>
+              <div className="flex flex-wrap gap-2 text-xs">
+                <span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-slate-300">{formatAmount(answer.stats.matched_count)} 条记录</span>
+                <span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-slate-300">{formatAmount(getHistoryAskFilterEntries(answer.filters).length)} 个条件</span>
+                <span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-slate-300">{answer.domain.name}</span>
               </div>
-
-              <HistoryAskFilterSummary filters={answer.filters} />
-              <HistoryAskDistribution title={(answer.domain?.code ?? "history") === "todos" ? "状态分布" : (answer.domain?.code ?? "history") === "knowledge" ? "发布状态分布" : (answer.domain?.code ?? "history") === "english_materials" ? "标记状态分布" : "类型分布"} items={answer.stats.type_counts} />
-              <HistoryAskDistribution title={(answer.domain?.code ?? "history") === "todos" ? "标签分布" : (answer.domain?.code ?? "history") === "knowledge" ? "主题标签分布" : (answer.domain?.code ?? "history") === "english_materials" ? "分类分布" : "周期分布"} items={answer.stats.week_counts} />
-              {(answer.domain?.code ?? "history") === "history" ? <HistoryAskDistribution title="等级分布" items={answer.stats.learn_level_counts} /> : null}
-
-              <div className="space-y-3">
-                {answer.evidence.map((item) => (
-                  <article key={item.id} className="rounded-lg border border-white/10 bg-white/[0.028] p-3">
-                    <div className="mb-2 flex flex-wrap gap-2 text-xs text-slate-500">
-                      <span>#{item.id}</span>
-                      <span>{formatHistoryDate(item.history_date)}</span>
-                      <span>{item.type || "未分类"}</span>
-                    </div>
-                    <p className="line-clamp-3 text-sm leading-6 text-slate-300">{item.content || "无内容"}</p>
-                  </article>
-                ))}
-              </div>
+              <p className="mt-3 text-xs leading-5 text-slate-500">完整统计、图表和实际记录已在左侧结果区展示。</p>
             </div>
-          ) : (
-            <div className="rounded-lg border border-white/10 bg-white/[0.025] p-4 text-sm leading-6 text-slate-500">
-              问数结果会展示识别出的查询条件、统计分布和代表性记录，方便核对答案来源。
-            </div>
-          )}
+          ) : null}
         </aside>
-      </div>
-    </div>
-  );
-}
-
-function HistoryAskDistribution({
-  title,
-  items,
-}: {
-  title: string;
-  items: Record<string, number>;
-}) {
-  const entries = Object.entries(items);
-
-  return (
-    <div className="rounded-lg border border-white/10 bg-white/[0.028] p-3">
-      <div className="mb-3 text-sm font-medium text-slate-200">{title}</div>
-      <div className="space-y-2">
-        {entries.length > 0 ? (
-          entries.map(([label, value]) => (
-            <div key={label} className="flex items-center justify-between gap-3 text-sm">
-              <span className="truncate text-slate-400">{label}</span>
-              <span className="text-slate-200">{formatAmount(value)}</span>
-            </div>
-          ))
-        ) : (
-          <div className="text-sm text-slate-500">暂无分布数据</div>
-        )}
       </div>
     </div>
   );

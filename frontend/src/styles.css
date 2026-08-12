@@ -184,9 +184,16 @@ button:disabled {
     background: var(--control-bg-focus);
   }
 
+  /* Keep filter inputs/selects aligned with the shared h-10 action buttons. */
+  input.control,
   select.control {
+    height: 2.5rem;
+    min-height: 2.5rem;
     padding-top: 0;
     padding-bottom: 0;
+  }
+
+  select.control {
     padding-right: 2.5rem;
     line-height: 1.5;
   }

@@ -1,4 +1,4 @@
-import type { HistoryAskDomain, HistoryAskResponse, HistoryOntologyDraft, HistoryOntologyTerm, LlmConfig, LlmConfigDraft } from "../types";
+import type { HistoryAskDomain, HistoryAskQuickQuestion, HistoryAskResponse, HistoryOntologyDraft, HistoryOntologyTerm, LlmConfig, LlmConfigDraft } from "../types";
 import { request } from "./client";
 
 export async function askHistory(
@@ -33,6 +33,32 @@ export async function updateHistoryAskLlmConfig(draft: LlmConfigDraft): Promise<
 
 export async function fetchHistoryAskDomains(): Promise<{ items: HistoryAskDomain[] }> {
   return request<{ items: HistoryAskDomain[] }>("/api/history-ask/domains");
+}
+
+type HistoryAskDomainCode = "history" | "todos" | "knowledge" | "english_materials";
+
+export async function fetchHistoryAskQuickQuestions(domainCode: HistoryAskDomainCode): Promise<{ items: HistoryAskQuickQuestion[] }> {
+  return request<{ items: HistoryAskQuickQuestion[] }>(`/api/history-ask/quick-questions?domain_code=${domainCode}`);
+}
+
+export async function createHistoryAskQuickQuestion(question: string, domainCode: HistoryAskDomainCode): Promise<HistoryAskQuickQuestion> {
+  return request<HistoryAskQuickQuestion>("/api/history-ask/quick-questions", {
+    method: "POST",
+    invalidatePrefixes: ["/api/history-ask/quick-questions"],
+    body: JSON.stringify({ question, domain_code: domainCode }),
+  });
+}
+
+export async function updateHistoryAskQuickQuestion(id: number, question: string): Promise<HistoryAskQuickQuestion> {
+  return request<HistoryAskQuickQuestion>(`/api/history-ask/quick-questions/${id}`, {
+    method: "PUT",
+    invalidatePrefixes: ["/api/history-ask/quick-questions"],
+    body: JSON.stringify({ question }),
+  });
+}
+
+export async function deleteHistoryAskQuickQuestion(id: number): Promise<void> {
+  await request<void>(`/api/history-ask/quick-questions/${id}`, { method: "DELETE", invalidatePrefixes: ["/api/history-ask/quick-questions"] });
 }
 
 export async function fetchHistoryOntology(domainCode: "history" | "todos" | "knowledge" | "english_materials"): Promise<{ items: HistoryOntologyTerm[] }> {
