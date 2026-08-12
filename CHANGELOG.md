@@ -13,6 +13,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Added / 新增
 
+- Added the `可信知识` and `英语素材` business domains to AI 问数. Both use fixed read-only query adapters, user-visible data boundaries, domain-scoped ontology terms, and the existing SQL/prompt audit view.
+- 为 AI 问数新增 `可信知识` 与 `英语素材` 业务域：两者均使用固定只读查询适配器、当前用户可见数据边界、按业务域隔离的本体词条，以及既有 SQL/提示词审计视图。
+
 - Added read-only query auditing to AI 问数: the default no-Skill result now shows the actual matched records (up to the controlled 80-row limit), and users can view the server-generated SQL template, masked bind parameters, and complete prompt context including matched ontology concepts and Skills.
 - 为 AI 问数新增只读查询审计：未选择 Skill 的基础结果现在展示实际命中记录（受控上限 80 条），并可查看服务端生成的 SQL 模板、脱敏绑定参数，以及包含命中本体概念和 Skill 的完整提示词上下文。
 

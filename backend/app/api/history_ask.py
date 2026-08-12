@@ -20,6 +20,8 @@ router = APIRouter(prefix="/history-ask", tags=["history-ask"], dependencies=[De
 DOMAINS = [
     HistoryAskDomain(code="history", name="历史工作记录", description="基于工作记录、类型、周期和学习等级。", source_tables=["T_HISTORY", "TK_USERS"]),
     HistoryAskDomain(code="todos", name="待办事项", description="基于待办标题、内容、状态、标签和来源。", source_tables=["AI_TODO_ITEMS", "TK_USERS"]),
+    HistoryAskDomain(code="knowledge", name="可信知识", description="基于知识问答、来源、主题标签和发布状态。", source_tables=["AI_QA_LIB", "TK_USERS"]),
+    HistoryAskDomain(code="english_materials", name="英语素材", description="基于英语表达、职业句式、中文翻译、分类和标记状态。", source_tables=["T_DOUYIN_DETAILS", "TK_USERS"]),
 ]
 
 

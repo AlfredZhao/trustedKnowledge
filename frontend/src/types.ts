@@ -397,7 +397,7 @@ export interface HistoryAskResponse {
 }
 
 export interface HistoryAskDomain {
-  code: "history" | "todos";
+  code: "history" | "todos" | "knowledge" | "english_materials";
   name: string;
   description: string;
   source_tables: string[];
@@ -410,7 +410,7 @@ export interface HistoryOntologyTerm {
   description: string;
   created_at: string;
   updated_at: string;
-  domain_code: "history" | "todos";
+  domain_code: "history" | "todos" | "knowledge" | "english_materials";
   visibility: "PERSONAL" | "TEAM" | "SYSTEM";
   shared_with_usernames: string[];
   owner_username: string;
@@ -418,7 +418,7 @@ export interface HistoryOntologyTerm {
 }
 
 export interface HistoryOntologyDraft {
-  domain_code: "history" | "todos";
+  domain_code: "history" | "todos" | "knowledge" | "english_materials";
   name: string;
   aliases: string;
   description: string;

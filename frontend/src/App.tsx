@@ -878,7 +878,7 @@ function App() {
   const [historyAskLlmConfigSaved, setHistoryAskLlmConfigSaved] = useState(false);
   const [historyAskSkillIds, setHistoryAskSkillIds] = useState<string[]>(restoredUiState.historyAsk.skillIds);
   const [historyAskDomains, setHistoryAskDomains] = useState<HistoryAskDomain[]>([]);
-  const [historyAskDomainCode, setHistoryAskDomainCode] = useState<"history" | "todos">("history");
+  const [historyAskDomainCode, setHistoryAskDomainCode] = useState<"history" | "todos" | "knowledge" | "english_materials">("history");
   const [historyOntologyTerms, setHistoryOntologyTerms] = useState<HistoryOntologyTerm[]>([]);
   const [historyOntologyDraft, setHistoryOntologyDraft] = useState<HistoryOntologyDraft>(emptyHistoryOntologyDraft);
   const [historyOntologyEditingId, setHistoryOntologyEditingId] = useState<number | null>(null);
@@ -14033,7 +14033,7 @@ function HistoryAskPanel({
   ontologyError: string | null;
   ontologyLoading: boolean;
   ontologySaving: boolean;
-  domainCode: "history" | "todos";
+  domainCode: "history" | "todos" | "knowledge" | "english_materials";
   domains: HistoryAskDomain[];
   canManageSystemOntology: boolean;
   modelName: string;
@@ -14051,7 +14051,7 @@ function HistoryAskPanel({
   onOntologyEdit: (term: HistoryOntologyTerm) => void;
   onOntologyDelete: (termId: number) => void;
   onOntologyCancel: () => void;
-  onDomainChange: (code: "history" | "todos") => void;
+  onDomainChange: (code: "history" | "todos" | "knowledge" | "english_materials") => void;
   onModelNameChange: (modelName: string) => void;
   onOpenHistory: () => void;
   onQuestionChange: (question: string) => void;
@@ -14107,7 +14107,7 @@ function HistoryAskPanel({
             </div>
             <div className="rounded-lg border border-white/10 bg-white/[0.025] p-3">
               <Field label="业务域" icon={<Database size={16} />}>
-                <select className="control h-10" disabled={isLoading} value={domainCode} onChange={(event) => onDomainChange(event.target.value as "history" | "todos")}>
+                <select className="control h-10" disabled={isLoading} value={domainCode} onChange={(event) => onDomainChange(event.target.value as "history" | "todos" | "knowledge" | "english_materials")}>
                   {domains.map((domain) => <option key={domain.code} value={domain.code}>{domain.name}</option>)}
                 </select>
               </Field>
@@ -14540,7 +14540,7 @@ function HistoryAskPanel({
                   icon={<Database size={17} />}
                   label="匹配记录"
                   value={formatAmount(answer.stats.matched_count)}
-                  detail={`${formatAmount(answer.stats.active_days)} 个活跃日期`}
+                  detail={`${formatAmount(answer.stats.active_days)} ${(answer.domain?.code ?? "history") === "english_materials" ? "个素材分类" : "个活跃日期"}`}
                 />
                 <MetricTile
                   icon={<Search size={17} />}
@@ -14550,15 +14550,15 @@ function HistoryAskPanel({
                 />
                 <MetricTile
                   icon={<CalendarClock size={17} />}
-                  label="日期范围"
-                  value={formatDateOnly(answer.stats.max_date)}
-                  detail={`起始 ${formatDateOnly(answer.stats.min_date)}`}
+                  label={(answer.domain?.code ?? "history") === "english_materials" ? "数据维度" : "日期范围"}
+                  value={(answer.domain?.code ?? "history") === "english_materials" ? "表达素材" : formatDateOnly(answer.stats.max_date)}
+                  detail={(answer.domain?.code ?? "history") === "english_materials" ? "无日期字段" : `起始 ${formatDateOnly(answer.stats.min_date)}`}
                 />
               </div>
 
               <HistoryAskFilterSummary filters={answer.filters} />
-              <HistoryAskDistribution title={(answer.domain?.code ?? "history") === "todos" ? "状态分布" : "类型分布"} items={answer.stats.type_counts} />
-              <HistoryAskDistribution title={(answer.domain?.code ?? "history") === "todos" ? "标签分布" : "周期分布"} items={answer.stats.week_counts} />
+              <HistoryAskDistribution title={(answer.domain?.code ?? "history") === "todos" ? "状态分布" : (answer.domain?.code ?? "history") === "knowledge" ? "发布状态分布" : (answer.domain?.code ?? "history") === "english_materials" ? "标记状态分布" : "类型分布"} items={answer.stats.type_counts} />
+              <HistoryAskDistribution title={(answer.domain?.code ?? "history") === "todos" ? "标签分布" : (answer.domain?.code ?? "history") === "knowledge" ? "主题标签分布" : (answer.domain?.code ?? "history") === "english_materials" ? "分类分布" : "周期分布"} items={answer.stats.week_counts} />
               {(answer.domain?.code ?? "history") === "history" ? <HistoryAskDistribution title="等级分布" items={answer.stats.learn_level_counts} /> : null}
 
               <div className="space-y-3">
@@ -14678,6 +14678,10 @@ function HistoryAskPromptAudit({ promptDebug }: { promptDebug: HistoryAskRespons
 function HistoryAskDefaultResult({ answer }: { answer: HistoryAskResponse }) {
   const pageSize = 10;
   const records = answer.query_results ?? answer.evidence;
+  const domainCode = answer.domain?.code ?? "history";
+  const isEnglishMaterials = domainCode === "english_materials";
+  const typeTitle = domainCode === "todos" ? "状态分布" : domainCode === "knowledge" ? "发布状态分布" : isEnglishMaterials ? "标记状态分布" : "类型分布";
+  const groupTitle = domainCode === "todos" ? "标签分布" : domainCode === "knowledge" ? "主题标签分布" : isEnglishMaterials ? "分类分布" : "周期分布";
   const [page, setPage] = useState(1);
   const totalPages = Math.max(1, Math.ceil(records.length / pageSize));
   const currentPage = Math.min(page, totalPages);
@@ -14693,14 +14697,22 @@ function HistoryAskDefaultResult({ answer }: { answer: HistoryAskResponse }) {
           基础查询结果
         </div>
         <p className="text-sm leading-6 text-slate-300">
-          本次查询匹配 <span className="font-semibold text-mint-200">{formatAmount(answer.stats.matched_count)}</span> 条记录，覆盖{" "}
-          <span className="font-semibold text-mint-200">{formatAmount(answer.stats.active_days)}</span> 个活跃日期，时间范围为{" "}
-          {formatDateOnly(answer.stats.min_date)} 至 {formatDateOnly(answer.stats.max_date)}。
+          本次查询匹配 <span className="font-semibold text-mint-200">{formatAmount(answer.stats.matched_count)}</span> 条记录，
+          {isEnglishMaterials ? (
+            <>
+              覆盖 <span className="font-semibold text-mint-200">{formatAmount(answer.stats.active_days)}</span> 个素材分类。
+            </>
+          ) : (
+            <>
+              覆盖 <span className="font-semibold text-mint-200">{formatAmount(answer.stats.active_days)}</span> 个活跃日期，时间范围为{" "}
+              {formatDateOnly(answer.stats.min_date)} 至 {formatDateOnly(answer.stats.max_date)}。
+            </>
+          )}
         </p>
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
-        <HistoryAskBarChart title={(answer.domain?.code ?? "history") === "todos" ? "状态分布" : "类型分布"} items={answer.stats.type_counts} tone="bg-sky-300" />
-        <HistoryAskBarChart title={(answer.domain?.code ?? "history") === "todos" ? "标签分布" : "周期分布"} items={answer.stats.week_counts} tone="bg-fuchsia-300" />
+        <HistoryAskBarChart title={typeTitle} items={answer.stats.type_counts} tone="bg-sky-300" />
+        <HistoryAskBarChart title={groupTitle} items={answer.stats.week_counts} tone="bg-fuchsia-300" />
       </div>
       <div className="rounded-lg border border-white/10 bg-white/[0.028] p-3">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">

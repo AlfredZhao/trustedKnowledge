@@ -26,7 +26,7 @@ router = APIRouter(prefix="/history-ask/ontology", tags=["history-ontology"], de
 
 @router.get("", response_model=HistoryOntologyListResponse)
 async def get_history_ontology(
-    domain_code: str = Query("history", pattern="^(history|todos)$"),
+    domain_code: str = Query("history", pattern="^(history|todos|knowledge|english_materials)$"),
     auth_context: AuthContext = Depends(require_current_user),
 ) -> HistoryOntologyListResponse:
     try:

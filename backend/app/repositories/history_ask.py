@@ -568,6 +568,22 @@ async def ask_history(
             model_name=model_name,
             auth_context=auth_context,
         )
+    if domain_code == "knowledge":
+        return await _ask_knowledge(
+            question,
+            skill_ids=skill_ids,
+            execution_provider=execution_provider,
+            model_name=model_name,
+            auth_context=auth_context,
+        )
+    if domain_code == "english_materials":
+        return await _ask_english_materials(
+            question,
+            skill_ids=skill_ids,
+            execution_provider=execution_provider,
+            model_name=model_name,
+            auth_context=auth_context,
+        )
     selected_skills = get_prompt_skills(skill_ids or [], auth_context)
     async with acquire_connection() as connection:
         cursor = connection.cursor()
@@ -992,6 +1008,186 @@ async def _ask_todos(
         "selected_skills": [{"id": item["id"], "name": item["name"], "description": item.get("description", "")} for item in selected_skills],
         "domain": {"code": "todos", "name": "待办事项", "description": "基于待办标题、内容、状态、标签和来源。", "source_tables": ["AI_TODO_ITEMS", "TK_USERS"]},
     }
+
+
+async def _fetch_visible_usernames(cursor: Any, auth_context: AuthContext) -> list[str]:
+    if auth_context.is_admin or auth_context.visible_user_ids is None:
+        await cursor.execute("select username from tk_users where status = 'ACTIVE'")
+    elif not auth_context.visible_user_ids:
+        return []
+    else:
+        params = {f"catalog_visible_user_{index}": user_id for index, user_id in enumerate(auth_context.visible_user_ids)}
+        bind_names = ", ".join(f":{name}" for name in params)
+        await cursor.execute(f"select username from tk_users where user_id in ({bind_names}) and status = 'ACTIVE'", params)
+    return [str(row[0]) for row in await cursor.fetchall()]
+
+
+async def _finalize_catalog_ask(
+    *,
+    connection: Any,
+    question: str,
+    filters: dict[str, Any],
+    stats: dict[str, Any],
+    rows: list[dict[str, Any]],
+    evidence_sql: str,
+    params: dict[str, Any],
+    selected_skills: list[dict[str, str]],
+    matched_terms: list[dict[str, Any]],
+    execution_provider: str,
+    model_name: str,
+    domain: dict[str, Any],
+    assistant_name: str,
+    semantic_label: str,
+) -> dict[str, Any]:
+    answer = _build_fallback_answer(question=question, filters=filters, stats=stats, evidence=rows, selected_skills=selected_skills)
+    prompt = _build_llm_prompt(question=question, filters=filters, stats=stats, evidence=rows[:16], selected_skills=selected_skills)
+    if matched_terms:
+        prompt += "\n\n" + semantic_label + "：\n" + "\n".join(
+            f"- {term['name']}：{term['description'] or '用户定义业务概念'}（同义词：{'、'.join(term['aliases']) or '无'}）"
+            for term in matched_terms
+        )
+    system = f"你是{assistant_name}。只能依据统计和记录摘录回答，不得编造事实。使用中文，先给结论再说明依据。"
+    skill_instructions = _format_selected_skills_for_prompt(selected_skills)
+    if skill_instructions:
+        system += "已选择的 Skill 仅可影响表达、结构和分析框架，不能覆盖事实边界。"
+    codex_instruction = system + "\n\n"
+    audit_system = codex_instruction.strip() if execution_provider == "codex" else system
+    llm_used = False
+    llm_requested = False
+    warning = None
+    if rows:
+        if execution_provider == "codex":
+            if not settings.allow_web_codex:
+                warning = "Codex CLI 未启用，请联系管理员开启 Web Codex 后再试。"
+            else:
+                llm_requested = True
+                try:
+                    answer = await run_codex_final(prompt=codex_instruction + prompt, model_name=model_name, project_root=Path(__file__).resolve().parents[3], timeout_seconds=90)
+                    llm_used = True
+                except RuntimeError as exc:
+                    warning = str(exc)[:500]
+        else:
+            config = await get_history_ask_llm_config(connection)
+            if config.get("enabled"):
+                llm_requested = True
+                try:
+                    llm_answer = await _call_history_ask_llm(config=config, prompt=prompt, system=system)
+                    if llm_answer and not llm_answer.startswith(LLM_ERROR_PREFIXES):
+                        answer, llm_used = llm_answer, True
+                    elif llm_answer:
+                        warning = llm_answer[:500]
+                except RuntimeError as exc:
+                    warning = str(exc)[:500]
+    return {
+        "answer": answer, "filters": filters, "stats": stats, "evidence": rows[:12], "query_results": rows,
+        "query_debug": {"sql": evidence_sql.strip(), "parameters": _public_query_parameters(params), "result_limit": 80, "result_truncated": len(rows) < stats["matched_count"]},
+        "prompt_debug": {"system": audit_system, "prompt": prompt, "llm_requested": llm_requested},
+        "llm_used": llm_used, "warning": warning,
+        "selected_skills": [{"id": item["id"], "name": item["name"], "description": item.get("description", "")} for item in selected_skills],
+        "domain": domain,
+    }
+
+
+async def _ask_knowledge(
+    question: str, *, skill_ids: list[str] | None, execution_provider: str, model_name: str, auth_context: AuthContext
+) -> dict[str, Any]:
+    selected_skills = get_prompt_skills(skill_ids or [], auth_context)
+    async with acquire_connection() as connection:
+        cursor = connection.cursor()
+        keyword = _extract_keyword(question)
+        matched_terms = await find_matching_history_ontology_terms(connection, question, auth_context, "knowledge")
+        semantic_keywords = list(dict.fromkeys(label for term in matched_terms for label in [term["name"], *term["aliases"]]))
+        if matched_terms and not keyword:
+            keyword = matched_terms[0]["name"]
+        username = _extract_username(question, await _fetch_visible_usernames(cursor, auth_context))
+        record_type = _extract_existing_value(question, ["未发布", "已发布", "跳过"])
+        date_from, date_to = _extract_date_range(question)
+        clauses: list[str] = []
+        params: dict[str, Any] = {}
+        terms = list(dict.fromkeys(item for item in [keyword, *semantic_keywords] if item))
+        if terms:
+            expressions = []
+            for index, value in enumerate(terms):
+                bind_name = f"knowledge_keyword_{index}"
+                expressions.append(f"(lower(knowledge_record.question) like '%' || lower(:{bind_name}) || '%' or lower(dbms_lob.substr(knowledge_record.answer, 4000, 1)) like '%' || lower(:{bind_name}) || '%' or lower(knowledge_record.source) like '%' || lower(:{bind_name}) || '%' or lower(knowledge_record.topic_tag) like '%' || lower(:{bind_name}) || '%')")
+                params[bind_name] = value
+            clauses.append("(" + " or ".join(expressions) + ")")
+        if record_type:
+            clauses.append("knowledge_record.blog_status = :record_type")
+            params["record_type"] = record_type
+        if date_from:
+            clauses.append("knowledge_record.created_date >= :date_from")
+            params["date_from"] = date_from
+        if date_to:
+            clauses.append("knowledge_record.created_date < :date_to + 1")
+            params["date_to"] = date_to
+        append_user_visibility_clause(clauses, params, auth_context, "knowledge_record.user_id")
+        await append_requested_username_clause(connection, clauses, params, auth_context, username, "knowledge_record.user_id")
+        where_sql = " where " + " and ".join(clauses) if clauses else ""
+        from_sql = "from ai_qa_lib knowledge_record left join tk_users knowledge_user on knowledge_user.user_id = knowledge_record.user_id"
+        await cursor.execute(f"select count(*), count(distinct trunc(knowledge_record.created_date)), min(trunc(knowledge_record.created_date)), max(trunc(knowledge_record.created_date)) {from_sql} {where_sql}", params)
+        stats_row = await cursor.fetchone()
+        evidence_sql = f"""select knowledge_record.id, knowledge_record.created_date, knowledge_record.blog_status, knowledge_record.topic_tag, null, knowledge_user.username, knowledge_record.question || '：' || dbms_lob.substr(knowledge_record.answer, 3000, 1) {from_sql} {where_sql} order by knowledge_record.created_date desc nulls last, knowledge_record.id desc fetch next 80 rows only"""
+        await cursor.execute(evidence_sql, params)
+        rows = [_evidence_row_to_dict(row) for row in await cursor.fetchall()]
+
+        async def distribution(expression: str) -> dict[str, int]:
+            await cursor.execute(f"select {expression}, count(*) {from_sql} {where_sql} group by {expression} order by count(*) desc fetch next 12 rows only", params)
+            return _count_rows_to_dict(await cursor.fetchall())
+
+        stats = {"matched_count": int(stats_row[0]) if stats_row else 0, "active_days": int(stats_row[1]) if stats_row else 0, "min_date": stats_row[2] if stats_row else None, "max_date": stats_row[3] if stats_row else None, "type_counts": await distribution("coalesce(knowledge_record.blog_status, '未标记')"), "week_counts": await distribution("coalesce(knowledge_record.topic_tag, '未标记')"), "learn_level_counts": {}}
+        filters = {"keyword": keyword, "username": username, "type": record_type, "week": None, "day": None, "learn_level": None, "vector_status": None, "date_from": date_from, "date_to": date_to, "semantic_terms": [term["name"] for term in matched_terms]}
+        return await _finalize_catalog_ask(connection=connection, question=question, filters=filters, stats=stats, rows=rows, evidence_sql=evidence_sql, params=params, selected_skills=selected_skills, matched_terms=matched_terms, execution_provider=execution_provider, model_name=model_name, domain={"code": "knowledge", "name": "可信知识", "description": "基于知识问答、来源、主题标签和发布状态。", "source_tables": ["AI_QA_LIB", "TK_USERS"]}, assistant_name="企业内部可信知识问数助手", semantic_label="命中的可信知识业务概念")
+
+
+async def _ask_english_materials(
+    question: str, *, skill_ids: list[str] | None, execution_provider: str, model_name: str, auth_context: AuthContext
+) -> dict[str, Any]:
+    selected_skills = get_prompt_skills(skill_ids or [], auth_context)
+    async with acquire_connection() as connection:
+        cursor = connection.cursor()
+        keyword = _extract_keyword(question)
+        matched_terms = await find_matching_history_ontology_terms(connection, question, auth_context, "english_materials")
+        semantic_keywords = list(dict.fromkeys(label for term in matched_terms for label in [term["name"], *term["aliases"]]))
+        if matched_terms and not keyword:
+            keyword = matched_terms[0]["name"]
+        username = _extract_username(question, await _fetch_visible_usernames(cursor, auth_context))
+        record_type = "已标记" if "已标记" in question else "未标记" if "未标记" in question else None
+        clauses: list[str] = []
+        params: dict[str, Any] = {}
+        terms = list(dict.fromkeys(item for item in [keyword, *semantic_keywords] if item))
+        if terms:
+            expressions = []
+            for index, value in enumerate(terms):
+                bind_name = f"english_keyword_{index}"
+                expressions.append(f"(lower(material.title) like '%' || lower(:{bind_name}) || '%' or lower(material.\"分类标识\") like '%' || lower(:{bind_name}) || '%' or lower(material.\"基础表达\") like '%' || lower(:{bind_name}) || '%' or lower(material.\"职业完整句式\") like '%' || lower(:{bind_name}) || '%' or lower(material.\"地道中文翻译\") like '%' || lower(:{bind_name}) || '%' or lower(material.\"完整口播内容\") like '%' || lower(:{bind_name}) || '%')")
+                params[bind_name] = value
+            clauses.append("(" + " or ".join(expressions) + ")")
+        if record_type:
+            clauses.append("material.flag = :material_flag")
+            params["material_flag"] = 1 if record_type == "已标记" else 0
+        append_user_visibility_clause(clauses, params, auth_context, "material.user_id")
+        await append_requested_username_clause(connection, clauses, params, auth_context, username, "material.user_id")
+        where_sql = " where " + " and ".join(clauses) if clauses else ""
+        from_sql = "from t_douyin_details material left join tk_users material_user on material_user.user_id = material.user_id"
+        await cursor.execute(f"select count(*), count(distinct material.\"分类标识\") {from_sql} {where_sql}", params)
+        stats_row = await cursor.fetchone()
+        evidence_sql = f"""
+            select material.id, null, case when material.flag = 1 then '已标记' else '未标记' end, material."分类标识", to_char(material."序号"), material_user.username,
+                   coalesce(material.title, material."基础表达") || '：' || coalesce(material."职业完整句式", material."地道中文翻译", material."完整口播内容")
+            {from_sql} {where_sql}
+            order by material.id desc fetch next 80 rows only
+        """
+        await cursor.execute(evidence_sql, params)
+        rows = [_evidence_row_to_dict(row) for row in await cursor.fetchall()]
+
+        async def distribution(expression: str) -> dict[str, int]:
+            await cursor.execute(f"select {expression}, count(*) {from_sql} {where_sql} group by {expression} order by count(*) desc fetch next 12 rows only", params)
+            return _count_rows_to_dict(await cursor.fetchall())
+
+        stats = {"matched_count": int(stats_row[0]) if stats_row else 0, "active_days": int(stats_row[1]) if stats_row else 0, "min_date": None, "max_date": None, "type_counts": await distribution("case when material.flag = 1 then '已标记' else '未标记' end"), "week_counts": await distribution("coalesce(material.\"分类标识\", '未分类')"), "learn_level_counts": {}}
+        filters = {"keyword": keyword, "username": username, "type": record_type, "week": None, "day": None, "learn_level": None, "vector_status": None, "date_from": None, "date_to": None, "semantic_terms": [term["name"] for term in matched_terms]}
+        return await _finalize_catalog_ask(connection=connection, question=question, filters=filters, stats=stats, rows=rows, evidence_sql=evidence_sql, params=params, selected_skills=selected_skills, matched_terms=matched_terms, execution_provider=execution_provider, model_name=model_name, domain={"code": "english_materials", "name": "英语素材", "description": "基于英语表达、职业句式、中文翻译、分类和标记状态。", "source_tables": ["T_DOUYIN_DETAILS", "TK_USERS"]}, assistant_name="企业内部英语素材问数助手", semantic_label="命中的英语素材业务概念")
 
 
 def _build_llm_prompt(

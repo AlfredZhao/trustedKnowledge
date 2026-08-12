@@ -6,7 +6,7 @@ export async function askHistory(
   skillIds: string[] = [],
   executionProvider: "codex" | "history_ask_llm" = "history_ask_llm",
   modelName = "",
-  domainCode: "history" | "todos" = "history",
+  domainCode: "history" | "todos" | "knowledge" | "english_materials" = "history",
 ): Promise<HistoryAskResponse> {
   return request<HistoryAskResponse>("/api/history-ask", {
     method: "POST",
@@ -35,7 +35,7 @@ export async function fetchHistoryAskDomains(): Promise<{ items: HistoryAskDomai
   return request<{ items: HistoryAskDomain[] }>("/api/history-ask/domains");
 }
 
-export async function fetchHistoryOntology(domainCode: "history" | "todos"): Promise<{ items: HistoryOntologyTerm[] }> {
+export async function fetchHistoryOntology(domainCode: "history" | "todos" | "knowledge" | "english_materials"): Promise<{ items: HistoryOntologyTerm[] }> {
   return request<{ items: HistoryOntologyTerm[] }>(`/api/history-ask/ontology?domain_code=${domainCode}`);
 }
 

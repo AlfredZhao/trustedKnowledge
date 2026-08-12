@@ -10,11 +10,11 @@ class HistoryAskRequest(BaseModel):
     skill_ids: list[str] = Field(default_factory=list, max_length=8)
     execution_provider: Literal["codex", "history_ask_llm"] = "history_ask_llm"
     model_name: str = Field("", max_length=120)
-    domain_code: Literal["history", "todos"] = "history"
+    domain_code: Literal["history", "todos", "knowledge", "english_materials"] = "history"
 
 
 class HistoryAskDomain(BaseModel):
-    code: Literal["history", "todos"]
+    code: Literal["history", "todos", "knowledge", "english_materials"]
     name: str
     description: str
     source_tables: list[str] = Field(default_factory=list)
