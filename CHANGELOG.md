@@ -62,6 +62,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Fixed / 修复
 
+- Fixed the Blog Factory mobile filter bar so `清空筛选条件` no longer overflows the PWA viewport; sorting now stacks safely at narrow widths.
+- 修复博客工厂移动端筛选栏：`清空筛选条件` 不再超出 PWA 视口；窄屏下排序控件会安全换行。
+
 - Fixed Blog Factory assist-summary and cover-image saves to issue independent partial updates, so they no longer require task content or snapshots to be populated. Save progress, success, and failure now appear directly on the action button.
 - 修复博客工厂内容辅助的摘要与封面图片保存：改为独立部分更新，不再要求任务内容或快照字段完整；保存中、成功与失败直接显示在操作按钮上。
 

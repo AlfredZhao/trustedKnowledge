@@ -10527,30 +10527,34 @@ function BlogFactoryRecords({
                 placeholder="全部"
               />
             </Field>
-            <div className="grid min-w-0 grid-cols-[minmax(100px,3fr)_minmax(108px,1fr)_auto] items-end gap-2 sm:col-span-2">
-              <Field label="排序字段" icon={<ChartLine size={16} />}>
-                <select
-                  className="control"
-                  value={filters.sortBy}
-                  onChange={(event) => onFilterChange({ sortBy: event.target.value as BlogFactoryFilters["sortBy"] })}
-                >
-                  <option value="copied_at">复制时间</option>
-                  <option value="id">ID</option>
-                  <option value="knowledge_id">知识 ID</option>
-                  <option value="factory_status">状态</option>
-                </select>
-              </Field>
-              <Field label="方向" icon={<ChartLine size={16} />}>
-                <select
-                  className="control"
-                  value={filters.sortDir}
-                  onChange={(event) => onFilterChange({ sortDir: event.target.value as BlogFactoryFilters["sortDir"] })}
-                >
-                  <option value="desc">降序</option>
-                  <option value="asc">升序</option>
-                </select>
-              </Field>
-              <FilterClearButton onClick={onClearFilters} />
+            <div className="grid min-w-0 grid-cols-2 items-end gap-2 sm:col-span-2 sm:grid-cols-[minmax(100px,3fr)_minmax(108px,1fr)_auto]">
+              <div className="col-span-2 min-w-0 sm:col-span-1">
+                <Field label="排序字段" icon={<ChartLine size={16} />}>
+                  <select
+                    className="control"
+                    value={filters.sortBy}
+                    onChange={(event) => onFilterChange({ sortBy: event.target.value as BlogFactoryFilters["sortBy"] })}
+                  >
+                    <option value="copied_at">复制时间</option>
+                    <option value="id">ID</option>
+                    <option value="knowledge_id">知识 ID</option>
+                    <option value="factory_status">状态</option>
+                  </select>
+                </Field>
+              </div>
+              <div className="min-w-0">
+                <Field label="方向" icon={<ChartLine size={16} />}>
+                  <select
+                    className="control"
+                    value={filters.sortDir}
+                    onChange={(event) => onFilterChange({ sortDir: event.target.value as BlogFactoryFilters["sortDir"] })}
+                  >
+                    <option value="desc">降序</option>
+                    <option value="asc">升序</option>
+                  </select>
+                </Field>
+              </div>
+              <FilterClearButton className="w-full sm:w-auto" onClick={onClearFilters} />
             </div>
           </div>
         </div>
