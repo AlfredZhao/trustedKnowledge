@@ -21,6 +21,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Changed / 变更
 
+- Changed English Materials `分类标识` to an enum with `影子跟读`、`职场英语`、`生活口语`; new-material drafts default to `职场英语`.
+- 调整英语素材 `分类标识` 为 `影子跟读`、`职场英语`、`生活口语` 枚举；新增素材默认选择 `职场英语`。
+
 - Changed English Materials layouts so the `分类标识` and `发布状态` controls use equal-width columns, giving the status label sufficient room.
 - 调整英语素材布局：`分类标识` 与 `发布状态` 控件改为等宽列，为发布状态文案保留足够显示空间。
 

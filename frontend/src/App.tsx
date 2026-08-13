@@ -237,7 +237,9 @@ import {
   copyText,
   createEmptyBlogFactoryKeywordReplacement,
   createEmptyBlogFactoryMaskRule,
+  DEFAULT_ENGLISH_MATERIAL_CATEGORY,
   describeBlogFactoryMaskRule,
+  ENGLISH_MATERIAL_CATEGORIES,
   englishMaterialItemToDraft,
   extractBlogFactoryCoverEntities,
   extractCodexResultText,
@@ -394,7 +396,7 @@ const emptyPersonalSecretDraft: PersonalSecretDraft = {
 
 const emptyEnglishMaterialDraft: EnglishMaterialDraft = {
   sequence_no: "",
-  category: "",
+  category: DEFAULT_ENGLISH_MATERIAL_CATEGORY,
   base_expression: "",
   professional_sentence: "",
   chinese_translation: "",
@@ -12165,13 +12167,18 @@ function EnglishMaterialsWorkspace({
             </select>
           </Field>
           <Field label="分类标识" icon={<Tags size={16} />}>
-            <input
+            <select
               className="control"
-              maxLength={50}
               value={filters.category}
               onChange={(event) => onFilterChange({ category: event.target.value })}
-              placeholder="按分类精确筛选"
-            />
+            >
+              <option value="">全部分类</option>
+              {ENGLISH_MATERIAL_CATEGORIES.map((category) => (
+                <option key={category} value={category}>
+                  {category}
+                </option>
+              ))}
+            </select>
           </Field>
           <Field label="发布状态" icon={<CircleGauge size={16} />}>
             <select
@@ -12351,13 +12358,17 @@ function EnglishMaterialsWorkspace({
 
           <div className="grid grid-cols-2 gap-3">
             <Field label="分类标识" icon={<Tags size={16} />}>
-              <input
+              <select
                 className="control"
-                maxLength={50}
                 value={draft.category}
                 onChange={(event) => onDraftChange({ ...draft, category: event.target.value })}
-                placeholder="如 workplace"
-              />
+              >
+                {ENGLISH_MATERIAL_CATEGORIES.map((category) => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
+                ))}
+              </select>
             </Field>
             <Field label="发布状态" icon={<CircleGauge size={16} />}>
               <select
@@ -12585,13 +12596,17 @@ function EnglishMaterialDetailDialog({
 
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="分类标识" icon={<Tags size={16} />}>
-                  <input
+                  <select
                     className="control"
-                    maxLength={50}
                     value={draft.category}
                     onChange={(event) => onDraftChange({ ...draft, category: event.target.value })}
-                    placeholder="如 workplace"
-                  />
+                  >
+                    {ENGLISH_MATERIAL_CATEGORIES.map((category) => (
+                      <option key={category} value={category}>
+                        {category}
+                      </option>
+                    ))}
+                  </select>
                 </Field>
                 <Field label="发布状态" icon={<CircleGauge size={16} />}>
                   <select

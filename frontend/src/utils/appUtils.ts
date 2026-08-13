@@ -42,6 +42,8 @@ import { removeLeakedMarkdownCodePlaceholders } from "./markdown";
 
 export const NEW_KNOWLEDGE_DRAFT_STORAGE_KEY = "trustedKnowledge.newDraft";
 const UI_STATE_STORAGE_KEY = "trustedKnowledge.uiState.v1";
+export const ENGLISH_MATERIAL_CATEGORIES = ["影子跟读", "职场英语", "生活口语"] as const;
+export const DEFAULT_ENGLISH_MATERIAL_CATEGORY = "职场英语";
 export type AiCodingNoticeStatus = "running" | "completed" | "failed";
 export type ThemeMode = "dark" | "light";
 export type MarkdownContentView = "rendered" | "raw";
@@ -432,7 +434,7 @@ const emptyTodoDraft: TodoDraft = {
 
 const emptyEnglishMaterialDraft: EnglishMaterialDraft = {
   sequence_no: "",
-  category: "",
+  category: DEFAULT_ENGLISH_MATERIAL_CATEGORY,
   base_expression: "",
   professional_sentence: "",
   chinese_translation: "",
@@ -1587,7 +1589,7 @@ export function readEnglishMaterialDraft(value: unknown): EnglishMaterialDraft {
   const draft = readRecord(value);
   return {
     sequence_no: readString(draft.sequence_no).replace(/\D/g, ""),
-    category: readString(draft.category),
+    category: normalizeEnglishMaterialCategory(readString(draft.category)),
     base_expression: readString(draft.base_expression),
     professional_sentence: readString(draft.professional_sentence),
     chinese_translation: readString(draft.chinese_translation),
@@ -1599,7 +1601,7 @@ export function readEnglishMaterialDraft(value: unknown): EnglishMaterialDraft {
 
 export function isBlankEnglishMaterialDraftExceptSequence(draft: EnglishMaterialDraft): boolean {
   return (
-    !draft.category.trim() &&
+    (!draft.category.trim() || draft.category === DEFAULT_ENGLISH_MATERIAL_CATEGORY) &&
     !draft.base_expression.trim() &&
     !draft.professional_sentence.trim() &&
     !draft.chinese_translation.trim() &&
@@ -1612,7 +1614,7 @@ export function isBlankEnglishMaterialDraftExceptSequence(draft: EnglishMaterial
 export function englishMaterialItemToDraft(item: EnglishMaterialItem): EnglishMaterialDraft {
   return {
     sequence_no: item.sequence_no ? String(item.sequence_no) : "",
-    category: item.category ?? "",
+    category: normalizeEnglishMaterialCategory(item.category ?? ""),
     base_expression: item.base_expression ?? "",
     professional_sentence: item.professional_sentence ?? "",
     chinese_translation: item.chinese_translation ?? "",
@@ -1620,6 +1622,12 @@ export function englishMaterialItemToDraft(item: EnglishMaterialItem): EnglishMa
     title: item.title ?? "",
     flag: item.flag === 1 ? "1" : "0",
   };
+}
+
+export function normalizeEnglishMaterialCategory(value: string) {
+  return ENGLISH_MATERIAL_CATEGORIES.includes(value as (typeof ENGLISH_MATERIAL_CATEGORIES)[number])
+    ? value
+    : DEFAULT_ENGLISH_MATERIAL_CATEGORY;
 }
 
 function readHistoryAskResponse(value: unknown): HistoryAskResponse | null {
