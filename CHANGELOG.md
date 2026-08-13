@@ -9,9 +9,12 @@ The format follows the common GitHub changelog convention inspired by
 
 ## 本次版本更新
 
-### [Unreleased]
+### [0.3.9] - 2026-08-13
 
 #### Added / 新增
+
+- Added an AI Coding `发布并打 Tag` release action. It suggests the next patch version from the latest Changelog release, requires an exact `ok` confirmation, and runs the existing controlled release script with `--version`.
+- 为 AI 编程新增 `发布并打 Tag` 发布操作：根据 Changelog 最近版本建议下一个补丁版本，要求精确输入 `ok` 确认，并以 `--version` 调用既有受控发布脚本。
 
 - Added separately persisted Blog Factory assist summary and cover-image metadata. Summaries can be extracted, edited, and saved; cover uploads can be replaced or removed without modifying article Markdown.
 - 为博客工厂新增独立持久化的内容辅助摘要与封面图元数据：摘要支持提取、编辑和保存；封面支持上传、替换和移除，不再修改文章 Markdown。

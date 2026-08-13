@@ -18,3 +18,8 @@ class GithubSyncResponse(BaseModel):
     output_tail: str
     log_path: str
     completed_at: str
+
+
+class GithubReleaseRequest(BaseModel):
+    version: str = Field(..., pattern=r"^\d+\.\d+\.\d+$", max_length=32)
+    confirm: str = Field(..., min_length=1, max_length=8)

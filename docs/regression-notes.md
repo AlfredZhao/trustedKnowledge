@@ -15,6 +15,28 @@ When fixing a bug with meaningful regression risk, add a short entry with:
 
 Keep entries concrete. Prefer file paths, function names, SQL placeholders, and test names over broad advice.
 
+## AI Coding Release Tag Must Remain a Confirmed, Fixed-Argument Operation
+
+### Symptom
+
+The AI Coding release control could publish or tag without an explicit confirmation, or could pass arbitrary shell arguments to the GitHub script.
+
+### Trigger
+
+Open `发布并打 Tag`, submit a malformed version, omit the exact `ok` confirmation, or attempt to send extra command-like text through the release request.
+
+### Root Cause
+
+A release action is materially broader than normal code sync: `scripts/commit-to-github.sh --version` rewrites the Changelog, stages all changes, commits, pushes, and creates a remote tag. Passing free-form commands or trusting only the client confirmation would bypass this safety boundary.
+
+### Safe Pattern
+
+`/api/system/github-release` accepts only `version` matching `X.Y.Z` and `confirm == "ok"`; `system.py` invokes `bash`, the fixed script path, `--version`, and the validated version as separate process arguments. Reuse the existing GitHub-operation lock and timeout. The UI must keep the confirm button disabled until the version is valid and the input is exactly `ok`.
+
+### Guardrail
+
+Verify that `POST /api/system/github-release` rejects invalid versions and any confirmation other than `ok`, and that a valid request invokes only `bash scripts/commit-to-github.sh --version X.Y.Z`. In the UI, check desktop and mobile: the dialog opens with the suggested patch version, and the action remains disabled until `ok` is entered.
+
 ## Blog Factory List Titles Must Follow Edited Content Without Rewriting Source Snapshots
 
 ### Symptom

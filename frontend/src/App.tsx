@@ -140,7 +140,7 @@ import {
   readCachedCurrentRecords,
   updateCurrentRecord,
 } from "./api/currentRecords";
-import { restartServices, syncCodeToGithub } from "./api/system";
+import { releaseCodeToGithub, restartServices, syncCodeToGithub } from "./api/system";
 import {
   createEnglishMaterial,
   fetchEnglishMaterials,
@@ -4897,6 +4897,22 @@ function App() {
     }
   }
 
+  async function handleReleaseCodeToGithub(version: string, confirm: string) {
+    if (isGithubSyncing) return;
+
+    setIsGithubSyncing(true);
+    setGithubSyncError(null);
+    try {
+      const response = await releaseCodeToGithub(version, confirm);
+      setGithubSyncStatus(response);
+      if (response.success) setProjectChangelogRefreshToken((current) => current + 1);
+    } catch (error) {
+      setGithubSyncError(error instanceof Error ? error.message : "发布并打 Tag 失败，请稍后重试。");
+    } finally {
+      setIsGithubSyncing(false);
+    }
+  }
+
   function handleClearGithubSyncStatus() {
     setGithubSyncStatus(null);
     setGithubSyncError(null);
@@ -5270,6 +5286,7 @@ function App() {
                 onPromptChange={setAiCodingPrompt}
                 onRestartConfirmChange={setRestartConfirm}
                 onRestartServices={handleRestartServices}
+                onReleaseCodeToGithub={handleReleaseCodeToGithub}
                 onSyncCodeToGithub={handleSyncCodeToGithub}
                 onSubmit={handleRunCodex}
               />

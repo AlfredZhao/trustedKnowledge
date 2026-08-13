@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.core.config import settings
 from app.core.security import require_api_key
-from app.schemas.system import GithubSyncResponse, RestartRequest, RestartResponse
+from app.schemas.system import GithubReleaseRequest, GithubSyncResponse, RestartRequest, RestartResponse
 
 
 router = APIRouter(prefix="/system", tags=["system"], dependencies=[Depends(require_api_key)])
@@ -83,6 +83,25 @@ async def restart_services(payload: RestartRequest) -> RestartResponse:
 
 @router.post("/github-sync", response_model=GithubSyncResponse)
 async def sync_code_to_github() -> GithubSyncResponse:
+    return await _run_github_script([], "GitHub sync completed.", "GitHub sync failed.")
+
+
+@router.post("/github-release", response_model=GithubSyncResponse)
+async def release_code_to_github(payload: GithubReleaseRequest) -> GithubSyncResponse:
+    if payload.confirm != "ok":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Release confirmation must be ok.",
+        )
+
+    return await _run_github_script(
+        ["--version", payload.version],
+        "GitHub release completed.",
+        "GitHub release failed.",
+    )
+
+
+async def _run_github_script(arguments: list[str], success_message: str, failure_message: str) -> GithubSyncResponse:
     if _github_sync_lock.locked():
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -102,6 +121,7 @@ async def sync_code_to_github() -> GithubSyncResponse:
             process = await asyncio.create_subprocess_exec(
                 "bash",
                 str(GITHUB_SYNC_SCRIPT),
+                *arguments,
                 cwd=PROJECT_ROOT,
                 stdin=asyncio.subprocess.DEVNULL,
                 stdout=asyncio.subprocess.PIPE,
@@ -134,7 +154,7 @@ async def sync_code_to_github() -> GithubSyncResponse:
     exit_code = process.returncode or 0
     return GithubSyncResponse(
         success=exit_code == 0,
-        message="GitHub sync completed." if exit_code == 0 else "GitHub sync failed.",
+        message=success_message if exit_code == 0 else failure_message,
         exit_code=exit_code,
         output_tail=_tail_non_empty_lines(output, 5),
         log_path=str(GITHUB_SYNC_LOG),

@@ -13,6 +13,7 @@ import {
   Trash2,
   TriangleAlert,
   WandSparkles,
+  X,
 } from "lucide-react";
 
 import { Field } from "../components/AppShellPrimitives";
@@ -55,6 +56,7 @@ export default function AiCodingWorkspace({
   onPromptChange,
   onRestartConfirmChange,
   onRestartServices,
+  onReleaseCodeToGithub,
   onSyncCodeToGithub,
   onSubmit,
 }: {
@@ -84,6 +86,7 @@ export default function AiCodingWorkspace({
   onPromptChange: (value: string) => void;
   onRestartConfirmChange: (value: string) => void;
   onRestartServices: () => void;
+  onReleaseCodeToGithub: (version: string, confirm: string) => void;
   onSyncCodeToGithub: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
@@ -96,6 +99,15 @@ export default function AiCodingWorkspace({
   const [projectChangelog, setProjectChangelog] = useState<ProjectChangelog | null>(null);
   const [projectChangelogError, setProjectChangelogError] = useState<string | null>(null);
   const [isProjectChangelogLoading, setIsProjectChangelogLoading] = useState(true);
+  const [isReleaseDialogOpen, setIsReleaseDialogOpen] = useState(false);
+  const [releaseVersion, setReleaseVersion] = useState("");
+  const [releaseConfirm, setReleaseConfirm] = useState("");
+  const releaseVersionSuggestion = useMemo(() => {
+    const match = projectChangelog?.markdown.match(/^### \[(\d+)\.(\d+)\.(\d+)]/m);
+    if (!match) return "0.3.9";
+    return `${match[1]}.${match[2]}.${Number(match[3]) + 1}`;
+  }, [projectChangelog?.markdown]);
+  const canReleaseCode = !isGithubSyncing && /^\d+\.\d+\.\d+$/.test(releaseVersion) && releaseConfirm === "ok";
 
   const loadProjectChangelog = () => {
     setIsProjectChangelogLoading(true);
@@ -270,6 +282,24 @@ export default function AiCodingWorkspace({
                 {isGithubSyncing ? "同步中" : "同步代码到 GitHub"}
               </button>
 
+              <button
+                className="flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-amberline/30 bg-amberline/10 px-4 text-sm font-medium text-amber-100 transition hover:bg-amberline/15 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
+                disabled={!canSyncCode}
+                type="button"
+                onClick={() => {
+                  setReleaseVersion(releaseVersionSuggestion);
+                  setReleaseConfirm("");
+                  setIsReleaseDialogOpen(true);
+                }}
+              >
+                <Github size={17} />
+                发布并打 Tag
+              </button>
+
+              <div className="text-xs leading-5 text-slate-500">
+                发布会使用 `CHANGELOG.md` 的 Unreleased 内容创建版本提交并推送对应 Git Tag。
+              </div>
+
               {githubSyncStatus ? (
                 <div className="space-y-3 rounded-lg border border-white/10 bg-black/15 p-3">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -281,7 +311,13 @@ export default function AiCodingWorkspace({
                             : "border-red-400/25 bg-red-400/10 text-red-100"
                         }`}
                       >
-                        {githubSyncStatus.success ? "同步完成" : "同步失败"}
+                        {githubSyncStatus.success
+                          ? githubSyncStatus.message === "GitHub release completed."
+                            ? "发布完成"
+                            : "同步完成"
+                          : githubSyncStatus.message === "GitHub release failed."
+                            ? "发布失败"
+                            : "同步失败"}
                       </span>
                       <span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-slate-400">
                         exit {githubSyncStatus.exit_code}
@@ -360,6 +396,77 @@ export default function AiCodingWorkspace({
           </div>
         </aside>
       </div>
+
+      {isReleaseDialogOpen ? (
+        <div className="fixed inset-0 z-50 flex items-end bg-black/60 p-3 sm:items-center sm:justify-center sm:p-6">
+          <div className="w-full max-w-md rounded-lg border border-white/10 bg-ink-900 p-4 shadow-soft-glow sm:p-5">
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <div className="mb-1 flex items-center gap-2 text-sm font-medium text-amberline">
+                  <Github size={17} />
+                  发布并打 Tag
+                </div>
+                <p className="text-sm leading-6 text-slate-400">将提交当前全部改动、发布并推送 Git Tag，同时将 Unreleased 变更日志归档为该版本。</p>
+              </div>
+              <button
+                className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-400 transition hover:text-slate-100"
+                type="button"
+                aria-label="关闭发布确认"
+                onClick={() => setIsReleaseDialogOpen(false)}
+              >
+                <X size={15} />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <Field label="发布版本" icon={<Github size={16} />}>
+                <input
+                  className="control"
+                  disabled={isGithubSyncing}
+                  inputMode="decimal"
+                  value={releaseVersion}
+                  onChange={(event) => setReleaseVersion(event.target.value.trim())}
+                  placeholder={releaseVersionSuggestion}
+                />
+              </Field>
+              <Field label="确认文本" icon={<ShieldCheck size={16} />}>
+                <input
+                  className="control"
+                  disabled={isGithubSyncing}
+                  value={releaseConfirm}
+                  onChange={(event) => setReleaseConfirm(event.target.value)}
+                  placeholder="输入 ok"
+                />
+              </Field>
+              <div className="rounded-lg border border-amberline/25 bg-amberline/10 px-3 py-3 text-xs leading-5 text-amber-100">
+                此操作会创建并推送 `v{releaseVersion || "版本号"}`。请输入 `ok` 后继续。
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <button
+                  className="flex h-10 items-center justify-center rounded-lg border border-white/10 bg-white/[0.035] px-3 text-sm text-slate-300 transition hover:text-slate-100"
+                  disabled={isGithubSyncing}
+                  type="button"
+                  onClick={() => setIsReleaseDialogOpen(false)}
+                >
+                  取消
+                </button>
+                <button
+                  className="flex h-10 items-center justify-center gap-2 rounded-lg border border-amberline/30 bg-amberline/14 px-3 text-sm font-medium text-amber-100 transition hover:bg-amberline/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
+                  disabled={!canReleaseCode}
+                  type="button"
+                  onClick={() => {
+                    onReleaseCodeToGithub(releaseVersion, releaseConfirm);
+                    setIsReleaseDialogOpen(false);
+                  }}
+                >
+                  <Github size={16} />
+                  确认发布 v{releaseVersion || "…"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

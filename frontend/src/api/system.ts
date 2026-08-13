@@ -15,6 +15,13 @@ export async function syncCodeToGithub(): Promise<GithubSyncResponse> {
   });
 }
 
+export async function releaseCodeToGithub(version: string, confirm: string): Promise<GithubSyncResponse> {
+  return request<GithubSyncResponse>("/api/system/github-release", {
+    method: "POST",
+    body: JSON.stringify({ version, confirm }),
+  });
+}
+
 export async function checkBackendHealth(): Promise<boolean> {
   try {
     const response = await fetch(apiUrl("/health"), { cache: "no-store" });
