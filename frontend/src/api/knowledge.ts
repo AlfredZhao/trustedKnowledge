@@ -459,6 +459,8 @@ export async function updateBlogFactoryItem({
   answerSnapshot,
   sourceSnapshot,
   topicTagSnapshot,
+  assistSummary,
+  coverImageMarkdown,
 }: {
   id: number;
   taskContent: string;
@@ -466,6 +468,8 @@ export async function updateBlogFactoryItem({
   answerSnapshot: string;
   sourceSnapshot: string;
   topicTagSnapshot: string;
+  assistSummary: string;
+  coverImageMarkdown: string;
 }): Promise<BlogFactoryItem> {
   return request<BlogFactoryItem>(`/api/blog-factory/${id}`, {
     method: "PATCH",
@@ -476,6 +480,8 @@ export async function updateBlogFactoryItem({
       answer_snapshot: answerSnapshot,
       source_snapshot: sourceSnapshot || null,
       topic_tag_snapshot: topicTagSnapshot || null,
+      assist_summary: assistSummary || null,
+      cover_image_markdown: coverImageMarkdown || null,
     }),
   });
 }

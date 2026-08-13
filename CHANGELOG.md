@@ -13,10 +13,16 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Added / 新增
 
+- Added separately persisted Blog Factory assist summary and cover-image metadata. Summaries can be extracted, edited, and saved; cover uploads can be replaced or removed without modifying article Markdown.
+- 为博客工厂新增独立持久化的内容辅助摘要与封面图元数据：摘要支持提取、编辑和保存；封面支持上传、替换和移除，不再修改文章 Markdown。
+
 - Added eight Blog Factory category visual presets for 公开课、AI、APEX、Oracle、效率工具箱、英语、Data and Linux. Selecting a category applies its recommended cover-image style while keeping manual style overrides available.
 - 为博客工厂新增公开课、AI、APEX、Oracle、效率工具箱、英语、Data、Linux 八类文章的画面风格预设；选择分类会应用推荐封面风格，同时仍可手动覆盖。
 
 #### Changed / 变更
+
+- Removed source and topic-tag editing from Blog Factory inline task-content editing. Existing metadata remains preserved for publishing, filtering, and send-back processing.
+- 从博客工厂内联任务内容编辑中移除来源与主题标签的编辑入口；既有元数据继续保留，用于发布、筛选和发回知识加工。
 
 - Increased the Blog Factory inline task-content editor minimum height from 280px to 420px for more comfortable secondary editing.
 - 将博客工厂内联任务内容编辑器的最小高度从 280px 提升至 420px，改善二次编辑时的可视范围。
@@ -37,6 +43,12 @@ The format follows the common GitHub changelog convention inspired by
 - 将博客工厂 `Apple哑光极简风` 更名为 `轻白产品哑光`，并从提示词中移除 Apple 品牌表述；保留其视觉特征，适用于 APEX 等产品主题。
 
 #### Fixed / 修复
+
+- Fixed Blog Factory task-list titles so they reflect the saved article title or the current Markdown H1, while clearly labeling the original question when neither is available.
+- 修复博客工厂任务列表标题：优先反映已保存文章标题或当前 Markdown 一级标题；两者均不存在时才显示并标识原始问题。
+
+- Fixed Blog Factory assist-summary and cover-image saves so their buttons show an in-progress state and the detail panel confirms successful persistence or surfaces a nearby failure notice.
+- 修复博客工厂内容辅助的摘要与封面图片保存：按钮现在会显示保存中，详情区会明确反馈保存成功或就近提示失败。
 
 - Fixed the Blog Factory filter bar so sort-field options and the clear-filter label remain fully visible at desktop and narrow widths.
 - 修复博客工厂筛选区的排序字段与清空筛选条件文案在桌面端和较窄宽度下被挤压显示不全的问题。

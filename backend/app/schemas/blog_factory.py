@@ -31,6 +31,8 @@ class BlogFactoryItem(BaseModel):
     answer_snapshot: str
     source_snapshot: str | None = None
     topic_tag_snapshot: str | None = None
+    assist_summary: str | None = None
+    cover_image_markdown: str | None = None
     blog_status_snapshot: str | None = None
     copied_at: datetime | None = None
     factory_status: BlogFactoryStatus = "待处理"
@@ -101,7 +103,6 @@ class BlogFactorySendToProcessing(BaseModel):
     def normalize_topic_tag_snapshot(cls, value: str | None) -> str | None:
         return normalize_optional_topic_tag(value)
 
-
 class BlogFactorySendToProcessingResult(BaseModel):
     item: BlogFactoryItem
     knowledge: KnowledgeItem
@@ -113,6 +114,8 @@ class BlogFactoryUpdate(BaseModel):
     answer_snapshot: str | None = Field(default=None, min_length=1)
     source_snapshot: str | None = Field(default=None, max_length=200)
     topic_tag_snapshot: str | None = Field(default=None, max_length=100)
+    assist_summary: str | None = Field(default=None, max_length=100)
+    cover_image_markdown: str | None = Field(default=None, max_length=2000)
 
     @field_validator("task_content", "question_snapshot", "answer_snapshot")
     @classmethod
@@ -133,6 +136,12 @@ class BlogFactoryUpdate(BaseModel):
     @classmethod
     def normalize_topic_tag_snapshot(cls, value: str | None) -> str | None:
         return normalize_optional_topic_tag(value)
+
+    @field_validator("assist_summary", "cover_image_markdown", mode="before")
+    @classmethod
+    def normalize_assist_metadata(cls, value: str | None, info) -> str | None:
+        max_length = 100 if info.field_name == "assist_summary" else 2000
+        return normalize_optional_short_text(value, field_name=info.field_name, max_length=max_length)
 
 
 class BlogFactoryArticleUpdate(BaseModel):

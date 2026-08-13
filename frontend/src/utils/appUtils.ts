@@ -407,6 +407,8 @@ export type BlogFactoryEditDraft = {
   answerSnapshot: string;
   sourceSnapshot: string;
   topicTagSnapshot: string;
+  assistSummary: string;
+  coverImageMarkdown: string;
 };
 
 export type BlogPublishConfigDraft = {
@@ -997,6 +999,8 @@ export function blogFactoryItemToEditDraft(item: BlogFactoryItem | null): BlogFa
     answerSnapshot: item?.answer_snapshot ?? "",
     sourceSnapshot: item?.source_snapshot ?? "",
     topicTagSnapshot: item?.topic_tag_snapshot ?? "",
+    assistSummary: item?.assist_summary ?? "",
+    coverImageMarkdown: item?.cover_image_markdown ?? "",
   };
 }
 

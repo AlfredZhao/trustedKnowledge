@@ -15,6 +15,50 @@ When fixing a bug with meaningful regression risk, add a short entry with:
 
 Keep entries concrete. Prefer file paths, function names, SQL placeholders, and test names over broad advice.
 
+## Blog Factory List Titles Must Follow Edited Content Without Rewriting Source Snapshots
+
+### Symptom
+
+After changing a task's Markdown H1, the Blog Factory list continued to show the old source question, making it appear that the saved edit had failed.
+
+### Trigger
+
+Edit and save a Blog Factory task whose Markdown starts with a different H1 than its `question_snapshot`.
+
+### Root Cause
+
+The task editor persists `task_content`, while the list rendered only `question_snapshot`, which is intentionally retained as the immutable source-processing prompt.
+
+### Safe Pattern
+
+In `BlogFactoryRecords`, render list titles in this order: `article_title`, Markdown H1 from `task_content`, then the labeled `question_snapshot`. Do not overwrite the source snapshot merely to update a presentation title.
+
+### Guardrail
+
+Manually save a changed H1 and confirm the desktop and mobile list immediately shows it after the request succeeds. Also verify a task without an article title or H1 shows `原始问题：…`, and that publishing/source-trace data still uses the unchanged snapshot.
+
+## Blog Factory Assist Saves Must Report the Persisted Result
+
+### Symptom
+
+Clicking `保存摘要` or `保存封面` in a Blog Factory task gave no visible result, leaving users unable to tell whether their metadata had been persisted.
+
+### Trigger
+
+Edit the assist summary or upload, replace, or remove a cover image, then use either save action in `BlogFactoryRecords`.
+
+### Root Cause
+
+Both buttons invoked the shared `onSaveItem()` request without exposing its boolean result in their own UI. They also remained visually unchanged while the request was in flight.
+
+### Safe Pattern
+
+In `frontend/src/App.tsx`, route assist saves through `handleSaveAssist()`: disable the action while `isItemSaving`, display a saving label, and show a local success or failure message only after the shared save promise settles.
+
+### Guardrail
+
+Manually verify summary and cover saves at desktop and mobile widths in dark and light themes: each button changes to `保存中` during the request, a successful response shows the appropriate confirmation, and a failed response shows a readable nearby error without permitting duplicate saves.
+
 ## Markdown Toolbar Must Toggle Without Crossing a Selected Line Boundary
 
 ### Symptom

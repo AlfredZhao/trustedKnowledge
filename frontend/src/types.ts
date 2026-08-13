@@ -74,6 +74,8 @@ export interface BlogFactoryItem {
   answer_snapshot: string;
   source_snapshot: string | null;
   topic_tag_snapshot: string | null;
+  assist_summary: string | null;
+  cover_image_markdown: string | null;
   blog_status_snapshot: KnowledgeStatus | null;
   copied_at: string | null;
   factory_status: BlogFactoryStatus;

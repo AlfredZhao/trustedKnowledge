@@ -239,7 +239,6 @@ import {
   describeBlogFactoryMaskRule,
   englishMaterialItemToDraft,
   extractBlogFactoryCoverEntities,
-  extractBlogFactoryCoverImageMarkdown,
   extractCodexResultText,
   extractMarkdownHeading,
   filterCnblogsPublishCategories,
@@ -275,7 +274,6 @@ import {
   readStoredUiState,
   readWeChatApiKeyFromHash,
   readWeChatErrorFromHash,
-  removeBlogFactoryCoverImageMarkdown,
   resolveBlogFactoryCoverStylePreset,
   resolveBlogFactoryMaskRuleId,
   resolveBlogFactoryPublishMarkdown,
@@ -287,7 +285,6 @@ import {
   todoItemToDraft,
   upsertBlogPublishConfig,
   upsertCodexJobMessage,
-  upsertBlogFactoryCoverImageMarkdown,
   waitForBackendRecovery,
   writeStoredNewDraft,
   writeStoredUiState,
@@ -663,6 +660,8 @@ function App() {
     answerSnapshot: "",
     sourceSnapshot: "",
     topicTagSnapshot: "",
+    assistSummary: "",
+    coverImageMarkdown: "",
   });
   const [blogFactoryMaskRules, setBlogFactoryMaskRules] = useState<BlogFactoryMaskRule[]>(() => restoredUiState.blogFactory.maskRules);
   const [selectedBlogFactoryMaskRuleId, setSelectedBlogFactoryMaskRuleId] = useState<string | null>(() =>
@@ -3255,6 +3254,8 @@ function App() {
         answerSnapshot: blogFactoryEditDraft.answerSnapshot,
         sourceSnapshot: blogFactoryEditDraft.sourceSnapshot,
         topicTagSnapshot: blogFactoryEditDraft.topicTagSnapshot,
+        assistSummary: blogFactoryEditDraft.assistSummary,
+        coverImageMarkdown: blogFactoryEditDraft.coverImageMarkdown,
       });
       invalidateApiCache(["/api/blog-factory"]);
       setSelectedBlogFactoryItem(updated);
@@ -9271,6 +9272,7 @@ function BlogFactoryRecords({
   const [assistView, setAssistView] = useState<"summary" | "coverPrompt">("summary");
   const [assistCopiedTarget, setAssistCopiedTarget] = useState<"summary" | "coverPrompt" | null>(null);
   const [assistError, setAssistError] = useState<string | null>(null);
+  const [assistSaveNotice, setAssistSaveNotice] = useState<string | null>(null);
   const [isCoverPromptConfigOpen, setIsCoverPromptConfigOpen] = useState(false);
   const [isCoverPromptTemplateEditing, setIsCoverPromptTemplateEditing] = useState(false);
   const [coverPromptTextDraft, setCoverPromptTextDraft] = useState("");
@@ -9298,7 +9300,7 @@ function BlogFactoryRecords({
     () => extractBlogFactoryCoverEntities(coverPromptSource, coverPromptSummary, editDraft.questionSnapshot || selectedItem?.question_snapshot || ""),
     [coverPromptSource, coverPromptSummary, editDraft.questionSnapshot, selectedItem?.question_snapshot],
   );
-  const coverImageMarkdown = useMemo(() => extractBlogFactoryCoverImageMarkdown(assistSource), [assistSource]);
+  const coverImageMarkdown = editDraft.coverImageMarkdown;
   const resolvedCoverPromptConfig = useMemo(() => normalizeBlogFactoryCoverPromptConfig(coverPromptConfig), [coverPromptConfig]);
   const resolvedCoverPromptConfigDraft = useMemo(
     () => normalizeBlogFactoryCoverPromptConfig(coverPromptConfigDraft),
@@ -9360,6 +9362,7 @@ function BlogFactoryRecords({
     setPendingContentAssistTarget(null);
     setAssistCopiedTarget(null);
     setAssistError(null);
+    setAssistSaveNotice(null);
     setIsCoverPromptConfigOpen(false);
     setIsCoverPromptTemplateEditing(false);
     setCoverPromptTextDraft("");
@@ -9443,6 +9446,19 @@ function BlogFactoryRecords({
     }
   }
 
+  async function handleSaveAssist(target: "summary" | "cover") {
+    const saved = await onSaveItem();
+    if (!saved) {
+      setAssistSaveNotice(null);
+      setAssistError("保存失败，请稍后重试。");
+      return;
+    }
+
+    setAssistError(null);
+    setAssistSaveNotice(target === "summary" ? "摘要已保存。" : "封面图片已保存。");
+    window.setTimeout(() => setAssistSaveNotice(null), 2200);
+  }
+
   function handleSaveCoverPromptTemplate() {
     const nextTemplate = coverPromptTemplateDraft.trim();
     if (!nextTemplate) {
@@ -9519,7 +9535,7 @@ function BlogFactoryRecords({
       const uploaded = await uploadMediaImage(imageFile);
       onEditDraftChange({
         ...editDraft,
-        taskContent: upsertBlogFactoryCoverImageMarkdown(editDraft.taskContent, uploaded.markdown),
+        coverImageMarkdown: uploaded.markdown,
       });
     } catch (error) {
       setCoverImageError(error instanceof Error ? error.message : "封面图片上传失败，请稍后重试。");
@@ -9543,7 +9559,7 @@ function BlogFactoryRecords({
   function handleRemoveCoverImage() {
     onEditDraftChange({
       ...editDraft,
-      taskContent: removeBlogFactoryCoverImageMarkdown(editDraft.taskContent),
+      coverImageMarkdown: "",
     });
     setCoverImageError(null);
   }
@@ -9847,27 +9863,6 @@ function BlogFactoryRecords({
                   value={editDraft.taskContent}
                   onChange={(taskContent) => onEditDraftChange({ ...editDraft, taskContent })}
                 />
-                <details className="rounded-lg border border-white/10 bg-white/[0.025] p-3">
-                  <summary className="cursor-pointer text-sm font-medium text-slate-300">任务元信息</summary>
-                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                    <Field label="来源" icon={<Database size={16} />}>
-                      <input
-                        className="control"
-                        maxLength={200}
-                        value={editDraft.sourceSnapshot}
-                        onChange={(event) => onEditDraftChange({ ...editDraft, sourceSnapshot: event.target.value })}
-                      />
-                    </Field>
-                    <Field label="主题标签" icon={<Tags size={16} />}>
-                      <input
-                        className="control"
-                        maxLength={100}
-                        value={editDraft.topicTagSnapshot}
-                        onChange={(event) => onEditDraftChange({ ...editDraft, topicTagSnapshot: event.target.value })}
-                      />
-                    </Field>
-                  </div>
-                </details>
                 {maskNotice ? (
                   <div className="rounded-lg border border-mint-300/20 bg-mint-300/10 px-3 py-2 text-xs leading-6 text-mint-100">{maskNotice}</div>
                 ) : null}
@@ -9949,24 +9944,48 @@ function BlogFactoryRecords({
               {assistView === "coverPrompt" || assistSource.trim() ? (
                 assistView === "summary" ? (
                   <div className="space-y-3">
-                    <div className="rounded-lg border border-white/10 bg-black/15 p-3 text-sm leading-7 text-slate-300">
-                      {assistSummary || "未能提取摘要。"}
-                    </div>
+                    <textarea
+                      className="control min-h-24 resize-y text-sm leading-7"
+                      maxLength={100}
+                      placeholder="点击“提取摘要”生成，或直接输入摘要。"
+                      value={editDraft.assistSummary}
+                      onChange={(event) => onEditDraftChange({ ...editDraft, assistSummary: event.target.value })}
+                    />
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                      <span className="text-xs text-slate-500">{Array.from(assistSummary).length} 字，目标约 50 字，上限 100 字</span>
-                      <button
-                        className={`flex h-9 items-center justify-center gap-2 rounded-lg border px-3 text-xs transition disabled:cursor-not-allowed disabled:text-slate-600 ${
-                          assistCopiedTarget === "summary"
-                            ? "border-mint-300/30 bg-mint-300/14 text-mint-300"
-                            : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-mint-300/30 hover:text-mint-300"
-                        }`}
-                        disabled={!assistSummary}
-                        type="button"
-                        onClick={() => void handleCopyAssistText(assistSummary, "summary")}
-                      >
-                        {assistCopiedTarget === "summary" ? <ClipboardCheck size={15} /> : <Copy size={15} />}
-                        {assistCopiedTarget === "summary" ? "已复制" : "复制摘要"}
-                      </button>
+                      <span className="text-xs text-slate-500">{Array.from(editDraft.assistSummary).length} / 100 字</span>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          className="flex h-9 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-xs text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300"
+                          disabled={!assistSummary}
+                          type="button"
+                          onClick={() => onEditDraftChange({ ...editDraft, assistSummary })}
+                        >
+                          <RefreshCw size={15} />
+                          提取摘要
+                        </button>
+                        <button
+                          className="flex h-9 items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-3 text-xs font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
+                          disabled={isItemSaving}
+                          type="button"
+                          onClick={() => void handleSaveAssist("summary")}
+                        >
+                          {isItemSaving ? <Loader2 className="animate-spin" size={15} /> : <Save size={15} />}
+                          {isItemSaving ? "保存中" : "保存摘要"}
+                        </button>
+                        <button
+                          className={`flex h-9 items-center justify-center gap-2 rounded-lg border px-3 text-xs transition disabled:cursor-not-allowed disabled:text-slate-600 ${
+                            assistCopiedTarget === "summary"
+                              ? "border-mint-300/30 bg-mint-300/14 text-mint-300"
+                              : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-mint-300/30 hover:text-mint-300"
+                          }`}
+                          disabled={!editDraft.assistSummary}
+                          type="button"
+                          onClick={() => void handleCopyAssistText(editDraft.assistSummary, "summary")}
+                        >
+                          {assistCopiedTarget === "summary" ? <ClipboardCheck size={15} /> : <Copy size={15} />}
+                          {assistCopiedTarget === "summary" ? "已复制" : "复制摘要"}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ) : (
@@ -10258,6 +10277,15 @@ function BlogFactoryRecords({
                       <X size={15} />
                       移除
                     </button>
+                    <button
+                      className="flex h-9 items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-3 text-xs font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
+                      disabled={isCoverImageUploading || isItemSaving}
+                      type="button"
+                      onClick={() => void handleSaveAssist("cover")}
+                    >
+                      {isItemSaving ? <Loader2 className="animate-spin" size={15} /> : <Save size={15} />}
+                      {isItemSaving ? "保存中" : "保存封面"}
+                    </button>
                   </div>
                 </div>
                 <input
@@ -10271,7 +10299,7 @@ function BlogFactoryRecords({
                   <MarkdownPreview markdown={coverImageMarkdown} />
                 ) : (
                   <div className="grid min-h-[150px] place-items-center rounded-lg border border-dashed border-white/10 bg-white/[0.02] p-4 text-center text-sm leading-6 text-slate-500">
-                    暂无封面图片。上传后会以 Markdown 图片格式写入任务内容草稿。
+                    暂无封面图片。上传后会独立保存，不会写入任务内容。
                   </div>
                 )}
                 {coverImageError ? (
@@ -10284,6 +10312,11 @@ function BlogFactoryRecords({
               {assistError ? (
                 <div className="mt-3 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-2 text-xs leading-6 text-red-100">
                   {assistError}
+                </div>
+              ) : null}
+              {assistSaveNotice ? (
+                <div className="mt-3 rounded-lg border border-mint-300/20 bg-mint-300/10 px-3 py-2 text-xs leading-6 text-mint-100">
+                  {assistSaveNotice}
                 </div>
               ) : null}
             </div>
@@ -10472,8 +10505,13 @@ function BlogFactoryRecords({
           </div>
         ) : (
           <div className="space-y-3">
-            {items.map((item) => (
-              <article
+            {items.map((item) => {
+              const markdownTitle = extractMarkdownHeading(item.task_content);
+              const displayTitle = item.article_title || markdownTitle || item.question_snapshot || "无问题快照";
+              const isOriginalQuestionTitle = !item.article_title && !markdownTitle;
+
+              return (
+                <article
                 key={item.id}
                 className={`cursor-pointer rounded-lg border bg-white/[0.028] p-4 transition ${
                   selectedItem?.id === item.id ? "border-mint-300/45 bg-mint-300/[0.055]" : "border-white/10 hover:border-white/18"
@@ -10496,7 +10534,7 @@ function BlogFactoryRecords({
                       <span>{formatHistoryDate(item.copied_at)}</span>
                     </div>
                     <h3 className="line-clamp-2 text-sm font-semibold leading-6 text-slate-50">
-                      {item.question_snapshot || "无问题快照"}
+                      {isOriginalQuestionTitle ? `原始问题：${displayTitle}` : displayTitle}
                     </h3>
                   </div>
                   <span className={`shrink-0 rounded-full border px-2.5 py-1 text-xs ${blogFactoryStatusStyles[item.factory_status]}`}>
@@ -10523,8 +10561,9 @@ function BlogFactoryRecords({
                     </span>
                   ) : null}
                 </div>
-              </article>
-            ))}
+                </article>
+              );
+            })}
 
             <div className="flex flex-col gap-3 rounded-lg border border-white/8 bg-white/[0.025] px-3 py-3 text-sm text-slate-400 sm:flex-row sm:items-center sm:justify-between">
               <span>

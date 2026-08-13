@@ -41,6 +41,8 @@ COMMON_COLUMNS = """
     factory_item.remote_tags_snapshot,
     factory_item.remote_published_at,
     factory_item.remote_last_synced_at,
+    factory_item.assist_summary,
+    factory_item.cover_image_markdown,
     case when factory_item.article_markdown is null then 0 else 1 end
 """
 
@@ -89,8 +91,10 @@ def _row_to_dict(row: Any) -> dict[str, Any]:
         "remote_tags_snapshot": row[19],
         "remote_published_at": row[20],
         "remote_last_synced_at": row[21],
-        "has_article": bool(row[22]),
-        "article_markdown": row[23] if len(row) > 23 else None,
+        "assist_summary": row[22],
+        "cover_image_markdown": row[23],
+        "has_article": bool(row[24]),
+        "article_markdown": row[25] if len(row) > 25 else None,
     }
 
 
@@ -179,6 +183,8 @@ async def _ensure_blog_factory_table(connection: oracledb.AsyncConnection) -> No
     await _add_column_if_missing(cursor, "remote_tags_snapshot varchar2(2000)")
     await _add_column_if_missing(cursor, "remote_published_at timestamp")
     await _add_column_if_missing(cursor, "remote_last_synced_at timestamp")
+    await _add_column_if_missing(cursor, "assist_summary varchar2(100)")
+    await _add_column_if_missing(cursor, "cover_image_markdown varchar2(2000)")
     _table_ready = True
 
 
