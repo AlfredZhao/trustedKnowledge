@@ -183,7 +183,8 @@ async def _ensure_blog_factory_table(connection: oracledb.AsyncConnection) -> No
     await _add_column_if_missing(cursor, "remote_tags_snapshot varchar2(2000)")
     await _add_column_if_missing(cursor, "remote_published_at timestamp")
     await _add_column_if_missing(cursor, "remote_last_synced_at timestamp")
-    await _add_column_if_missing(cursor, "assist_summary varchar2(100)")
+    await _add_column_if_missing(cursor, "assist_summary varchar2(100 char)")
+    await _ensure_assist_summary_character_capacity(cursor)
     await _add_column_if_missing(cursor, "cover_image_markdown varchar2(2000)")
     _table_ready = True
 
@@ -206,6 +207,11 @@ async def _add_column_if_missing(cursor: Any, column_definition: str) -> None:
         end;
         """
     )
+
+
+async def _ensure_assist_summary_character_capacity(cursor: Any) -> None:
+    logger.info("Ensuring Oracle column ai_blog_factory.assist_summary stores 100 characters")
+    await cursor.execute("alter table ai_blog_factory modify (assist_summary varchar2(100 char))")
 
 
 def _build_filters(

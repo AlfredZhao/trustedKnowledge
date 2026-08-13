@@ -98,6 +98,7 @@ import {
   readCachedTodos,
   sendBlogFactoryItemToProcessing,
   updateBlogFactoryArticle,
+  updateBlogFactoryAssistMetadata,
   updateBlogFactoryItem,
   updateBlogFactoryStatus,
   updateBlogPublishConfig,
@@ -650,6 +651,8 @@ function App() {
   const [isBlogFactoryDetailLoading, setIsBlogFactoryDetailLoading] = useState(false);
   const [isBlogFactoryStatusSaving, setIsBlogFactoryStatusSaving] = useState(false);
   const [isBlogFactoryItemSaving, setIsBlogFactoryItemSaving] = useState(false);
+  const blogFactoryAssistSavingTargetsRef = useRef<Set<"summary" | "cover">>(new Set());
+  const [blogFactoryAssistSavingTargets, setBlogFactoryAssistSavingTargets] = useState<Array<"summary" | "cover">>([]);
   const [isBlogFactorySendingToProcessing, setIsBlogFactorySendingToProcessing] = useState(false);
   const [isBlogFactoryArticleSaving, setIsBlogFactoryArticleSaving] = useState(false);
   const [isBlogFactoryDeleting, setIsBlogFactoryDeleting] = useState(false);
@@ -3238,7 +3241,7 @@ function App() {
   }
 
   async function handleSaveBlogFactoryItem(): Promise<boolean> {
-    if (!selectedBlogFactoryItem || isBlogFactoryItemSaving) return false;
+    if (!selectedBlogFactoryItem || isBlogFactoryItemSaving || blogFactoryAssistSavingTargetsRef.current.size > 0) return false;
     if (!blogFactoryEditDraft.taskContent.trim() || !blogFactoryEditDraft.questionSnapshot.trim() || !blogFactoryEditDraft.answerSnapshot.trim()) {
       setBlogFactoryEditError("任务内容、问题快照和答案快照不能为空。");
       return false;
@@ -3267,6 +3270,36 @@ function App() {
       return false;
     } finally {
       setIsBlogFactoryItemSaving(false);
+    }
+  }
+
+  async function handleSaveBlogFactoryAssistMetadata(target: "summary" | "cover"): Promise<void> {
+    if (!selectedBlogFactoryItem || isBlogFactoryItemSaving || blogFactoryAssistSavingTargetsRef.current.has(target)) {
+      throw new Error("当前任务暂不可保存，请稍后重试。");
+    }
+
+    const itemId = selectedBlogFactoryItem.id;
+    blogFactoryAssistSavingTargetsRef.current.add(target);
+    setBlogFactoryAssistSavingTargets((current) => (current.includes(target) ? current : [...current, target]));
+    setBlogFactoryEditError(null);
+    try {
+      const updated = await updateBlogFactoryAssistMetadata({
+        id: itemId,
+        ...(target === "summary" ? { assistSummary: blogFactoryEditDraft.assistSummary } : { coverImageMarkdown: blogFactoryEditDraft.coverImageMarkdown }),
+      });
+      invalidateApiCache(["/api/blog-factory"]);
+      const mergeSavedAssistField = (item: BlogFactoryItem) =>
+        target === "summary" ? { ...item, assist_summary: updated.assist_summary } : { ...item, cover_image_markdown: updated.cover_image_markdown };
+      setSelectedBlogFactoryItem((current) => (current?.id === itemId ? mergeSavedAssistField(current) : current));
+      setBlogFactoryItems((current) => current.map((item) => (item.id === itemId ? mergeSavedAssistField(item) : item)));
+      setBlogFactoryRefreshToken((current) => current + 1);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "保存失败，请稍后重试。";
+      setBlogFactoryEditError(message);
+      throw new Error(message);
+    } finally {
+      blogFactoryAssistSavingTargetsRef.current.delete(target);
+      setBlogFactoryAssistSavingTargets((current) => current.filter((savingTarget) => savingTarget !== target));
     }
   }
 
@@ -5251,6 +5284,7 @@ function App() {
               isDetailLoading={isBlogFactoryDetailLoading}
               isStatusSaving={isBlogFactoryStatusSaving}
               isItemSaving={isBlogFactoryItemSaving}
+              isAssistSaving={blogFactoryAssistSavingTargets.length > 0}
               isSendingToProcessing={isBlogFactorySendingToProcessing}
               isArticleSaving={isBlogFactoryArticleSaving}
               isDeleting={isBlogFactoryDeleting}
@@ -5314,6 +5348,7 @@ function App() {
               onSendToProcessing={handleSendBlogFactoryItemToProcessing}
               onDelete={handleRequestDeleteBlogFactoryItem}
               onCloseMobileDetail={() => setIsMobileBlogFactoryDetailOpen(false)}
+              onSaveAssist={handleSaveBlogFactoryAssistMetadata}
               onSaveItem={handleSaveBlogFactoryItem}
               onSelect={handleSelectBlogFactoryItem}
               onStatusChange={handleUpdateBlogFactoryStatus}
@@ -9168,6 +9203,7 @@ function BlogFactoryRecords({
   isDetailLoading,
   isStatusSaving,
   isItemSaving,
+  isAssistSaving,
   isSendingToProcessing,
   isArticleSaving,
   isDeleting,
@@ -9207,6 +9243,7 @@ function BlogFactoryRecords({
   onSendToProcessing,
   onDelete,
   onCloseMobileDetail,
+  onSaveAssist,
   onSaveItem,
   onSelect,
   onStatusChange,
@@ -9221,6 +9258,7 @@ function BlogFactoryRecords({
   isDetailLoading: boolean;
   isStatusSaving: boolean;
   isItemSaving: boolean;
+  isAssistSaving: boolean;
   isSendingToProcessing: boolean;
   isArticleSaving: boolean;
   isDeleting: boolean;
@@ -9260,6 +9298,7 @@ function BlogFactoryRecords({
   onSendToProcessing: () => void;
   onDelete: () => void;
   onCloseMobileDetail: () => void;
+  onSaveAssist: (target: "summary" | "cover") => Promise<void>;
   onSaveItem: () => Promise<boolean>;
   onSelect: (item: BlogFactoryItem) => void;
   onStatusChange: (status: BlogFactoryStatus) => void;
@@ -9267,12 +9306,13 @@ function BlogFactoryRecords({
   const totalPages = Math.max(1, Math.ceil(total / BLOG_FACTORY_PAGE_SIZE));
   const rangeStart = total === 0 ? 0 : (page - 1) * BLOG_FACTORY_PAGE_SIZE + 1;
   const rangeEnd = Math.min(page * BLOG_FACTORY_PAGE_SIZE, total);
-  const [taskCopyView, setTaskCopyView] = useState<BlogFactoryTaskCopyMode>("rendered");
+  const [taskCopyView, setTaskCopyView] = useState<BlogFactoryTaskCopyMode>("enhanced");
   const [isTaskContentEditing, setIsTaskContentEditing] = useState(false);
   const [assistView, setAssistView] = useState<"summary" | "coverPrompt">("summary");
   const [assistCopiedTarget, setAssistCopiedTarget] = useState<"summary" | "coverPrompt" | null>(null);
   const [assistError, setAssistError] = useState<string | null>(null);
-  const [assistSaveNotice, setAssistSaveNotice] = useState<string | null>(null);
+  const [assistSaveFeedback, setAssistSaveFeedback] = useState<Partial<Record<"summary" | "cover", "saving" | "success" | "error">>>({});
+  const assistSaveFeedbackTimerRefs = useRef<Partial<Record<"summary" | "cover", number>>>({});
   const [isCoverPromptConfigOpen, setIsCoverPromptConfigOpen] = useState(false);
   const [isCoverPromptTemplateEditing, setIsCoverPromptTemplateEditing] = useState(false);
   const [coverPromptTextDraft, setCoverPromptTextDraft] = useState("");
@@ -9290,6 +9330,11 @@ function BlogFactoryRecords({
   } | null>(null);
   const [isCoverImageUploading, setIsCoverImageUploading] = useState(false);
   const [coverImageError, setCoverImageError] = useState<string | null>(null);
+  const summarySaveStatus = assistSaveFeedback.summary;
+  const coverSaveStatus = assistSaveFeedback.cover;
+  const isSummarySavePending = summarySaveStatus === "saving";
+  const isCoverSavePending = coverSaveStatus === "saving";
+  const isRecordSaving = isItemSaving || isAssistSaving;
   const publishMarkdown = selectedItem ? resolveBlogFactoryPublishMarkdown(selectedItem, selectedItem.article_markdown, editDraft.taskContent) : "";
   const publishTitle = selectedItem ? extractMarkdownHeading(publishMarkdown) || selectedItem.article_title || "" : "";
   const assistSource = editDraft.taskContent;
@@ -9325,7 +9370,7 @@ function BlogFactoryRecords({
     editDraft.taskContent.trim().length > 0 &&
     selectedMaskRule !== null &&
     hasEnabledBlogFactoryMaskRule(selectedMaskRule) &&
-    !isItemSaving &&
+    !isRecordSaving &&
     !isDeleting;
   const visibleUsers = getVisibleUsers(authUser);
   const isAdminUser = authUser?.is_admin ?? false;
@@ -9344,7 +9389,7 @@ function BlogFactoryRecords({
     editDraft.taskContent.trim().length > 0 &&
     editDraft.questionSnapshot.trim().length > 0 &&
     editDraft.answerSnapshot.trim().length > 0 &&
-    !isItemSaving &&
+    !isRecordSaving &&
     !isDeleting;
   const canSendToProcessing =
     selectedItem !== null &&
@@ -9352,7 +9397,7 @@ function BlogFactoryRecords({
     editDraft.taskContent.trim().length > 0 &&
     editDraft.questionSnapshot.trim().length > 0 &&
     !isSendingToProcessing &&
-    !isItemSaving &&
+    !isRecordSaving &&
     !isDeleting;
   useEffect(() => {
     contentAssistScrollRequestRef.current += 1;
@@ -9362,7 +9407,9 @@ function BlogFactoryRecords({
     setPendingContentAssistTarget(null);
     setAssistCopiedTarget(null);
     setAssistError(null);
-    setAssistSaveNotice(null);
+    Object.values(assistSaveFeedbackTimerRefs.current).forEach((timer) => window.clearTimeout(timer));
+    assistSaveFeedbackTimerRefs.current = {};
+    setAssistSaveFeedback({});
     setIsCoverPromptConfigOpen(false);
     setIsCoverPromptTemplateEditing(false);
     setCoverPromptTextDraft("");
@@ -9447,16 +9494,24 @@ function BlogFactoryRecords({
   }
 
   async function handleSaveAssist(target: "summary" | "cover") {
-    const saved = await onSaveItem();
-    if (!saved) {
-      setAssistSaveNotice(null);
-      setAssistError("保存失败，请稍后重试。");
-      return;
+    const previousTimer = assistSaveFeedbackTimerRefs.current[target];
+    if (previousTimer !== undefined) window.clearTimeout(previousTimer);
+    setAssistSaveFeedback((current) => ({ ...current, [target]: "saving" }));
+
+    try {
+      await onSaveAssist(target);
+      setAssistSaveFeedback((current) => ({ ...current, [target]: "success" }));
+    } catch {
+      setAssistSaveFeedback((current) => ({ ...current, [target]: "error" }));
     }
 
-    setAssistError(null);
-    setAssistSaveNotice(target === "summary" ? "摘要已保存。" : "封面图片已保存。");
-    window.setTimeout(() => setAssistSaveNotice(null), 2200);
+    assistSaveFeedbackTimerRefs.current[target] = window.setTimeout(() => {
+      setAssistSaveFeedback((current) => {
+        const { [target]: _clearedStatus, ...remainingStatuses } = current;
+        return remainingStatuses;
+      });
+      delete assistSaveFeedbackTimerRefs.current[target];
+    }, 2600);
   }
 
   function handleSaveCoverPromptTemplate() {
@@ -9612,7 +9667,7 @@ function BlogFactoryRecords({
           {isDetailLoading ? <Loader2 className="animate-spin text-mint-300" size={17} /> : null}
           <button
             className="grid h-9 w-9 place-items-center rounded-lg border border-red-300/20 bg-red-400/10 text-red-200 transition hover:bg-red-400/16 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-600"
-            disabled={!selectedItem || isDeleting || isItemSaving || isArticleSaving}
+            disabled={!selectedItem || isDeleting || isRecordSaving || isArticleSaving}
             title="删除任务"
             type="button"
             onClick={onDelete}
@@ -9769,7 +9824,7 @@ function BlogFactoryRecords({
                         ? "border-mint-300/30 bg-mint-300/14 text-mint-300"
                         : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-mint-300/30 hover:text-mint-300"
                     }`}
-                    disabled={isItemSaving || isDeleting}
+                    disabled={isRecordSaving || isDeleting}
                     type="button"
                     onClick={() => setIsTaskContentEditing(true)}
                   >
@@ -9878,7 +9933,7 @@ function BlogFactoryRecords({
                 <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
                   <button
                     className="flex h-10 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-4 text-sm text-slate-300 transition hover:border-white/20 hover:text-slate-100"
-                    disabled={isItemSaving}
+                    disabled={isRecordSaving}
                     type="button"
                     onClick={handleCancelTaskContentEditing}
                   >
@@ -9964,13 +10019,23 @@ function BlogFactoryRecords({
                           提取摘要
                         </button>
                         <button
-                          className="flex h-9 items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-3 text-xs font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
-                          disabled={isItemSaving}
+                          className={`flex h-9 items-center justify-center gap-2 rounded-lg border px-3 text-xs font-medium transition disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500 ${
+                            summarySaveStatus === "error"
+                              ? "border-red-400/30 bg-red-400/10 text-red-100"
+                              : "border-mint-300/30 bg-mint-300/14 text-mint-300 hover:bg-mint-300/20"
+                          }`}
+                          disabled={isItemSaving || isSummarySavePending}
                           type="button"
                           onClick={() => void handleSaveAssist("summary")}
                         >
-                          {isItemSaving ? <Loader2 className="animate-spin" size={15} /> : <Save size={15} />}
-                          {isItemSaving ? "保存中" : "保存摘要"}
+                          {isSummarySavePending ? <Loader2 className="animate-spin" size={15} /> : <Save size={15} />}
+                          {summarySaveStatus === "success"
+                            ? "摘要已保存"
+                            : summarySaveStatus === "error"
+                              ? "保存失败"
+                              : isSummarySavePending
+                                ? "保存中"
+                                : "保存摘要"}
                         </button>
                         <button
                           className={`flex h-9 items-center justify-center gap-2 rounded-lg border px-3 text-xs transition disabled:cursor-not-allowed disabled:text-slate-600 ${
@@ -10261,7 +10326,7 @@ function BlogFactoryRecords({
                   <div className="flex flex-wrap gap-2">
                     <button
                       className="flex h-9 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-xs text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600"
-                      disabled={isCoverImageUploading}
+                      disabled={isCoverImageUploading || isItemSaving || isCoverSavePending}
                       type="button"
                       onClick={() => coverImageFileInputRef.current?.click()}
                     >
@@ -10270,7 +10335,7 @@ function BlogFactoryRecords({
                     </button>
                     <button
                       className="flex h-9 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-xs text-slate-300 transition hover:border-red-400/30 hover:text-red-100 disabled:cursor-not-allowed disabled:text-slate-600"
-                      disabled={!coverImageMarkdown || isCoverImageUploading}
+                      disabled={!coverImageMarkdown || isCoverImageUploading || isItemSaving || isCoverSavePending}
                       type="button"
                       onClick={handleRemoveCoverImage}
                     >
@@ -10278,13 +10343,23 @@ function BlogFactoryRecords({
                       移除
                     </button>
                     <button
-                      className="flex h-9 items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-3 text-xs font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
-                      disabled={isCoverImageUploading || isItemSaving}
+                      className={`flex h-9 items-center justify-center gap-2 rounded-lg border px-3 text-xs font-medium transition disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500 ${
+                        coverSaveStatus === "error"
+                          ? "border-red-400/30 bg-red-400/10 text-red-100"
+                          : "border-mint-300/30 bg-mint-300/14 text-mint-300 hover:bg-mint-300/20"
+                      }`}
+                      disabled={isCoverImageUploading || isItemSaving || isCoverSavePending}
                       type="button"
                       onClick={() => void handleSaveAssist("cover")}
                     >
-                      {isItemSaving ? <Loader2 className="animate-spin" size={15} /> : <Save size={15} />}
-                      {isItemSaving ? "保存中" : "保存封面"}
+                      {isCoverSavePending ? <Loader2 className="animate-spin" size={15} /> : <Save size={15} />}
+                      {coverSaveStatus === "success"
+                        ? "封面已保存"
+                        : coverSaveStatus === "error"
+                          ? "保存失败"
+                          : isCoverSavePending
+                            ? "保存中"
+                            : "保存封面"}
                     </button>
                   </div>
                 </div>
@@ -10312,11 +10387,6 @@ function BlogFactoryRecords({
               {assistError ? (
                 <div className="mt-3 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-2 text-xs leading-6 text-red-100">
                   {assistError}
-                </div>
-              ) : null}
-              {assistSaveNotice ? (
-                <div className="mt-3 rounded-lg border border-mint-300/20 bg-mint-300/10 px-3 py-2 text-xs leading-6 text-mint-100">
-                  {assistSaveNotice}
                 </div>
               ) : null}
             </div>
@@ -10603,7 +10673,7 @@ function BlogFactoryRecords({
 
       <MobileEditorSheet
         icon={<FileText size={17} />}
-        isBusy={isDetailLoading || isStatusSaving || isItemSaving || isSendingToProcessing || isArticleSaving || isDeleting}
+        isBusy={isDetailLoading || isStatusSaving || isRecordSaving || isSendingToProcessing || isArticleSaving || isDeleting}
         isOpen={isMobileDetailOpen && selectedItem !== null}
         label="Record Detail"
         title="博客工厂任务详情"

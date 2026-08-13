@@ -37,27 +37,27 @@ In `BlogFactoryRecords`, render list titles in this order: `article_title`, Mark
 
 Manually save a changed H1 and confirm the desktop and mobile list immediately shows it after the request succeeds. Also verify a task without an article title or H1 shows `原始问题：…`, and that publishing/source-trace data still uses the unchanged snapshot.
 
-## Blog Factory Assist Saves Must Report the Persisted Result
+## Blog Factory Assist Saves Must Be Independent and Report on Their Buttons
 
 ### Symptom
 
-Clicking `保存摘要` or `保存封面` in a Blog Factory task gave no visible result, leaving users unable to tell whether their metadata had been persisted.
+Saving a manually edited summary or cover image could fail when unrelated task snapshots were empty. Chinese summaries could also exceed an Oracle 100-byte column despite meeting the UI's 100-character limit; a save on either button could also temporarily restyle or disable the other button.
 
 ### Trigger
 
-Edit the assist summary or upload, replace, or remove a cover image, then use either save action in `BlogFactoryRecords`.
+Edit the assist summary to more than roughly 33 Chinese characters, or upload, replace, or remove a cover image on a task with an empty task body, question snapshot, or answer snapshot, then use either save action in `BlogFactoryRecords`.
 
 ### Root Cause
 
-Both buttons invoked the shared `onSaveItem()` request without exposing its boolean result in their own UI. They also remained visually unchanged while the request was in flight.
+Both buttons invoked the full-task `onSaveItem()` path, which validates all task fields before it makes a request. The `assist_summary varchar2(100)` Oracle migration used byte semantics while the UI/API use a 100-character limit. The buttons also rendered their transient labels and disabled state from the shared `isItemSaving` flag; concurrent partial-update responses could overwrite each other's local field.
 
 ### Safe Pattern
 
-In `frontend/src/App.tsx`, route assist saves through `handleSaveAssist()`: disable the action while `isItemSaving`, display a saving label, and show a local success or failure message only after the shared save promise settles.
+In `frontend/src/App.tsx`, route assist saves through `handleSaveBlogFactoryAssistMetadata()` and submit only `assist_summary` or `cover_image_markdown`. Keep the Oracle column as `varchar2(100 char)`. `handleSaveAssist()` must retain status and timeout state per target, and each PATCH response must merge only its own metadata field into local state. Disable only the source assist action while it is in flight; full-task actions remain guarded until assist saves finish.
 
 ### Guardrail
 
-Manually verify summary and cover saves at desktop and mobile widths in dark and light themes: each button changes to `保存中` during the request, a successful response shows the appropriate confirmation, and a failed response shows a readable nearby error without permitting duplicate saves.
+Manually verify summary and cover saves at desktop and mobile widths in dark and light themes, including a record with a blank snapshot: each button changes only itself to `保存中`, then `已保存` or `保存失败`, without restyling the other button. Trigger both saves before either response returns and confirm both saved fields remain displayed; re-clicking the same button during its request must not issue a duplicate PATCH.
 
 ## Markdown Toolbar Must Toggle Without Crossing a Selected Line Boundary
 

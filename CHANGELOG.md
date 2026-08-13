@@ -21,6 +21,15 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Changed / 变更
 
+- Changed the Blog Factory task-content copy mode default from `美化` to `增强美化`.
+- 将博客工厂任务内容复制模式的默认选择从 `美化` 调整为 `增强美化`。
+
+- Changed Blog Factory summary extraction to use the available 100-character limit instead of targeting roughly 50 characters.
+- 调整博客工厂摘要提取：取消约 50 字的目标长度，改为充分使用最多 100 字的限制。
+
+- Fixed Blog Factory assist-save feedback so saving a summary no longer briefly disables or restyles the cover save button, and vice versa. Each action now keeps its own in-flight and result state.
+- 修复博客工厂内容辅助保存反馈：保存摘要不再短暂禁用或改变“保存封面”按钮的样式，反之亦然；两个操作各自维护进行中与结果状态。
+
 - Removed source and topic-tag editing from Blog Factory inline task-content editing. Existing metadata remains preserved for publishing, filtering, and send-back processing.
 - 从博客工厂内联任务内容编辑中移除来源与主题标签的编辑入口；既有元数据继续保留，用于发布、筛选和发回知识加工。
 
@@ -43,6 +52,12 @@ The format follows the common GitHub changelog convention inspired by
 - 将博客工厂 `Apple哑光极简风` 更名为 `轻白产品哑光`，并从提示词中移除 Apple 品牌表述；保留其视觉特征，适用于 APEX 等产品主题。
 
 #### Fixed / 修复
+
+- Fixed Blog Factory assist-summary and cover-image saves to issue independent partial updates, so they no longer require task content or snapshots to be populated. Save progress, success, and failure now appear directly on the action button.
+- 修复博客工厂内容辅助的摘要与封面图片保存：改为独立部分更新，不再要求任务内容或快照字段完整；保存中、成功与失败直接显示在操作按钮上。
+
+- Fixed Blog Factory Chinese summary saves by changing the Oracle summary column to a 100-character definition instead of a 100-byte definition; only the action being saved now shows its transient button state.
+- 修复博客工厂中文摘要保存：Oracle 摘要字段改为 100 个字符而非 100 字节；保存时仅被点击的操作按钮显示动态状态。
 
 - Fixed Blog Factory task-list titles so they reflect the saved article title or the current Markdown H1, while clearly labeling the original question when neither is available.
 - 修复博客工厂任务列表标题：优先反映已保存文章标题或当前 Markdown 一级标题；两者均不存在时才显示并标识原始问题。

@@ -1105,13 +1105,13 @@ export function resolveBlogFactoryPublishMarkdown(
   return removeLeakedMarkdownCodePlaceholders(taskContentDraft ?? item.task_content ?? "").trim();
 }
 
-export function buildBlogFactoryTaskSummary(taskContent: string, maxLength = 100, targetLength = 50) {
+export function buildBlogFactoryTaskSummary(taskContent: string, maxLength = 100) {
   const normalized = normalizeBlogFactoryAssistContent(taskContent);
   if (!normalized) return "";
 
   const sentences = splitBlogFactoryAssistSentences(normalized);
   const preferred = pickBlogFactorySummarySentence(sentences);
-  return fitBlogFactorySummary(cleanBlogFactoryAssistPhrase(preferred || normalized), maxLength, targetLength);
+  return fitBlogFactorySummary(cleanBlogFactoryAssistPhrase(preferred || normalized), maxLength);
 }
 
 export function buildBlogFactoryCoverImagePrompt(
@@ -2115,9 +2115,8 @@ function pickBlogFactorySummarySentence(sentences: string[]) {
     let score = Math.max(0, 12 - index);
     if (/任务|目标|核心|意图|本文|文章|介绍|说明|讲解|实践|解决|实现|构建|优化|方案|流程|经验|复盘/.test(sentence)) score += 8;
     const length = Array.from(sentence).length;
-    score += Math.max(0, 18 - Math.abs(length - 50));
     if (length >= 24 && length <= 90) score += 5;
-    if (length > 140) score -= 8;
+    if (length > 100) score -= 8;
     return { sentence, score };
   });
 
@@ -2293,25 +2292,24 @@ function joinPromptList(values: string[]) {
   return values.map((value) => value.trim()).filter(Boolean).join(", ");
 }
 
-function fitBlogFactorySummary(value: string, maxLength: number, targetLength: number) {
+function fitBlogFactorySummary(value: string, maxLength: number) {
   const cleaned = cleanBlogFactoryAssistPhrase(value);
   const chars = Array.from(cleaned);
-  const preferredMaxLength = Math.min(maxLength, targetLength + 15);
-  if (chars.length <= preferredMaxLength) return cleaned;
+  if (chars.length <= maxLength) return cleaned;
 
   const punctuationIndexes = chars
     .map((char, index) => ("。！？!?；;".includes(char) ? index + 1 : -1))
-    .filter((index) => index >= Math.min(targetLength, maxLength));
-  const sentenceEnd = punctuationIndexes.find((index) => index <= preferredMaxLength) ?? punctuationIndexes.find((index) => index <= maxLength);
+    .filter((index) => index <= maxLength);
+  const sentenceEnd = punctuationIndexes[punctuationIndexes.length - 1];
   if (sentenceEnd) return chars.slice(0, sentenceEnd).join("").trim();
 
   const commaIndexes = chars
     .map((char, index) => ("，,、".includes(char) ? index + 1 : -1))
-    .filter((index) => index >= Math.min(targetLength, maxLength) && index <= Math.min(maxLength - 3, preferredMaxLength));
-  const commaEnd = commaIndexes[0];
+    .filter((index) => index <= maxLength - 3);
+  const commaEnd = commaIndexes[commaIndexes.length - 1];
   if (commaEnd) return `${chars.slice(0, commaEnd).join("").trim()}...`;
 
-  return truncateByCharacters(cleaned, Math.min(maxLength, Math.max(targetLength, 12)), "...");
+  return truncateByCharacters(cleaned, maxLength, "...");
 }
 
 function truncateByCharacters(value: string, maxLength: number, suffix = "…") {

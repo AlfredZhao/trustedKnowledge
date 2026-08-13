@@ -486,6 +486,26 @@ export async function updateBlogFactoryItem({
   });
 }
 
+export async function updateBlogFactoryAssistMetadata({
+  id,
+  assistSummary,
+  coverImageMarkdown,
+}: {
+  id: number;
+  assistSummary?: string;
+  coverImageMarkdown?: string;
+}): Promise<BlogFactoryItem> {
+  const body: Record<string, string | null> = {};
+  if (assistSummary !== undefined) body.assist_summary = assistSummary || null;
+  if (coverImageMarkdown !== undefined) body.cover_image_markdown = coverImageMarkdown || null;
+
+  return request<BlogFactoryItem>(`/api/blog-factory/${id}`, {
+    method: "PATCH",
+    invalidatePrefixes: ["/api/blog-factory"],
+    body: JSON.stringify(body),
+  });
+}
+
 export async function updateBlogFactoryArticle({
   id,
   articleMarkdown,
