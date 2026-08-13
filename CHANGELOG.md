@@ -9,6 +9,20 @@ The format follows the common GitHub changelog convention inspired by
 
 ## 本次版本更新
 
+### [Unreleased]
+
+#### Added / 新增
+
+- Added eight Blog Factory category visual presets for 公开课、AI、APEX、Oracle、效率工具箱、英语、Data and Linux. Selecting a category applies its recommended cover-image style while keeping manual style overrides available.
+- 为博客工厂新增公开课、AI、APEX、Oracle、效率工具箱、英语、Data、Linux 八类文章的画面风格预设；选择分类会应用推荐封面风格，同时仍可手动覆盖。
+
+#### Changed / 变更
+
+- Renamed the Blog Factory `Apple哑光极简风` preset to `轻白产品哑光` and removed Apple-brand wording from its prompt, preserving its visual treatment for APEX and other product topics.
+- 将博客工厂 `Apple哑光极简风` 更名为 `轻白产品哑光`，并从提示词中移除 Apple 品牌表述；保留其视觉特征，适用于 APEX 等产品主题。
+
+#### Fixed / 修复
+
 ### [0.3.8] - 2026-08-12
 
 #### Added / 新增

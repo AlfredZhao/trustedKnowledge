@@ -93,7 +93,7 @@ const LEGACY_BLOG_FACTORY_COVER_PROMPT_TEMPLATE = [
 const COMPACT_BLOG_FACTORY_COVER_PROMPT_TEMPLATE = [
   "主题：{{title}}",
   "核心实体：{{entities}}",
-  "画面：以“{{subject}}”为主体，将核心实体转成可辨认的 C4D 卡通 3D 隐喻物件，避免泛化成普通知识工厂。",
+  "画面：以“{{subject}}”为主体，将核心实体转成可辨认的视觉隐喻物件，避免泛化成普通知识工厂。",
   "内容意图：{{summary}}",
   "关键元素：{{objects}}",
   "画幅构图：{{composition}}",
@@ -118,8 +118,8 @@ export const BLOG_FACTORY_COVER_STYLE_PRESETS = [
   },
   {
     id: "apple-matte-minimal",
-    styleName: "Apple哑光极简风",
-    styleText: "C4D 卡通 3D, Octane render, Apple keynote极简风，纯白哑光底色，低饱和高级灰，柔和层次",
+    styleName: "轻白产品哑光",
+    styleText: "C4D 卡通 3D, Octane render, 轻白产品发布会极简风，纯白哑光底色，低饱和高级灰，柔和层次",
     lightText: "均匀漫射日光，无影柔光，平缓明暗过渡",
     materialText: "雾面哑光玻璃，米灰磨砂亚克力，细浅金色金属边缘",
   },
@@ -130,9 +130,52 @@ export const BLOG_FACTORY_COVER_STYLE_PRESETS = [
     lightText: "暖白定向柔光，局部补光，无强烈高光",
     materialText: "茶透玻璃，暖灰哑光亚克力，古铜细金属描边",
   },
+  {
+    id: "colorful-modular-toolbox",
+    styleName: "彩色模块化工具台",
+    styleText: "C4D 风格化 3D，明快克制的钴蓝、橙色与暖黄色点缀，模块化效率工具台，井然有序且可操作",
+    lightText: "明亮棚拍柔光，均匀自然补光，清晰但不过曝",
+    materialText: "细腻哑光塑料，阳极氧化金属，少量半透明亚克力",
+  },
+  {
+    id: "paper-cut-learning-cards",
+    styleName: "纸艺拼贴学习卡",
+    styleText: "编辑感纸艺拼贴插画，暖米白纸张肌理，精致手作学习卡片，少量蓝色与红色点缀，大面积留白",
+    lightText: "柔和日光，轻微纸张阴影，温暖低对比",
+    materialText: "棉麻纸，哑光彩纸，细腻铅笔与胶带质感",
+  },
+  {
+    id: "data-glass-atlas",
+    styleName: "数据新闻玻璃图谱",
+    styleText: "编辑型数据可视化 3D，雾靛蓝与冷灰色调，半透明数据地形和关联图谱，冷静、精确、有洞察感",
+    lightText: "雾化顶光与柔和侧光，细微边缘高光，层次清晰",
+    materialText: "磨砂玻璃，半透明树脂，细银色金属连线",
+  },
+  {
+    id: "retro-terminal-engineering",
+    styleName: "复古终端像素工程",
+    styleText: "复古终端启发的 3D 工程插画，炭黑底色，低饱和荧光绿与琥珀色点缀，像素网格与模块化系统路径，克制硬朗",
+    lightText: "低调定向光，柔和终端屏幕辉光，有限的局部高光",
+    materialText: "磨砂深色金属，微纹理塑料，像素化发光面板",
+  },
 ] as const;
 
 export type BlogFactoryCoverStylePresetId = (typeof BLOG_FACTORY_COVER_STYLE_PRESETS)[number]["id"];
+
+export const BLOG_FACTORY_COVER_CATEGORY_STYLE_PRESETS = [
+  { category: "公开课", stylePresetId: "clear-minimal-business", description: "清晰、亲和的课程与方法论封面" },
+  { category: "AI", stylePresetId: "dark-cyber-tech", description: "未来感模型、智能体与自动化主题" },
+  { category: "APEX", stylePresetId: "apple-matte-minimal", description: "轻量、清晰的低代码产品与交付主题" },
+  { category: "Oracle", stylePresetId: "warm-industrial-matte", description: "稳定、有工程厚度的数据库与架构主题" },
+  { category: "效率工具箱", stylePresetId: "colorful-modular-toolbox", description: "强调可操作性的工具、流程与工作台主题" },
+  { category: "英语", stylePresetId: "paper-cut-learning-cards", description: "有温度的学习卡、表达与语言主题" },
+  { category: "Data", stylePresetId: "data-glass-atlas", description: "聚焦洞察、图谱与分析关系的数据主题" },
+  { category: "Linux", stylePresetId: "retro-terminal-engineering", description: "克制硬朗的终端、系统与工程实践主题" },
+] as const satisfies ReadonlyArray<{
+  category: string;
+  stylePresetId: BlogFactoryCoverStylePresetId;
+  description: string;
+}>;
 
 export const BLOG_FACTORY_COVER_PROMPT_OPTIONS = {
   subjects: [

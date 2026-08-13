@@ -206,6 +206,7 @@ import { useDebouncedValue } from "./hooks/useDebouncedValue";
 import { invalidateApiCache } from "./api/client";
 import {
   BLOG_FACTORY_COVER_PROMPT_OPTIONS,
+  BLOG_FACTORY_COVER_CATEGORY_STYLE_PRESETS,
   BLOG_FACTORY_COVER_STYLE_PRESETS,
   BLOG_FACTORY_MASK_TOGGLE_OPTIONS,
   DEFAULT_BLOG_FACTORY_COVER_PROMPT_CONFIG,
@@ -9270,6 +9271,7 @@ function BlogFactoryRecords({
   const [isCoverPromptConfigOpen, setIsCoverPromptConfigOpen] = useState(false);
   const [isCoverPromptTemplateEditing, setIsCoverPromptTemplateEditing] = useState(false);
   const [coverPromptTextDraft, setCoverPromptTextDraft] = useState("");
+  const [coverPromptCategory, setCoverPromptCategory] = useState("");
   const [coverPromptTemplateDraft, setCoverPromptTemplateDraft] = useState(coverPromptTemplate);
   const [coverPromptConfigDraft, setCoverPromptConfigDraft] = useState<BlogFactoryCoverPromptConfig>(() =>
     normalizeBlogFactoryCoverPromptConfig(coverPromptConfig),
@@ -9465,6 +9467,9 @@ function BlogFactoryRecords({
 
   function handleCoverPromptStylePresetChange(stylePresetId: BlogFactoryCoverStylePresetId) {
     const stylePreset = resolveBlogFactoryCoverStylePreset(stylePresetId);
+    setCoverPromptCategory(
+      BLOG_FACTORY_COVER_CATEGORY_STYLE_PRESETS.find((preset) => preset.stylePresetId === stylePreset.id)?.category ?? "",
+    );
     const nextConfig = normalizeBlogFactoryCoverPromptConfig({
       ...resolvedCoverPromptConfig,
       stylePresetId: stylePreset.id,
@@ -9472,6 +9477,12 @@ function BlogFactoryRecords({
     setCoverPromptConfigDraft(nextConfig);
     onCoverPromptConfigChange(nextConfig);
     setAssistError(null);
+  }
+
+  function handleCoverPromptCategoryChange(category: string) {
+    setCoverPromptCategory(category);
+    const categoryPreset = BLOG_FACTORY_COVER_CATEGORY_STYLE_PRESETS.find((preset) => preset.category === category);
+    if (categoryPreset) handleCoverPromptStylePresetChange(categoryPreset.stylePresetId);
   }
 
   function toggleCoverPromptConfigValue(key: keyof Pick<
@@ -10012,6 +10023,27 @@ function BlogFactoryRecords({
                           </span>
                         ))}
                       </div>
+                    </div>
+                    <div className="rounded-lg border border-white/10 bg-black/15 p-3">
+                      <Field label="文章分类预设" icon={<Tags size={16} />}>
+                        <select
+                          className="control"
+                          value={coverPromptCategory}
+                          onChange={(event) => handleCoverPromptCategoryChange(event.target.value)}
+                        >
+                          <option value="">按需选择分类并应用推荐风格</option>
+                          {BLOG_FACTORY_COVER_CATEGORY_STYLE_PRESETS.map((preset) => (
+                            <option key={preset.category} value={preset.category}>
+                              {preset.category} · {resolveBlogFactoryCoverStylePreset(preset.stylePresetId).styleName}
+                            </option>
+                          ))}
+                        </select>
+                      </Field>
+                      {coverPromptCategory ? (
+                        <div className="mt-2 text-xs leading-6 text-slate-500">
+                          {BLOG_FACTORY_COVER_CATEGORY_STYLE_PRESETS.find((preset) => preset.category === coverPromptCategory)?.description}
+                        </div>
+                      ) : null}
                     </div>
                     <div className="rounded-lg border border-white/10 bg-black/15 p-3">
                       <Field label="画面风格" icon={<Sparkles size={16} />}>
