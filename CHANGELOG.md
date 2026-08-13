@@ -21,6 +21,15 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Changed / 变更
 
+- Changed English Materials layouts so the `分类标识` and `发布状态` controls use equal-width columns, giving the status label sufficient room.
+- 调整英语素材布局：`分类标识` 与 `发布状态` 控件改为等宽列，为发布状态文案保留足够显示空间。
+
+- Changed Skill 管理 so both `新建自定义 Skill` and `上传标准 Skill Zip` panels are collapsed by default and expand on demand.
+- 调整 Skill 管理：`新建自定义 Skill` 与 `上传标准 Skill Zip` 面板默认收起，按需展开。
+
+- Fixed the expanded Skill Zip file input so its button and filename text are vertically centered within the full-width control.
+- 修复展开后的 Skill Zip 文件选择框：选择按钮与文件名文字在满宽控件内垂直居中显示。
+
 - Changed the Blog Factory task-content copy mode default from `美化` to `增强美化`.
 - 将博客工厂任务内容复制模式的默认选择从 `美化` 调整为 `增强美化`。
 

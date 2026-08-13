@@ -12144,7 +12144,7 @@ function EnglishMaterialsWorkspace({
           </div>
         </div>
 
-        <div className="mb-4 grid gap-3 md:grid-cols-[1fr_1fr_120px_1fr_auto]">
+        <div className="mb-4 grid gap-3 md:grid-cols-[1fr_0.85fr_0.85fr_1fr_auto]">
           <Field label="用户" icon={<ShieldCheck size={16} />}>
             <select
               className="control"
@@ -12345,7 +12345,7 @@ function EnglishMaterialsWorkspace({
             </Field>
           </div>
 
-          <div className="grid grid-cols-[1fr_110px] gap-3">
+          <div className="grid grid-cols-2 gap-3">
             <Field label="分类标识" icon={<Tags size={16} />}>
               <input
                 className="control"
@@ -12579,7 +12579,7 @@ function EnglishMaterialDetailDialog({
                 </Field>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_110px]">
+              <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="分类标识" icon={<Tags size={16} />}>
                   <input
                     className="control"
@@ -13832,6 +13832,8 @@ function SkillManager({
   const canCreate = newDraft.name.trim().length > 0 && !isSaving;
   const canSave = Boolean(detail?.can_edit) && draft.name.trim().length > 0 && !isSaving;
   const canSaveFile = Boolean(detail?.can_edit && selectedFile?.editable) && !isFileSaving;
+  const [isCreateSkillFormExpanded, setIsCreateSkillFormExpanded] = useState(false);
+  const [isUploadSkillZipExpanded, setIsUploadSkillZipExpanded] = useState(false);
   const [expandedSkillDirectories, setExpandedSkillDirectories] = useState<Set<string>>(() => new Set());
   const skillFileGroups = useMemo(() => {
     const rootFiles: SkillFile[] = [];
@@ -13987,70 +13989,96 @@ function SkillManager({
         </section>
 
         <section className="rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
-          <div className="mb-4 flex items-center gap-2 text-sm font-medium text-slate-200">
-            <FilePlus2 className="text-mint-300" size={17} />
-            新建自定义 Skill
-          </div>
-          <form className="space-y-3" onSubmit={onCreate}>
-            <input
-              className="control h-10"
-              value={newDraft.name}
-              onChange={(event) => onNewDraftChange({ ...newDraft, name: event.target.value })}
-              placeholder="Skill 名称"
-            />
-            <textarea
-              className="control min-h-20 resize-none"
-              value={newDraft.description}
-              onChange={(event) => onNewDraftChange({ ...newDraft, description: event.target.value })}
-              placeholder="描述这个 skill 会如何影响输出结构、语气或排版。"
-            />
-            <textarea
-              className="control min-h-32 resize-y font-mono text-xs leading-6"
-              value={newDraft.content}
-              onChange={(event) => onNewDraftChange({ ...newDraft, content: event.target.value })}
-              placeholder={"# Skill 名称\n\n描述：...\n\n## 使用规则\n- ..."}
-            />
-            <label className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.028] px-3 py-2 text-sm text-slate-300">
-              <span>发布给其他用户调用</span>
+          <button
+            aria-expanded={isCreateSkillFormExpanded}
+            className="flex w-full items-center justify-between gap-3 text-left"
+            type="button"
+            onClick={() => setIsCreateSkillFormExpanded((current) => !current)}
+          >
+            <span className="flex items-center gap-2 text-sm font-medium text-slate-200">
+              <FilePlus2 className="text-mint-300" size={17} />
+              新建自定义 Skill
+            </span>
+            <span className="flex items-center gap-1 text-xs text-slate-500">
+              {isCreateSkillFormExpanded ? "收起" : "展开"}
+              {isCreateSkillFormExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+            </span>
+          </button>
+          {isCreateSkillFormExpanded ? (
+            <form className="mt-4 space-y-3" onSubmit={onCreate}>
               <input
-                checked={newDraft.published}
-                className="h-4 w-4 accent-mint-300"
-                type="checkbox"
-                onChange={(event) => onNewDraftChange({ ...newDraft, published: event.target.checked })}
+                className="control h-10"
+                value={newDraft.name}
+                onChange={(event) => onNewDraftChange({ ...newDraft, name: event.target.value })}
+                placeholder="Skill 名称"
               />
-            </label>
-            <button
-              className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-3 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
-              disabled={!canCreate}
-              type="submit"
-            >
-              {isSaving ? <Loader2 className="animate-spin" size={16} /> : <Plus size={16} />}
-              新建 Skill
-            </button>
-          </form>
+              <textarea
+                className="control min-h-20 resize-none"
+                value={newDraft.description}
+                onChange={(event) => onNewDraftChange({ ...newDraft, description: event.target.value })}
+                placeholder="描述这个 skill 会如何影响输出结构、语气或排版。"
+              />
+              <textarea
+                className="control min-h-32 resize-y font-mono text-xs leading-6"
+                value={newDraft.content}
+                onChange={(event) => onNewDraftChange({ ...newDraft, content: event.target.value })}
+                placeholder={"# Skill 名称\n\n描述：...\n\n## 使用规则\n- ..."}
+              />
+              <label className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.028] px-3 py-2 text-sm text-slate-300">
+                <span>发布给其他用户调用</span>
+                <input
+                  checked={newDraft.published}
+                  className="h-4 w-4 accent-mint-300"
+                  type="checkbox"
+                  onChange={(event) => onNewDraftChange({ ...newDraft, published: event.target.checked })}
+                />
+              </label>
+              <button
+                className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-3 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
+                disabled={!canCreate}
+                type="submit"
+              >
+                {isSaving ? <Loader2 className="animate-spin" size={16} /> : <Plus size={16} />}
+                新建 Skill
+              </button>
+            </form>
+          ) : null}
         </section>
 
         <section className="rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
-          <label className="block">
-            <span className="mb-3 flex items-center gap-2 text-sm font-medium text-slate-200">
+          <button
+            aria-expanded={isUploadSkillZipExpanded}
+            className="flex w-full items-center justify-between gap-3 text-left"
+            type="button"
+            onClick={() => setIsUploadSkillZipExpanded((current) => !current)}
+          >
+            <span className="flex items-center gap-2 text-sm font-medium text-slate-200">
               <Archive className="text-mint-300" size={17} />
               上传标准 Skill Zip
             </span>
-            <input
-              className="control"
-              accept=".zip,application/zip"
-              disabled={isUploading}
-              type="file"
-              onChange={(event) => {
-                onUpload(event.target.files?.[0] ?? null);
-                event.target.value = "";
-              }}
-            />
-          </label>
-          {isUploading ? (
-            <div className="mt-3 flex items-center gap-2 text-sm text-slate-500">
-              <Loader2 className="animate-spin" size={15} />
-              正在上传并解析...
+            <span className="flex items-center gap-1 text-xs text-slate-500">
+              {isUploadSkillZipExpanded ? "收起" : "展开"}
+              {isUploadSkillZipExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+            </span>
+          </button>
+          {isUploadSkillZipExpanded ? (
+            <div className="mt-4">
+              <input
+                className="control h-10 cursor-pointer leading-10 file:mr-3 file:h-full file:border-0 file:bg-white/[0.07] file:px-3 file:text-sm file:font-medium file:text-slate-200 hover:file:bg-white/[0.1]"
+                accept=".zip,application/zip"
+                disabled={isUploading}
+                type="file"
+                onChange={(event) => {
+                  onUpload(event.target.files?.[0] ?? null);
+                  event.target.value = "";
+                }}
+              />
+              {isUploading ? (
+                <div className="mt-3 flex items-center gap-2 text-sm text-slate-500">
+                  <Loader2 className="animate-spin" size={15} />
+                  正在上传并解析...
+                </div>
+              ) : null}
             </div>
           ) : null}
         </section>
