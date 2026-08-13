@@ -18,10 +18,28 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Changed / 变更
 
+- Increased the Blog Factory inline task-content editor minimum height from 280px to 420px for more comfortable secondary editing.
+- 将博客工厂内联任务内容编辑器的最小高度从 280px 提升至 420px，改善二次编辑时的可视范围。
+
+- Moved Blog Factory task-content editing into the task-content panel. The existing copy, content-assist, cover, and publishing actions remain available; editing now uses an inline Markdown editor with cancel/save actions and collapsed task metadata.
+- 将博客工厂任务内容编辑并入任务内容面板；既有复制、内容辅助、封面和发布操作均保留，编辑时原地切换为 Markdown 编辑器，并提供取消/保存与默认折叠的任务元信息。
+
+- Moved Blog Factory query controls above the task list and changed the desktop layout to two columns, giving the task-detail work area more room while keeping filters adjacent to their results.
+- 将博客工厂查询条件移至任务列表上方，并将桌面布局调整为两栏；详情工作区获得更多空间，筛选条件也与结果列表保持相邻。
+
+- Widened the Blog Factory desktop task-detail work area while keeping the filter and task list visible for fast task switching during secondary editing.
+- 加宽博客工厂桌面端的任务详情主工作区，同时保留筛选和任务列表，便于二次编辑时快速定位与切换任务。
+
+- Changed Blog Factory task-record editing so task content uses the shared Markdown editor with image insertion and clipboard-image upload; question and answer snapshots are no longer shown in that edit area.
+- 调整博客工厂任务记录编辑：任务内容复用带图片插入与剪贴板图片上传的 Markdown 编辑器；问题快照与答案快照不再在该编辑区展示。
+
 - Renamed the Blog Factory `Apple哑光极简风` preset to `轻白产品哑光` and removed Apple-brand wording from its prompt, preserving its visual treatment for APEX and other product topics.
 - 将博客工厂 `Apple哑光极简风` 更名为 `轻白产品哑光`，并从提示词中移除 Apple 品牌表述；保留其视觉特征，适用于 APEX 等产品主题。
 
 #### Fixed / 修复
+
+- Fixed the Blog Factory filter bar so sort-field options and the clear-filter label remain fully visible at desktop and narrow widths.
+- 修复博客工厂筛选区的排序字段与清空筛选条件文案在桌面端和较窄宽度下被挤压显示不全的问题。
 
 ### [0.3.8] - 2026-08-12
 

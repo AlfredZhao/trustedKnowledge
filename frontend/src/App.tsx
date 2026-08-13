@@ -3238,11 +3238,11 @@ function App() {
     }
   }
 
-  async function handleSaveBlogFactoryItem() {
-    if (!selectedBlogFactoryItem || isBlogFactoryItemSaving) return;
+  async function handleSaveBlogFactoryItem(): Promise<boolean> {
+    if (!selectedBlogFactoryItem || isBlogFactoryItemSaving) return false;
     if (!blogFactoryEditDraft.taskContent.trim() || !blogFactoryEditDraft.questionSnapshot.trim() || !blogFactoryEditDraft.answerSnapshot.trim()) {
       setBlogFactoryEditError("任务内容、问题快照和答案快照不能为空。");
-      return;
+      return false;
     }
 
     setIsBlogFactoryItemSaving(true);
@@ -3260,8 +3260,10 @@ function App() {
       setSelectedBlogFactoryItem(updated);
       setBlogFactoryItems((current) => current.map((item) => (item.id === updated.id ? updated : item)));
       setBlogFactoryRefreshToken((current) => current + 1);
+      return true;
     } catch (error) {
       setBlogFactoryEditError(error instanceof Error ? error.message : "任务编辑保存失败，请稍后重试。");
+      return false;
     } finally {
       setIsBlogFactoryItemSaving(false);
     }
@@ -9257,7 +9259,7 @@ function BlogFactoryRecords({
   onSendToProcessing: () => void;
   onDelete: () => void;
   onCloseMobileDetail: () => void;
-  onSaveItem: () => void;
+  onSaveItem: () => Promise<boolean>;
   onSelect: (item: BlogFactoryItem) => void;
   onStatusChange: (status: BlogFactoryStatus) => void;
 }) {
@@ -9265,6 +9267,7 @@ function BlogFactoryRecords({
   const rangeStart = total === 0 ? 0 : (page - 1) * BLOG_FACTORY_PAGE_SIZE + 1;
   const rangeEnd = Math.min(page * BLOG_FACTORY_PAGE_SIZE, total);
   const [taskCopyView, setTaskCopyView] = useState<BlogFactoryTaskCopyMode>("rendered");
+  const [isTaskContentEditing, setIsTaskContentEditing] = useState(false);
   const [assistView, setAssistView] = useState<"summary" | "coverPrompt">("summary");
   const [assistCopiedTarget, setAssistCopiedTarget] = useState<"summary" | "coverPrompt" | null>(null);
   const [assistError, setAssistError] = useState<string | null>(null);
@@ -9353,6 +9356,7 @@ function BlogFactoryRecords({
     contentAssistScrollRequestRef.current += 1;
     pendingContentAssistTriggerRef.current = null;
     setAssistView("summary");
+    setIsTaskContentEditing(false);
     setPendingContentAssistTarget(null);
     setAssistCopiedTarget(null);
     setAssistError(null);
@@ -9361,6 +9365,17 @@ function BlogFactoryRecords({
     setCoverPromptTextDraft("");
     setCoverImageError(null);
   }, [selectedItem?.id]);
+
+  function handleCancelTaskContentEditing() {
+    if (selectedItem) onEditDraftChange(blogFactoryItemToEditDraft(selectedItem));
+    setIsTaskContentEditing(false);
+    setAssistError(null);
+  }
+
+  async function handleSaveTaskContent() {
+    const saved = await onSaveItem();
+    if (saved) setIsTaskContentEditing(false);
+  }
 
   useEffect(() => {
     if (!pendingContentAssistTarget) return;
@@ -9663,120 +9678,6 @@ function BlogFactoryRecords({
             </div>
           ) : null}
 
-          <div className="order-5 rounded-lg border border-white/10 bg-white/[0.025] p-4">
-            <div className="mb-4 flex items-center gap-2 text-sm font-medium text-slate-300">
-              <Pencil size={16} />
-              编辑任务记录
-            </div>
-            <div className="space-y-4">
-              <Field label="任务内容" icon={<FileText size={16} />}>
-                <div className="space-y-3">
-                  <div className="grid gap-2 xl:grid-cols-[minmax(0,1fr)_auto_auto]">
-                    <select
-                      className="control"
-                      value={selectedMaskRuleId ?? ""}
-                      onChange={(event) => onMaskRuleChange(event.target.value || null)}
-                    >
-                      <option value="">{maskRules.length > 0 ? "选择脱敏规则" : "暂无已保存规则"}</option>
-                      {maskRules.map((rule) => (
-                        <option key={rule.id} value={rule.id}>
-                          {rule.name}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      className="flex h-11 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-4 text-sm text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300"
-                      type="button"
-                      onClick={onOpenMaskDialog}
-                    >
-                      <LockKeyhole size={16} />
-                      脱敏规则
-                    </button>
-                    <button
-                      className="flex h-11 items-center justify-center gap-2 rounded-lg border border-amberline/25 bg-amberline/10 px-4 text-sm text-amber-100 transition hover:bg-amberline/15 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
-                      disabled={!canApplyMaskRule}
-                      type="button"
-                      onClick={() => onApplyMaskRule(selectedMaskRuleId)}
-                    >
-                      <ShieldCheck size={16} />
-                      应用脱敏
-                    </button>
-                  </div>
-                  {selectedMaskRule ? (
-                    <div className="rounded-lg border border-white/10 bg-white/[0.025] px-3 py-2 text-xs leading-6 text-slate-400">
-                      {describeBlogFactoryMaskRule(selectedMaskRule)}
-                    </div>
-                  ) : null}
-                  <textarea
-                    className="control min-h-[180px] resize-none font-mono text-xs leading-6 text-slate-200"
-                    value={editDraft.taskContent}
-                    onChange={(event) => onEditDraftChange({ ...editDraft, taskContent: event.target.value })}
-                  />
-                  {maskNotice ? (
-                    <div className="rounded-lg border border-mint-300/20 bg-mint-300/10 px-3 py-2 text-xs leading-6 text-mint-100">
-                      {maskNotice}
-                    </div>
-                  ) : null}
-                  {maskError ? (
-                    <div className="rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-2 text-xs leading-6 text-red-100">
-                      {maskError}
-                    </div>
-                  ) : null}
-                </div>
-              </Field>
-              <Field label="问题快照" icon={<Sparkles size={16} />}>
-                <textarea
-                  className="control min-h-[92px] resize-none leading-7"
-                  maxLength={4000}
-                  value={editDraft.questionSnapshot}
-                  onChange={(event) => onEditDraftChange({ ...editDraft, questionSnapshot: event.target.value })}
-                />
-              </Field>
-              <Field label="答案快照" icon={<FileText size={16} />}>
-                <textarea
-                  className="control min-h-[160px] resize-none leading-7"
-                  value={editDraft.answerSnapshot}
-                  onChange={(event) => onEditDraftChange({ ...editDraft, answerSnapshot: event.target.value })}
-                />
-              </Field>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Field label="来源" icon={<Database size={16} />}>
-                  <input
-                    className="control"
-                    maxLength={200}
-                    value={editDraft.sourceSnapshot}
-                    onChange={(event) => onEditDraftChange({ ...editDraft, sourceSnapshot: event.target.value })}
-                  />
-                </Field>
-                <Field label="主题标签" icon={<Tags size={16} />}>
-                  <input
-                    className="control"
-                    maxLength={100}
-                    value={editDraft.topicTagSnapshot}
-                    onChange={(event) => onEditDraftChange({ ...editDraft, topicTagSnapshot: event.target.value })}
-                  />
-                </Field>
-              </div>
-            </div>
-
-            {editError ? (
-              <div className="mt-4 flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100">
-                <TriangleAlert className="mt-0.5 shrink-0 text-red-300" size={17} />
-                <span>{editError}</span>
-              </div>
-            ) : null}
-
-            <button
-              className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
-              disabled={!canSaveItem}
-              type="button"
-              onClick={onSaveItem}
-            >
-              {isItemSaving ? <Loader2 className="animate-spin" size={17} /> : <Save size={17} />}
-              {isItemSaving ? "保存中" : "保存任务记录"}
-            </button>
-          </div>
-
           <div className="order-1 rounded-lg border border-white/10 bg-white/[0.025] p-4">
             <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0">
@@ -9846,6 +9747,19 @@ function BlogFactoryRecords({
                           ? "复制美化"
                           : "复制裸文本"}
                   </button>
+                  <button
+                    className={`flex h-9 items-center gap-2 rounded-lg border px-3 text-xs transition disabled:cursor-not-allowed disabled:text-slate-600 ${
+                      isTaskContentEditing
+                        ? "border-mint-300/30 bg-mint-300/14 text-mint-300"
+                        : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-mint-300/30 hover:text-mint-300"
+                    }`}
+                    disabled={isItemSaving || isDeleting}
+                    type="button"
+                    onClick={() => setIsTaskContentEditing(true)}
+                  >
+                    <Pencil size={15} />
+                    {isTaskContentEditing ? "编辑中" : "编辑任务内容"}
+                  </button>
                 </div>
                 <div className="grid w-full grid-cols-3 gap-2 sm:w-auto">
                   <button
@@ -9890,7 +9804,104 @@ function BlogFactoryRecords({
               </div>
             </div>
 
-            {selectedItem.task_content.trim() ? (
+            {isTaskContentEditing ? (
+              <div className="space-y-3">
+                <div className="grid gap-2 xl:grid-cols-[minmax(0,1fr)_auto_auto]">
+                  <select
+                    className="control"
+                    value={selectedMaskRuleId ?? ""}
+                    onChange={(event) => onMaskRuleChange(event.target.value || null)}
+                  >
+                    <option value="">{maskRules.length > 0 ? "选择脱敏规则" : "暂无已保存规则"}</option>
+                    {maskRules.map((rule) => (
+                      <option key={rule.id} value={rule.id}>
+                        {rule.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    className="flex h-11 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-4 text-sm text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300"
+                    type="button"
+                    onClick={onOpenMaskDialog}
+                  >
+                    <LockKeyhole size={16} />
+                    脱敏规则
+                  </button>
+                  <button
+                    className="flex h-11 items-center justify-center gap-2 rounded-lg border border-amberline/25 bg-amberline/10 px-4 text-sm text-amber-100 transition hover:bg-amberline/15 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
+                    disabled={!canApplyMaskRule}
+                    type="button"
+                    onClick={() => onApplyMaskRule(selectedMaskRuleId)}
+                  >
+                    <ShieldCheck size={16} />
+                    应用脱敏
+                  </button>
+                </div>
+                {selectedMaskRule ? (
+                  <div className="rounded-lg border border-white/10 bg-white/[0.025] px-3 py-2 text-xs leading-6 text-slate-400">
+                    {describeBlogFactoryMaskRule(selectedMaskRule)}
+                  </div>
+                ) : null}
+                <MarkdownImageTextarea
+                  className="control min-h-[420px] resize-y font-mono text-xs leading-6 text-slate-200"
+                  value={editDraft.taskContent}
+                  onChange={(taskContent) => onEditDraftChange({ ...editDraft, taskContent })}
+                />
+                <details className="rounded-lg border border-white/10 bg-white/[0.025] p-3">
+                  <summary className="cursor-pointer text-sm font-medium text-slate-300">任务元信息</summary>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <Field label="来源" icon={<Database size={16} />}>
+                      <input
+                        className="control"
+                        maxLength={200}
+                        value={editDraft.sourceSnapshot}
+                        onChange={(event) => onEditDraftChange({ ...editDraft, sourceSnapshot: event.target.value })}
+                      />
+                    </Field>
+                    <Field label="主题标签" icon={<Tags size={16} />}>
+                      <input
+                        className="control"
+                        maxLength={100}
+                        value={editDraft.topicTagSnapshot}
+                        onChange={(event) => onEditDraftChange({ ...editDraft, topicTagSnapshot: event.target.value })}
+                      />
+                    </Field>
+                  </div>
+                </details>
+                {maskNotice ? (
+                  <div className="rounded-lg border border-mint-300/20 bg-mint-300/10 px-3 py-2 text-xs leading-6 text-mint-100">{maskNotice}</div>
+                ) : null}
+                {maskError ? (
+                  <div className="rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-2 text-xs leading-6 text-red-100">{maskError}</div>
+                ) : null}
+                {editError ? (
+                  <div className="flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100">
+                    <TriangleAlert className="mt-0.5 shrink-0 text-red-300" size={17} />
+                    <span>{editError}</span>
+                  </div>
+                ) : null}
+                <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+                  <button
+                    className="flex h-10 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-4 text-sm text-slate-300 transition hover:border-white/20 hover:text-slate-100"
+                    disabled={isItemSaving}
+                    type="button"
+                    onClick={handleCancelTaskContentEditing}
+                  >
+                    <X size={16} />
+                    取消编辑
+                  </button>
+                  <button
+                    className="flex h-10 items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
+                    disabled={!canSaveItem}
+                    type="button"
+                    onClick={() => void handleSaveTaskContent()}
+                  >
+                    {isItemSaving ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
+                    {isItemSaving ? "保存中" : "保存任务内容"}
+                  </button>
+                </div>
+              </div>
+            ) : selectedItem.task_content.trim() ? (
               taskCopyView === "raw" ? (
                 <p className="whitespace-pre-wrap break-words text-sm leading-7 text-slate-400 [overflow-wrap:anywhere]">
                   {removeLeakedMarkdownCodePlaceholders(selectedItem.task_content)}
@@ -10347,95 +10358,7 @@ function BlogFactoryRecords({
   );
 
   return (
-    <div className="grid flex-1 gap-4 px-4 pb-4 pt-2 xl:grid-cols-[300px_minmax(420px,1fr)_minmax(360px,0.86fr)]">
-      <aside className="min-w-0 rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
-        <div className="mb-5">
-          <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
-            <Filter size={17} />
-            Query Controls
-          </div>
-          <h2 className="text-lg font-semibold text-slate-50">查询条件</h2>
-        </div>
-
-        <div className="space-y-4">
-          <Field label="用户" icon={<ShieldCheck size={16} />}>
-            <select
-              className="control"
-              disabled={hasSingleVisibleUser}
-              value={filters.username}
-              onChange={(event) => onFilterChange({ username: event.target.value })}
-            >
-              <option value="">{allUsersLabel}</option>
-              {visibleUsers.map((user) => (
-                <option key={user} value={user}>
-                  {user}
-                </option>
-              ))}
-            </select>
-          </Field>
-
-          <Field label="工厂状态" icon={<CheckCircle2 size={16} />}>
-            <select
-              className="control"
-              value={filters.factoryStatus}
-              onChange={(event) => onFilterChange({ factoryStatus: event.target.value as BlogFactoryFilters["factoryStatus"] })}
-            >
-              {statusOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </Field>
-
-          <Field label="主题标签" icon={<Tags size={16} />}>
-            <input
-              className="control"
-              value={filters.topic}
-              onChange={(event) => onFilterChange({ topic: event.target.value })}
-              placeholder="如 APEX"
-            />
-          </Field>
-
-          <Field label="知识 ID" icon={<Database size={16} />}>
-            <input
-              className="control"
-              inputMode="numeric"
-              value={filters.knowledgeId}
-              onChange={(event) => onFilterChange({ knowledgeId: event.target.value.replace(/\D/g, "") })}
-              placeholder="全部"
-            />
-          </Field>
-
-          <div className="grid grid-cols-[1fr_110px] gap-3">
-            <Field label="排序字段" icon={<ChartLine size={16} />}>
-              <select
-                className="control"
-                value={filters.sortBy}
-                onChange={(event) => onFilterChange({ sortBy: event.target.value as BlogFactoryFilters["sortBy"] })}
-              >
-                <option value="copied_at">复制时间</option>
-                <option value="id">ID</option>
-                <option value="knowledge_id">知识 ID</option>
-                <option value="factory_status">状态</option>
-              </select>
-            </Field>
-            <Field label="方向" icon={<ChartLine size={16} />}>
-              <select
-                className="control"
-                value={filters.sortDir}
-                onChange={(event) => onFilterChange({ sortDir: event.target.value as BlogFactoryFilters["sortDir"] })}
-              >
-                <option value="desc">降序</option>
-                <option value="asc">升序</option>
-              </select>
-            </Field>
-          </div>
-
-          <FilterClearButton className="w-full" onClick={onClearFilters} />
-        </div>
-      </aside>
-
+    <div className="grid flex-1 gap-4 px-4 pb-4 pt-2 xl:grid-cols-[minmax(400px,0.75fr)_minmax(600px,1.25fr)]">
       <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/72 p-4 shadow-soft-glow backdrop-blur-xl">
         <div className="mb-5 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>
@@ -10447,6 +10370,85 @@ function BlogFactoryRecords({
           </div>
           <div className="rounded-lg border border-white/10 bg-white/[0.035] px-3 py-2 text-sm text-slate-300">
             {total} 条匹配
+          </div>
+        </div>
+
+        <div className="mb-5 rounded-lg border border-white/10 bg-white/[0.025] p-3">
+          <div className="mb-3 flex items-center gap-2 text-sm font-medium text-slate-300">
+            <Filter className="text-mint-300" size={16} />
+            查询条件
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="用户" icon={<ShieldCheck size={16} />}>
+              <select
+                className="control"
+                disabled={hasSingleVisibleUser}
+                value={filters.username}
+                onChange={(event) => onFilterChange({ username: event.target.value })}
+              >
+                <option value="">{allUsersLabel}</option>
+                {visibleUsers.map((user) => (
+                  <option key={user} value={user}>
+                    {user}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="工厂状态" icon={<CheckCircle2 size={16} />}>
+              <select
+                className="control"
+                value={filters.factoryStatus}
+                onChange={(event) => onFilterChange({ factoryStatus: event.target.value as BlogFactoryFilters["factoryStatus"] })}
+              >
+                {statusOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="主题标签" icon={<Tags size={16} />}>
+              <input
+                className="control"
+                value={filters.topic}
+                onChange={(event) => onFilterChange({ topic: event.target.value })}
+                placeholder="如 APEX"
+              />
+            </Field>
+            <Field label="知识 ID" icon={<Database size={16} />}>
+              <input
+                className="control"
+                inputMode="numeric"
+                value={filters.knowledgeId}
+                onChange={(event) => onFilterChange({ knowledgeId: event.target.value.replace(/\D/g, "") })}
+                placeholder="全部"
+              />
+            </Field>
+            <div className="grid min-w-0 grid-cols-[minmax(100px,3fr)_minmax(108px,1fr)_auto] items-end gap-2 sm:col-span-2">
+              <Field label="排序字段" icon={<ChartLine size={16} />}>
+                <select
+                  className="control"
+                  value={filters.sortBy}
+                  onChange={(event) => onFilterChange({ sortBy: event.target.value as BlogFactoryFilters["sortBy"] })}
+                >
+                  <option value="copied_at">复制时间</option>
+                  <option value="id">ID</option>
+                  <option value="knowledge_id">知识 ID</option>
+                  <option value="factory_status">状态</option>
+                </select>
+              </Field>
+              <Field label="方向" icon={<ChartLine size={16} />}>
+                <select
+                  className="control"
+                  value={filters.sortDir}
+                  onChange={(event) => onFilterChange({ sortDir: event.target.value as BlogFactoryFilters["sortDir"] })}
+                >
+                  <option value="desc">降序</option>
+                  <option value="asc">升序</option>
+                </select>
+              </Field>
+              <FilterClearButton onClick={onClearFilters} />
+            </div>
           </div>
         </div>
 
