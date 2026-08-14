@@ -9326,6 +9326,8 @@ function BlogFactoryRecords({
   const rangeStart = total === 0 ? 0 : (page - 1) * BLOG_FACTORY_PAGE_SIZE + 1;
   const rangeEnd = Math.min(page * BLOG_FACTORY_PAGE_SIZE, total);
   const [taskCopyView, setTaskCopyView] = useState<BlogFactoryTaskCopyMode>("enhanced");
+  const [isFiltersExpanded, setIsFiltersExpanded] = useState(false);
+  const [isTaskListCollapsed, setIsTaskListCollapsed] = useState(false);
   const [isTaskContentEditing, setIsTaskContentEditing] = useState(false);
   const [assistView, setAssistView] = useState<"summary" | "coverPrompt">("summary");
   const [assistCopiedTarget, setAssistCopiedTarget] = useState<"summary" | "coverPrompt" | null>(null);
@@ -9354,6 +9356,12 @@ function BlogFactoryRecords({
   const isSummarySavePending = summarySaveStatus === "saving";
   const isCoverSavePending = coverSaveStatus === "saving";
   const isRecordSaving = isItemSaving || isAssistSaving;
+  const activeFilterCount = [
+    filters.username,
+    filters.factoryStatus === "all" ? "" : filters.factoryStatus,
+    filters.topic.trim(),
+    filters.knowledgeId,
+  ].filter(Boolean).length;
   const publishMarkdown = selectedItem ? resolveBlogFactoryPublishMarkdown(selectedItem, selectedItem.article_markdown, editDraft.taskContent) : "";
   const publishTitle = selectedItem ? extractMarkdownHeading(publishMarkdown) || selectedItem.article_title || "" : "";
   const assistSource = editDraft.taskContent;
@@ -10480,8 +10488,19 @@ function BlogFactoryRecords({
   );
 
   return (
-    <div className="grid flex-1 gap-4 px-4 pb-4 pt-2 xl:grid-cols-[minmax(400px,0.75fr)_minmax(600px,1.25fr)]">
-      <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/72 p-4 shadow-soft-glow backdrop-blur-xl">
+    <div
+      className={`grid flex-1 gap-4 px-4 pb-4 pt-2 xl:gap-x-2 ${
+        isTaskListCollapsed
+          ? "xl:grid-cols-[28px_minmax(0,1fr)]"
+          : "xl:grid-cols-[minmax(400px,0.75fr)_minmax(600px,1.25fr)]"
+      }`}
+    >
+      <section
+        className={`relative min-w-0 rounded-lg border border-white/10 bg-ink-900/72 shadow-soft-glow backdrop-blur-xl ${
+          isTaskListCollapsed ? "p-0" : "p-4"
+        }`}
+      >
+        <div className={isTaskListCollapsed ? "xl:hidden" : "xl:pr-7"}>
         <div className="mb-5 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>
             <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
@@ -10496,11 +10515,28 @@ function BlogFactoryRecords({
         </div>
 
         <div className="mb-5 rounded-lg border border-white/10 bg-white/[0.025] p-3">
-          <div className="mb-3 flex items-center gap-2 text-sm font-medium text-slate-300">
-            <Filter className="text-mint-300" size={16} />
-            查询条件
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-sm font-medium text-slate-300">
+              <Filter className="text-mint-300" size={16} />
+              查询条件
+              {activeFilterCount > 0 ? (
+                <span className="rounded-md border border-mint-300/20 bg-mint-300/10 px-1.5 py-0.5 text-[11px] font-medium text-mint-200">
+                  已筛选 {activeFilterCount} 项
+                </span>
+              ) : null}
+            </div>
+            <button
+              className="flex h-8 items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.035] px-2.5 text-xs text-slate-300 transition hover:border-mint-300/30 hover:text-mint-200"
+              type="button"
+              aria-expanded={isFiltersExpanded}
+              onClick={() => setIsFiltersExpanded((expanded) => !expanded)}
+            >
+              {isFiltersExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+              {isFiltersExpanded ? "收起" : "展开"}
+            </button>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
+          {isFiltersExpanded ? (
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
             <Field label="用户" icon={<ShieldCheck size={16} />}>
               <select
                 className="control"
@@ -10575,7 +10611,8 @@ function BlogFactoryRecords({
               </div>
               <FilterClearButton className="w-full sm:w-auto" onClick={onClearFilters} />
             </div>
-          </div>
+            </div>
+          ) : null}
         </div>
 
         {isLoading ? (
@@ -10688,6 +10725,29 @@ function BlogFactoryRecords({
             </div>
           </div>
         )}
+        </div>
+        {isTaskListCollapsed ? (
+          <button
+            className="hidden h-full min-h-[420px] w-full flex-col items-center rounded-md text-mint-200 transition hover:bg-mint-300/10 focus:outline-none focus:ring-2 focus:ring-mint-300/30 xl:flex"
+            type="button"
+            aria-label="展开任务列表"
+            title="展开任务列表"
+            onClick={() => setIsTaskListCollapsed(false)}
+          >
+            <ChevronRight className="mt-2 shrink-0" size={17} />
+          </button>
+        ) : null}
+        {!isTaskListCollapsed ? (
+          <button
+            className="absolute inset-y-0 right-0 hidden w-7 flex-col items-center border-l border-white/10 text-slate-500 transition hover:bg-mint-300/10 hover:text-mint-200 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-mint-300/30 xl:flex"
+            type="button"
+            aria-label="收起任务列表"
+            title="收起任务列表，专注任务内容"
+            onClick={() => setIsTaskListCollapsed(true)}
+          >
+            <ChevronLeft className="mt-2 shrink-0" size={16} />
+          </button>
+        ) : null}
       </section>
 
       <aside className="hidden min-w-0 rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl lg:block">

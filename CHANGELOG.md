@@ -15,10 +15,22 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Changed / 变更
 
+- Changed Blog Factory desktop layout to use full-height clickable rails within the task-list panel: its right-edge rail collapses the open list, and the collapsed rail restores it. The list remains expanded by default.
+- 调整博客工厂桌面布局：任务列表切换使用面板内的整条可点击轨道。左侧面板右边缘轨道可收起，收起后的轨道可恢复；默认仍保持展开。
+
+- Changed Blog Factory task query conditions to be collapsed by default and available on demand through an explicit expand control; active filters remain visible as a compact count.
+- 调整博客工厂任务查询条件为默认折叠，用户可按需展开；已有筛选会以紧凑数量提示保留可见性。
+
 - Changed the collapsed AI 问数 Skill area to show compact labels for the selected Skill names alongside the selection count.
 - 调整 AI 问数收起后的 Skill 区域：除已选数量外，以紧凑标签展示已选择的 Skill 名称。
 
 #### Fixed / 修复
+
+- Fixed Blog Factory task-list rails so both the collapse and restore states use the same 28px width.
+- 修复博客工厂任务列表轨道宽度不一致的问题：收起和恢复状态现在统一为 28px。
+
+- Refined the collapsed Blog Factory task-list rail so its full height is clickable, letting users restore the list from anywhere on the rail.
+- 优化博客工厂收起后的任务列表轨道，使整条轨道均可点击，从任意位置都能恢复任务列表。
 
 - Fixed the expanded AI 问数 Skill cards on mobile PWA so long Skill names, descriptions, and owner names shrink or wrap within the panel instead of overflowing past its right edge.
 - 修复 AI 问数移动端 PWA 展开 Skill 后卡片越过右侧边界的问题：较长的 Skill 名称、描述和所有者名称现在会在面板内收缩或换行。
