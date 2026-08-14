@@ -26,6 +26,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Fixed / 修复
 
+- Fixed intermittent Blog Factory MetaWeblog publish failures caused by a fixed 20-second outbound request limit. Each XML-RPC call now defaults to a configurable 60-second timeout, logs its method and elapsed time without secrets, and reports timed-out new-post results as unknown rather than encouraging an unsafe retry.
+- 修复博客工厂 MetaWeblog 因固定 20 秒外部请求上限导致的间歇性发布失败：每个 XML-RPC 调用现默认使用可配置的 60 秒超时，记录不含机密的方法与耗时日志，并将新文章发布超时明确提示为结果未知，避免不安全重试。
+
 - Fixed Blog Factory task-list rails so both the collapse and restore states use the same 28px width.
 - 修复博客工厂任务列表轨道宽度不一致的问题：收起和恢复状态现在统一为 28px。
 

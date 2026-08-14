@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import html
+import logging
 import re
+import socket
+import time
 import urllib.error
 import urllib.request
 import xmlrpc.client
@@ -10,8 +13,17 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlparse
 
+from app.core.config import settings
+
+
+logger = logging.getLogger(__name__)
+
 
 class MetaWeblogError(Exception):
+    pass
+
+
+class MetaWeblogTimeoutError(MetaWeblogError):
     pass
 
 
@@ -531,6 +543,9 @@ async def _call_xmlrpc(api_url: str, method_name: str, params: tuple[Any, ...]) 
 
 def _call_xmlrpc_sync(api_url: str, method_name: str, params: tuple[Any, ...]) -> Any:
     payload = xmlrpc.client.dumps(params, methodname=method_name, allow_none=True).encode("utf-8")
+    endpoint_host = urlparse(api_url).hostname or "unknown"
+    timeout_seconds = settings.metaweblog_timeout_seconds
+    started_at = time.monotonic()
     request = urllib.request.Request(
         api_url,
         data=payload,
@@ -538,15 +553,37 @@ def _call_xmlrpc_sync(api_url: str, method_name: str, params: tuple[Any, ...]) -
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=20) as response:
+        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
             response_body = response.read()
     except urllib.error.HTTPError as exc:
         response_body = exc.read()
         _raise_xmlrpc_fault_or_http_error(exc, response_body)
     except urllib.error.URLError as exc:
+        if _is_timeout_error(exc.reason):
+            _raise_metaweblog_timeout(method_name, endpoint_host, timeout_seconds, started_at, exc)
         reason = exc.reason if isinstance(exc.reason, str) else str(exc.reason)
+        logger.warning(
+            "MetaWeblog request failed method=%s host=%s elapsed_ms=%d request_bytes=%d error=%s",
+            method_name,
+            endpoint_host,
+            _elapsed_ms(started_at),
+            len(payload),
+            reason,
+        )
         raise MetaWeblogError(f"Metaweblog 请求失败：{reason}") from exc
+    except TimeoutError as exc:
+        _raise_metaweblog_timeout(method_name, endpoint_host, timeout_seconds, started_at, exc)
     except OSError as exc:
+        if _is_timeout_error(exc):
+            _raise_metaweblog_timeout(method_name, endpoint_host, timeout_seconds, started_at, exc)
+        logger.warning(
+            "MetaWeblog network failure method=%s host=%s elapsed_ms=%d request_bytes=%d error=%s",
+            method_name,
+            endpoint_host,
+            _elapsed_ms(started_at),
+            len(payload),
+            exc,
+        )
         raise MetaWeblogError(f"Metaweblog 网络连接失败：{exc}") from exc
 
     try:
@@ -556,9 +593,46 @@ def _call_xmlrpc_sync(api_url: str, method_name: str, params: tuple[Any, ...]) -
     except Exception as exc:  # pragma: no cover - defensive parse fallback
         raise MetaWeblogError("Metaweblog 返回内容无法解析。") from exc
 
-    if not values:
-        return None
-    return values[0] if len(values) == 1 else values
+    result = None if not values else values[0] if len(values) == 1 else values
+    logger.info(
+        "MetaWeblog request succeeded method=%s host=%s elapsed_ms=%d request_bytes=%d response_bytes=%d",
+        method_name,
+        endpoint_host,
+        _elapsed_ms(started_at),
+        len(payload),
+        len(response_body),
+    )
+    return result
+
+
+def _is_timeout_error(value: object) -> bool:
+    return isinstance(value, (TimeoutError, socket.timeout)) or "timed out" in str(value).lower()
+
+
+def _elapsed_ms(started_at: float) -> int:
+    return round((time.monotonic() - started_at) * 1000)
+
+
+def _raise_metaweblog_timeout(
+    method_name: str,
+    endpoint_host: str,
+    timeout_seconds: int,
+    started_at: float,
+    exc: BaseException,
+) -> None:
+    logger.warning(
+        "MetaWeblog request timed out method=%s host=%s elapsed_ms=%d timeout_seconds=%d",
+        method_name,
+        endpoint_host,
+        _elapsed_ms(started_at),
+        timeout_seconds,
+    )
+    retry_hint = (
+        "发布结果可能未知，请先到目标博客确认文章是否已生成，再决定是否重试。"
+        if method_name == "metaWeblog.newPost"
+        else "请稍后重试。"
+    )
+    raise MetaWeblogTimeoutError(f"Metaweblog {method_name} 请求在 {timeout_seconds} 秒后超时；{retry_hint}") from exc
 
 
 def _raise_xmlrpc_fault_or_http_error(exc: urllib.error.HTTPError, response_body: bytes) -> None:

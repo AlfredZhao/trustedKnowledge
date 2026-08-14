@@ -1,6 +1,11 @@
 import xmlrpc.client
+import urllib.error
 
 import pytest
+
+from tests.support import prepare_backend_imports
+
+prepare_backend_imports()
 
 from app.repositories.blog_publish import _extract_local_media_sources
 from app.services import metaweblog
@@ -77,3 +82,17 @@ async def test_publish_metaweblog_post_uploads_local_media_before_new_post(monke
         "metaWeblog.newMediaObject",
         "metaWeblog.newPost",
     ]
+
+
+def test_xmlrpc_timeout_marks_new_post_result_as_unknown(monkeypatch):
+    def raise_timeout(*_args, **_kwargs):
+        raise urllib.error.URLError(TimeoutError("The write operation timed out"))
+
+    monkeypatch.setattr(metaweblog.urllib.request, "urlopen", raise_timeout)
+
+    with pytest.raises(metaweblog.MetaWeblogTimeoutError, match="发布结果可能未知"):
+        metaweblog._call_xmlrpc_sync(
+            "https://rpc.cnblogs.com/metaweblog/demo",
+            "metaWeblog.newPost",
+            ("blog-1", "demo", "secret", {"title": "Title"}, True),
+        )

@@ -15,6 +15,28 @@ When fixing a bug with meaningful regression risk, add a short entry with:
 
 Keep entries concrete. Prefer file paths, function names, SQL placeholders, and test names over broad advice.
 
+## MetaWeblog 新文章超时不得自动重试
+
+### Symptom
+
+博客工厂发布时偶发 `The write operation timed out`，网络恢复后重新发布可能成功。
+
+### Trigger
+
+目标博客响应慢、上传本地图片、或 XML-RPC 请求已写出但在接收响应前超过单次请求超时。
+
+### Root Cause
+
+`urllib.request.urlopen()` 曾固定使用 20 秒超时，且新文章发布在客户端超时后无法确认远端是否已经创建文章。对 `metaWeblog.newPost` 自动重试会造成重复文章风险。
+
+### Safe Pattern
+
+通过 `TRUSTED_KNOWLEDGE_META_WEBLOG_TIMEOUT_SECONDS` 配置每次 XML-RPC 请求的超时，默认 60 秒。记录方法名、目标主机、请求/响应大小和耗时，但绝不记录账号、密码或正文。`newPost` 超时时提示结果未知并要求先确认目标博客；不得自动重试。保持现有数据库行锁，除非先引入可持久化的发布中/idempotency 状态后再拆分远程调用与数据库事务。
+
+### Guardrail
+
+运行 `pytest backend/tests/test_metaweblog_media.py`；模拟 `URLError(TimeoutError(...))` 时，`metaWeblog.newPost` 必须抛出 `MetaWeblogTimeoutError` 且错误文案包含“发布结果可能未知”。确认日志包含方法、主机和耗时，而没有密码或 XML-RPC 正文。
+
 ## AI 问数 Skill 卡片必须在窄视口内收缩
 
 ### Symptom
