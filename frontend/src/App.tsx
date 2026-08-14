@@ -14425,7 +14425,9 @@ function HistoryAskPanel({
   };
   const examples = quickQuestions.length ? quickQuestions.map((item) => item.question) : examplesByDomain[domainCode];
   const selectedDomain = domains.find((domain) => domain.code === domainCode);
-  const recordDestinationLabel = answer?.domain.code === "todos" ? "查看待办事项" : answer?.domain.code === "knowledge" ? "查看可信知识" : answer?.domain.code === "english_materials" ? "查看英语素材" : "查看历史记录";
+  const selectedSkills = skills.filter((skill) => selectedSkillIds.includes(skill.id));
+  const answerDomainCode = answer?.domain?.code;
+  const recordDestinationLabel = answerDomainCode === "todos" ? "查看待办事项" : answerDomainCode === "knowledge" ? "查看可信知识" : answerDomainCode === "english_materials" ? "查看英语素材" : "查看历史记录";
 
   useEffect(() => {
     setIsQuickQuestionManagerOpen(false);
@@ -14559,6 +14561,20 @@ function HistoryAskPanel({
                   </button>
                 </div>
               </div>
+              {!isSkillsExpanded && selectedSkills.length > 0 ? (
+                <div className="mt-3 flex min-w-0 flex-wrap items-center gap-2 rounded-lg border border-mint-300/15 bg-mint-300/[0.045] px-2.5 py-2">
+                  <span className="shrink-0 text-[11px] font-medium text-mint-200">已调用</span>
+                  {selectedSkills.map((skill) => (
+                    <span
+                      key={skill.id}
+                      className="max-w-full truncate rounded-md border border-mint-300/20 bg-mint-300/10 px-2 py-1 text-xs text-mint-100"
+                      title={skill.name}
+                    >
+                      {skill.name}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
               {isSkillsExpanded && skillsLoading ? (
                 <div className="flex items-center gap-2 text-sm text-slate-500">
                   <Loader2 className="animate-spin" size={15} />
@@ -14567,13 +14583,13 @@ function HistoryAskPanel({
               ) : isSkillsExpanded && skillsError ? (
                 <div className="text-sm text-red-200">{skillsError}</div>
               ) : isSkillsExpanded && skills.length > 0 ? (
-                <div className="grid gap-2 sm:grid-cols-2">
+                <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2">
                   {skills.map((skill) => {
                     const selected = selectedSkillIds.includes(skill.id);
                     return (
                       <button
                         key={skill.id}
-                        className={`min-h-16 rounded-lg border px-3 py-2 text-left transition ${
+                        className={`min-h-16 min-w-0 max-w-full overflow-hidden rounded-lg border px-3 py-2 text-left transition ${
                           selected
                             ? "border-mint-300/30 bg-mint-300/10 text-mint-100"
                             : "border-white/10 bg-white/[0.028] text-slate-300 hover:border-mint-300/25"
@@ -14581,14 +14597,14 @@ function HistoryAskPanel({
                         type="button"
                         onClick={() => onToggleSkill(skill.id)}
                       >
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="truncate text-sm font-medium">{skill.name}</span>
+                        <div className="flex min-w-0 items-center justify-between gap-2">
+                          <span className="min-w-0 flex-1 truncate text-sm font-medium">{skill.name}</span>
                           {selected ? <CheckCircle2 className="shrink-0 text-mint-300" size={15} /> : null}
                         </div>
-                        <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{skill.description || "无描述"}</p>
-                        <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-600">
-                          <span>{skill.skill_type === "system" ? "系统自带" : "用户自建"}</span>
-                          <span>{skill.owner_username ? skill.owner_username : "系统"}</span>
+                        <p className="mt-1 line-clamp-2 break-words text-xs leading-5 text-slate-500 [overflow-wrap:anywhere]">{skill.description || "无描述"}</p>
+                        <div className="mt-2 flex min-w-0 flex-wrap gap-2 text-[11px] text-slate-600">
+                          <span className="break-words [overflow-wrap:anywhere]">{skill.skill_type === "system" ? "系统自带" : "用户自建"}</span>
+                          <span className="min-w-0 break-words [overflow-wrap:anywhere]">{skill.owner_username ? skill.owner_username : "系统"}</span>
                         </div>
                       </button>
                     );
@@ -14644,7 +14660,7 @@ function HistoryAskPanel({
                     <span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-slate-400">
                       {formatAmount(answer.stats.active_days)} 个活跃日期
                     </span>
-                    {(answer.filters.semantic_terms ?? []).map((term) => (
+                    {(answer.filters?.semantic_terms ?? []).map((term) => (
                       <span key={term} className="rounded-md border border-fuchsia-300/25 bg-fuchsia-300/10 px-2 py-1 text-fuchsia-100">
                         概念：{term}
                       </span>
@@ -14981,7 +14997,7 @@ function HistoryAskPanel({
               <div className="flex flex-wrap gap-2 text-xs">
                 <span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-slate-300">{formatAmount(answer.stats.matched_count)} 条记录</span>
                 <span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-slate-300">{formatAmount(getHistoryAskFilterEntries(answer.filters).length)} 个条件</span>
-                <span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-slate-300">{answer.domain.name}</span>
+                <span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-slate-300">{answer.domain?.name ?? "历史工作记录"}</span>
               </div>
               <p className="mt-3 text-xs leading-5 text-slate-500">完整统计、图表和实际记录已在左侧结果区展示。</p>
             </div>

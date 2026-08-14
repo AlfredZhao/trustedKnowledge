@@ -41,7 +41,7 @@ import type {
 import { removeLeakedMarkdownCodePlaceholders } from "./markdown";
 
 export const NEW_KNOWLEDGE_DRAFT_STORAGE_KEY = "trustedKnowledge.newDraft";
-const UI_STATE_STORAGE_KEY = "trustedKnowledge.uiState.v1";
+const UI_STATE_STORAGE_KEY = "trustedKnowledge.uiState.v2";
 export const ENGLISH_MATERIAL_CATEGORIES = ["影子跟读", "职场英语", "生活口语"] as const;
 export const DEFAULT_ENGLISH_MATERIAL_CATEGORY = "职场英语";
 export type AiCodingNoticeStatus = "running" | "completed" | "failed";
@@ -1631,11 +1631,29 @@ export function normalizeEnglishMaterialCategory(value: string) {
 }
 
 function readHistoryAskResponse(value: unknown): HistoryAskResponse | null {
-  if (!isPlainRecord(value) || typeof value.answer !== "string") return null;
+  if (
+    !isPlainRecord(value) ||
+    typeof value.answer !== "string" ||
+    !isPlainRecord(value.filters) ||
+    !isPlainRecord(value.stats) ||
+    !isPlainRecord(value.domain) ||
+    typeof value.domain.name !== "string" ||
+    typeof value.domain.description !== "string" ||
+    !Array.isArray(value.domain.source_tables)
+  ) {
+    return null;
+  }
+
+  if (!isHistoryAskDomainCode(value.domain.code)) return null;
+
   return {
     ...(value as unknown as HistoryAskResponse),
     selected_skills: Array.isArray(value.selected_skills) ? (value.selected_skills as HistoryAskResponse["selected_skills"]) : [],
   };
+}
+
+function isHistoryAskDomainCode(value: unknown): value is HistoryAskResponse["domain"]["code"] {
+  return value === "history" || value === "todos" || value === "knowledge" || value === "english_materials";
 }
 
 function readAiCodingMessages(value: unknown): AiCodingMessage[] {

@@ -15,7 +15,16 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Changed / 变更
 
+- Changed the collapsed AI 问数 Skill area to show compact labels for the selected Skill names alongside the selection count.
+- 调整 AI 问数收起后的 Skill 区域：除已选数量外，以紧凑标签展示已选择的 Skill 名称。
+
 #### Fixed / 修复
+
+- Fixed the expanded AI 问数 Skill cards on mobile PWA so long Skill names, descriptions, and owner names shrink or wrap within the panel instead of overflowing past its right edge.
+- 修复 AI 问数移动端 PWA 展开 Skill 后卡片越过右侧边界的问题：较长的 Skill 名称、描述和所有者名称现在会在面板内收缩或换行。
+
+- Fixed the AI 问数 mobile PWA white screen caused by restoring legacy answer data that lacks the current business-domain fields. UI-state storage now uses a new version, legacy answers are discarded safely, and result rendering guards optional response fields.
+- 修复 AI 问数移动端 PWA 因恢复缺少当前业务域字段的旧回答而白屏的问题：界面状态存储升级版本，旧回答会被安全丢弃，结果渲染也会保护可选响应字段。
 
 ### [0.3.9] - 2026-08-13
 

@@ -15,6 +15,50 @@ When fixing a bug with meaningful regression risk, add a short entry with:
 
 Keep entries concrete. Prefer file paths, function names, SQL placeholders, and test names over broad advice.
 
+## AI 问数 Skill 卡片必须在窄视口内收缩
+
+### Symptom
+
+手机 PWA 展开 AI 问数的“调用 Skill”后，Skill 卡片及其长文本越过右侧面板边界。
+
+### Trigger
+
+在窄视口中加载名称、描述或所有者名称较长的可调用 Skill。
+
+### Root Cause
+
+网格子项和卡片标题的 flex 子项没有 `min-w-0` 宽度收缩约束；无空格的长文本会以固有宽度撑大卡片。
+
+### Safe Pattern
+
+`HistoryAskPanel` 的 Skill 网格、卡片和标题 flex 子项均保持 `min-w-0`；卡片限制为 `max-w-full` 并裁剪溢出，长描述与元信息使用 `overflow-wrap:anywhere`。移动端单列，`sm` 起再切换双列。
+
+### Guardrail
+
+以 320px 和 375px 宽度打开 AI 问数并展开“调用 Skill”，使用超长无空格名称、描述和所有者名称验证：所有卡片、选中图标和文本均在面板内可见；再确认 `sm` 以上宽度仍为双列且点击选中正常。
+
+## AI 问数持久化回答必须按当前响应结构恢复
+
+### Symptom
+
+手机 PWA 点击 AI 问数后整页白屏，而桌面浏览器可正常打开。
+
+### Trigger
+
+PWA 的 localStorage 中保留了业务域、查询审计字段加入前的 AI 问数回答，随后升级到会读取 `answer.domain` 和 `answer.filters.semantic_terms` 的前端版本。
+
+### Root Cause
+
+`readHistoryAskResponse()` 过去只验证 `answer` 为字符串，旧响应因此被断言为当前 `HistoryAskResponse`。渲染时访问缺失的嵌套字段会抛出未捕获异常。
+
+### Safe Pattern
+
+更新 AI 问数响应结构时，同步升级 UI 状态存储版本或显式迁移。恢复回答前必须验证当前渲染所需的嵌套对象和业务域；不兼容的历史回答返回 `null`。渲染层仍须对外部响应的可选嵌套字段使用安全访问。
+
+### Guardrail
+
+在移动宽度和桌面宽度下，向 `trustedKnowledge.uiState.v2` 写入一个仅含旧字段的 `historyAsk.answer`，再进入 AI 问数：页面必须显示“等待提问”而不能白屏。并确认新版本首次启动不读取 `trustedKnowledge.uiState.v1`。
+
 ## AI Coding Release Tag Must Remain a Confirmed, Fixed-Argument Operation
 
 ### Symptom
