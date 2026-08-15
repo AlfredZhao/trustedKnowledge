@@ -206,7 +206,6 @@ import {
 import { useDebouncedValue } from "./hooks/useDebouncedValue";
 import { invalidateApiCache } from "./api/client";
 import {
-  BLOG_FACTORY_COVER_PROMPT_OPTIONS,
   BLOG_FACTORY_COVER_CATEGORY_STYLE_PRESETS,
   BLOG_FACTORY_COVER_STYLE_PRESETS,
   BLOG_FACTORY_MASK_TOGGLE_OPTIONS,
@@ -241,7 +240,6 @@ import {
   describeBlogFactoryMaskRule,
   ENGLISH_MATERIAL_CATEGORIES,
   englishMaterialItemToDraft,
-  extractBlogFactoryCoverEntities,
   extractCodexResultText,
   extractMarkdownHeading,
   filterCnblogsPublishCategories,
@@ -9334,14 +9332,10 @@ function BlogFactoryRecords({
   const [assistError, setAssistError] = useState<string | null>(null);
   const [assistSaveFeedback, setAssistSaveFeedback] = useState<Partial<Record<"summary" | "cover", "saving" | "success" | "error">>>({});
   const assistSaveFeedbackTimerRefs = useRef<Partial<Record<"summary" | "cover", number>>>({});
-  const [isCoverPromptConfigOpen, setIsCoverPromptConfigOpen] = useState(false);
   const [isCoverPromptTemplateEditing, setIsCoverPromptTemplateEditing] = useState(false);
   const [coverPromptTextDraft, setCoverPromptTextDraft] = useState("");
   const [coverPromptCategory, setCoverPromptCategory] = useState("");
   const [coverPromptTemplateDraft, setCoverPromptTemplateDraft] = useState(coverPromptTemplate);
-  const [coverPromptConfigDraft, setCoverPromptConfigDraft] = useState<BlogFactoryCoverPromptConfig>(() =>
-    normalizeBlogFactoryCoverPromptConfig(coverPromptConfig),
-  );
   const coverImageFileInputRef = useRef<HTMLInputElement | null>(null);
   const pendingContentAssistTriggerRef = useRef<HTMLButtonElement | null>(null);
   const contentAssistScrollRequestRef = useRef(0);
@@ -9368,17 +9362,8 @@ function BlogFactoryRecords({
   const assistSummary = useMemo(() => buildBlogFactoryTaskSummary(assistSource), [assistSource]);
   const coverPromptSource = coverPromptTextDraft.trim() || assistSource;
   const coverPromptSummary = useMemo(() => buildBlogFactoryTaskSummary(coverPromptSource), [coverPromptSource]);
-  const coverPromptEntities = useMemo(
-    () => extractBlogFactoryCoverEntities(coverPromptSource, coverPromptSummary, editDraft.questionSnapshot || selectedItem?.question_snapshot || ""),
-    [coverPromptSource, coverPromptSummary, editDraft.questionSnapshot, selectedItem?.question_snapshot],
-  );
   const coverImageMarkdown = editDraft.coverImageMarkdown;
   const resolvedCoverPromptConfig = useMemo(() => normalizeBlogFactoryCoverPromptConfig(coverPromptConfig), [coverPromptConfig]);
-  const resolvedCoverPromptConfigDraft = useMemo(
-    () => normalizeBlogFactoryCoverPromptConfig(coverPromptConfigDraft),
-    [coverPromptConfigDraft],
-  );
-  const hasPendingCoverPromptConfig = JSON.stringify(resolvedCoverPromptConfigDraft) !== JSON.stringify(resolvedCoverPromptConfig);
   const coverImagePrompt = useMemo(
     () =>
       buildBlogFactoryCoverImagePrompt(
@@ -9437,7 +9422,6 @@ function BlogFactoryRecords({
     Object.values(assistSaveFeedbackTimerRefs.current).forEach((timer) => window.clearTimeout(timer));
     assistSaveFeedbackTimerRefs.current = {};
     setAssistSaveFeedback({});
-    setIsCoverPromptConfigOpen(false);
     setIsCoverPromptTemplateEditing(false);
     setCoverPromptTextDraft("");
     setCoverImageError(null);
@@ -9502,10 +9486,6 @@ function BlogFactoryRecords({
     setCoverPromptTemplateDraft(coverPromptTemplate);
   }, [coverPromptTemplate]);
 
-  useEffect(() => {
-    setCoverPromptConfigDraft(resolvedCoverPromptConfig);
-  }, [resolvedCoverPromptConfig]);
-
   async function handleCopyAssistText(value: string, target: "summary" | "coverPrompt") {
     if (!value.trim()) return;
 
@@ -9560,24 +9540,6 @@ function BlogFactoryRecords({
     setAssistError(null);
   }
 
-  function handleRestoreDefaultCoverPromptConfig() {
-    setCoverPromptConfigDraft(DEFAULT_BLOG_FACTORY_COVER_PROMPT_CONFIG);
-    onCoverPromptConfigChange(DEFAULT_BLOG_FACTORY_COVER_PROMPT_CONFIG);
-    setIsCoverPromptConfigOpen(false);
-    setAssistError(null);
-  }
-
-  function handleApplyCoverPromptConfig() {
-    onCoverPromptConfigChange(resolvedCoverPromptConfigDraft);
-    setIsCoverPromptConfigOpen(false);
-    setAssistError(null);
-  }
-
-  function handleCoverPromptConfigDraftChange(nextConfig: Partial<BlogFactoryCoverPromptConfig>) {
-    setCoverPromptConfigDraft(normalizeBlogFactoryCoverPromptConfig({ ...resolvedCoverPromptConfigDraft, ...nextConfig }));
-    setAssistError(null);
-  }
-
   function handleCoverPromptStylePresetChange(stylePresetId: BlogFactoryCoverStylePresetId) {
     const stylePreset = resolveBlogFactoryCoverStylePreset(stylePresetId);
     setCoverPromptCategory(
@@ -9587,7 +9549,6 @@ function BlogFactoryRecords({
       ...resolvedCoverPromptConfig,
       stylePresetId: stylePreset.id,
     });
-    setCoverPromptConfigDraft(nextConfig);
     onCoverPromptConfigChange(nextConfig);
     setAssistError(null);
   }
@@ -9596,15 +9557,6 @@ function BlogFactoryRecords({
     setCoverPromptCategory(category);
     const categoryPreset = BLOG_FACTORY_COVER_CATEGORY_STYLE_PRESETS.find((preset) => preset.category === category);
     if (categoryPreset) handleCoverPromptStylePresetChange(categoryPreset.stylePresetId);
-  }
-
-  function toggleCoverPromptConfigValue(key: keyof Pick<
-    BlogFactoryCoverPromptConfig,
-    "objects" | "negativePrompts"
-  >, value: string) {
-    const currentValues = resolvedCoverPromptConfigDraft[key];
-    const nextValues = currentValues.includes(value) ? currentValues.filter((item) => item !== value) : [...currentValues, value];
-    handleCoverPromptConfigDraftChange({ [key]: nextValues } as Partial<BlogFactoryCoverPromptConfig>);
   }
 
   async function handleUploadCoverImage(files: File[]) {
@@ -9646,40 +9598,6 @@ function BlogFactoryRecords({
     setCoverImageError(null);
   }
 
-  function renderCoverPromptOptionChips(
-    label: string,
-    key: keyof Pick<
-      BlogFactoryCoverPromptConfig,
-      "objects" | "negativePrompts"
-    >,
-    options: readonly string[],
-  ) {
-    const selectedValues = resolvedCoverPromptConfigDraft[key];
-    return (
-      <div className="space-y-2">
-        <div className="text-xs font-medium text-slate-400">{label}</div>
-        <div className="flex flex-wrap gap-2">
-          {options.map((option) => {
-            const isSelected = selectedValues.includes(option);
-            return (
-              <button
-                key={option}
-                className={`rounded-lg border px-2.5 py-1.5 text-xs transition ${
-                  isSelected
-                    ? "border-mint-300/30 bg-mint-300/14 text-mint-200"
-                    : "border-white/10 bg-white/[0.035] text-slate-400 hover:border-mint-300/25 hover:text-mint-200"
-                }`}
-                type="button"
-                onClick={() => toggleCoverPromptConfigValue(key, option)}
-              >
-                {option}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    );
-  }
   const renderDetailPanel = () => (
     <>
       <div className="mb-5 flex items-start justify-between gap-4">
@@ -10090,7 +10008,7 @@ function BlogFactoryRecords({
                             文本解析
                           </div>
                           <div className="text-xs leading-6 text-slate-500">
-                            输入任意文字，自动提取核心实体并生成 C4D 卡通 3D 配图提示词。
+                            输入文章内容后，生成“标题、核心内容、想要的感觉”三项简洁提示词。
                           </div>
                         </div>
                         <div className="flex flex-wrap gap-2">
@@ -10135,16 +10053,6 @@ function BlogFactoryRecords({
                         value={coverPromptTextDraft}
                         onChange={(event) => setCoverPromptTextDraft(event.target.value)}
                       />
-                      <div className="flex flex-wrap gap-2">
-                        {(coverPromptEntities.length ? coverPromptEntities : ["等待解析实体"]).map((entity) => (
-                          <span
-                            key={entity}
-                            className="rounded-full border border-mint-300/20 bg-mint-300/10 px-2.5 py-1 text-xs text-mint-100"
-                          >
-                            {entity}
-                          </span>
-                        ))}
-                      </div>
                     </div>
                     <div className="rounded-lg border border-white/10 bg-black/15 p-3">
                       <Field label="文章分类预设" icon={<Tags size={16} />}>
@@ -10182,7 +10090,7 @@ function BlogFactoryRecords({
                         </select>
                       </Field>
                       <div className="mt-2 text-xs leading-6 text-slate-500">
-                        切换后会即时替换提示词中的风格、灯光、材质三段。
+                        选择一个最贴合文章主题的感觉；分类预设也会自动带入推荐风格。
                       </div>
                     </div>
                     {coverPromptSource.trim() ? (
@@ -10195,26 +10103,8 @@ function BlogFactoryRecords({
                       </div>
                     )}
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="min-h-5 text-xs leading-5 text-slate-500">
-                        {hasPendingCoverPromptConfig ? "有未应用的配置修改。" : "画面风格会即时替换风格、灯光、材质三段。"}
-                      </div>
+                      <div className="min-h-5 text-xs leading-5 text-slate-500">默认仅输出标题、文章核心和想要的感觉。</div>
                       <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-                        <button
-                          className={`flex h-9 items-center justify-center gap-2 rounded-lg border px-3 text-xs transition ${
-                            isCoverPromptConfigOpen
-                              ? "border-mint-300/30 bg-mint-300/14 text-mint-300"
-                              : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-mint-300/30 hover:text-mint-300"
-                          }`}
-                          type="button"
-                          onClick={() => {
-                            setCoverPromptConfigDraft(resolvedCoverPromptConfig);
-                            setIsCoverPromptConfigOpen((current) => !current);
-                            setAssistError(null);
-                          }}
-                        >
-                          <Settings2 size={15} />
-                          {isCoverPromptConfigOpen ? "收起配置" : "配置参数"}
-                        </button>
                         <button
                           className="flex h-9 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-xs text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300"
                           type="button"
@@ -10242,67 +10132,10 @@ function BlogFactoryRecords({
                         </button>
                       </div>
                     </div>
-                    {isCoverPromptConfigOpen ? (
-                    <div className="space-y-4 rounded-lg border border-white/10 bg-black/15 p-3">
-                      <div className="grid gap-3 lg:grid-cols-2">
-                        <Field label="主题" icon={<Sparkles size={16} />}>
-                          <select
-                            className="control"
-                            value={resolvedCoverPromptConfigDraft.subject}
-                            onChange={(event) => handleCoverPromptConfigDraftChange({ subject: event.target.value })}
-                          >
-                            {BLOG_FACTORY_COVER_PROMPT_OPTIONS.subjects.map((subject) => (
-                              <option key={subject} value={subject}>
-                                {subject}
-                              </option>
-                            ))}
-                          </select>
-                        </Field>
-                        <Field label="画幅构图" icon={<Layers3 size={16} />}>
-                          <select
-                            className="control"
-                            value={resolvedCoverPromptConfigDraft.composition}
-                            onChange={(event) => handleCoverPromptConfigDraftChange({ composition: event.target.value })}
-                          >
-                            {BLOG_FACTORY_COVER_PROMPT_OPTIONS.compositions.map((composition) => (
-                              <option key={composition} value={composition}>
-                                {composition}
-                              </option>
-                            ))}
-                          </select>
-                        </Field>
-                      </div>
-                      <div className="grid gap-4 xl:grid-cols-2">
-                        {renderCoverPromptOptionChips("关键元素", "objects", BLOG_FACTORY_COVER_PROMPT_OPTIONS.objects)}
-                        {renderCoverPromptOptionChips("规避内容", "negativePrompts", BLOG_FACTORY_COVER_PROMPT_OPTIONS.negativePrompts)}
-                      </div>
-                      <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-                        <button
-                          className="flex h-9 items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-3 text-xs font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
-                          disabled={!hasPendingCoverPromptConfig}
-                          type="button"
-                          onClick={handleApplyCoverPromptConfig}
-                        >
-                          <CheckCircle2 size={15} />
-                          应用配置
-                        </button>
-                        <button
-                          className="flex h-9 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-xs text-slate-300 transition hover:border-amberline/30 hover:text-amber-100"
-                          type="button"
-                          onClick={handleRestoreDefaultCoverPromptConfig}
-                        >
-                          <RefreshCw size={15} />
-                          恢复默认配置
-                        </button>
-                      </div>
-                    </div>
-                    ) : null}
                     {isCoverPromptTemplateEditing ? (
                       <div className="space-y-3 rounded-lg border border-white/10 bg-black/15 p-3">
                         <div className="text-xs leading-6 text-slate-500">
-                          可用变量：{"{{title}}"} / {"{{summary}}"} / {"{{topic}}"} / {"{{entities}}"} / {"{{subject}}"} / {"{{objects}}"} /{" "}
-                          {"{{composition}}"} / {"{{style}}"} / {"{{lighting}}"} / {"{{material}}"} / {"{{camera}}"} /{" "}
-                          {"{{quality}}"} / {"{{negativePrompt}}"}
+                          默认使用三个变量：{"{{title}}"} / {"{{summary}}"} / {"{{style}}"}
                         </div>
                         <textarea
                           className="control min-h-[220px] resize-y font-mono text-xs leading-6"

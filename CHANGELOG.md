@@ -15,6 +15,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Changed / 变更
 
+- Changed Blog Factory cover-image prompts to an article-recognition format with only title, one-sentence core content, and the desired style. Category and style choices now supply the final style field without appending composition, lighting, material, camera, or quality parameters.
+- 调整博客工厂生图提示词为“标题、文章核心内容一句话、想要的感觉”三项文章识别型结构；分类与风格选择只提供最终风格，不再追加构图、灯光、材质、镜头或质量等长参数。
+
 - Changed Blog Factory desktop layout to use full-height clickable rails within the task-list panel: its right-edge rail collapses the open list, and the collapsed rail restores it. The list remains expanded by default.
 - 调整博客工厂桌面布局：任务列表切换使用面板内的整条可点击轨道。左侧面板右边缘轨道可收起，收起后的轨道可恢复；默认仍保持展开。
 

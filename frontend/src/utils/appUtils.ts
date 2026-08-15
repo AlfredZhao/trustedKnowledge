@@ -254,7 +254,7 @@ export const DEFAULT_BLOG_FACTORY_COVER_PROMPT_CONFIG: BlogFactoryCoverPromptCon
   negativePrompts: ["不要可读文字", "不要 logo", "不要水印", "不要人物脸部", "不要杂乱 UI 截图"],
 };
 
-export const DEFAULT_BLOG_FACTORY_COVER_PROMPT_TEMPLATE = [
+const DETAILED_BLOG_FACTORY_COVER_PROMPT_TEMPLATE = [
   "主题：{{title}}",
   "元素：以“{{subject}}”为主体，将核心实体（{{entities}}）转成可辨认的 C4D 卡通 3D 隐喻物件；关键元素：{{objects}}；内容意图：{{summary}}。",
   "构图：{{composition}}",
@@ -264,6 +264,12 @@ export const DEFAULT_BLOG_FACTORY_COVER_PROMPT_TEMPLATE = [
   "镜头：{{camera}}",
   "质量：{{quality}}",
   "限制：{{negativePrompt}}。",
+].join("\n");
+
+export const DEFAULT_BLOG_FACTORY_COVER_PROMPT_TEMPLATE = [
+  "1. 标题：{{title}}",
+  "2. 文章核心讲什么：{{summary}}",
+  "3. 想要的感觉：{{style}}",
 ].join("\n");
 
 const BLOG_FACTORY_COVER_IMAGE_LINE_PATTERN = /^!\[封面图片[^\]]*]\([^)]+\)\s*$/m;
@@ -1143,7 +1149,7 @@ export function buildBlogFactoryCoverImagePrompt(
     entities: joinPromptList(entities) || resolvedTitle,
     subject: resolvedSubject,
     composition: resolvedConfig.composition,
-    style: stylePreset.styleText,
+    style: stylePreset.styleName,
     objects: joinPromptList([...entityObjects, ...resolvedConfig.objects]),
     material: stylePreset.materialText,
     lighting: stylePreset.lightText,
@@ -1190,7 +1196,8 @@ export function resolveBlogFactoryCoverPromptTemplate(value: string) {
   if (
     !normalized ||
     normalized === LEGACY_BLOG_FACTORY_COVER_PROMPT_TEMPLATE ||
-    normalized === COMPACT_BLOG_FACTORY_COVER_PROMPT_TEMPLATE
+    normalized === COMPACT_BLOG_FACTORY_COVER_PROMPT_TEMPLATE ||
+    normalized === DETAILED_BLOG_FACTORY_COVER_PROMPT_TEMPLATE
   ) {
     return DEFAULT_BLOG_FACTORY_COVER_PROMPT_TEMPLATE;
   }
