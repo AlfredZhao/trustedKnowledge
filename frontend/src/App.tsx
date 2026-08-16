@@ -11127,6 +11127,7 @@ function TodoWorkspace({
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
 }) {
   const [taskContentView, setTaskContentView] = useState<"edit" | "preview">("edit");
+  const [isFiltersExpanded, setIsFiltersExpanded] = useState(false);
   const totalPages = Math.max(1, Math.ceil(total / TODO_PAGE_SIZE));
   const rangeStart = total === 0 ? 0 : (page - 1) * TODO_PAGE_SIZE + 1;
   const rangeEnd = Math.min(page * TODO_PAGE_SIZE, total);
@@ -11140,6 +11141,7 @@ function TodoWorkspace({
   const isAdminUser = authUser?.is_admin ?? false;
   const hasSingleVisibleUser = !isAdminUser && visibleUsers.length <= 1;
   const allUsersLabel = isAdminUser ? "全部用户" : "全部可见用户";
+  const activeFilterCount = [username, status === "all" ? "" : status].filter(Boolean).length;
   const canSave =
     selectedId !== null &&
     draft.title.trim().length > 0 &&
@@ -11334,7 +11336,20 @@ function TodoWorkspace({
           </div>
         </div>
 
-        <div className="mb-4 grid gap-3 sm:grid-cols-[minmax(0,220px)_minmax(0,220px)_auto]">
+        <div className="mb-4 rounded-lg border border-white/10 bg-white/[0.025] p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-sm font-medium text-slate-300">
+              <Filter className="text-mint-300" size={16} />
+              查询条件
+              {activeFilterCount > 0 ? <span className="rounded-md border border-mint-300/20 bg-mint-300/10 px-1.5 py-0.5 text-[11px] font-medium text-mint-200">已筛选 {activeFilterCount} 项</span> : null}
+            </div>
+            <button className="flex h-8 items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.035] px-2.5 text-xs text-slate-300 transition hover:border-mint-300/30 hover:text-mint-200" type="button" aria-expanded={isFiltersExpanded} onClick={() => setIsFiltersExpanded((expanded) => !expanded)}>
+              {isFiltersExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+              {isFiltersExpanded ? "收起" : "展开"}
+            </button>
+          </div>
+          {isFiltersExpanded ? (
+          <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,220px)_minmax(0,220px)_auto]">
           <Field label="用户" icon={<ShieldCheck size={16} />}>
             <select
               className="control"
@@ -11364,6 +11379,8 @@ function TodoWorkspace({
             </select>
           </Field>
           <FilterClearButton className="sm:mt-7" label="清空筛选条件" onClick={onClearFilters} />
+          </div>
+          ) : null}
         </div>
 
         {isLoading ? (
@@ -11539,6 +11556,8 @@ function CurrentRecordsWorkspace({
   const hasSingleVisibleUser = !isAdminUser && options.users.length <= 1;
   const allUsersLabel = isAdminUser ? "全部用户" : "全部可见用户";
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [isFiltersExpanded, setIsFiltersExpanded] = useState(false);
+  const activeFilterCount = [filters.username, filters.type, filters.week, filters.day, filters.learnLevel].filter(Boolean).length;
   const wasCreateSavingRef = useRef(isSaving);
 
   useEffect(() => {
@@ -11582,7 +11601,21 @@ function CurrentRecordsWorkspace({
           </div>
         </div>
 
-        <div className="mb-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div className="mb-4 rounded-lg border border-white/10 bg-white/[0.025] p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-sm font-medium text-slate-300">
+              <Filter className="text-mint-300" size={16} />
+              查询条件
+              {activeFilterCount > 0 ? <span className="rounded-md border border-mint-300/20 bg-mint-300/10 px-1.5 py-0.5 text-[11px] font-medium text-mint-200">已筛选 {activeFilterCount} 项</span> : null}
+            </div>
+            <button className="flex h-8 items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.035] px-2.5 text-xs text-slate-300 transition hover:border-mint-300/30 hover:text-mint-200" type="button" aria-expanded={isFiltersExpanded} onClick={() => setIsFiltersExpanded((expanded) => !expanded)}>
+              {isFiltersExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+              {isFiltersExpanded ? "收起" : "展开"}
+            </button>
+          </div>
+          {isFiltersExpanded ? (
+          <>
+          <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <Field label="用户" icon={<ShieldCheck size={16} />}>
             <select
               className="control"
@@ -11651,7 +11684,7 @@ function CurrentRecordsWorkspace({
           </Field>
         </div>
 
-        <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-[minmax(0,1fr)_120px_auto]">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-[minmax(0,1fr)_120px_auto]">
           <Field label="排序字段" icon={<ChartLine size={16} />}>
             <select
               className="control"
@@ -11677,6 +11710,9 @@ function CurrentRecordsWorkspace({
             </select>
           </Field>
           <FilterClearButton className="col-span-2 w-full md:col-span-1 md:mt-7 md:w-auto" label="清空筛选条件" onClick={onClearFilters} />
+        </div>
+          </>
+          ) : null}
         </div>
 
         {isLoading ? (
@@ -12043,6 +12079,8 @@ function EnglishMaterialsWorkspace({
   const isAdminUser = authUser?.is_admin ?? false;
   const hasSingleVisibleUser = !isAdminUser && visibleUsers.length <= 1;
   const allUsersLabel = isAdminUser ? "全部用户" : "全部可见用户";
+  const [isFiltersExpanded, setIsFiltersExpanded] = useState(false);
+  const activeFilterCount = [filters.username, filters.category, filters.flag].filter(Boolean).length;
 
   return (
     <div className="grid flex-1 gap-4 px-4 pb-4 pt-2 xl:grid-cols-[minmax(520px,1fr)_380px]">
@@ -12060,7 +12098,20 @@ function EnglishMaterialsWorkspace({
           </div>
         </div>
 
-        <div className="mb-4 grid gap-3 md:grid-cols-[1fr_0.85fr_0.85fr_1fr_auto]">
+        <div className="mb-4 rounded-lg border border-white/10 bg-white/[0.025] p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-sm font-medium text-slate-300">
+              <Filter className="text-mint-300" size={16} />
+              查询条件
+              {activeFilterCount > 0 ? <span className="rounded-md border border-mint-300/20 bg-mint-300/10 px-1.5 py-0.5 text-[11px] font-medium text-mint-200">已筛选 {activeFilterCount} 项</span> : null}
+            </div>
+            <button className="flex h-8 items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.035] px-2.5 text-xs text-slate-300 transition hover:border-mint-300/30 hover:text-mint-200" type="button" aria-expanded={isFiltersExpanded} onClick={() => setIsFiltersExpanded((expanded) => !expanded)}>
+              {isFiltersExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+              {isFiltersExpanded ? "收起" : "展开"}
+            </button>
+          </div>
+          {isFiltersExpanded ? (
+          <div className="mt-3 grid gap-3 md:grid-cols-[1fr_0.85fr_0.85fr_1fr_auto]">
           <Field label="用户" icon={<ShieldCheck size={16} />}>
             <select
               className="control"
@@ -12126,6 +12177,8 @@ function EnglishMaterialsWorkspace({
             </div>
           </Field>
           <FilterClearButton className="md:mt-7" label="清空筛选条件" onClick={onClearFilters} />
+          </div>
+          ) : null}
         </div>
 
         {isLoading ? (

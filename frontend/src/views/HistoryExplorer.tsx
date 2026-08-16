@@ -2,8 +2,10 @@ import { useEffect, useState, type ReactNode } from "react";
 import {
   CalendarClock,
   ChartLine,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   CircleGauge,
   Database,
   FileText,
@@ -67,20 +69,43 @@ export default function HistoryExplorer({
   const isAdminUser = authUser?.is_admin ?? false;
   const hasSingleVisibleUser = !isAdminUser && summary.users.length <= 1;
   const allUsersLabel = isAdminUser ? "全部用户" : "全部可见用户";
+  const [isFiltersExpanded, setIsFiltersExpanded] = useState(false);
+  const activeFilterCount = [
+    filters.type,
+    filters.username,
+    filters.week,
+    filters.day,
+    filters.learnLevel,
+    filters.vectorStatus === "all" ? "" : filters.vectorStatus,
+    filters.dateFrom,
+    filters.dateTo,
+  ].filter(Boolean).length;
 
   return (
     <div className="flex-1 px-4 pb-4 pt-2">
-      <div className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
-        <aside className="min-w-0 rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
-          <div className="mb-5">
-            <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
-              <Filter size={17} />
-              Query Controls
+      <div className="grid gap-4">
+        <div className="rounded-lg border border-white/10 bg-ink-900/64 p-3 backdrop-blur-xl">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-sm font-medium text-slate-300">
+              <Filter className="text-mint-300" size={16} />
+              查询条件
+              {activeFilterCount > 0 ? (
+                <span className="rounded-md border border-mint-300/20 bg-mint-300/10 px-1.5 py-0.5 text-[11px] font-medium text-mint-200">已筛选 {activeFilterCount} 项</span>
+              ) : null}
             </div>
-            <h2 className="text-lg font-semibold text-slate-50">查询条件</h2>
+            <button
+              className="flex h-8 items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.035] px-2.5 text-xs text-slate-300 transition hover:border-mint-300/30 hover:text-mint-200"
+              type="button"
+              aria-expanded={isFiltersExpanded}
+              onClick={() => setIsFiltersExpanded((expanded) => !expanded)}
+            >
+              {isFiltersExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+              {isFiltersExpanded ? "收起" : "展开"}
+            </button>
           </div>
 
-          <div className="space-y-4">
+          {isFiltersExpanded ? (
+            <div className="mt-3 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <Field label="用户" icon={<ShieldCheck size={16} />}>
               <select
                 className="control"
@@ -170,9 +195,10 @@ export default function HistoryExplorer({
               </Field>
             </div>
 
-            <FilterClearButton className="w-full" onClick={onClearFilters} />
-          </div>
-        </aside>
+              <FilterClearButton className="w-full md:col-span-2 xl:col-span-4" onClick={onClearFilters} />
+            </div>
+          ) : null}
+        </div>
 
         <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/72 p-4 shadow-soft-glow backdrop-blur-xl">
           <div className="mb-5 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">

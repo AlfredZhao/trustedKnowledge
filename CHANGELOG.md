@@ -15,6 +15,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Changed / 变更
 
+- Changed Todo, Current Records, History Explorer, and English Materials query conditions to be collapsed by default, with an on-demand expand control and a compact active-filter count.
+- 调整待办事项、当前记录、历史查询和英语素材的查询条件为默认折叠，支持按需展开，并以紧凑数量提示已生效筛选。
+
 - Changed Blog Factory cover-image prompts to an article-recognition format with only title, one-sentence core content, and the desired style. Category and style choices now supply the final style field without appending composition, lighting, material, camera, or quality parameters.
 - 调整博客工厂生图提示词为“标题、文章核心内容一句话、想要的感觉”三项文章识别型结构；分类与风格选择只提供最终风格，不再追加构图、灯光、材质、镜头或质量等长参数。
 
