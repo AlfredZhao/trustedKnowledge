@@ -66,6 +66,8 @@ async function markdownToHtml(markdown, inputDir) {
   let inCodeBlock = false;
   let codeLanguage = "";
   let codeLines = [];
+  let inMathBlock = false;
+  let mathLines = [];
 
   const flushParagraph = async () => {
     if (!paragraph.length) return;
@@ -92,6 +94,12 @@ async function markdownToHtml(markdown, inputDir) {
     codeLines = [];
   };
 
+  const flushMathBlock = () => {
+    html.push(renderLatexBlock(mathLines.join("\n")));
+    inMathBlock = false;
+    mathLines = [];
+  };
+
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
     const codeFence = line.match(/^```(\S*)\s*$/);
@@ -110,6 +118,35 @@ async function markdownToHtml(markdown, inputDir) {
 
     if (inCodeBlock) {
       codeLines.push(line);
+      continue;
+    }
+
+    if (inMathBlock) {
+      const trimmed = line.trim();
+      if (trimmed.endsWith("$$")) {
+        const closingContent = trimmed.slice(0, -2).trim();
+        if (closingContent) mathLines.push(closingContent);
+        flushMathBlock();
+      } else {
+        mathLines.push(line);
+      }
+      continue;
+    }
+
+    const trimmedLine = line.trim();
+    if (trimmedLine.startsWith("$$")) {
+      await flushParagraph();
+      await flushList();
+
+      const inlineMathContent = extractSingleLineMathBlock(trimmedLine);
+      if (inlineMathContent !== null) {
+        html.push(renderLatexBlock(inlineMathContent));
+        continue;
+      }
+
+      const openingContent = trimmedLine.slice(2).trim();
+      inMathBlock = true;
+      mathLines = openingContent ? [openingContent] : [];
       continue;
     }
 
@@ -138,7 +175,7 @@ async function markdownToHtml(markdown, inputDir) {
       continue;
     }
 
-    const heading = line.match(/^(#{1,3})\s+(.+)$/);
+    const heading = line.match(/^(#{1,4})\s+(.+)$/);
     if (heading) {
       await flushParagraph();
       await flushList();
@@ -177,6 +214,7 @@ async function markdownToHtml(markdown, inputDir) {
   }
 
   if (inCodeBlock) flushCodeBlock();
+  if (inMathBlock) flushMathBlock();
   await flushParagraph();
   await flushList();
 
@@ -423,6 +461,20 @@ function inlineEnhancedClipboardStyles(html) {
       /<code([^>]*)>/g,
       '<code$1 style="font-family: Consolas, Menlo, Monaco, monospace; border-radius: 4px; background: rgba(127, 29, 29, 0.08); color: #7f1d1d; padding: 0.08rem 0.32rem;">',
     )
+    .replace(
+      /<div class="tk-math-block">/g,
+      '<div style="margin: 0 0 18px; overflow-x: auto; border: 1px solid #ead9d3; border-radius: 16px; background: linear-gradient(180deg, #fff9f6 0%, #fffdfb 100%); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72); padding: 18px 20px; text-align: center;">',
+    )
+    .replace(
+      /<div class="tk-math-content">/g,
+      '<div style="display: inline-block; min-width: max-content; color: #5f1d1d; font-family: Cambria Math, STIX Two Math, Times New Roman, serif; font-size: 22px; line-height: 1.8; white-space: nowrap;">',
+    )
+    .replace(/<span class="tk-math-text">/g, '<span style="font-style: normal; font-size: 0.92em; color: #7c4a43;">')
+    .replace(/<span class="tk-math-frac">/g, '<span style="display: inline-flex; flex-direction: column; align-items: stretch; vertical-align: middle; margin: 0 0.2em;">')
+    .replace(/<span class="tk-math-frac-top">/g, '<span style="display: block; padding: 0 0.24em 0.08em; border-bottom: 1px solid rgba(95, 29, 29, 0.55);">')
+    .replace(/<span class="tk-math-frac-bottom">/g, '<span style="display: block; padding: 0.08em 0.24em 0;">')
+    .replace(/<span class="tk-math-sqrt">/g, '<span style="display: inline-flex; align-items: flex-start; gap: 0.1em; vertical-align: middle;">')
+    .replace(/<span class="tk-math-sqrt-body">/g, '<span style="display: inline-block; border-top: 1px solid rgba(95, 29, 29, 0.48); padding: 0.08em 0.14em 0;">')
     .replace(/<div class="tk-table-wrapper">/g, '<div style="margin: 0 0 16px; overflow-x: auto; border-radius: 12px; border: 1px solid #ead9d3;">')
     .replace(/<table>/g, '<table style="width: 100%; border-collapse: collapse; border-spacing: 0; font-size: 15px; color: #2f1b1b; background: #fffdfb;">')
     .replace(/<thead>/g, '<thead style="background: linear-gradient(90deg, #f8ebe6 0%, #fdf7f4 100%);">')
@@ -464,8 +516,118 @@ function removeLeakedMarkdownCodePlaceholders(markdown) {
       const before = offset > 0 ? source[offset - 1] : "";
       const after = source[offset + match.length] ?? "";
       return shouldKeepPlaceholderGap(before, after) ? " " : "";
-    })
-    .replace(/[ \t]{2,}/g, " ");
+    });
+}
+
+function extractSingleLineMathBlock(line) {
+  if (!line.startsWith("$$")) return null;
+  const lastDelimiterIndex = line.lastIndexOf("$$");
+  if (lastDelimiterIndex <= 1) return null;
+  return line.slice(2, lastDelimiterIndex).trim();
+}
+
+function renderLatexBlock(value) {
+  const normalized = value.replace(/\r\n/g, "\n").trim();
+  if (!normalized) return "";
+
+  const rendered = renderLatexSequence({ source: normalized, index: 0 });
+  return `<div class="tk-math-block"><div class="tk-math-content">${rendered || escapeHtml(normalized)}</div></div>`;
+}
+
+function renderLatexSequence(state, stopChar) {
+  const fragments = [];
+
+  while (state.index < state.source.length) {
+    const current = state.source[state.index];
+    if (stopChar && current === stopChar) break;
+    if (current === "\n") {
+      fragments.push("<br />");
+      state.index += 1;
+      continue;
+    }
+    if (/\s/.test(current)) {
+      state.index += 1;
+      if (fragments[fragments.length - 1] !== " ") fragments.push(" ");
+      continue;
+    }
+    if (current === "{") {
+      state.index += 1;
+      fragments.push(renderLatexSequence(state, "}"));
+      if (state.source[state.index] === "}") state.index += 1;
+      continue;
+    }
+    if (current === "^" || current === "_") {
+      const tag = current === "^" ? "sup" : "sub";
+      state.index += 1;
+      fragments.push(`<${tag}>${renderLatexArgument(state)}</${tag}>`);
+      continue;
+    }
+    if (current === "\\") {
+      fragments.push(renderLatexCommand(state));
+      continue;
+    }
+    fragments.push(escapeHtml(current));
+    state.index += 1;
+  }
+  return fragments.join("");
+}
+
+function renderLatexArgument(state) {
+  skipLatexWhitespace(state);
+  if (state.index >= state.source.length) return "";
+  if (state.source[state.index] === "{") {
+    state.index += 1;
+    const value = renderLatexSequence(state, "}");
+    if (state.source[state.index] === "}") state.index += 1;
+    return value;
+  }
+  if (state.source[state.index] === "\\") return renderLatexCommand(state);
+  const value = escapeHtml(state.source[state.index]);
+  state.index += 1;
+  return value;
+}
+
+function renderLatexCommand(state) {
+  const command = readLatexCommand(state);
+  if (!command) return "";
+  if (command in LATEX_SYMBOL_MAP) return LATEX_SYMBOL_MAP[command];
+  switch (command) {
+    case "text": case "textrm": case "mathrm": case "operatorname": case "mbox":
+      return `<span class="tk-math-text">${renderLatexArgument(state)}</span>`;
+    case "mathbf": return `<strong>${renderLatexArgument(state)}</strong>`;
+    case "frac": {
+      const numerator = renderLatexArgument(state);
+      const denominator = renderLatexArgument(state);
+      return `<span class="tk-math-frac"><span class="tk-math-frac-top">${numerator}</span><span class="tk-math-frac-bottom">${denominator}</span></span>`;
+    }
+    case "sqrt": return `<span class="tk-math-sqrt">√<span class="tk-math-sqrt-body">${renderLatexArgument(state)}</span></span>`;
+    case "left": case "right": return "";
+    case ",": case ":": return "&thinsp;";
+    case ";": return "&#8197;";
+    case "quad": return "&nbsp;&nbsp;";
+    case "qquad": return "&nbsp;&nbsp;&nbsp;&nbsp;";
+    case "!": return "";
+    case "\\": return "<br />";
+    case "begin": case "end": renderLatexArgument(state); return "";
+    default: return `\\${escapeHtml(command)}`;
+  }
+}
+
+function readLatexCommand(state) {
+  state.index += 1;
+  if (state.index >= state.source.length) return "";
+  const next = state.source[state.index];
+  if (/[A-Za-z]/.test(next)) {
+    const start = state.index;
+    while (state.index < state.source.length && /[A-Za-z]/.test(state.source[state.index])) state.index += 1;
+    return state.source.slice(start, state.index);
+  }
+  state.index += 1;
+  return next;
+}
+
+function skipLatexWhitespace(state) {
+  while (state.index < state.source.length && /\s/.test(state.source[state.index])) state.index += 1;
 }
 
 function isMarkdownTableHeader(line) {
@@ -525,7 +687,10 @@ function parseMarkdownTableCells(line) {
 
 function sanitizeMarkdownUrl(value) {
   const unescaped = value.replace(/&amp;/g, "&");
-  if (/^(https?:|mailto:|data:)/i.test(unescaped)) return unescaped;
+  if (/^(https?:|mailto:)/i.test(unescaped)) return unescaped;
+  if (unescaped.startsWith("#") || unescaped.startsWith("/")) return unescaped;
+  if (unescaped.startsWith("./") || unescaped.startsWith("../")) return unescaped;
+  if (/^[^:/?#\s][^\s]*$/.test(unescaped)) return unescaped;
   return "";
 }
 
@@ -576,5 +741,11 @@ function formatError(error) {
 const INLINE_CODE_MARKER_PREFIX = "TKMDINLINECODE";
 const INLINE_CODE_MARKER_SUFFIX = "ENDTK";
 const INLINE_CODE_MARKER_PATTERN = new RegExp(`${INLINE_CODE_MARKER_PREFIX}(\\d+)${INLINE_CODE_MARKER_SUFFIX}`, "g");
+
+const LATEX_SYMBOL_MAP = {
+  Alpha: "Α", Beta: "Β", Gamma: "Γ", Delta: "Δ", Epsilon: "Ε", Theta: "Θ", Lambda: "Λ", Mu: "Μ", Xi: "Ξ", Pi: "Π", Sigma: "Σ", Phi: "Φ", Psi: "Ψ", Omega: "Ω",
+  alpha: "α", beta: "β", gamma: "γ", delta: "δ", epsilon: "ϵ", zeta: "ζ", eta: "η", theta: "θ", iota: "ι", kappa: "κ", lambda: "λ", mu: "μ", nu: "ν", xi: "ξ", pi: "π", rho: "ρ", sigma: "σ", tau: "τ", phi: "φ", chi: "χ", psi: "ψ", omega: "ω",
+  cdot: "·", times: "×", div: "÷", pm: "±", mp: "∓", approx: "≈", sim: "∼", neq: "≠", le: "≤", leq: "≤", ge: "≥", geq: "≥", to: "→", gets: "←", leftarrow: "←", Rightarrow: "⇒", rightarrow: "→", infty: "∞", sum: "∑", prod: "∏", int: "∫", partial: "∂", nabla: "∇", degree: "°", percent: "%", ldots: "…", cdots: "⋯", dots: "…", subset: "⊂", subseteq: "⊆", supset: "⊃", supseteq: "⊇", cup: "∪", cap: "∩", in: "∈", notin: "∉", forall: "∀", exists: "∃", land: "∧", lor: "∨", "%": "%", "{": "{", "}": "}", "#": "#", "&": "&amp;", _: "_",
+};
 
 main();

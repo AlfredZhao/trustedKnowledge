@@ -15,6 +15,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Changed / 变更
 
+- Changed the offline `scripts/export-enhanced-html.mjs` exporter to stay aligned with enhanced Markdown HTML output, including code indentation preservation, H4 headings, and `$$...$$` LaTex formula blocks.
+- 调整离线 `scripts/export-enhanced-html.mjs` 导出器与增强美化 Markdown HTML 保持一致，覆盖代码缩进保留、H4 标题和 `$$...$$` LaTex 公式块。
+
 - Changed the Information Entry knowledge-list filters so user and status controls now live in the `已录入知识` panel and are collapsed by default, consistent with other list modules.
 - 调整信息录入知识列表筛选：用户与状态控件现位于`已录入知识`面板内，默认折叠，并与其他列表模块保持一致。
 

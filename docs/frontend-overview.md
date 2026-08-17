@@ -15,6 +15,7 @@
 - 展示配置：分页数量、导航项、排序字段和状态选项集中在 `frontend/src/uiConfig.ts`。
 - Markdown 渲染：`frontend/src/components/MarkdownPreview.tsx` 和 `frontend/src/utils/markdown.ts`。
 - Markdown 围栏代码块会保留原始换行与每行前导空格；清理泄漏的内部代码占位符不能压缩其它 Markdown 空白，确保 Python、YAML 等嵌套代码在预览中保持缩进。
+- 博客工厂的增强美化 HTML 离线导出脚本为 `scripts/export-enhanced-html.mjs`；它与应用内增强美化渲染同步支持 H1-H4、代码块缩进、表格、图片内联和 `$$...$$` LaTex 公式块，修改该渲染能力时须在同一次变更中同步脚本。
 - Markdown 图片：可信知识和 Todo 正文仍保存为文本 Markdown，图片由后端媒体 API 上传到本地媒体仓库，正文中插入 `/api/media/{public_id}/content` 形式的图片链接。
 
 当前前端大部分逻辑集中在一个较大的 `App.tsx` 文件中。它同时承载导航、状态恢复、数据加载、视图切换和大部分页面组件。项目没有使用 React Router；当前工作区由 `activeView` 控制，并持久化到 localStorage 的 `trustedKnowledge.uiState.v1`。

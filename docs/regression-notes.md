@@ -15,6 +15,28 @@ When fixing a bug with meaningful regression risk, add a short entry with:
 
 Keep entries concrete. Prefer file paths, function names, SQL placeholders, and test names over broad advice.
 
+## 增强美化 Markdown 更新必须同步离线导出器
+
+### Symptom
+
+浏览器中的博客工厂“增强美化”预览或下载 HTML 已支持某种 Markdown 表现，但用户下载到 Mac 后通过 `scripts/export-enhanced-html.mjs` 导出的离线 HTML 显示不一致。
+
+### Trigger
+
+修改 `frontend/src/utils/markdown.ts` 的 `markdownToHtml()`、`inlineEnhancedClipboardStyles()`、URL 清理或占位符清理行为，却未同步离线脚本。
+
+### Root Cause
+
+离线导出器为支持本地图片转 base64，保留了一份独立的异步 Markdown 渲染实现；它不会自动复用前端函数。
+
+### Safe Pattern
+
+每次变更增强美化渲染能力时，同步更新 `scripts/export-enhanced-html.mjs` 的 Markdown 解析、增强内联样式和清理规则；图片读取可保持 Node 专属实现，但生成的 HTML 结构与样式必须对齐。
+
+### Guardrail
+
+运行 `node --check scripts/export-enhanced-html.mjs`，并使用包含围栏代码块、`$$\\frac{a}{b}=x^2$$` 和 H4 的 Markdown 调用脚本。导出 HTML 必须保留代码前导空格、包含公式卡片样式和 `<sup>2</sup>`；前端改动后同时运行 `cd frontend && npm run build`。
+
 ## Markdown 代码块不得在占位符清理时丢失缩进
 
 ### Symptom
