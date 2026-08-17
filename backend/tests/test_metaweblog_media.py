@@ -9,7 +9,7 @@ prepare_backend_imports()
 
 from app.repositories.blog_publish import _extract_local_media_sources
 from app.services import metaweblog
-from app.services.metaweblog import MetaWeblogLocalMedia
+from app.services.metaweblog import MetaWeblogLocalMedia, markdown_to_html, remove_leaked_markdown_code_placeholders
 
 
 @pytest.fixture
@@ -31,6 +31,19 @@ def test_extract_local_media_sources_handles_relative_and_absolute_urls():
         ("/api/media/local-public-id/content", "local-public-id"),
         ("https://www.cnblogs.com/api/media/absolute-public-id/content", "absolute-public-id"),
     ]
+
+
+def test_markdown_code_blocks_keep_leading_indentation_after_placeholder_cleanup():
+    markdown = """```python
+        model_id = self.config.model_name.lower()
+
+        if model_id.startswith((\"gpt-5\", \"grok-4.3\")):
+            base_params.pop(\"temperature\", None)
+```"""
+
+    assert remove_leaked_markdown_code_placeholders(markdown) == markdown
+    assert "        model_id" in markdown_to_html(markdown)
+    assert "            base_params.pop" in markdown_to_html(markdown)
 
 
 @pytest.mark.anyio

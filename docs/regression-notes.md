@@ -15,6 +15,28 @@ When fixing a bug with meaningful regression risk, add a short entry with:
 
 Keep entries concrete. Prefer file paths, function names, SQL placeholders, and test names over broad advice.
 
+## Markdown 代码块不得在占位符清理时丢失缩进
+
+### Symptom
+
+Markdown 预览或 MetaWeblog HTML 转换中的围栏代码块失去 Python、YAML 等代码的前导缩进，嵌套层级难以辨认。
+
+### Trigger
+
+正文经过 `removeLeakedMarkdownCodePlaceholders()` 或后端 `remove_leaked_markdown_code_placeholders()` 后再渲染或发布。
+
+### Root Cause
+
+占位符清理在替换内部 `@@CODE...@@` 标记后，对整篇 Markdown 执行了连续空格压缩，连代码块中有语义的前导空格也被压成一个空格。
+
+### Safe Pattern
+
+仅替换占位符本身及其相邻的无效空白；不得对完整 Markdown 作通用连续空格归一化。围栏代码块内容必须逐字符传递给 `<pre><code>`。
+
+### Guardrail
+
+运行 `pytest backend/tests/test_metaweblog_media.py`。其中 `test_markdown_code_blocks_keep_leading_indentation_after_placeholder_cleanup` 必须确认 8 空格与 12 空格的代码行仍在 HTML 中；前端改动后还需运行 `cd frontend && npm run build`。
+
 ## MetaWeblog 新文章超时不得自动重试
 
 ### Symptom

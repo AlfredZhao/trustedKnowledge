@@ -428,7 +428,7 @@ def remove_leaked_markdown_code_placeholders(markdown: str) -> str:
         return " " if _should_keep_placeholder_gap(before, after) else ""
 
     cleaned = pattern.sub(replace, markdown)
-    return re.sub(r"[ \t]{2,}", " ", cleaned)
+    return cleaned
 
 
 def _should_publish_as_markdown(*, api_url: str, blog_url: str | None) -> bool:

@@ -250,8 +250,7 @@ export function removeLeakedMarkdownCodePlaceholders(markdown: string) {
       const before = offset > 0 ? source[offset - 1] : "";
       const after = source[offset + match.length] ?? "";
       return shouldKeepPlaceholderGap(before, after) ? " " : "";
-    })
-    .replace(/[ \t]{2,}/g, " ");
+    });
 }
 
 function buildRichClipboardHtml(innerHtml: string) {

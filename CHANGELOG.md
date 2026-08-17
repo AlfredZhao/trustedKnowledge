@@ -35,6 +35,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Fixed / 修复
 
+- Fixed Markdown code-block rendering and MetaWeblog HTML conversion so leading indentation is preserved instead of collapsing to one space during leaked-placeholder cleanup.
+- 修复 Markdown 代码块渲染与 MetaWeblog HTML 转换：清理泄漏占位符时不再将前导缩进压缩为一个空格。
+
 - Fixed intermittent Blog Factory MetaWeblog publish failures caused by a fixed 20-second outbound request limit. Each XML-RPC call now defaults to a configurable 60-second timeout, logs its method and elapsed time without secrets, and reports timed-out new-post results as unknown rather than encouraging an unsafe retry.
 - 修复博客工厂 MetaWeblog 因固定 20 秒外部请求上限导致的间歇性发布失败：每个 XML-RPC 调用现默认使用可配置的 60 秒超时，记录不含机密的方法与耗时日志，并将新文章发布超时明确提示为结果未知，避免不安全重试。
 
