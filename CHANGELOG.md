@@ -15,6 +15,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Changed / 变更
 
+- Changed the Information Entry knowledge-list filters so user and status controls now live in the `已录入知识` panel and are collapsed by default, consistent with other list modules.
+- 调整信息录入知识列表筛选：用户与状态控件现位于`已录入知识`面板内，默认折叠，并与其他列表模块保持一致。
+
 - Changed Todo, Current Records, History Explorer, and English Materials query conditions to be collapsed by default, with an on-demand expand control and a compact active-filter count.
 - 调整待办事项、当前记录、历史查询和英语素材的查询条件为默认折叠，支持按需展开，并以紧凑数量提示已生效筛选。
 

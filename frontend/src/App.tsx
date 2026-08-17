@@ -5087,7 +5087,6 @@ function App() {
                         ? historyQuery
                         : ""
             }
-            statusFilter={activeView === "workbench" ? statusFilter : undefined}
             title={viewTitle}
             subtitle={viewSubtitle}
             aiCodingNotice={activeView === "aiCoding" || !canAccessAiCoding ? null : aiCodingNoticeStatus}
@@ -5118,10 +5117,6 @@ function App() {
             }
             onToggleTheme={() => setThemeMode((current) => (current === "dark" ? "light" : "dark"))}
             onViewChange={setActiveView}
-            onStatusFilterChange={(nextStatus) => {
-              setStatusFilter(nextStatus);
-              setPage(1);
-            }}
           />
 
           {activeView === "overview" ? (
@@ -5653,10 +5648,15 @@ function App() {
                 selectedId={selectedId}
                 lastCreatedId={lastCreatedId}
                 username={workbenchUsername}
+                status={statusFilter}
                 onPageChange={setPage}
                 onUsernameChange={(nextUsername) => {
                   setPage(1);
                   setWorkbenchUsername(nextUsername);
+                }}
+                onStatusChange={(nextStatus) => {
+                  setPage(1);
+                  setStatusFilter(nextStatus);
                 }}
                 onSelect={handleSelectItem}
               />
@@ -6077,7 +6077,6 @@ function Topbar({
   currentUsername,
   isMobileNavVisible,
   query,
-  statusFilter,
   themeMode,
   title,
   subtitle,
@@ -6086,7 +6085,6 @@ function Topbar({
   onQueryChange,
   onToggleTheme,
   onViewChange,
-  onStatusFilterChange,
 }: {
   activeView: AppView;
   aiCodingNotice: AiCodingNoticeStatus | null;
@@ -6094,7 +6092,6 @@ function Topbar({
   currentUsername: string;
   isMobileNavVisible: boolean;
   query: string;
-  statusFilter?: KnowledgeStatus | "all";
   themeMode: ThemeMode;
   title: string;
   subtitle: string;
@@ -6103,16 +6100,7 @@ function Topbar({
   onQueryChange: (value: string) => void;
   onToggleTheme: () => void;
   onViewChange: (view: AppView) => void;
-  onStatusFilterChange?: (status: KnowledgeStatus | "all") => void;
 }) {
-  const [isFilterOpen, setIsFilterOpen] = useState(false);
-  const statusOptions: Array<{ label: string; value: KnowledgeStatus | "all" }> = [
-    { label: "全部状态", value: "all" },
-    { label: "未发布", value: "未发布" },
-    { label: "已发布", value: "已发布" },
-    { label: "跳过", value: "跳过" },
-  ];
-  const activeLabel = statusOptions.find((option) => option.value === statusFilter)?.label ?? "全部状态";
   const aiCodingNoticeMeta =
     aiCodingNotice === "running"
       ? {
@@ -6238,45 +6226,6 @@ function Topbar({
             <span className="hidden sm:inline">{aiCodingNoticeMeta.label}</span>
             <span className="sm:hidden">AI 编程{aiCodingNoticeMeta.shortLabel}</span>
           </button>
-        ) : null}
-        {statusFilter !== undefined && onStatusFilterChange ? (
-        <div className="relative">
-          <button
-            className={`flex h-11 items-center gap-2 rounded-lg border px-3 text-sm transition ${
-              statusFilter === "all"
-                ? "border-white/10 bg-white/[0.035] text-slate-300 hover:border-mint-300/30 hover:text-mint-300"
-                : "border-mint-300/25 bg-mint-300/10 text-mint-300"
-            }`}
-            title="状态筛选"
-            type="button"
-            onClick={() => setIsFilterOpen((current) => !current)}
-          >
-            <Filter size={17} />
-            <span className="hidden sm:inline">{activeLabel}</span>
-          </button>
-          {isFilterOpen ? (
-            <div className="absolute right-0 top-12 z-50 w-40 rounded-lg border border-white/14 bg-ink-950 p-1.5 shadow-soft-glow">
-              {statusOptions.map((option) => (
-                <button
-                  key={option.value}
-                  className={`flex h-9 w-full items-center justify-between rounded-md px-3 text-sm transition ${
-                    statusFilter === option.value
-                      ? "border border-mint-300/25 bg-mint-300/14 text-mint-300"
-                      : "border border-transparent text-slate-300 hover:border-white/10 hover:bg-white/[0.06] hover:text-slate-50"
-                  }`}
-                  type="button"
-                  onClick={() => {
-                    onStatusFilterChange(option.value);
-                    setIsFilterOpen(false);
-                  }}
-                >
-                  {option.label}
-                  {statusFilter === option.value ? <CheckCircle2 size={14} /> : null}
-                </button>
-              ))}
-            </div>
-          ) : null}
-        </div>
         ) : null}
         <div
           className="flex h-11 min-w-0 max-w-full items-center rounded-lg border border-white/10 bg-white/[0.028] px-3 text-sm text-slate-400"
@@ -8336,8 +8285,10 @@ function KnowledgeList({
   selectedId,
   lastCreatedId,
   username,
+  status,
   onPageChange,
   onUsernameChange,
+  onStatusChange,
   onSelect,
 }: {
   authUser: AuthUser | null;
@@ -8350,10 +8301,13 @@ function KnowledgeList({
   selectedId: number | null;
   lastCreatedId: number | null;
   username: string;
+  status: KnowledgeStatus | "all";
   onPageChange: (page: number) => void;
   onUsernameChange: (username: string) => void;
+  onStatusChange: (status: KnowledgeStatus | "all") => void;
   onSelect: (item: KnowledgeItem) => void;
 }) {
+  const [isFiltersExpanded, setIsFiltersExpanded] = useState(false);
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
   const rangeStart = totalItems === 0 ? 0 : (page - 1) * pageSize + 1;
   const rangeEnd = Math.min(page * pageSize, totalItems);
@@ -8361,6 +8315,13 @@ function KnowledgeList({
   const isAdminUser = authUser?.is_admin ?? false;
   const hasSingleVisibleUser = !isAdminUser && visibleUsers.length <= 1;
   const allUsersLabel = isAdminUser ? "全部用户" : "全部可见用户";
+  const statusOptions: Array<{ label: string; value: KnowledgeStatus | "all" }> = [
+    { label: "全部状态", value: "all" },
+    { label: "未发布", value: "未发布" },
+    { label: "已发布", value: "已发布" },
+    { label: "跳过", value: "跳过" },
+  ];
+  const activeFilterCount = [username, status === "all" ? "" : status].filter(Boolean).length;
 
   return (
     <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/68 p-4 backdrop-blur-xl">
@@ -8377,22 +8338,55 @@ function KnowledgeList({
         </div>
       </div>
 
-      <div className="mb-4">
-        <Field label="用户" icon={<ShieldCheck size={16} />}>
-          <select
-            className="control"
-            disabled={hasSingleVisibleUser}
-            value={username}
-            onChange={(event) => onUsernameChange(event.target.value)}
+      <div className="mb-4 rounded-lg border border-white/10 bg-white/[0.025] p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-sm font-medium text-slate-300">
+            <Filter className="text-mint-300" size={16} />
+            查询条件
+            {activeFilterCount > 0 ? (
+              <span className="rounded-md border border-mint-300/20 bg-mint-300/10 px-1.5 py-0.5 text-[11px] font-medium text-mint-200">
+                已筛选 {activeFilterCount} 项
+              </span>
+            ) : null}
+          </div>
+          <button
+            className="flex h-8 items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.035] px-2.5 text-xs text-slate-300 transition hover:border-mint-300/30 hover:text-mint-200"
+            type="button"
+            aria-expanded={isFiltersExpanded}
+            onClick={() => setIsFiltersExpanded((expanded) => !expanded)}
           >
-            <option value="">{allUsersLabel}</option>
-            {visibleUsers.map((user) => (
-              <option key={user} value={user}>
-                {user}
-              </option>
-            ))}
-          </select>
-        </Field>
+            {isFiltersExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+            {isFiltersExpanded ? "收起" : "展开"}
+          </button>
+        </div>
+        {isFiltersExpanded ? (
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <Field label="用户" icon={<ShieldCheck size={16} />}>
+              <select
+                className="control"
+                disabled={hasSingleVisibleUser}
+                value={username}
+                onChange={(event) => onUsernameChange(event.target.value)}
+              >
+                <option value="">{allUsersLabel}</option>
+                {visibleUsers.map((user) => (
+                  <option key={user} value={user}>
+                    {user}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="状态" icon={<CheckCircle2 size={16} />}>
+              <select className="control" value={status} onChange={(event) => onStatusChange(event.target.value as KnowledgeStatus | "all")}>
+                {statusOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+        ) : null}
       </div>
 
       {isLoading ? (
