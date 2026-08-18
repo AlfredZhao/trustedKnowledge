@@ -268,7 +268,7 @@ async def cancel_codex_job(job_id: str, auth_context: AuthContext = Depends(requ
     if job.status != "running":
         return _snapshot_codex_job(job)
 
-    _mark_codex_job_failed(job, "Codex task was terminated by the user.")
+    _mark_codex_job_cancelled(job, "Codex task was terminated by the user.")
     task = _codex_job_tasks.get(job.job_id)
     if task is not None and not task.done():
         task.cancel()
@@ -408,7 +408,8 @@ async def _run_codex_job(job: CodexJobState, auth_context: AuthContext) -> None:
                 with suppress(Exception):
                     await process.wait()
             _cleanup_codex_output_file(output_path)
-            _mark_codex_job_failed(job, "Codex task was cancelled before finishing.")
+            if job.status == "running":
+                _mark_codex_job_cancelled(job, "Codex task was cancelled before finishing.")
             raise
         finally:
             await asyncio.gather(stdout_task, stderr_task, return_exceptions=True)
@@ -710,6 +711,13 @@ def _handle_codex_job_task_done(job: CodexJobState, task: asyncio.Task[None]) ->
 
 def _mark_codex_job_failed(job: CodexJobState, message: str) -> None:
     job.status = "failed"
+    job.error_message = message
+    if job.completed_at is None:
+        job.completed_at = datetime.now(UTC)
+
+
+def _mark_codex_job_cancelled(job: CodexJobState, message: str) -> None:
+    job.status = "cancelled"
     job.error_message = message
     if job.completed_at is None:
         job.completed_at = datetime.now(UTC)

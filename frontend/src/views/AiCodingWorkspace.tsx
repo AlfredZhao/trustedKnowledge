@@ -501,6 +501,7 @@ function AiCodingMessageCard({
 }) {
   const resultText = message.response ? extractCodexResultText(message.response) : "";
   const failedWithoutResponse = message.status === "failed" && !message.response;
+  const cancelledWithoutResponse = message.status === "cancelled" && !message.response;
 
   return (
     <article className="rounded-lg border border-white/10 bg-white/[0.025] p-4">
@@ -533,6 +534,22 @@ function AiCodingMessageCard({
             </div>
             <div className="text-sm leading-6 text-red-50">{message.errorMessage || "Codex 任务未能完成，请稍后重试。"}</div>
             <div className="mt-2 text-xs leading-5 text-red-100/75">{formatDateTime(message.completedAt ?? message.startedAt)}</div>
+          </div>
+
+          {message.output ? <CodexOutputBlock title="Raw Output" value={message.output} /> : null}
+          {message.errorOutput ? <CodexOutputBlock title="Error Output" value={message.errorOutput} tone="warning" /> : null}
+        </div>
+      ) : null}
+
+      {cancelledWithoutResponse ? (
+        <div className="space-y-3">
+          <div className="rounded-lg border border-amberline/25 bg-amberline/10 p-3">
+            <div className="mb-2 flex items-center gap-2 text-sm font-medium text-amber-100">
+              <X size={17} />
+              任务已终止
+            </div>
+            <div className="text-sm leading-6 text-amber-50">{message.errorMessage || "Codex 任务已由用户终止。"}</div>
+            <div className="mt-2 text-xs leading-5 text-amber-100/75">{formatDateTime(message.completedAt ?? message.startedAt)}</div>
           </div>
 
           {message.output ? <CodexOutputBlock title="Raw Output" value={message.output} /> : null}

@@ -15,6 +15,28 @@ When fixing a bug with meaningful regression risk, add a short entry with:
 
 Keep entries concrete. Prefer file paths, function names, SQL placeholders, and test names over broad advice.
 
+## Markdown 词内下划线不得误渲染为斜体
+
+### Symptom
+
+Markdown 预览、富文本复制或增强 HTML 导出会将变量名、路径和文件名中的下划线片段渲染为斜体，例如 `v_needs_update`、`my_file_name.md`。
+
+### Trigger
+
+正文包含被字母、数字或下划线相邻包围的单下划线；同时内容又经过 `formatInlineMarkdown()` 解析。
+
+### Root Cause
+
+单下划线斜体正则只排除了相邻下划线，没有识别词内边界，因此把标识符中的 `_word_` 片段误当作 Markdown 斜体标记。
+
+### Safe Pattern
+
+在 `frontend/src/utils/markdown.ts` 和 `scripts/export-enhanced-html.mjs` 中，单下划线斜体的起止标记都必须不紧邻 Unicode 字母、数字或下划线；独立的 `_强调_` 仍应保留。两套解析规则必须同步修改。
+
+### Guardrail
+
+验证 `正常 _斜体_ 内容` 输出 `<em>斜体</em>`，并确认 `v_needs_update`、`my_file_name.md`、`src_app/main.ts` 与 `中文_不应斜体_文本` 保持原文；运行 `node --check scripts/export-enhanced-html.mjs`、用这些样例导出 HTML，并运行 `cd frontend && npm run build`。
+
 ## 增强美化 Markdown 更新必须同步离线导出器
 
 ### Symptom

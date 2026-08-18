@@ -18,6 +18,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Changed / 变更
 
+- Changed manually stopped AI Coding jobs to use a distinct `cancelled` state, displayed as `任务已终止` rather than a task failure.
+- 调整 AI 编程手工终止任务的状态：使用独立的 `cancelled` 状态，界面显示`任务已终止`，不再误报为执行失败。
+
 - Changed the Blog Factory task-content editor so its masking controls are accessed from a compact `脱敏` button in the edit toolbar and expand only on demand.
 - 调整博客工厂任务内容编辑区：脱敏控件收纳到编辑工具栏的紧凑`脱敏`按钮中，按需展开。
 
@@ -64,6 +67,9 @@ The format follows the common GitHub changelog convention inspired by
 - 调整 AI 问数收起后的 Skill 区域：除已选数量外，以紧凑标签展示已选择的 Skill 名称。
 
 #### Fixed / 修复
+
+- Fixed Markdown preview, rich copy, and enhanced HTML export so underscores inside identifiers and filenames (such as `v_needs_update` and `my_file_name.md`) are no longer incorrectly rendered as italics; standalone `_emphasis_` remains supported.
+- 修复 Markdown 预览、富文本复制与增强 HTML 导出中变量名和文件名（如`v_needs_update`、`my_file_name.md`）里的下划线被误渲染为斜体的问题；独立的`_强调_`语法仍然支持。
 
 - Fixed Markdown code-block rendering and MetaWeblog HTML conversion so leading indentation is preserved instead of collapsing to one space during leaked-placeholder cleanup.
 - 修复 Markdown 代码块渲染与 MetaWeblog HTML 转换：清理泄漏占位符时不再将前导缩进压缩为一个空格。

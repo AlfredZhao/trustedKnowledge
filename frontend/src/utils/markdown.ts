@@ -583,7 +583,9 @@ function formatInlineMarkdown(value: string) {
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
     .replace(/__([^_]+)__/g, "<strong>$1</strong>")
     .replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>")
-    .replace(/(^|[^_])_([^_]+)_/g, "$1<em>$2</em>");
+    // A single underscore inside an identifier or filename is literal text, not emphasis.
+    // Keep `_emphasis_` for standalone Markdown while leaving `foo_bar_baz` intact.
+    .replace(/(^|[^\p{L}\p{N}_])_([^\s_](?:[^_\n]*[^\s_])?)_(?![\p{L}\p{N}_])/gu, "$1<em>$2</em>");
 
   return html.replace(INLINE_CODE_MARKER_PATTERN, (_match, index: string) => codeSegments[Number(index)] ?? "");
 }

@@ -32,7 +32,7 @@ class CodexJobCancellationTests(unittest.IsolatedAsyncioTestCase):
         snapshot = await codex.cancel_codex_job(self.job.job_id, self.auth)
 
         self.assertTrue(task.cancelled())
-        self.assertEqual(snapshot.status, "failed")
+        self.assertEqual(snapshot.status, "cancelled")
         self.assertEqual(snapshot.error_message, "Codex task was terminated by the user.")
         self.assertIsNotNone(snapshot.completed_at)
         self.assertFalse(self.job.slot_reserved)

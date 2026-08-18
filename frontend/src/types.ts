@@ -510,7 +510,7 @@ export interface CodexRunResponse {
 
 export type CodexOutputMode = "full" | "final";
 
-export type CodexJobStatus = "running" | "completed" | "failed";
+export type CodexJobStatus = "running" | "completed" | "failed" | "cancelled";
 
 export interface CodexJobSnapshot {
   job_id: string;

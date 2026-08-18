@@ -1010,8 +1010,10 @@ function App() {
 
     setIsCodexRunning(false);
     setActiveCodexJobId(null);
-    setAiCodingNoticeStatus(job.status === "completed" ? "completed" : "failed");
-    setLiveCodexStatus(job.status === "completed" ? "Codex 执行完成。" : "Codex 执行出现错误。");
+    setAiCodingNoticeStatus(job.status);
+    setLiveCodexStatus(
+      job.status === "completed" ? "Codex 执行完成。" : job.status === "cancelled" ? "Codex 任务已终止。" : "Codex 执行出现错误。",
+    );
     setCodexError(job.status === "failed" ? job.error_message ?? "Codex 执行失败，请稍后重试。" : null);
   }
 
@@ -6140,6 +6142,13 @@ function Topbar({
               shortLabel: "失败",
               className: "border-red-400/25 bg-red-400/10 text-red-100 hover:border-red-300/40 hover:bg-red-400/15",
             }
+          : aiCodingNotice === "cancelled"
+            ? {
+                icon: <X size={16} />,
+                label: "AI 编程任务已终止",
+                shortLabel: "已终止",
+                className: "border-amberline/25 bg-amberline/10 text-amber-100 hover:border-amberline/40 hover:bg-amberline/15",
+              }
           : null;
 
   return (

@@ -44,7 +44,7 @@ export const NEW_KNOWLEDGE_DRAFT_STORAGE_KEY = "trustedKnowledge.newDraft";
 const UI_STATE_STORAGE_KEY = "trustedKnowledge.uiState.v2";
 export const ENGLISH_MATERIAL_CATEGORIES = ["影子跟读", "职场英语", "生活口语"] as const;
 export const DEFAULT_ENGLISH_MATERIAL_CATEGORY = "职场英语";
-export type AiCodingNoticeStatus = "running" | "completed" | "failed";
+export type AiCodingNoticeStatus = "running" | "completed" | "failed" | "cancelled";
 export type ThemeMode = "dark" | "light";
 export type MarkdownContentView = "rendered" | "raw";
 export type BlogFactoryArticleCopyMode = "markdown" | "enhanced";
@@ -1700,7 +1700,7 @@ function readAiCodingMessages(value: unknown): AiCodingMessage[] {
 }
 
 function readAiCodingNoticeStatus(value: unknown): AiCodingNoticeStatus | null {
-  return value === "running" || value === "completed" || value === "failed" ? value : null;
+  return value === "running" || value === "completed" || value === "failed" || value === "cancelled" ? value : null;
 }
 
 function readThemeMode(value: unknown, fallback: ThemeMode): ThemeMode {

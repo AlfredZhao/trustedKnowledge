@@ -21,7 +21,7 @@ class CodexRunResponse(BaseModel):
     model_name: str | None = None
 
 
-CodexJobStatus = Literal["running", "completed", "failed"]
+CodexJobStatus = Literal["running", "completed", "failed", "cancelled"]
 
 
 class CodexJobSnapshot(BaseModel):
