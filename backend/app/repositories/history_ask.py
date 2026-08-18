@@ -1160,23 +1160,23 @@ async def _ask_english_materials(
             expressions = []
             for index, value in enumerate(terms):
                 bind_name = f"english_keyword_{index}"
-                expressions.append(f"(lower(material.title) like '%' || lower(:{bind_name}) || '%' or lower(material.\"分类标识\") like '%' || lower(:{bind_name}) || '%' or lower(material.\"基础表达\") like '%' || lower(:{bind_name}) || '%' or lower(material.\"职业完整句式\") like '%' || lower(:{bind_name}) || '%' or lower(material.\"地道中文翻译\") like '%' || lower(:{bind_name}) || '%' or lower(material.\"完整口播内容\") like '%' || lower(:{bind_name}) || '%')")
+                expressions.append(f"(lower(material.title) like '%' || lower(:{bind_name}) || '%' or lower(material.category) like '%' || lower(:{bind_name}) || '%' or lower(material.base_expression) like '%' || lower(:{bind_name}) || '%' or lower(material.professional_sentence) like '%' || lower(:{bind_name}) || '%' or lower(material.chinese_translation) like '%' || lower(:{bind_name}) || '%' or lower(material.full_script) like '%' || lower(:{bind_name}) || '%')")
                 params[bind_name] = value
             clauses.append("(" + " or ".join(expressions) + ")")
         if record_type:
-            clauses.append("material.flag = :material_flag")
+            clauses.append("material.is_flagged = :material_flag")
             params["material_flag"] = 1 if record_type == "已标记" else 0
         append_user_visibility_clause(clauses, params, auth_context, "material.user_id")
         await append_requested_username_clause(connection, clauses, params, auth_context, username, "material.user_id")
         where_sql = " where " + " and ".join(clauses) if clauses else ""
-        from_sql = "from t_douyin_details material left join tk_users material_user on material_user.user_id = material.user_id"
-        await cursor.execute(f"select count(*), count(distinct material.\"分类标识\") {from_sql} {where_sql}", params)
+        from_sql = "from t_english material left join tk_users material_user on material_user.user_id = material.user_id"
+        await cursor.execute(f"select count(*), count(distinct material.category) {from_sql} {where_sql}", params)
         stats_row = await cursor.fetchone()
         evidence_sql = f"""
-            select material.id, null, case when material.flag = 1 then '已标记' else '未标记' end, material."分类标识", to_char(material."序号"), material_user.username,
-                   coalesce(material.title, material."基础表达") || '：' || coalesce(material."职业完整句式", material."地道中文翻译", material."完整口播内容")
+            select material.english_id, null, case when material.is_flagged = 1 then '已标记' else '未标记' end, material.category, to_char(material.sequence_no), material_user.username,
+                   coalesce(material.title, material.base_expression) || '：' || coalesce(material.professional_sentence, material.chinese_translation, material.full_script)
             {from_sql} {where_sql}
-            order by material.id desc fetch next 80 rows only
+            order by material.english_id desc fetch next 80 rows only
         """
         await cursor.execute(evidence_sql, params)
         rows = [_evidence_row_to_dict(row) for row in await cursor.fetchall()]
@@ -1185,9 +1185,9 @@ async def _ask_english_materials(
             await cursor.execute(f"select {expression}, count(*) {from_sql} {where_sql} group by {expression} order by count(*) desc fetch next 12 rows only", params)
             return _count_rows_to_dict(await cursor.fetchall())
 
-        stats = {"matched_count": int(stats_row[0]) if stats_row else 0, "active_days": int(stats_row[1]) if stats_row else 0, "min_date": None, "max_date": None, "type_counts": await distribution("case when material.flag = 1 then '已标记' else '未标记' end"), "week_counts": await distribution("coalesce(material.\"分类标识\", '未分类')"), "learn_level_counts": {}}
+        stats = {"matched_count": int(stats_row[0]) if stats_row else 0, "active_days": int(stats_row[1]) if stats_row else 0, "min_date": None, "max_date": None, "type_counts": await distribution("case when material.is_flagged = 1 then '已标记' else '未标记' end"), "week_counts": await distribution("coalesce(material.category, '未分类')"), "learn_level_counts": {}}
         filters = {"keyword": keyword, "username": username, "type": record_type, "week": None, "day": None, "learn_level": None, "vector_status": None, "date_from": None, "date_to": None, "semantic_terms": [term["name"] for term in matched_terms]}
-        return await _finalize_catalog_ask(connection=connection, question=question, filters=filters, stats=stats, rows=rows, evidence_sql=evidence_sql, params=params, selected_skills=selected_skills, matched_terms=matched_terms, execution_provider=execution_provider, model_name=model_name, domain={"code": "english_materials", "name": "英语素材", "description": "基于英语表达、职业句式、中文翻译、分类和标记状态。", "source_tables": ["T_DOUYIN_DETAILS", "TK_USERS"]}, assistant_name="企业内部英语素材问数助手", semantic_label="命中的英语素材业务概念")
+        return await _finalize_catalog_ask(connection=connection, question=question, filters=filters, stats=stats, rows=rows, evidence_sql=evidence_sql, params=params, selected_skills=selected_skills, matched_terms=matched_terms, execution_provider=execution_provider, model_name=model_name, domain={"code": "english_materials", "name": "英语素材", "description": "基于英语表达、职业句式、中文翻译、分类和标记状态。", "source_tables": ["T_ENGLISH", "TK_USERS"]}, assistant_name="企业内部英语素材问数助手", semantic_label="命中的英语素材业务概念")
 
 
 def _build_llm_prompt(

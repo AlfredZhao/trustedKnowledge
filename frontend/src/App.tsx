@@ -12166,7 +12166,7 @@ function EnglishMaterialsWorkspace({
           <div>
             <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
               <BookOpenCheck size={17} />
-              T_DOUYIN_DETAILS
+              T_ENGLISH
             </div>
             <h2 className="text-xl font-semibold text-slate-50">英语素材列表</h2>
           </div>
@@ -12273,7 +12273,7 @@ function EnglishMaterialsWorkspace({
             <div>
               <BookOpenCheck className="mx-auto mb-3 text-slate-600" size={36} />
               <div className="mb-1 font-medium text-slate-300">没有匹配的英语素材</div>
-              <p className="text-sm text-slate-500">新增素材后，这里会展示 `T_DOUYIN_DETAILS` 记录。</p>
+              <p className="text-sm text-slate-500">新增素材后，这里会展示 `T_ENGLISH` 记录。</p>
             </div>
           </div>
         ) : (
@@ -12477,7 +12477,7 @@ function EnglishMaterialsWorkspace({
             type="submit"
           >
             {isSaving ? <Loader2 className="animate-spin" size={18} /> : <Plus size={18} />}
-            {isSaving ? "写入中" : "保存到 T_DOUYIN_DETAILS"}
+            {isSaving ? "写入中" : "保存到 T_ENGLISH"}
           </button>
         </form>
       </section>

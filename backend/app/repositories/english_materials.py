@@ -13,34 +13,34 @@ from app.schemas.english_materials import EnglishMaterialCreate, EnglishMaterial
 
 
 LIST_COLUMNS = """
-    material.id,
-    material."序号",
-    material."分类标识",
-    material."基础表达",
-    material."职业完整句式",
-    material."地道中文翻译",
-    material."完整口播内容",
-    material.flag,
+    material.english_id,
+    material.sequence_no,
+    material.category,
+    material.base_expression,
+    material.professional_sentence,
+    material.chinese_translation,
+    material.full_script,
+    material.is_flagged,
     material.title
 """
 
 SORT_COLUMNS = {
-    "id": "material.id",
-    "sequence_no": 'material."序号"',
-    "category": 'material."分类标识"',
-    "base_expression": 'material."基础表达"',
+    "id": "material.english_id",
+    "sequence_no": "material.sequence_no",
+    "category": "material.category",
+    "base_expression": "material.base_expression",
     "title": "material.title",
-    "flag": "material.flag",
+    "flag": "material.is_flagged",
 }
 
 UPDATE_COLUMNS = {
-    "sequence_no": '"序号"',
-    "category": '"分类标识"',
-    "base_expression": '"基础表达"',
-    "professional_sentence": '"职业完整句式"',
-    "chinese_translation": '"地道中文翻译"',
-    "full_script": '"完整口播内容"',
-    "flag": "flag",
+    "sequence_no": "sequence_no",
+    "category": "category",
+    "base_expression": "base_expression",
+    "professional_sentence": "professional_sentence",
+    "chinese_translation": "chinese_translation",
+    "full_script": "full_script",
+    "flag": "is_flagged",
     "title": "title",
 }
 
@@ -71,20 +71,20 @@ def _build_filters(
     if q:
         clauses.append(
             "(lower(material.title) like '%' || lower(:q) || '%' "
-            "or lower(material.\"分类标识\") like '%' || lower(:q) || '%' "
-            "or lower(material.\"基础表达\") like '%' || lower(:q) || '%' "
-            "or lower(material.\"职业完整句式\") like '%' || lower(:q) || '%' "
-            "or lower(material.\"地道中文翻译\") like '%' || lower(:q) || '%' "
-            "or lower(material.\"完整口播内容\") like '%' || lower(:q) || '%')"
+            "or lower(material.category) like '%' || lower(:q) || '%' "
+            "or lower(material.base_expression) like '%' || lower(:q) || '%' "
+            "or lower(material.professional_sentence) like '%' || lower(:q) || '%' "
+            "or lower(material.chinese_translation) like '%' || lower(:q) || '%' "
+            "or lower(material.full_script) like '%' || lower(:q) || '%')"
         )
         params["q"] = q
 
     if category:
-        clauses.append("lower(material.\"分类标识\") = lower(:category)")
+        clauses.append("lower(material.category) = lower(:category)")
         params["category"] = category
 
     if flag is not None:
-        clauses.append("material.flag = :flag")
+        clauses.append("material.is_flagged = :flag")
         params["flag"] = flag
 
     append_user_visibility_clause(clauses, params, auth_context, "material.user_id")
@@ -119,12 +119,12 @@ async def list_english_materials(
         )
         where_sql = f" where {' and '.join(clauses)}" if clauses else ""
 
-        count_sql = f"select count(*) from t_douyin_details material{where_sql}"
+        count_sql = f"select count(*) from t_english material{where_sql}"
         list_sql = f"""
             select {LIST_COLUMNS}
-            from t_douyin_details material
+            from t_english material
             {where_sql}
-            order by {sort_column} {sort_direction} nulls last, material.id desc
+            order by {sort_column} {sort_direction} nulls last, material.english_id desc
             offset :offset rows fetch next :limit rows only
         """
         cursor = connection.cursor()
@@ -143,12 +143,12 @@ async def list_english_materials(
 
 async def get_english_material(material_id: int, auth_context: AuthContext | None = None) -> dict[str, Any] | None:
     params: dict[str, Any] = {"material_id": material_id}
-    clauses = ["material.id = :material_id"]
+    clauses = ["material.english_id = :material_id"]
     if auth_context is not None:
         append_user_visibility_clause(clauses, params, auth_context, "material.user_id")
     sql = f"""
         select {LIST_COLUMNS}
-        from t_douyin_details material
+        from t_english material
         where {" and ".join(clauses)}
     """
 
@@ -162,14 +162,14 @@ async def get_english_material(material_id: int, auth_context: AuthContext | Non
 
 async def create_english_material(payload: EnglishMaterialCreate, auth_context: AuthContext) -> dict[str, Any]:
     sql = """
-        insert into t_douyin_details (
-            "序号",
-            "分类标识",
-            "基础表达",
-            "职业完整句式",
-            "地道中文翻译",
-            "完整口播内容",
-            flag,
+        insert into t_english (
+            sequence_no,
+            category,
+            base_expression,
+            professional_sentence,
+            chinese_translation,
+            full_script,
+            is_flagged,
             title,
             user_id
         ) values (
@@ -183,7 +183,7 @@ async def create_english_material(payload: EnglishMaterialCreate, auth_context: 
             :title,
             :user_id
         )
-        returning id into :new_id
+        returning english_id into :new_id
     """
 
     async with acquire_connection() as connection:
@@ -223,11 +223,12 @@ async def update_english_material(
         return await get_english_material(material_id, auth_context)
 
     assignments = [f"{UPDATE_COLUMNS[key]} = :{key}" for key in values]
+    assignments.append("updated_at = systimestamp")
     params = {**values, "material_id": material_id}
-    clauses = ["id = :material_id"]
+    clauses = ["english_id = :material_id"]
     append_user_visibility_clause(clauses, params, auth_context, "user_id")
     sql = f"""
-        update t_douyin_details
+        update t_english
         set {", ".join(assignments)}
         where {" and ".join(clauses)}
     """

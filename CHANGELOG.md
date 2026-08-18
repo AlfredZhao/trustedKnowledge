@@ -21,6 +21,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Fixed / 修复
 
+- Fixed backend startup on Oracle databases where `T_ENGLISH.BASE_EXPRESSION` is already nullable: the schema check now consults the column metadata before applying the nullability DDL, avoiding `ORA-01451`.
+- 修复 Oracle 数据库中 `T_ENGLISH.BASE_EXPRESSION` 已可空时的后端启动失败：建表检查现在先读取列元数据，再按需修改可空性，避免 `ORA-01451`。
+
 - Fixed History Explorer semantic searches so their query embedding bind is sent only to the vector-result SQL, avoiding Oracle `DPY-4008` failures in the count and summary queries.
 - 修复历史查询近似搜索的查询向量绑定仅传入向量结果 SQL，避免总数和摘要查询触发 Oracle `DPY-4008`。
 
@@ -28,6 +31,9 @@ The format follows the common GitHub changelog convention inspired by
 - 总览“最近 English”新增显示数量控制，可选 1、3、5 或 8 条，默认显示最近 3 条。
 
 #### Changed / 变更
+
+- Retired the `T_DOUYIN_DETAILS` compatibility migration after validating its data in `T_ENGLISH`; backend startup and SQL helpers no longer reference the legacy table.
+- 已在验证 `T_ENGLISH` 数据完整后下线 `T_DOUYIN_DETAILS` 兼容迁移；后端启动流程与 SQL 辅助脚本不再引用旧表。
 
 - Changed manually stopped AI Coding jobs to use a distinct `cancelled` state, displayed as `任务已终止` rather than a task failure.
 - 调整 AI 编程手工终止任务的状态：使用独立的 `cancelled` 状态，界面显示`任务已终止`，不再误报为执行失败。

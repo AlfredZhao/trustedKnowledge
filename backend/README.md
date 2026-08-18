@@ -44,7 +44,7 @@ X-API-Key: <TRUSTED_KNOWLEDGE_API_KEY or login session token>
 The environment `admin` user keeps using `TRUSTED_KNOWLEDGE_API_KEY` and is treated as the super administrator.
 Ordinary users are stored in the independent `TK_USERS` table and receive a session token from `POST /api/auth/login`.
 The backend initializes `TK_USERS`, `TK_USER_SESSIONS`, and `TK_RELATIONS` on startup, then backfills compatible `USER_ID` columns on `T_CURRENT`, `T_HISTORY`, and `T_RELATIONS` while preserving the old `USERNAME` columns for display compatibility.
-It also adds compatible `USER_ID` ownership columns on `AI_QA_LIB`, `AI_TODO_ITEMS`, `AI_BLOG_FACTORY`, and `T_DOUYIN_DETAILS`.
+It also adds compatible `USER_ID` ownership columns on `AI_QA_LIB`, `AI_TODO_ITEMS`, `AI_BLOG_FACTORY`, and `T_ENGLISH`.
 Rows with no `USER_ID` remain admin-visible legacy rows; ordinary users only see rows owned by themselves or visible child users.
 
 Markdown image uploads use `POST /api/media` with multipart form data. The backend stores image files under `TRUSTED_KNOWLEDGE_MEDIA_STORAGE_DIR`, writes metadata to `TK_MEDIA_ASSETS`, and returns Markdown using an opaque `/api/media/{public_id}/content` URL. Uploads are authenticated and user-owned; image rendering uses the opaque public ID so browser `<img>` tags can load without custom request headers.
