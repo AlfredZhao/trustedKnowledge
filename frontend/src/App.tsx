@@ -4948,36 +4948,7 @@ function App() {
     return <LoginScreen onLogin={handleLogin} />;
   }
 
-  const viewTitle =
-    activeView === "overview"
-      ? "总览"
-      : activeView === "workbench"
-      ? "可信信息录入"
-      : activeView === "factory"
-        ? "可信知识加工"
-      : activeView === "blogFactory"
-        ? "博客工厂记录"
-        : activeView === "todos"
-          ? "待办事项"
-        : activeView === "personalSecrets"
-          ? "个人机密"
-          : activeView === "currentRecords"
-            ? "当前记录录入"
-            : activeView === "history"
-              ? "历史记录查询"
-              : activeView === "englishMaterials"
-                ? "英语素材管理"
-              : activeView === "aiGraph"
-                ? "AI图谱"
-              : activeView === "users"
-                ? "用户管理"
-              : activeView === "skills"
-                ? "Skill 管理"
-              : activeView === "historyAsk"
-                ? "AI 问数"
-                : activeView === "aiCoding"
-                  ? "AI 编程界面"
-                : "LLM 使用情况";
+  const viewTitle = FUNCTION_NAV_ITEMS.find((item) => item.view === activeView)?.label ?? "总览";
   const viewSubtitle =
     activeView === "overview"
       ? "Command Center"
@@ -6172,13 +6143,13 @@ function Topbar({
           : null;
 
   return (
-    <header className="relative z-40 flex flex-col gap-4 border-b border-white/8 bg-ink-900/72 px-4 py-4 backdrop-blur-xl lg:flex-row lg:items-center lg:justify-between">
+    <header className="relative z-40 flex flex-col gap-4 border-b border-white/8 bg-ink-900/72 px-4 py-4 backdrop-blur-xl lg:flex-row lg:items-center lg:justify-between lg:gap-3 lg:py-3">
       <div>
-        <div className="mb-1 flex items-center gap-2 text-xs uppercase tracking-[0.22em] text-mint-300/80">
+        <div className="mb-1 flex items-center gap-2 text-xs uppercase tracking-[0.22em] text-mint-300/80 lg:mb-0.5">
           <ShieldCheck size={14} />
           {subtitle}
         </div>
-        <h1 className="text-2xl font-semibold tracking-normal text-slate-50">{title}</h1>
+        <h1 className="text-2xl font-semibold tracking-normal text-slate-50 lg:text-xl">{title}</h1>
       </div>
       <div className="flex items-center gap-2 lg:hidden">
         <button
@@ -9373,6 +9344,7 @@ function BlogFactoryRecords({
   const [isFiltersExpanded, setIsFiltersExpanded] = useState(false);
   const [isTaskListCollapsed, setIsTaskListCollapsed] = useState(false);
   const [isTaskContentEditing, setIsTaskContentEditing] = useState(false);
+  const [isMaskToolsExpanded, setIsMaskToolsExpanded] = useState(false);
   const [assistView, setAssistView] = useState<"summary" | "coverPrompt">("summary");
   const [assistCopiedTarget, setAssistCopiedTarget] = useState<"summary" | "coverPrompt" | null>(null);
   const [assistError, setAssistError] = useState<string | null>(null);
@@ -9462,6 +9434,7 @@ function BlogFactoryRecords({
     pendingContentAssistTriggerRef.current = null;
     setAssistView("summary");
     setIsTaskContentEditing(false);
+    setIsMaskToolsExpanded(false);
     setPendingContentAssistTarget(null);
     setAssistCopiedTarget(null);
     setAssistError(null);
@@ -9476,12 +9449,16 @@ function BlogFactoryRecords({
   function handleCancelTaskContentEditing() {
     if (selectedItem) onEditDraftChange(blogFactoryItemToEditDraft(selectedItem));
     setIsTaskContentEditing(false);
+    setIsMaskToolsExpanded(false);
     setAssistError(null);
   }
 
   async function handleSaveTaskContent() {
     const saved = await onSaveItem();
-    if (saved) setIsTaskContentEditing(false);
+    if (saved) {
+      setIsTaskContentEditing(false);
+      setIsMaskToolsExpanded(false);
+    }
   }
 
   useEffect(() => {
@@ -9817,11 +9794,30 @@ function BlogFactoryRecords({
                     }`}
                     disabled={isRecordSaving || isDeleting}
                     type="button"
-                    onClick={() => setIsTaskContentEditing(true)}
+                    onClick={() => {
+                      setIsMaskToolsExpanded(false);
+                      setIsTaskContentEditing(true);
+                    }}
                   >
                     <Pencil size={15} />
                     {isTaskContentEditing ? "编辑中" : "编辑任务内容"}
                   </button>
+                  {isTaskContentEditing ? (
+                    <button
+                      aria-expanded={isMaskToolsExpanded}
+                      className={`flex h-9 items-center gap-2 rounded-lg border px-3 text-xs transition ${
+                        isMaskToolsExpanded
+                          ? "border-amberline/30 bg-amberline/10 text-amber-100"
+                          : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-amberline/30 hover:text-amber-100"
+                      }`}
+                      type="button"
+                      onClick={() => setIsMaskToolsExpanded((expanded) => !expanded)}
+                    >
+                      <LockKeyhole size={15} />
+                      脱敏
+                      {isMaskToolsExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    </button>
+                  ) : null}
                 </div>
                 <div className="grid w-full grid-cols-3 gap-2 sm:w-auto">
                   <button
@@ -9868,40 +9864,44 @@ function BlogFactoryRecords({
 
             {isTaskContentEditing ? (
               <div className="space-y-3">
-                <div className="grid gap-2 xl:grid-cols-[minmax(0,1fr)_auto_auto]">
-                  <select
-                    className="control"
-                    value={selectedMaskRuleId ?? ""}
-                    onChange={(event) => onMaskRuleChange(event.target.value || null)}
-                  >
-                    <option value="">{maskRules.length > 0 ? "选择脱敏规则" : "暂无已保存规则"}</option>
-                    {maskRules.map((rule) => (
-                      <option key={rule.id} value={rule.id}>
-                        {rule.name}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    className="flex h-11 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-4 text-sm text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300"
-                    type="button"
-                    onClick={onOpenMaskDialog}
-                  >
-                    <LockKeyhole size={16} />
-                    脱敏规则
-                  </button>
-                  <button
-                    className="flex h-11 items-center justify-center gap-2 rounded-lg border border-amberline/25 bg-amberline/10 px-4 text-sm text-amber-100 transition hover:bg-amberline/15 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
-                    disabled={!canApplyMaskRule}
-                    type="button"
-                    onClick={() => onApplyMaskRule(selectedMaskRuleId)}
-                  >
-                    <ShieldCheck size={16} />
-                    应用脱敏
-                  </button>
-                </div>
-                {selectedMaskRule ? (
-                  <div className="rounded-lg border border-white/10 bg-white/[0.025] px-3 py-2 text-xs leading-6 text-slate-400">
-                    {describeBlogFactoryMaskRule(selectedMaskRule)}
+                {isMaskToolsExpanded ? (
+                  <div className="space-y-3 rounded-lg border border-white/10 bg-white/[0.025] p-3">
+                    <div className="grid gap-2 xl:grid-cols-[minmax(0,1fr)_auto_auto]">
+                      <select
+                        className="control"
+                        value={selectedMaskRuleId ?? ""}
+                        onChange={(event) => onMaskRuleChange(event.target.value || null)}
+                      >
+                        <option value="">{maskRules.length > 0 ? "选择脱敏规则" : "暂无已保存规则"}</option>
+                        {maskRules.map((rule) => (
+                          <option key={rule.id} value={rule.id}>
+                            {rule.name}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        className="flex h-11 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-4 text-sm text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300"
+                        type="button"
+                        onClick={onOpenMaskDialog}
+                      >
+                        <LockKeyhole size={16} />
+                        脱敏规则
+                      </button>
+                      <button
+                        className="flex h-11 items-center justify-center gap-2 rounded-lg border border-amberline/25 bg-amberline/10 px-4 text-sm text-amber-100 transition hover:bg-amberline/15 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
+                        disabled={!canApplyMaskRule}
+                        type="button"
+                        onClick={() => onApplyMaskRule(selectedMaskRuleId)}
+                      >
+                        <ShieldCheck size={16} />
+                        应用脱敏
+                      </button>
+                    </div>
+                    {selectedMaskRule ? (
+                      <div className="rounded-lg border border-white/10 bg-white/[0.025] px-3 py-2 text-xs leading-6 text-slate-400">
+                        当前规则：{selectedMaskRule.name} · {describeBlogFactoryMaskRule(selectedMaskRule)}
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
                 <MarkdownImageTextarea

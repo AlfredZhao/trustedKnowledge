@@ -18,6 +18,15 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Changed / 变更
 
+- Changed the Blog Factory task-content editor so its masking controls are accessed from a compact `脱敏` button in the edit toolbar and expand only on demand.
+- 调整博客工厂任务内容编辑区：脱敏控件收纳到编辑工具栏的紧凑`脱敏`按钮中，按需展开。
+
+- Changed the navigation label for `aiGraph` from `AI图谱` to `AI 图谱`; the shared top-bar title updates with it.
+- 调整 `aiGraph` 的导航标签：将`AI图谱`更新为`AI 图谱`，复用该标签的顶部标题会同步更新。
+
+- Changed the desktop top bar to derive its Chinese page title from the same navigation labels used in the left sidebar, and compacted desktop-only title spacing without changing the mobile layout.
+- 调整桌面端顶部标题栏：中文页面标题直接复用左侧导航标签，并仅压缩桌面端的标题间距与高度，移动端布局保持不变。
+
 - Changed the Information Entry and Skill Management collapse rails to sit on persistent left-workspace frames, keeping the rail visually connected to its panel in both expanded and collapsed states.
 - 调整信息录入与 Skill 管理的收起轨道：使其固定依附在左侧工作区外框上，展开与收起时都保持与面板的视觉连接。
 
