@@ -18,6 +18,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Changed / 变更
 
+- Changed the Information Entry and Skill Management collapse rails to sit on persistent left-workspace frames, keeping the rail visually connected to its panel in both expanded and collapsed states.
+- 调整信息录入与 Skill 管理的收起轨道：使其固定依附在左侧工作区外框上，展开与收起时都保持与面板的视觉连接。
+
 - Changed Information Entry, Knowledge Processing, Todo, Personal Secrets, English Materials, and Skill Management so their desktop `xl` left work panels use the same 28px full-height collapse/restore rail as Blog Factory; mobile keeps the original complete-panel layout.
 - 调整信息录入、知识加工、待办事项、个人机密、英语素材和 Skill 管理：桌面 `xl` 左侧工作面板现复用博客工厂的 28px 全高收起/恢复轨道；移动端保持原有完整面板布局。
 

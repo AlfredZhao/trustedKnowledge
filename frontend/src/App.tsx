@@ -5616,9 +5616,10 @@ function App() {
             </Suspense>
           ) : activeView === "workbench" ? (
             <div className={`grid flex-1 gap-4 px-4 pb-4 pt-2 lg:grid-cols-[minmax(440px,0.95fr)_minmax(420px,1.05fr)] xl:gap-x-2 ${isKnowledgeEntryCollapsed ? "xl:grid-cols-[28px_minmax(460px,0.72fr)_300px]" : "xl:grid-cols-[minmax(500px,0.9fr)_minmax(460px,0.72fr)_300px]"}`}>
-              <div className={`relative min-w-0 ${isKnowledgeEntryCollapsed ? "rounded-lg border border-white/10 bg-ink-900/72 shadow-soft-glow backdrop-blur-xl" : ""}`}>
+              <div className={`relative min-w-0 rounded-lg border border-white/10 bg-ink-900/72 shadow-soft-glow backdrop-blur-xl ${isKnowledgeEntryCollapsed ? "xl:p-0" : "p-4"}`}>
                 <div className={isKnowledgeEntryCollapsed ? "xl:hidden" : "xl:pr-7"}>
                   <KnowledgeForm
+                embedded
                 draft={draft}
                 mode={isEditing ? "edit" : "create"}
                 selectedId={selectedId}
@@ -7957,6 +7958,7 @@ function EditorField({
 }
 
 function KnowledgeForm({
+  embedded = false,
   draft,
   mode,
   selectedId,
@@ -7980,6 +7982,7 @@ function KnowledgeForm({
   onSelectAdjacent,
   onSubmit,
 }: {
+  embedded?: boolean;
   draft: KnowledgeDraft;
   mode: "create" | "edit";
   selectedId: number | null;
@@ -8017,7 +8020,7 @@ function KnowledgeForm({
     : "写入可验证、可复用、上下文完整的答案...";
 
   return (
-    <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/74 p-4 shadow-soft-glow backdrop-blur-xl">
+    <section className={`min-w-0 ${embedded ? "" : "rounded-lg border border-white/10 bg-ink-900/74 p-4 shadow-soft-glow backdrop-blur-xl"}`}>
       <div className="mb-4 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div>
           <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
@@ -13936,8 +13939,8 @@ function SkillManager({
   }
 
   return (
-    <div className={`grid flex-1 gap-4 px-4 pb-4 pt-2 xl:gap-x-2 ${isSkillSidebarCollapsed ? "xl:grid-cols-[28px_minmax(0,1fr)]" : "xl:grid-cols-[360px_minmax(0,1fr)]"}`}>
-      <aside className={`relative min-w-0 ${isSkillSidebarCollapsed ? "rounded-lg border border-white/10 bg-ink-900/72 p-4 shadow-soft-glow backdrop-blur-xl xl:p-0" : "space-y-4"}`}>
+    <div className={`grid flex-1 gap-4 px-4 pb-4 pt-2 xl:gap-x-2 ${isSkillSidebarCollapsed ? "xl:grid-cols-[28px_minmax(0,1fr)]" : "xl:grid-cols-[380px_minmax(0,1fr)]"}`}>
+      <aside className={`relative min-w-0 rounded-lg border border-white/10 bg-ink-900/72 shadow-soft-glow backdrop-blur-xl ${isSkillSidebarCollapsed ? "xl:p-0" : "p-2.5"}`}>
         <div className={isSkillSidebarCollapsed ? "space-y-4 xl:hidden" : "space-y-4 xl:pr-7"}>
         <section className="rounded-lg border border-white/10 bg-ink-900/72 p-4 shadow-soft-glow backdrop-blur-xl">
           <div className="mb-4 flex items-start justify-between gap-3">
