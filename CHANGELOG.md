@@ -13,7 +13,19 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Added / 新增
 
+- Added an Overview control for choosing whether recent English shows 1, 3, 5, or 8 records; the default is now 3 records.
+- 总览“最近 English”新增显示数量控制，可选 1、3、5 或 8 条，默认显示最近 3 条。
+
 #### Changed / 变更
+
+- Changed Information Entry, Knowledge Processing, Todo, Personal Secrets, English Materials, and Skill Management so their desktop `xl` left work panels use the same 28px full-height collapse/restore rail as Blog Factory; mobile keeps the original complete-panel layout.
+- 调整信息录入、知识加工、待办事项、个人机密、英语素材和 Skill 管理：桌面 `xl` 左侧工作面板现复用博客工厂的 28px 全高收起/恢复轨道；移动端保持原有完整面板布局。
+
+- Rebalanced the Overview content layout by moving trusted knowledge to the right-hand panel and recent English to a full-width card list below the Todo and knowledge panels.
+- 调整总览内容布局：可信知识移至右侧区域，最近 English 调整为 Todo 与可信知识下方的通栏卡片列表。
+
+- Removed the English Materials metric card from the top of Overview; the recent English Materials panel remains available below.
+- 移除总览顶部的 English 素材指标卡片；下方最近 English 素材面板仍保留。
 
 - Changed the offline `scripts/export-enhanced-html.mjs` exporter to stay aligned with enhanced Markdown HTML output, including code indentation preservation, H4 headings, and `$$...$$` LaTex formula blocks.
 - 调整离线 `scripts/export-enhanced-html.mjs` 导出器与增强美化 Markdown HTML 保持一致，覆盖代码缩进保留、H4 标题和 `$$...$$` LaTex 公式块。

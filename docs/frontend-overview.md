@@ -34,6 +34,7 @@
 - `frontend/public/sw.js` 当前对 HTML 与应用壳采用网络优先策略，离线时回退到缓存页面；对 `/assets/` 下带 hash 的静态资源采用 `stale-while-revalidate`，优先秒开已缓存资源，并在后台补更最新文件。
 - 面板：主要使用 8px `rounded-lg`、半透明白色边框和克制阴影。
 - 布局：桌面端是固定左侧栏 + 顶部栏；移动端隐藏侧栏，在顶部栏中展示可折叠的网格导航。
+- 信息录入、知识加工、博客工厂、待办事项、个人机密、英语素材和 Skill 管理的桌面 `xl` 双/多栏工作区均支持收起左侧主面板：展开时点击面板右缘 28px 全高轨道即可收起，收起后点击同宽轨道恢复；窄于 `xl` 时始终保留完整面板，保证移动端列表、录入和操作可达。
 - 顶部栏：右侧操作区会持续显示当前登录用户名，使用低对比度身份条样式，放在退出按钮左侧。
 - 表单控件：统一使用 `styles.css` 中的 `.control`，移动端输入字号固定为 16px，避免 iOS 自动放大。
 - 下拉框会在 `.control` 的基础上单独收紧纵向 padding，并保持固定行高，避免 `h-10` 一类固定高度选择器出现文字下沿被裁切。
@@ -88,32 +89,31 @@
 布局：
 
 - 顶部显示刷新按钮和最后更新时间。
-- 四个指标卡片：
+- 三个指标卡片（无用量查看权限时为两个）：
   - LLM 用量
   - 处理中 Todo
   - 未发布知识
-  - English 素材
   - 手机端 PWA 默认按每行 2 张卡片显示，桌面端再扩展到更多列。
 - 主体网格：
   - 左侧：`处理中 Todo` 卡片列表。
-  - 右侧：`最近 English` 单张重点卡片。
+  - 右侧：`可信知识` 未发布知识卡片。
 - 底部通栏：
-  - `可信知识` 未发布知识卡片。
+  - `最近 English` 素材卡片列表和显示数量控制。
 
 数据来源：
 
 - `fetchLlmUsage(USAGE_SAMPLE_LIMIT, false)`
 - `fetchTodos({ username: authUser.username, status: "处理中", limit: OVERVIEW_TODO_LIMIT, offset: 0, includeTotal: true })`
 - `fetchKnowledge({ username: authUser.username, status: "未发布", limit: OVERVIEW_KNOWLEDGE_LIMIT, offset: 0, includeTotal: true })`
-- `fetchEnglishMaterials({ username: authUser.username, sortBy: "id", sortDir: "desc", limit: 1, offset: 0, includeTotal: false })`
+- `fetchEnglishMaterials({ username: authUser.username, sortBy: "id", sortDir: "desc", limit: overviewEnglishLimit, offset: 0, includeTotal: false })`
 
 当前行为：
 
 - 总览内各模块目前不分页。
 - 总览 Todo 只显示 `处理中` 状态，指标卡显示该状态的精确总数，列表仍只展示最近 `OVERVIEW_TODO_LIMIT` 条。
-- English 模块只显示最新 1 条。
+- English 模块默认显示最新 3 条；可在分区内切换为最近 1、3、5 或 8 条，切换后按所选数量重新读取并渲染。
 - 可信知识模块只显示 `未发布` 状态，指标卡显示未发布知识精确总数，列表使用 `OVERVIEW_KNOWLEDGE_LIMIT` 控制卡片数量。
-- English 和 LLM 用量仍使用轻量读取；English 指标显示最近一条素材标识或当前已加载条数。
+- English 和 LLM 用量仍使用轻量读取；English 仅加载当前选定数量的最近素材。
 - 总览中的 Todo、可信知识和英语素材会固定收敛到当前登录用户名，只展示“我自己的数据”；不会再默认汇总其他可见用户的数据。
 - 分区失败会独立展示错误，一个数据源失败不会阻断整个总览。
 - 点击卡片会跳转到对应完整工作区，并在支持的页面中选中对应记录。
@@ -140,6 +140,7 @@
 - 主网格包含知识表单、知识列表和可信度面板。
 - 在 `xl` 断点变为 3 列：表单、列表、可信度面板。
 - 低于 `xl` 时，面板会折叠为更少列。
+- 桌面 `xl` 下，左侧信息录入表单可通过右缘 28px 轨道收起，腾出空间给知识列表和可信度面板；收起轨道可随时恢复表单。
 
 功能:
 
@@ -168,6 +169,8 @@
 - 选择知识条目会打开移动端编辑弹层，列表和编辑动作都保持可达。
 
 ### 知识加工 / `factory`
+
+- 桌面 `xl` 下，待加工知识列表可通过右缘 28px 轨道收起，知识原文、加工结果和 Skill 区保留完整可用宽度；窄屏始终显示列表。
 
 桌面布局:
 
@@ -260,6 +263,8 @@
 
 ### 待办事项 / `todos`
 
+- 桌面 `xl` 下，待办事项列表可通过右缘 28px 轨道收起，以扩大编辑详情区；窄屏和移动端保留列表与既有详情抽屉。
+
 - 查询条件默认折叠；展开后可按用户和待办状态筛选，并保留清空入口。已有筛选在折叠状态显示数量提示。
 
 桌面布局:
@@ -299,6 +304,8 @@
 - 选择 Todo 会打开移动端编辑弹层。
 
 ### 个人机密 / `personalSecrets`
+
+- 桌面 `xl` 下，个人机密列表可通过右缘 28px 轨道收起，以扩大机密详情区；窄屏仍完整显示列表和详情。
 
 布局:
 
@@ -367,6 +374,8 @@
 
 ### 英语素材 / `englishMaterials`
 
+- 桌面 `xl` 下，英语素材列表可通过右缘 28px 轨道收起，以扩大右侧录入面板；窄屏仍完整显示两个面板。
+
 - 查询条件默认折叠；展开后可使用用户、分类、发布状态和排序条件，已有筛选在折叠状态显示数量提示。
 
 桌面布局:
@@ -395,6 +404,8 @@
 - 默认每页数量：`ENGLISH_MATERIALS_PAGE_SIZE = 10`。
 
 ### Skill 管理 / `skills`
+
+- 桌面 `xl` 下，包含已安装 Skill、创建和上传操作的左侧栏可通过右缘 28px 轨道收起，文件与元信息编辑区随即扩展；窄屏保持完整操作栏。
 
 功能:
 

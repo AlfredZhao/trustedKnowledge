@@ -465,7 +465,7 @@ interface OverviewData {
   recentKnowledge: KnowledgeItem[];
   knowledgeTotal: number;
   unpublishedKnowledgeTotal: number;
-  latestEnglishMaterial: EnglishMaterialItem | null;
+  recentEnglishMaterials: EnglishMaterialItem[];
   englishMaterialTotal: number;
 }
 
@@ -578,6 +578,7 @@ function App() {
   const [authUser, setAuthUser] = useState<AuthUser | null>(() => readStoredAuthUser());
   const [activeView, setActiveView] = useState<AppView>(restoredUiState.activeView);
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(restoredUiState.sidebarExpanded);
+  const [isKnowledgeEntryCollapsed, setIsKnowledgeEntryCollapsed] = useState(false);
   const [isMobileNavVisible, setIsMobileNavVisible] = useState(restoredUiState.mobileNavVisible);
   const [themeMode, setThemeMode] = useState<ThemeMode>(restoredUiState.themeMode);
   const [items, setItems] = useState<KnowledgeItem[]>([]);
@@ -944,7 +945,7 @@ function App() {
     recentKnowledge: [],
     knowledgeTotal: 0,
     unpublishedKnowledgeTotal: 0,
-    latestEnglishMaterial: null,
+    recentEnglishMaterials: [],
     englishMaterialTotal: 0,
   });
   const [isOverviewLoading, setIsOverviewLoading] = useState(false);
@@ -954,6 +955,7 @@ function App() {
     useState<OverviewSectionErrors>(emptyOverviewSectionErrors);
   const [overviewUpdatedAt, setOverviewUpdatedAt] = useState<string | null>(null);
   const [overviewRefreshToken, setOverviewRefreshToken] = useState(0);
+  const [overviewEnglishLimit, setOverviewEnglishLimit] = useState(3);
   const [aiCodingPrompt, setAiCodingPrompt] = useState(restoredUiState.aiCoding.prompt);
   const [aiCodingModelName, setAiCodingModelName] = useState(
     restoredUiState.aiCoding.modelName === AI_CODING_DEFAULT_MODEL ||
@@ -1170,7 +1172,7 @@ function App() {
         recentKnowledge: [],
         knowledgeTotal: 0,
         unpublishedKnowledgeTotal: 0,
-        latestEnglishMaterial: null,
+        recentEnglishMaterials: [],
         englishMaterialTotal: 0,
       });
       setOverviewSectionErrors(emptyOverviewSectionErrors);
@@ -2495,7 +2497,7 @@ function App() {
       username: overviewUsername,
       sortBy: "id" as const,
       sortDir: "desc" as const,
-      limit: 1,
+      limit: overviewEnglishLimit,
       offset: 0,
       includeTotal: false,
     };
@@ -2519,7 +2521,7 @@ function App() {
         recentKnowledge: cachedUnpublishedKnowledge.items,
         knowledgeTotal: cachedUnpublishedKnowledge.total,
         unpublishedKnowledgeTotal: cachedUnpublishedKnowledge.total,
-        latestEnglishMaterial: cachedEnglishMaterial.items[0] ?? null,
+        recentEnglishMaterials: cachedEnglishMaterial.items,
         englishMaterialTotal: cachedEnglishMaterial.items.length,
       });
       setOverviewSectionErrors(emptyOverviewSectionErrors);
@@ -2588,7 +2590,7 @@ function App() {
           if (englishMaterialResult.status === "fulfilled") {
             next = {
               ...next,
-              latestEnglishMaterial: englishMaterialResult.value.items[0] ?? null,
+              recentEnglishMaterials: englishMaterialResult.value.items,
               englishMaterialTotal: englishMaterialResult.value.items.length,
             };
           }
@@ -2612,7 +2614,7 @@ function App() {
     return () => {
       mounted = false;
     };
-  }, [activeView, apiKey, authUser, overviewRefreshToken, canAccessUsage]);
+  }, [activeView, apiKey, authUser, overviewRefreshToken, canAccessUsage, overviewEnglishLimit]);
 
   useEffect(() => {
     if (!apiKey || activeView !== "usage" || !canAccessUsage) return;
@@ -5134,6 +5136,8 @@ function App() {
                 onOpenTodo={handleOpenOverviewTodo}
                 onOpenView={handleOpenOverviewView}
                 onRefresh={handleRefreshOverview}
+                englishLimit={overviewEnglishLimit}
+                onEnglishLimitChange={setOverviewEnglishLimit}
               />
             </Suspense>
           ) : activeView === "skills" ? (
@@ -5611,8 +5615,10 @@ function App() {
               />
             </Suspense>
           ) : activeView === "workbench" ? (
-            <div className="grid flex-1 gap-4 px-4 pb-4 pt-2 lg:grid-cols-[minmax(440px,0.95fr)_minmax(420px,1.05fr)] xl:grid-cols-[minmax(500px,0.9fr)_minmax(460px,0.72fr)_300px]">
-              <KnowledgeForm
+            <div className={`grid flex-1 gap-4 px-4 pb-4 pt-2 lg:grid-cols-[minmax(440px,0.95fr)_minmax(420px,1.05fr)] xl:gap-x-2 ${isKnowledgeEntryCollapsed ? "xl:grid-cols-[28px_minmax(460px,0.72fr)_300px]" : "xl:grid-cols-[minmax(500px,0.9fr)_minmax(460px,0.72fr)_300px]"}`}>
+              <div className={`relative min-w-0 ${isKnowledgeEntryCollapsed ? "rounded-lg border border-white/10 bg-ink-900/72 shadow-soft-glow backdrop-blur-xl" : ""}`}>
+                <div className={isKnowledgeEntryCollapsed ? "xl:hidden" : "xl:pr-7"}>
+                  <KnowledgeForm
                 draft={draft}
                 mode={isEditing ? "edit" : "create"}
                 selectedId={selectedId}
@@ -5634,8 +5640,11 @@ function App() {
                 onTodoStatusChange={setNewTodoStatus}
                 onNewEntry={handleNewEntry}
                 onSelectAdjacent={handleSelectAdjacentKnowledge}
-                onSubmit={handleSubmit}
-              />
+                    onSubmit={handleSubmit}
+                  />
+                </div>
+                <WorkspaceSidebarCollapseToggle isCollapsed={isKnowledgeEntryCollapsed} label="信息录入面板" onToggle={() => setIsKnowledgeEntryCollapsed((collapsed) => !collapsed)} />
+              </div>
 
               <KnowledgeList
                 authUser={authUser}
@@ -6067,6 +6076,42 @@ function Sidebar({
         </button>
       ) : null}
     </aside>
+  );
+}
+
+function WorkspaceSidebarCollapseToggle({
+  isCollapsed,
+  label,
+  onToggle,
+}: {
+  isCollapsed: boolean;
+  label: string;
+  onToggle: () => void;
+}) {
+  if (isCollapsed) {
+    return (
+      <button
+        className="hidden h-full min-h-[420px] w-full flex-col items-center rounded-md text-mint-200 transition hover:bg-mint-300/10 focus:outline-none focus:ring-2 focus:ring-mint-300/30 xl:flex"
+        type="button"
+        aria-label={`展开${label}`}
+        title={`展开${label}`}
+        onClick={onToggle}
+      >
+        <ChevronRight className="mt-2 shrink-0" size={17} />
+      </button>
+    );
+  }
+
+  return (
+    <button
+      className="absolute inset-y-0 right-0 hidden w-7 flex-col items-center border-l border-white/10 text-slate-500 transition hover:bg-mint-300/10 hover:text-mint-200 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-mint-300/30 xl:flex"
+      type="button"
+      aria-label={`收起${label}`}
+      title={`收起${label}，专注右侧内容`}
+      onClick={onToggle}
+    >
+      <ChevronLeft className="mt-2 shrink-0" size={16} />
+    </button>
   );
 }
 
@@ -8566,6 +8611,7 @@ function KnowledgeFactory({
   const [mergeDraft, setMergeDraft] = useState<KnowledgeDraft | null>(null);
   const [mergeError, setMergeError] = useState<string | null>(null);
   const [taskView, setTaskView] = useState<MarkdownContentView>("rendered");
+  const [isKnowledgeListCollapsed, setIsKnowledgeListCollapsed] = useState(false);
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
   const rangeStart = totalItems === 0 ? 0 : (page - 1) * pageSize + 1;
   const rangeEnd = Math.min(page * pageSize, totalItems);
@@ -8622,8 +8668,9 @@ function KnowledgeFactory({
   }
 
   return (
-    <div className="grid flex-1 gap-4 px-4 pb-4 pt-2 xl:grid-cols-[360px_minmax(440px,1fr)_minmax(360px,0.82fr)]">
-      <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/72 p-4 shadow-soft-glow backdrop-blur-xl">
+    <div className={`grid flex-1 gap-4 px-4 pb-4 pt-2 xl:gap-x-2 ${isKnowledgeListCollapsed ? "xl:grid-cols-[28px_minmax(440px,1fr)_minmax(360px,0.82fr)]" : "xl:grid-cols-[360px_minmax(440px,1fr)_minmax(360px,0.82fr)]"}`}>
+      <section className={`relative min-w-0 rounded-lg border border-white/10 bg-ink-900/72 shadow-soft-glow backdrop-blur-xl ${isKnowledgeListCollapsed ? "p-4 xl:p-0" : "p-4"}`}>
+        <div className={isKnowledgeListCollapsed ? "xl:hidden" : "xl:pr-7"}>
         <div className="mb-4 flex items-start justify-between gap-4">
           <div>
             <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
@@ -8780,6 +8827,8 @@ function KnowledgeFactory({
             </div>
           </div>
         )}
+        </div>
+        <WorkspaceSidebarCollapseToggle isCollapsed={isKnowledgeListCollapsed} label="待加工知识列表" onToggle={() => setIsKnowledgeListCollapsed((collapsed) => !collapsed)} />
       </section>
 
       <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/68 p-4 backdrop-blur-xl">
@@ -10657,6 +10706,7 @@ function PersonalSecretsWorkspace({
   const totalPages = Math.max(1, Math.ceil(total / PERSONAL_SECRETS_PAGE_SIZE));
   const rangeStart = total === 0 ? 0 : (page - 1) * PERSONAL_SECRETS_PAGE_SIZE + 1;
   const rangeEnd = Math.min(page * PERSONAL_SECRETS_PAGE_SIZE, total);
+  const [isSecretListCollapsed, setIsSecretListCollapsed] = useState(false);
 
   const copyButton = (field: PersonalSecretRevealField, label = "复制") => {
     const isCopied = copiedField === field;
@@ -10678,8 +10728,9 @@ function PersonalSecretsWorkspace({
   };
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(420px,1.1fr)]">
-      <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/72 p-4 shadow-soft-glow backdrop-blur-xl">
+    <div className={`grid gap-4 xl:gap-x-2 ${isSecretListCollapsed ? "xl:grid-cols-[28px_minmax(420px,1.1fr)]" : "xl:grid-cols-[minmax(0,0.9fr)_minmax(420px,1.1fr)]"}`}>
+      <section className={`relative min-w-0 rounded-lg border border-white/10 bg-ink-900/72 shadow-soft-glow backdrop-blur-xl ${isSecretListCollapsed ? "p-4 xl:p-0" : "p-4"}`}>
+        <div className={isSecretListCollapsed ? "xl:hidden" : "xl:pr-7"}>
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
             <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
@@ -10764,6 +10815,8 @@ function PersonalSecretsWorkspace({
             </div>
           </div>
         )}
+        </div>
+        <WorkspaceSidebarCollapseToggle isCollapsed={isSecretListCollapsed} label="个人机密列表" onToggle={() => setIsSecretListCollapsed((collapsed) => !collapsed)} />
       </section>
 
       <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
@@ -11122,6 +11175,7 @@ function TodoWorkspace({
 }) {
   const [taskContentView, setTaskContentView] = useState<"edit" | "preview">("edit");
   const [isFiltersExpanded, setIsFiltersExpanded] = useState(false);
+  const [isTodoListCollapsed, setIsTodoListCollapsed] = useState(false);
   const totalPages = Math.max(1, Math.ceil(total / TODO_PAGE_SIZE));
   const rangeStart = total === 0 ? 0 : (page - 1) * TODO_PAGE_SIZE + 1;
   const rangeEnd = Math.min(page * TODO_PAGE_SIZE, total);
@@ -11315,8 +11369,9 @@ function TodoWorkspace({
   );
 
   return (
-    <div className="grid flex-1 gap-4 px-4 pb-4 pt-2 xl:grid-cols-[minmax(340px,0.8fr)_minmax(520px,1.2fr)]">
-      <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/72 p-4 shadow-soft-glow backdrop-blur-xl">
+    <div className={`grid flex-1 gap-4 px-4 pb-4 pt-2 xl:gap-x-2 ${isTodoListCollapsed ? "xl:grid-cols-[28px_minmax(520px,1.2fr)]" : "xl:grid-cols-[minmax(340px,0.8fr)_minmax(520px,1.2fr)]"}`}>
+      <section className={`relative min-w-0 rounded-lg border border-white/10 bg-ink-900/72 shadow-soft-glow backdrop-blur-xl ${isTodoListCollapsed ? "p-4 xl:p-0" : "p-4"}`}>
+        <div className={isTodoListCollapsed ? "xl:hidden" : "xl:pr-7"}>
         <div className="mb-5 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>
             <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
@@ -11472,6 +11527,8 @@ function TodoWorkspace({
             </div>
           </div>
         )}
+        </div>
+        <WorkspaceSidebarCollapseToggle isCollapsed={isTodoListCollapsed} label="待办事项列表" onToggle={() => setIsTodoListCollapsed((collapsed) => !collapsed)} />
       </section>
 
       <aside className="min-w-0 rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
@@ -12074,11 +12131,13 @@ function EnglishMaterialsWorkspace({
   const hasSingleVisibleUser = !isAdminUser && visibleUsers.length <= 1;
   const allUsersLabel = isAdminUser ? "全部用户" : "全部可见用户";
   const [isFiltersExpanded, setIsFiltersExpanded] = useState(false);
+  const [isEnglishMaterialListCollapsed, setIsEnglishMaterialListCollapsed] = useState(false);
   const activeFilterCount = [filters.username, filters.category, filters.flag].filter(Boolean).length;
 
   return (
-    <div className="grid flex-1 gap-4 px-4 pb-4 pt-2 xl:grid-cols-[minmax(520px,1fr)_380px]">
-      <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/72 p-4 shadow-soft-glow backdrop-blur-xl">
+    <div className={`grid flex-1 gap-4 px-4 pb-4 pt-2 xl:gap-x-2 ${isEnglishMaterialListCollapsed ? "xl:grid-cols-[28px_minmax(0,1fr)]" : "xl:grid-cols-[minmax(520px,1fr)_380px]"}`}>
+      <section className={`relative min-w-0 rounded-lg border border-white/10 bg-ink-900/72 shadow-soft-glow backdrop-blur-xl ${isEnglishMaterialListCollapsed ? "p-4 xl:p-0" : "p-4"}`}>
+        <div className={isEnglishMaterialListCollapsed ? "xl:hidden" : "xl:pr-7"}>
         <div className="mb-5 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>
             <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
@@ -12279,6 +12338,8 @@ function EnglishMaterialsWorkspace({
             </div>
           </div>
         )}
+        </div>
+        <WorkspaceSidebarCollapseToggle isCollapsed={isEnglishMaterialListCollapsed} label="英语素材列表" onToggle={() => setIsEnglishMaterialListCollapsed((collapsed) => !collapsed)} />
       </section>
 
       <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/72 p-4 shadow-soft-glow backdrop-blur-xl">
@@ -13810,6 +13871,7 @@ function SkillManager({
   const canSaveFile = Boolean(detail?.can_edit && selectedFile?.editable) && !isFileSaving;
   const [isCreateSkillFormExpanded, setIsCreateSkillFormExpanded] = useState(false);
   const [isUploadSkillZipExpanded, setIsUploadSkillZipExpanded] = useState(false);
+  const [isSkillSidebarCollapsed, setIsSkillSidebarCollapsed] = useState(false);
   const [expandedSkillDirectories, setExpandedSkillDirectories] = useState<Set<string>>(() => new Set());
   const skillFileGroups = useMemo(() => {
     const rootFiles: SkillFile[] = [];
@@ -13874,8 +13936,9 @@ function SkillManager({
   }
 
   return (
-    <div className="grid flex-1 gap-4 px-4 pb-4 pt-2 xl:grid-cols-[360px_minmax(0,1fr)]">
-      <aside className="min-w-0 space-y-4">
+    <div className={`grid flex-1 gap-4 px-4 pb-4 pt-2 xl:gap-x-2 ${isSkillSidebarCollapsed ? "xl:grid-cols-[28px_minmax(0,1fr)]" : "xl:grid-cols-[360px_minmax(0,1fr)]"}`}>
+      <aside className={`relative min-w-0 ${isSkillSidebarCollapsed ? "rounded-lg border border-white/10 bg-ink-900/72 p-4 shadow-soft-glow backdrop-blur-xl xl:p-0" : "space-y-4"}`}>
+        <div className={isSkillSidebarCollapsed ? "space-y-4 xl:hidden" : "space-y-4 xl:pr-7"}>
         <section className="rounded-lg border border-white/10 bg-ink-900/72 p-4 shadow-soft-glow backdrop-blur-xl">
           <div className="mb-4 flex items-start justify-between gap-3">
             <div>
@@ -14058,6 +14121,8 @@ function SkillManager({
             </div>
           ) : null}
         </section>
+        </div>
+        <WorkspaceSidebarCollapseToggle isCollapsed={isSkillSidebarCollapsed} label="Skill 列表与操作面板" onToggle={() => setIsSkillSidebarCollapsed((collapsed) => !collapsed)} />
       </aside>
 
       <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/72 p-4 shadow-soft-glow backdrop-blur-xl">

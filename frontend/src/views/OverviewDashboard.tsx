@@ -13,7 +13,7 @@ type OverviewData = {
   recentKnowledge: KnowledgeItem[];
   knowledgeTotal: number;
   unpublishedKnowledgeTotal: number;
-  latestEnglishMaterial: EnglishMaterialItem | null;
+  recentEnglishMaterials: EnglishMaterialItem[];
   englishMaterialTotal: number;
 };
 
@@ -49,6 +49,8 @@ export default function OverviewDashboard({
   onOpenTodo,
   onOpenView,
   onRefresh,
+  englishLimit,
+  onEnglishLimitChange,
 }: {
   canViewUsage: boolean;
   data: OverviewData;
@@ -62,16 +64,18 @@ export default function OverviewDashboard({
   onOpenTodo: (item: TodoItem) => void;
   onOpenView: (view: AppView) => void;
   onRefresh: () => void;
+  englishLimit: number;
+  onEnglishLimitChange: (limit: number) => void;
 }) {
   const latestUsage = canViewUsage && data.usageItems.length > 0 ? data.usageItems[data.usageItems.length - 1] : null;
   const usagePercent = latestUsage ? getUsagePercent(latestUsage) : 0;
-  const latestEnglish = data.latestEnglishMaterial;
+  const recentEnglish = data.recentEnglishMaterials;
   const hasOverviewData =
     latestUsage ||
     data.processingTodos.length > 0 ||
     data.recentKnowledge.length > 0 ||
     data.processingTodoTotal > 0 ||
-    latestEnglish ||
+    recentEnglish.length > 0 ||
     data.knowledgeTotal > 0 ||
     data.englishMaterialTotal > 0;
 
@@ -141,7 +145,7 @@ export default function OverviewDashboard({
 
       {loadError ? <div className="mb-4 rounded-lg border border-amberline/25 bg-amberline/10 p-3 text-sm text-amber-100/80">{loadError}</div> : null}
 
-      <div className={`mb-4 grid grid-cols-2 gap-4 ${canViewUsage ? "xl:grid-cols-4" : "xl:grid-cols-3"}`}>
+      <div className={`mb-4 grid grid-cols-2 gap-4 ${canViewUsage ? "xl:grid-cols-3" : "xl:grid-cols-2"}`}>
         {canViewUsage ? (
           <MetricTile
             icon={<CircleGauge size={17} />}
@@ -164,12 +168,11 @@ export default function OverviewDashboard({
           value={formatAmount(data.unpublishedKnowledgeTotal)}
           detail={data.recentKnowledge.length > 0 ? `列表显示最近 ${formatAmount(data.recentKnowledge.length)} 条` : "暂无未发布"}
         />
-        <MetricTile icon={<FileText size={17} />} label="English 素材" value={latestEnglish?.sequence_no ? `#${latestEnglish.sequence_no}` : formatAmount(data.englishMaterialTotal)} detail={latestEnglish ? "最近 1 条" : "暂无最近素材"} />
       </div>
 
       {canViewUsage && sectionErrors.usage ? <OverviewInlineError message={`LLM 用量读取失败：${sectionErrors.usage}`} /> : null}
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(300px,0.58fr)]">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.7fr)]">
         <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
           <OverviewSectionHeader icon={<ClipboardCheck size={17} />} title="处理中 Todo" actionLabel="查看待办" onAction={() => onOpenView("todos")} />
           {sectionErrors.todos ? <OverviewInlineError message={`处理中 Todo 读取失败：${sectionErrors.todos}`} /> : null}
@@ -200,55 +203,87 @@ export default function OverviewDashboard({
         </section>
 
         <aside className="min-w-0 rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
-          <OverviewSectionHeader icon={<BookOpenCheck size={17} />} title="最近 English" actionLabel="查看素材" onAction={() => onOpenView("englishMaterials")} />
-          {sectionErrors.english ? <OverviewInlineError message={`English 素材读取失败：${sectionErrors.english}`} /> : null}
-          {latestEnglish ? (
-            <button
-              className="block w-full rounded-lg border border-mint-300/20 bg-mint-300/8 p-4 text-left transition hover:border-mint-300/35 hover:bg-mint-300/10"
-              type="button"
-              onClick={() => onOpenEnglishMaterial(latestEnglish)}
-            >
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <span className="rounded border border-white/10 bg-white/[0.05] px-2 py-1 text-xs text-mint-100">{latestEnglish.category ?? "未分类"}</span>
-                <span className="text-xs text-mint-100/70">{latestEnglish.flag === 1 ? "已发表" : "草稿箱"}</span>
-              </div>
-              <div className="mb-2 line-clamp-2 text-base font-semibold leading-6 text-slate-50">{latestEnglish.title || latestEnglish.base_expression || "未命名素材"}</div>
-              <div className="line-clamp-3 text-sm leading-6 text-mint-100/80">{latestEnglish.professional_sentence || latestEnglish.base_expression || "暂无英文内容"}</div>
-              <div className="mt-3 line-clamp-2 text-sm leading-6 text-slate-400">{latestEnglish.chinese_translation || "暂无中文翻译"}</div>
-            </button>
+          <OverviewSectionHeader icon={<ShieldCheck size={17} />} title="可信知识" actionLabel="进入知识库" onAction={() => onOpenView("workbench")} />
+          {sectionErrors.knowledge ? <OverviewInlineError message={`可信知识读取失败：${sectionErrors.knowledge}`} /> : null}
+          {data.recentKnowledge.length > 0 ? (
+            <div className="space-y-3">
+              {data.recentKnowledge.map((item) => (
+                <button
+                  key={item.id}
+                  className="block w-full rounded-lg border border-white/10 bg-white/[0.028] p-3 text-left transition hover:border-mint-300/25 hover:bg-white/[0.045]"
+                  type="button"
+                  onClick={() => onOpenKnowledge(item)}
+                >
+                  <div className="mb-2 flex items-start justify-between gap-3">
+                    <div className="line-clamp-2 text-sm font-medium leading-6 text-slate-100">{item.question}</div>
+                    <span className={`shrink-0 rounded border px-2 py-1 text-xs ${statusStyles[item.blog_status]}`}>{item.blog_status}</span>
+                  </div>
+                  <div className="line-clamp-2 text-sm leading-6 text-slate-500">{item.answer}</div>
+                  <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-500">
+                    {item.topic_tag ? <span>#{item.topic_tag}</span> : null}
+                    <span>{formatDate(item.created_date)}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
           ) : (
-            <OverviewEmpty icon={<FileText size={28} />} title="暂无 English 素材" />
+            <OverviewEmpty icon={<ShieldCheck size={28} />} title="暂无可信知识" />
           )}
         </aside>
       </div>
 
       <section className="mt-4 rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
-        <OverviewSectionHeader icon={<ShieldCheck size={17} />} title="可信知识" actionLabel="进入知识库" onAction={() => onOpenView("workbench")} />
-        {sectionErrors.knowledge ? <OverviewInlineError message={`可信知识读取失败：${sectionErrors.knowledge}`} /> : null}
-        {data.recentKnowledge.length > 0 ? (
-          <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
-            {data.recentKnowledge.map((item) => (
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2 text-sm font-medium text-mint-300">
+            <BookOpenCheck size={17} />
+            <span>最近 English</span>
+          </div>
+          <div className="flex items-center justify-between gap-3 sm:justify-end">
+            <label className="flex items-center gap-2 text-xs text-slate-400">
+              显示
+              <select
+                className="h-9 rounded-lg border border-white/10 bg-white/[0.035] px-2 text-xs text-slate-200 outline-none transition hover:border-mint-300/30 focus:border-mint-300/50"
+                value={englishLimit}
+                onChange={(event) => onEnglishLimitChange(Number(event.target.value))}
+              >
+                {[1, 3, 5, 8].map((limit) => (
+                  <option key={limit} value={limit} className="bg-ink-900">
+                    最近 {limit} 条
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              className="shrink-0 rounded-lg border border-white/10 bg-white/[0.035] px-3 py-2 text-xs text-slate-300 transition hover:border-mint-300/30 hover:bg-white/[0.055] hover:text-mint-300"
+              type="button"
+              onClick={() => onOpenView("englishMaterials")}
+            >
+              查看素材
+            </button>
+          </div>
+        </div>
+        {sectionErrors.english ? <OverviewInlineError message={`English 素材读取失败：${sectionErrors.english}`} /> : null}
+        {recentEnglish.length > 0 ? (
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {recentEnglish.map((item) => (
               <button
                 key={item.id}
-                className="block min-w-0 rounded-lg border border-white/10 bg-white/[0.028] p-4 text-left transition hover:border-mint-300/25 hover:bg-white/[0.045]"
+                className="block min-w-0 rounded-lg border border-mint-300/20 bg-mint-300/8 p-4 text-left transition hover:border-mint-300/35 hover:bg-mint-300/10"
                 type="button"
-                onClick={() => onOpenKnowledge(item)}
+                onClick={() => onOpenEnglishMaterial(item)}
               >
-                <div className="mb-3 flex items-start justify-between gap-3">
-                  <div className="line-clamp-2 text-sm font-medium leading-6 text-slate-100">{item.question}</div>
-                  <span className={`shrink-0 rounded border px-2 py-1 text-xs ${statusStyles[item.blog_status]}`}>{item.blog_status}</span>
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <span className="rounded border border-white/10 bg-white/[0.05] px-2 py-1 text-xs text-mint-100">{item.category ?? "未分类"}</span>
+                  <span className="text-xs text-mint-100/70">{item.flag === 1 ? "已发表" : "草稿箱"}</span>
                 </div>
-                <div className="line-clamp-3 text-sm leading-6 text-slate-500">{item.answer}</div>
-                <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-500">
-                  {item.source ? <span>{item.source}</span> : null}
-                  {item.topic_tag ? <span>#{item.topic_tag}</span> : null}
-                  <span>{formatDate(item.created_date)}</span>
-                </div>
+                <div className="mb-2 line-clamp-2 text-base font-semibold leading-6 text-slate-50">{item.title || item.base_expression || "未命名素材"}</div>
+                <div className="line-clamp-3 text-sm leading-6 text-mint-100/80">{item.professional_sentence || item.base_expression || "暂无英文内容"}</div>
+                <div className="mt-3 line-clamp-2 text-sm leading-6 text-slate-400">{item.chinese_translation || "暂无中文翻译"}</div>
               </button>
             ))}
           </div>
         ) : (
-          <OverviewEmpty icon={<ShieldCheck size={28} />} title="暂无可信知识" />
+          <OverviewEmpty icon={<FileText size={28} />} title="暂无 English 素材" />
         )}
       </section>
     </div>
