@@ -264,14 +264,17 @@ async def update_english_material(
     assignments = [f"{UPDATE_COLUMNS[key]} = :{key}" for key in values]
     assignments.append("updated_at = systimestamp")
     params = {**values, "material_id": material_id}
+    lock_params: dict[str, Any] = {"material_id": material_id}
     clauses = ["english_id = :material_id"]
-    append_user_visibility_clause(clauses, params, auth_context, "user_id")
+    append_user_visibility_clause(clauses, lock_params, auth_context, "user_id")
+    update_clauses = ["english_id = :material_id"]
+    append_user_visibility_clause(update_clauses, params, auth_context, "user_id")
     async with acquire_connection() as connection:
         cursor = connection.cursor()
         if "full_script" in values:
             await cursor.execute(
                 f"select full_script from t_english where {' and '.join(clauses)} for update",
-                params,
+                lock_params,
             )
             current = await cursor.fetchone()
             if current is None:
@@ -285,7 +288,7 @@ async def update_english_material(
         sql = f"""
             update t_english
             set {", ".join(assignments)}
-            where {" and ".join(clauses)}
+            where {" and ".join(update_clauses)}
         """
         await cursor.execute(sql, params)
         if cursor.rowcount == 0:

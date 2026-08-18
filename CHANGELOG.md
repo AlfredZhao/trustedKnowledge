@@ -9,6 +9,20 @@ The format follows the common GitHub changelog convention inspired by
 
 ## 本次版本更新
 
+### [Unreleased]
+
+#### Added / 新增
+
+#### Changed / 变更
+
+#### Fixed / 修复
+
+- Fixed English material edits containing `full_script` and `sequence_no`: the row-lock query now receives only its own bind parameters, preventing Oracle `DPY-4008` errors.
+- 修复英语素材编辑同时包含 `full_script` 与 `sequence_no` 时的保存失败：行锁查询现在仅接收自身所需绑定参数，避免 Oracle `DPY-4008` 错误。
+
+- Fixed English material creation after an ID-preserving migration: startup now advances `T_ENGLISH.ENGLISH_ID`'s identity generator beyond existing rows, preventing `ORA-00001` duplicate primary-key failures.
+- 修复英语素材在保留既有 ID 的迁移后无法新增的问题：启动时会将 `T_ENGLISH.ENGLISH_ID` 的 identity 生成器推进到现有记录之后，避免 `ORA-00001` 主键重复。
+
 ### [0.3.10] - 2026-08-18
 
 #### Added / 新增
