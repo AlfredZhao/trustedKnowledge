@@ -67,8 +67,8 @@ class BlogFactoryItemNotPendingError(ValueError):
     pass
 
 
-def _row_to_dict(row: Any) -> dict[str, Any]:
-    return {
+def _row_to_dict(row: Any, *, has_similarity: bool = False) -> dict[str, Any]:
+    item = {
         "id": row[0],
         "knowledge_id": row[1],
         "task_content": row[2],
@@ -94,8 +94,10 @@ def _row_to_dict(row: Any) -> dict[str, Any]:
         "assist_summary": row[22],
         "cover_image_markdown": row[23],
         "has_article": bool(row[24]),
-        "article_markdown": row[25] if len(row) > 25 else None,
+        "article_markdown": row[25] if len(row) > 25 and not has_similarity else None,
     }
+    item["similarity"] = row[25] if has_similarity else None
+    return item
 
 
 async def _mark_knowledge_as_published(cursor: Any, knowledge_id: int, user_id: int | None) -> None:
@@ -216,6 +218,7 @@ async def _ensure_assist_summary_character_capacity(cursor: Any) -> None:
 
 def _build_filters(
     q: str | None,
+    semantic_query: str | None,
     factory_status: str | None,
     topic: str | None,
     knowledge_id: int | None,
@@ -233,6 +236,10 @@ def _build_filters(
             "or lower(factory_item.article_title) like '%' || lower(:q) || '%')"
         )
         params["q"] = q
+
+    if semantic_query:
+        clauses.append("factory_item.v is not null")
+        clauses.append("nvl(factory_item.v_needs_update, 0) = 0")
 
     if factory_status:
         clauses.append("factory_item.factory_status = :factory_status")
@@ -255,6 +262,7 @@ async def list_blog_factory_items(
     limit: int,
     offset: int,
     q: str | None = None,
+    semantic_query: str | None = None,
     username: str | None = None,
     factory_status: str | None = None,
     topic: str | None = None,
@@ -268,7 +276,7 @@ async def list_blog_factory_items(
 
     async with acquire_connection() as connection:
         await _ensure_blog_factory_table(connection)
-        clauses, params = _build_filters(q, factory_status, topic, knowledge_id, auth_context)
+        clauses, params = _build_filters(q, semantic_query, factory_status, topic, knowledge_id, auth_context)
         await append_requested_username_clause(
             connection,
             clauses,
@@ -280,11 +288,21 @@ async def list_blog_factory_items(
         where_sql = f" where {' and '.join(clauses)}" if clauses else ""
 
         count_sql = f"select count(*) from ai_blog_factory factory_item{where_sql}"
+        similarity_sql = (
+            "1 - vector_distance(factory_item.v, vector_embedding(BGE_BASE using :semantic_query as data), cosine)"
+            if semantic_query
+            else "cast(null as binary_double)"
+        )
+        list_order_sql = (
+            "similarity desc nulls last, factory_item.id desc"
+            if semantic_query
+            else f"{sort_column} {sort_direction} nulls last, factory_item.id desc"
+        )
         list_sql = f"""
-            select {COMMON_COLUMNS}
+            select {COMMON_COLUMNS}, {similarity_sql} as similarity
             from ai_blog_factory factory_item
             {where_sql}
-            order by {sort_column} {sort_direction} nulls last, factory_item.id desc
+            order by {list_order_sql}
             offset :offset rows fetch next :limit rows only
         """
         cursor = connection.cursor()
@@ -293,10 +311,12 @@ async def list_blog_factory_items(
         total = int(count_row[0]) if count_row else 0
 
         list_params = {**params, "offset": offset, "limit": limit}
+        if semantic_query:
+            list_params["semantic_query"] = semantic_query
         await cursor.execute(list_sql, list_params)
         rows = await cursor.fetchall()
 
-    return [_row_to_dict(row) for row in rows], total
+    return [_row_to_dict(row, has_similarity=True) for row in rows], total
 
 
 async def get_blog_factory_item(item_id: int, auth_context: AuthContext | None = None) -> dict[str, Any] | None:
@@ -434,15 +454,25 @@ async def update_blog_factory_item(
     params = {**values, "item_id": item_id}
     clauses = ["id = :item_id"]
     append_user_visibility_clause(clauses, params, auth_context, "user_id")
-    sql = f"""
-        update ai_blog_factory
-        set {", ".join(assignments)}
-        where {" and ".join(clauses)}
-    """
-
     async with acquire_connection() as connection:
         await _ensure_blog_factory_table(connection)
         cursor = connection.cursor()
+        if "task_content" in values:
+            await cursor.execute(
+                f"select task_content from ai_blog_factory where {' and '.join(clauses)} for update",
+                params,
+            )
+            current = await cursor.fetchone()
+            if current is None:
+                await connection.rollback()
+                return None
+            if current[0] != values["task_content"]:
+                assignments.extend(["v = null", "v_needs_update = 1"])
+        sql = f"""
+            update ai_blog_factory
+            set {", ".join(assignments)}
+            where {" and ".join(clauses)}
+        """
         await cursor.execute(sql, params)
         if cursor.rowcount == 0:
             await connection.rollback()
@@ -545,7 +575,9 @@ async def send_blog_factory_item_to_processing(
             question_snapshot = :question_snapshot,
             source_snapshot = :source_snapshot,
             topic_tag_snapshot = :topic_tag_snapshot,
-            factory_status = '跳过'
+            factory_status = '跳过',
+            v = null,
+            v_needs_update = 1
         where id = :item_id
     """
 

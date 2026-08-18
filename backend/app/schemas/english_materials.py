@@ -79,6 +79,7 @@ class EnglishMaterialItem(BaseModel):
     full_script: str | None = None
     flag: int
     title: str | None = None
+    similarity: float | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

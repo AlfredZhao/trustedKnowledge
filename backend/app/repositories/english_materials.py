@@ -21,7 +21,8 @@ LIST_COLUMNS = """
     material.chinese_translation,
     material.full_script,
     material.is_flagged,
-    material.title
+    material.title,
+    cast(null as binary_double) as similarity
 """
 
 SORT_COLUMNS = {
@@ -56,11 +57,13 @@ def _row_to_dict(row: Any) -> dict[str, Any]:
         "full_script": row[6],
         "flag": row[7],
         "title": row[8],
+        "similarity": row[9],
     }
 
 
 def _build_filters(
     q: str | None,
+    semantic_query: str | None,
     category: str | None,
     flag: int | None,
     auth_context: AuthContext,
@@ -78,6 +81,10 @@ def _build_filters(
             "or lower(material.full_script) like '%' || lower(:q) || '%')"
         )
         params["q"] = q
+
+    if semantic_query:
+        clauses.append("material.v is not null")
+        clauses.append("nvl(material.v_needs_update, 0) = 0")
 
     if category:
         clauses.append("lower(material.category) = lower(:category)")
@@ -97,6 +104,7 @@ async def list_english_materials(
     offset: int,
     include_total: bool = True,
     q: str | None = None,
+    semantic_query: str | None = None,
     username: str | None = None,
     category: str | None = None,
     flag: int | None = None,
@@ -108,7 +116,7 @@ async def list_english_materials(
     sort_direction = "asc" if sort_dir == "asc" else "desc"
 
     async with acquire_connection() as connection:
-        clauses, params = _build_filters(q, category, flag, auth_context)
+        clauses, params = _build_filters(q, semantic_query, category, flag, auth_context)
         await append_requested_username_clause(
             connection,
             clauses,
@@ -120,11 +128,22 @@ async def list_english_materials(
         where_sql = f" where {' and '.join(clauses)}" if clauses else ""
 
         count_sql = f"select count(*) from t_english material{where_sql}"
+        similarity_sql = (
+            "1 - vector_distance(material.v, vector_embedding(BGE_BASE using :semantic_query as data), cosine)"
+            if semantic_query
+            else "cast(null as binary_double)"
+        )
+        list_order_sql = (
+            "similarity desc nulls last, material.english_id desc"
+            if semantic_query
+            else f"{sort_column} {sort_direction} nulls last, material.english_id desc"
+        )
         list_sql = f"""
-            select {LIST_COLUMNS}
+            select {LIST_COLUMNS.rsplit(',', 1)[0]},
+                   {similarity_sql} as similarity
             from t_english material
             {where_sql}
-            order by {sort_column} {sort_direction} nulls last, material.english_id desc
+            order by {list_order_sql}
             offset :offset rows fetch next :limit rows only
         """
         cursor = connection.cursor()
@@ -134,7 +153,10 @@ async def list_english_materials(
             count_row = await cursor.fetchone()
             total = int(count_row[0]) if count_row else 0
 
-        await cursor.execute(list_sql, {**params, "offset": offset, "limit": limit})
+        list_params = {**params, "offset": offset, "limit": limit}
+        if semantic_query:
+            list_params["semantic_query"] = semantic_query
+        await cursor.execute(list_sql, list_params)
         rows = await cursor.fetchall()
 
     items = [_row_to_dict(row) for row in rows]
@@ -171,7 +193,8 @@ async def create_english_material(payload: EnglishMaterialCreate, auth_context: 
             full_script,
             is_flagged,
             title,
-            user_id
+            user_id,
+            v_needs_update
         ) values (
             :sequence_no,
             :category,
@@ -181,7 +204,8 @@ async def create_english_material(payload: EnglishMaterialCreate, auth_context: 
             :full_script,
             :flag,
             :title,
-            :user_id
+            :user_id,
+            case when :full_script is null then 0 else 1 end
         )
         returning english_id into :new_id
     """
@@ -227,14 +251,27 @@ async def update_english_material(
     params = {**values, "material_id": material_id}
     clauses = ["english_id = :material_id"]
     append_user_visibility_clause(clauses, params, auth_context, "user_id")
-    sql = f"""
-        update t_english
-        set {", ".join(assignments)}
-        where {" and ".join(clauses)}
-    """
-
     async with acquire_connection() as connection:
         cursor = connection.cursor()
+        if "full_script" in values:
+            await cursor.execute(
+                f"select full_script from t_english where {' and '.join(clauses)} for update",
+                params,
+            )
+            current = await cursor.fetchone()
+            if current is None:
+                await connection.rollback()
+                return None
+            if current[0] != values["full_script"]:
+                if values["full_script"] is None:
+                    assignments.extend(["v = null", "v_needs_update = 0"])
+                else:
+                    assignments.extend(["v = null", "v_needs_update = 1"])
+        sql = f"""
+            update t_english
+            set {", ".join(assignments)}
+            where {" and ".join(clauses)}
+        """
         await cursor.execute(sql, params)
         if cursor.rowcount == 0:
             await connection.rollback()

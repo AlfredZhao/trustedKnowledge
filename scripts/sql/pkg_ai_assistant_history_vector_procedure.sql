@@ -21,6 +21,12 @@ CREATE OR REPLACE PACKAGE pkg_ai_assistant AS
   -- ================================================================
   PROCEDURE refresh_history_vectors;
 
+  -- 为英语素材 FULL_SCRIPT 刷新向量。
+  PROCEDURE refresh_english_vectors;
+
+  -- 为博客工厂 TASK_CONTENT 刷新向量。
+  PROCEDURE refresh_blog_factory_vectors;
+
 END pkg_ai_assistant;
 /
 
@@ -108,6 +114,44 @@ CREATE OR REPLACE PACKAGE BODY pkg_ai_assistant AS
     COMMIT;
   END refresh_history_vectors;
 
+  -- ================================================================
+  -- T_ENGLISH 向量刷新（FULL_SCRIPT）
+  -- ================================================================
+  PROCEDURE refresh_english_vectors IS
+  BEGIN
+    FOR r IN (
+      SELECT rowid AS rid, full_script
+      FROM   t_english
+      WHERE  full_script IS NOT NULL
+      AND    (v IS NULL OR v_needs_update = 1)
+    ) LOOP
+      UPDATE t_english
+      SET    v = vector_embedding(BGE_BASE USING r.full_script AS DATA),
+             v_needs_update = 0
+      WHERE  rowid = r.rid;
+    END LOOP;
+    COMMIT;
+  END refresh_english_vectors;
+
+  -- ================================================================
+  -- AI_BLOG_FACTORY 向量刷新（TASK_CONTENT）
+  -- ================================================================
+  PROCEDURE refresh_blog_factory_vectors IS
+  BEGIN
+    FOR r IN (
+      SELECT rowid AS rid, task_content
+      FROM   ai_blog_factory
+      WHERE  task_content IS NOT NULL
+      AND    (v IS NULL OR v_needs_update = 1)
+    ) LOOP
+      UPDATE ai_blog_factory
+      SET    v = vector_embedding(BGE_BASE USING r.task_content AS DATA),
+             v_needs_update = 0
+      WHERE  rowid = r.rid;
+    END LOOP;
+    COMMIT;
+  END refresh_blog_factory_vectors;
+
 END pkg_ai_assistant;
 /
 
@@ -115,5 +159,7 @@ END pkg_ai_assistant;
 --
 -- BEGIN
 --   pkg_ai_assistant.refresh_history_vectors;
+--   pkg_ai_assistant.refresh_english_vectors;
+--   pkg_ai_assistant.refresh_blog_factory_vectors;
 -- END;
 -- /

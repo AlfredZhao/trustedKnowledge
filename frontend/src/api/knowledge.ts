@@ -319,6 +319,7 @@ export async function createBlogFactoryItem({
 
 export async function fetchBlogFactoryItems({
   query,
+  semanticQuery,
   username,
   limit,
   offset,
@@ -329,6 +330,7 @@ export async function fetchBlogFactoryItems({
   sortDir,
 }: {
   query?: string;
+  semanticQuery?: string;
   username?: string;
   limit: number;
   offset: number;
@@ -339,12 +341,13 @@ export async function fetchBlogFactoryItems({
   sortDir?: "asc" | "desc";
 }): Promise<BlogFactoryListResponse> {
   return request<BlogFactoryListResponse>(
-    buildBlogFactoryListPath({ query, username, limit, offset, factoryStatus, topic, knowledgeId, sortBy, sortDir }),
+    buildBlogFactoryListPath({ query, semanticQuery, username, limit, offset, factoryStatus, topic, knowledgeId, sortBy, sortDir }),
   );
 }
 
 export function readCachedBlogFactoryItems({
   query,
+  semanticQuery,
   username,
   limit,
   offset,
@@ -355,6 +358,7 @@ export function readCachedBlogFactoryItems({
   sortDir,
 }: {
   query?: string;
+  semanticQuery?: string;
   username?: string;
   limit: number;
   offset: number;
@@ -365,12 +369,13 @@ export function readCachedBlogFactoryItems({
   sortDir?: "asc" | "desc";
 }): BlogFactoryListResponse | null {
   return readCachedGet<BlogFactoryListResponse>(
-    buildBlogFactoryListPath({ query, username, limit, offset, factoryStatus, topic, knowledgeId, sortBy, sortDir }),
+    buildBlogFactoryListPath({ query, semanticQuery, username, limit, offset, factoryStatus, topic, knowledgeId, sortBy, sortDir }),
   );
 }
 
 function buildBlogFactoryListPath({
   query,
+  semanticQuery,
   username,
   limit,
   offset,
@@ -381,6 +386,7 @@ function buildBlogFactoryListPath({
   sortDir,
 }: {
   query?: string;
+  semanticQuery?: string;
   username?: string;
   limit: number;
   offset: number;
@@ -396,6 +402,7 @@ function buildBlogFactoryListPath({
     sort_by: sortBy ?? "copied_at",
     sort_dir: sortDir ?? "desc",
     q: query,
+    semantic_query: semanticQuery,
     username,
     factory_status: factoryStatus,
     topic,

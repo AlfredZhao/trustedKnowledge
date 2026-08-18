@@ -640,6 +640,8 @@ function App() {
   const [blogFactoryPage, setBlogFactoryPage] = useState(restoredUiState.blogFactory.page);
   const [blogFactoryQuery, setBlogFactoryQuery] = useState(restoredUiState.blogFactory.query);
   const debouncedBlogFactoryQuery = useDebouncedValue(blogFactoryQuery.trim(), 320, () => setBlogFactoryPage(1));
+  const [blogFactorySemanticQuery, setBlogFactorySemanticQuery] = useState("");
+  const debouncedBlogFactorySemanticQuery = useDebouncedValue(blogFactorySemanticQuery.trim(), 320, () => setBlogFactoryPage(1));
   const [blogFactoryUsername, setBlogFactoryUsername] = useState(restoredUiState.blogFactory.username);
   const [blogFactoryStatus, setBlogFactoryStatus] = useState<BlogFactoryStatus | "all">(restoredUiState.blogFactory.status);
   const [blogFactoryTopic, setBlogFactoryTopic] = useState(restoredUiState.blogFactory.topic);
@@ -826,6 +828,8 @@ function App() {
   const [englishMaterialPage, setEnglishMaterialPage] = useState(restoredUiState.englishMaterials.page);
   const [englishMaterialQuery, setEnglishMaterialQuery] = useState(restoredUiState.englishMaterials.query);
   const debouncedEnglishMaterialQuery = useDebouncedValue(englishMaterialQuery.trim(), 320, () => setEnglishMaterialPage(1));
+  const [englishMaterialSemanticQuery, setEnglishMaterialSemanticQuery] = useState("");
+  const debouncedEnglishMaterialSemanticQuery = useDebouncedValue(englishMaterialSemanticQuery.trim(), 320, () => setEnglishMaterialPage(1));
   const [englishMaterialUsername, setEnglishMaterialUsername] = useState(restoredUiState.englishMaterials.username);
   const [englishMaterialCategory, setEnglishMaterialCategory] = useState(restoredUiState.englishMaterials.category);
   const [englishMaterialFlag, setEnglishMaterialFlag] = useState(restoredUiState.englishMaterials.flag);
@@ -1913,6 +1917,7 @@ function App() {
     let mounted = true;
     const requestQuery = {
       query: debouncedBlogFactoryQuery,
+      semanticQuery: debouncedBlogFactorySemanticQuery,
       username: blogFactoryUsername,
       limit: BLOG_FACTORY_PAGE_SIZE,
       offset: (blogFactoryPage - 1) * BLOG_FACTORY_PAGE_SIZE,
@@ -1970,6 +1975,7 @@ function App() {
     blogFactoryTopic,
     blogFactoryUsername,
     debouncedBlogFactoryQuery,
+    debouncedBlogFactorySemanticQuery,
   ]);
 
   useEffect(() => {
@@ -2329,6 +2335,7 @@ function App() {
     let mounted = true;
     const requestQuery = {
       query: debouncedEnglishMaterialQuery,
+      semanticQuery: debouncedEnglishMaterialSemanticQuery,
       username: englishMaterialUsername,
       category: englishMaterialCategory,
       flag: englishMaterialFlag,
@@ -2380,6 +2387,7 @@ function App() {
     englishMaterialSortBy,
     englishMaterialSortDir,
     englishMaterialUsername,
+    debouncedEnglishMaterialSemanticQuery,
   ]);
 
   useEffect(() => {
@@ -5304,6 +5312,7 @@ function App() {
               hasCopiedTask={hasCopiedBlogFactoryTask}
               filters={{
                 username: blogFactoryUsername,
+                semanticQuery: blogFactorySemanticQuery,
                 factoryStatus: blogFactoryStatus,
                 topic: blogFactoryTopic,
                 knowledgeId: blogFactoryKnowledgeId,
@@ -5313,6 +5322,7 @@ function App() {
               onClearFilters={() => {
                 setBlogFactoryPage(1);
                 setBlogFactoryQuery("");
+                setBlogFactorySemanticQuery("");
                 setBlogFactoryUsername(getClearedScopedUsernameFilter(authUser));
                 setBlogFactoryStatus("all");
                 setBlogFactoryTopic("");
@@ -5323,6 +5333,7 @@ function App() {
               onFilterChange={(nextFilters) => {
                 setBlogFactoryPage(1);
                 if (nextFilters.username !== undefined) setBlogFactoryUsername(nextFilters.username);
+                if (nextFilters.semanticQuery !== undefined) setBlogFactorySemanticQuery(nextFilters.semanticQuery);
                 if (nextFilters.factoryStatus !== undefined) setBlogFactoryStatus(nextFilters.factoryStatus);
                 if (nextFilters.topic !== undefined) setBlogFactoryTopic(nextFilters.topic);
                 if (nextFilters.knowledgeId !== undefined) setBlogFactoryKnowledgeId(nextFilters.knowledgeId);
@@ -5492,6 +5503,7 @@ function App() {
               saveError={englishMaterialSaveError}
               filters={{
                 username: englishMaterialUsername,
+                semanticQuery: englishMaterialSemanticQuery,
                 category: englishMaterialCategory,
                 flag: englishMaterialFlag,
                 sortBy: englishMaterialSortBy,
@@ -5500,6 +5512,7 @@ function App() {
               onClearFilters={() => {
                 setEnglishMaterialPage(1);
                 setEnglishMaterialQuery("");
+                setEnglishMaterialSemanticQuery("");
                 setEnglishMaterialUsername(getClearedScopedUsernameFilter(authUser));
                 setEnglishMaterialCategory("");
                 setEnglishMaterialFlag("");
@@ -5510,6 +5523,7 @@ function App() {
               onFilterChange={(nextFilters) => {
                 setEnglishMaterialPage(1);
                 if (nextFilters.username !== undefined) setEnglishMaterialUsername(nextFilters.username);
+                if (nextFilters.semanticQuery !== undefined) setEnglishMaterialSemanticQuery(nextFilters.semanticQuery);
                 if (nextFilters.category !== undefined) setEnglishMaterialCategory(nextFilters.category);
                 if (nextFilters.flag !== undefined) setEnglishMaterialFlag(nextFilters.flag);
                 if (nextFilters.sortBy !== undefined) setEnglishMaterialSortBy(nextFilters.sortBy);
@@ -9220,6 +9234,7 @@ type HistoryFilters = {
 
 type BlogFactoryFilters = {
   username: string;
+  semanticQuery: string;
   factoryStatus: BlogFactoryStatus | "all";
   topic: string;
   knowledgeId: string;
@@ -9241,6 +9256,7 @@ type CurrentRecordFilters = {
 
 type EnglishMaterialFilters = {
   username: string;
+  semanticQuery: string;
   category: string;
   flag: "" | "0" | "1";
   sortBy: "id" | "sequence_no" | "category" | "base_expression" | "title" | "flag";
@@ -9391,6 +9407,7 @@ function BlogFactoryRecords({
   const isRecordSaving = isItemSaving || isAssistSaving;
   const activeFilterCount = [
     filters.username,
+    filters.semanticQuery,
     filters.factoryStatus === "all" ? "" : filters.factoryStatus,
     filters.topic.trim(),
     filters.knowledgeId,
@@ -10437,6 +10454,14 @@ function BlogFactoryRecords({
           </div>
           {isFiltersExpanded ? (
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <Field label="近似检索" icon={<Search size={16} />}>
+              <input
+                className="control"
+                value={filters.semanticQuery}
+                onChange={(event) => onFilterChange({ semanticQuery: event.target.value })}
+                placeholder="按任务内容语义检索"
+              />
+            </Field>
             <Field label="用户" icon={<ShieldCheck size={16} />}>
               <select
                 className="control"
@@ -10573,6 +10598,9 @@ function BlogFactoryRecords({
                 </div>
                 <p className="line-clamp-2 text-sm leading-6 text-slate-400">{item.task_content || "无任务内容"}</p>
                 <div className="mt-3 flex flex-wrap gap-2">
+                  {item.similarity !== null ? (
+                    <span className="rounded-md border border-mint-300/20 bg-mint-300/8 px-2 py-1 text-xs text-mint-200">相似度 {(item.similarity * 100).toFixed(1)}%</span>
+                  ) : null}
                   {item.has_article ? (
                     <span className="rounded-md border border-mint-300/20 bg-mint-300/8 px-2 py-1 text-xs text-mint-200">
                       {item.article_title || "已生成 Markdown"}
@@ -12156,7 +12184,7 @@ function EnglishMaterialsWorkspace({
   const allUsersLabel = isAdminUser ? "全部用户" : "全部可见用户";
   const [isFiltersExpanded, setIsFiltersExpanded] = useState(false);
   const [isEnglishMaterialListCollapsed, setIsEnglishMaterialListCollapsed] = useState(false);
-  const activeFilterCount = [filters.username, filters.category, filters.flag].filter(Boolean).length;
+  const activeFilterCount = [filters.username, filters.semanticQuery, filters.category, filters.flag].filter(Boolean).length;
 
   return (
     <div className={`grid flex-1 gap-4 px-4 pb-4 pt-2 xl:gap-x-2 ${isEnglishMaterialListCollapsed ? "xl:grid-cols-[28px_minmax(0,1fr)]" : "xl:grid-cols-[minmax(520px,1fr)_380px]"}`}>
@@ -12188,7 +12216,16 @@ function EnglishMaterialsWorkspace({
             </button>
           </div>
           {isFiltersExpanded ? (
-          <div className="mt-3 grid gap-3 md:grid-cols-[1fr_0.85fr_0.85fr_1fr_auto]">
+          <div className="mt-3 space-y-3">
+          <div className="grid gap-3 md:grid-cols-[minmax(260px,1fr)_minmax(130px,0.42fr)_minmax(130px,0.42fr)]">
+          <Field label="近似检索" icon={<Search size={16} />}>
+            <input
+              className="control"
+              value={filters.semanticQuery}
+              onChange={(event) => onFilterChange({ semanticQuery: event.target.value })}
+              placeholder="按完整脚本语义检索"
+            />
+          </Field>
           <Field label="用户" icon={<ShieldCheck size={16} />}>
             <select
               className="control"
@@ -12218,6 +12255,8 @@ function EnglishMaterialsWorkspace({
               ))}
             </select>
           </Field>
+          </div>
+          <div className="grid gap-3 md:grid-cols-[minmax(150px,0.85fr)_minmax(360px,1fr)_auto] md:items-end">
           <Field label="发布状态" icon={<CircleGauge size={16} />}>
             <select
               className="control"
@@ -12253,7 +12292,8 @@ function EnglishMaterialsWorkspace({
               </select>
             </div>
           </Field>
-          <FilterClearButton className="md:mt-7" label="清空筛选条件" onClick={onClearFilters} />
+          <FilterClearButton label="清空筛选条件" onClick={onClearFilters} />
+          </div>
           </div>
           ) : null}
         </div>
@@ -12313,6 +12353,9 @@ function EnglishMaterialsWorkspace({
                       <h3 className="line-clamp-1 text-sm font-semibold text-slate-50">
                         {item.title || item.base_expression || "未命名素材"}
                       </h3>
+                      {item.similarity !== null ? (
+                        <span className="mt-2 inline-block rounded-md border border-mint-300/20 bg-mint-300/8 px-2 py-1 text-xs text-mint-200">相似度 {(item.similarity * 100).toFixed(1)}%</span>
+                      ) : null}
                     </div>
                     <button
                       className="flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg border border-mint-300/25 bg-mint-300/10 px-3 text-xs font-medium text-mint-200 transition hover:bg-mint-300/16"

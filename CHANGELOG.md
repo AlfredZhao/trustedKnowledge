@@ -13,6 +13,12 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Added / 新增
 
+- Added semantic similarity retrieval for English Materials (`T_ENGLISH.full_script`) and Blog Factory (`AI_BLOG_FACTORY.task_content`). Both preserve existing visibility and relational filters, return only current vectors, and display cosine similarity scores.
+- 为英语素材（`T_ENGLISH.full_script`）和博客工厂（`AI_BLOG_FACTORY.task_content`）新增语义近似检索；保留既有可见范围与结构化筛选，仅返回当前有效向量，并展示余弦相似度。
+
+- Added repeatable vector-column rollout SQL and `PKG_AI_ASSISTANT` refresh entry points for English Materials and Blog Factory.
+- 新增可重复执行的向量列改造 SQL，以及 `PKG_AI_ASSISTANT` 中英语素材和博客工厂的向量刷新入口。
+
 - Added manual semantic similarity search to History Explorer. It embeds the submitted query with `BGE_BASE`, applies the existing visibility and history filters, returns only ready vectors, and shows cosine-similarity scores in relevance order.
 - 为历史查询新增手动触发的语义近似搜索：使用 `BGE_BASE` 嵌入查询文本，叠加既有可见范围与历史筛选，仅返回向量就绪记录，并按余弦相似度展示结果。
 

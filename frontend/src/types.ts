@@ -93,6 +93,7 @@ export interface BlogFactoryItem {
   remote_published_at: string | null;
   remote_last_synced_at: string | null;
   has_article: boolean;
+  similarity: number | null;
 }
 
 export type BlogPublishType = "METAWEBLOG_API";
@@ -295,6 +296,7 @@ export interface EnglishMaterialItem {
   full_script: string | null;
   flag: number;
   title: string | null;
+  similarity: number | null;
 }
 
 export interface EnglishMaterialDraft {

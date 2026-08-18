@@ -10,6 +10,7 @@ export interface EnglishMaterialListResponse {
 
 export interface EnglishMaterialQuery {
   query?: string;
+  semanticQuery?: string;
   username?: string;
   category?: string;
   flag?: string;
@@ -51,6 +52,7 @@ function buildEnglishMaterialsPath(query: EnglishMaterialQuery): string {
     sort_by: query.sortBy ?? "id",
     sort_dir: query.sortDir ?? "desc",
     q: query.query,
+    semantic_query: query.semanticQuery,
     username: query.username,
     category: query.category,
     flag: query.flag,
