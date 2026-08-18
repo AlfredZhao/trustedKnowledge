@@ -9,9 +9,12 @@ The format follows the common GitHub changelog convention inspired by
 
 ## 本次版本更新
 
-### [Unreleased]
+### [0.3.10] - 2026-08-18
 
 #### Added / 新增
+
+- Added a repeatable Oracle Scheduler deployment script for an every-eight-hours refresh of pending History, English Materials, and Blog Factory vectors, including job-state and run-failure diagnostics.
+- 新增可重复执行的 Oracle Scheduler 部署脚本：每 8 小时刷新历史查询、英语素材和博客工厂中待更新的向量，并提供任务状态与失败诊断查询。
 
 - Added vector-status filters and administrator-only manual vector refresh controls to every similarity-search list: History, English Materials, and Blog Factory. The controls invoke their corresponding `PKG_AI_ASSISTANT` refresh procedures and reload the current list on completion.
 - 为历史查询、英语素材和博客工厂三个近似检索列表新增向量状态筛选与仅管理员可见的手动向量刷新控件；控件会调用各自的 `PKG_AI_ASSISTANT` 刷新过程，并在完成后重新加载当前列表。
