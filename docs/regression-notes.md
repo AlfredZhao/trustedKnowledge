@@ -15,6 +15,28 @@ When fixing a bug with meaningful regression risk, add a short entry with:
 
 Keep entries concrete. Prefer file paths, function names, SQL placeholders, and test names over broad advice.
 
+## 近似检索绑定参数不得泄漏到统计 SQL
+
+### Symptom
+
+历史查询执行近似搜索时失败，并显示：`DPY-4008: no bind placeholder named ":semantic_query" was found in the SQL text`。
+
+### Trigger
+
+在 History Explorer 提交 `semantic_query`；`list_history()` 会先执行总数和日期摘要 SQL，再执行包含 `vector_embedding(... :semantic_query ...)` 的结果 SQL。
+
+### Root Cause
+
+`backend/app/repositories/history.py:list_history()` 将 `semantic_query` 放进了所有筛选 SQL 共用的参数字典，但计数与摘要 SQL 只需要相同的过滤条件，并不包含该占位符。python-oracledb 会拒绝多余绑定。
+
+### Safe Pattern
+
+让通用筛选参数只包含实际出现在 `where_sql` 中的占位符；仅在构造并执行含 `vector_embedding(BGE_BASE using :semantic_query as data)` 的 `list_sql` 时，向 `list_params` 追加 `semantic_query`。
+
+### Guardrail
+
+运行 `python -m pytest backend/tests/test_history.py`。测试必须验证近似搜索的计数和摘要 SQL 不接收 `semantic_query`，而结果 SQL 会接收它。
+
 ## Markdown 词内下划线不得误渲染为斜体
 
 ### Symptom

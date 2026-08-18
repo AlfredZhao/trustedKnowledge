@@ -861,6 +861,7 @@ function App() {
   const [historyPage, setHistoryPage] = useState(restoredUiState.history.page);
   const [historyQuery, setHistoryQuery] = useState(restoredUiState.history.query);
   const debouncedHistoryQuery = useDebouncedValue(historyQuery.trim(), 320, () => setHistoryPage(1));
+  const [historySemanticQuery, setHistorySemanticQuery] = useState(restoredUiState.history.semanticQuery);
   const [historyType, setHistoryType] = useState(restoredUiState.history.type);
   const [historyUsername, setHistoryUsername] = useState(restoredUiState.history.username);
   const [historyWeek, setHistoryWeek] = useState(restoredUiState.history.week);
@@ -1358,6 +1359,7 @@ function App() {
       },
       history: {
         query: historyQuery,
+        semanticQuery: historySemanticQuery,
         page: historyPage,
         type: historyType,
         username: historyUsername,
@@ -1439,6 +1441,7 @@ function App() {
     historyLearnLevel,
     historyPage,
     historyQuery,
+    historySemanticQuery,
     historySortBy,
     historySortDir,
     historyType,
@@ -2411,6 +2414,7 @@ function App() {
     let mounted = true;
     const requestQuery = {
       query: debouncedHistoryQuery,
+      semanticQuery: historySemanticQuery,
       type: historyType,
       username: historyUsername,
       week: historyWeek,
@@ -2466,6 +2470,7 @@ function App() {
     historyDay,
     historyLearnLevel,
     historyPage,
+    historySemanticQuery,
     historySortBy,
     historySortDir,
     historyType,
@@ -5530,6 +5535,7 @@ function App() {
                 authUser={authUser}
                 isLoading={isHistoryLoading}
                 loadError={historyError}
+                semanticQuery={historySemanticQuery}
                 filters={{
                   type: historyType,
                   username: historyUsername,
@@ -5555,9 +5561,15 @@ function App() {
                   if (nextFilters.sortBy !== undefined) setHistorySortBy(nextFilters.sortBy);
                   if (nextFilters.sortDir !== undefined) setHistorySortDir(nextFilters.sortDir);
                 }}
+                onSemanticSearch={(semanticQuery) => {
+                  setHistoryPage(1);
+                  setHistorySemanticQuery(semanticQuery);
+                  if (semanticQuery) setHistoryVectorStatus("0");
+                }}
                 onClearFilters={() => {
                   setHistoryPage(1);
                   setHistoryQuery("");
+                  setHistorySemanticQuery("");
                   setHistoryType("");
                   setHistoryUsername(getClearedScopedUsernameFilter(authUser, historySummary.users));
                   setHistoryWeek("");

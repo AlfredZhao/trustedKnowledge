@@ -13,6 +13,7 @@ class HistoryItem(BaseModel):
     username: str | None = None
     v_needs_update: int | None = None
     learn_level: int | None = None
+    similarity: float | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

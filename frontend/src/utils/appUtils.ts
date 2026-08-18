@@ -354,6 +354,7 @@ export interface StoredUiState {
   };
   history: {
     query: string;
+    semanticQuery: string;
     page: number;
     type: string;
     username: string;
@@ -1379,6 +1380,7 @@ export function readStoredUiState(): StoredUiState {
       },
       history: {
         query: readString(history.query),
+        semanticQuery: readString(history.semanticQuery),
         page: readPositiveInteger(history.page, defaults.history.page),
         type: readString(history.type),
         username: readString(history.username),
@@ -1503,6 +1505,7 @@ function buildDefaultUiState(): StoredUiState {
     },
     history: {
       query: "",
+      semanticQuery: "",
       page: 1,
       type: "",
       username: "",

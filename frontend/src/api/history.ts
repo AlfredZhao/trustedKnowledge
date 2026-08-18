@@ -3,6 +3,7 @@ import { buildQuery, readCachedGet, request } from "./client";
 
 export interface HistoryQuery {
   query?: string;
+  semanticQuery?: string;
   type?: string;
   username?: string;
   week?: string;
@@ -40,6 +41,7 @@ function buildHistoryPath(query: HistoryQuery): string {
     sort_by: query.sortBy ?? "history_date",
     sort_dir: query.sortDir ?? "desc",
     q: query.query,
+    semantic_query: query.semanticQuery,
     type: query.type,
     username: query.username,
     week: query.week,

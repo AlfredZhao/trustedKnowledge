@@ -37,11 +37,13 @@ def _row_to_dict(row: Any) -> dict[str, Any]:
         "username": row[6],
         "v_needs_update": row[7],
         "learn_level": row[8],
+        "similarity": row[9],
     }
 
 
 def _build_filters(
     q: str | None,
+    semantic_query: str | None,
     history_type: str | None,
     week: str | None,
     day: str | None,
@@ -57,6 +59,11 @@ def _build_filters(
     if q:
         clauses.append("lower(history_record.content) like '%' || lower(:q) || '%'")
         params["q"] = q
+
+    if semantic_query:
+        # Approximate retrieval must only use vectors built from current content.
+        clauses.append("history_record.v is not null")
+        clauses.append("nvl(history_record.v_needs_update, 0) = 0")
 
     if history_type:
         clauses.append("lower(history_record.type) = lower(:history_type)")
@@ -99,6 +106,7 @@ async def list_history(
     limit: int,
     offset: int,
     q: str | None = None,
+    semantic_query: str | None = None,
     history_type: str | None = None,
     username: str | None = None,
     week: str | None = None,
@@ -113,6 +121,7 @@ async def list_history(
 ) -> tuple[list[dict[str, Any]], int, dict[str, Any]]:
     where_sql, params = _build_filters(
         q,
+        semantic_query,
         history_type,
         week,
         day,
@@ -148,11 +157,25 @@ async def list_history(
             {from_sql}
             {where_sql}
         """
+        similarity_sql = (
+            "1 - vector_distance("
+            "history_record.v, "
+            "vector_embedding(BGE_BASE using :semantic_query as data), "
+            "cosine)"
+            if semantic_query
+            else "cast(null as binary_double)"
+        )
+        list_order_sql = (
+            "similarity desc nulls last, history_record.id desc"
+            if semantic_query
+            else f"{sort_column} {sort_direction} nulls last, history_record.id desc"
+        )
         list_sql = f"""
-            select {LIST_COLUMNS}
+            select {LIST_COLUMNS},
+                   {similarity_sql} as similarity
             {from_sql}
             {where_sql}
-            order by {sort_column} {sort_direction} nulls last, history_record.id desc
+            order by {list_order_sql}
             offset :offset rows fetch next :limit rows only
         """
         visibility_clauses: list[str] = []
@@ -199,6 +222,10 @@ async def list_history(
         user_type_rows = await cursor.fetchall()
 
         list_params = {**params, "offset": offset, "limit": limit}
+        if semantic_query:
+            # This bind belongs exclusively to the vector expression in list_sql.
+            # count_sql and summary_sql share the filters but do not embed a query.
+            list_params["semantic_query"] = semantic_query
         await cursor.execute(list_sql, list_params)
         rows = await cursor.fetchall()
 

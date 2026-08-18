@@ -13,6 +13,17 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Added / 新增
 
+- Added manual semantic similarity search to History Explorer. It embeds the submitted query with `BGE_BASE`, applies the existing visibility and history filters, returns only ready vectors, and shows cosine-similarity scores in relevance order.
+- 为历史查询新增手动触发的语义近似搜索：使用 `BGE_BASE` 嵌入查询文本，叠加既有可见范围与历史筛选，仅返回向量就绪记录，并按余弦相似度展示结果。
+
+- Added a merge-ready `PKG_AI_ASSISTANT.refresh_history_vectors` procedure script that centralizes `T_HISTORY` vector refreshes for rows without vectors or marked for re-embedding.
+- 新增可合并至 `PKG_AI_ASSISTANT.refresh_history_vectors` 的过程脚本，集中更新 `T_HISTORY` 中未向量化或已标记为待重算的记录。
+
+#### Fixed / 修复
+
+- Fixed History Explorer semantic searches so their query embedding bind is sent only to the vector-result SQL, avoiding Oracle `DPY-4008` failures in the count and summary queries.
+- 修复历史查询近似搜索的查询向量绑定仅传入向量结果 SQL，避免总数和摘要查询触发 Oracle `DPY-4008`。
+
 - Added an Overview control for choosing whether recent English shows 1, 3, 5, or 8 records; the default is now 3 records.
 - 总览“最近 English”新增显示数量控制，可选 1、3、5 或 8 条，默认显示最近 3 条。
 

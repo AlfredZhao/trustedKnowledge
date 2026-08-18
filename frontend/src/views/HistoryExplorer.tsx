@@ -12,6 +12,7 @@ import {
   Filter,
   History,
   Layers3,
+  Search,
   ShieldCheck,
   TriangleAlert,
   X,
@@ -44,8 +45,10 @@ export default function HistoryExplorer({
   authUser,
   isLoading,
   loadError,
+  semanticQuery,
   filters,
   onFilterChange,
+  onSemanticSearch,
   onClearFilters,
   onPageChange,
 }: {
@@ -56,8 +59,10 @@ export default function HistoryExplorer({
   authUser: AuthUser | null;
   isLoading: boolean;
   loadError: string | null;
+  semanticQuery: string;
   filters: HistoryFilters;
   onFilterChange: (filters: Partial<HistoryFilters>) => void;
+  onSemanticSearch: (query: string) => void;
   onClearFilters: () => void;
   onPageChange: (page: number) => void;
 }) {
@@ -70,6 +75,9 @@ export default function HistoryExplorer({
   const hasSingleVisibleUser = !isAdminUser && summary.users.length <= 1;
   const allUsersLabel = isAdminUser ? "全部用户" : "全部可见用户";
   const [isFiltersExpanded, setIsFiltersExpanded] = useState(false);
+  const [semanticQueryDraft, setSemanticQueryDraft] = useState(semanticQuery);
+  const isSimilaritySearch = Boolean(semanticQuery);
+  useEffect(() => setSemanticQueryDraft(semanticQuery), [semanticQuery]);
   const activeFilterCount = [
     filters.type,
     filters.username,
@@ -79,6 +87,7 @@ export default function HistoryExplorer({
     filters.vectorStatus === "all" ? "" : filters.vectorStatus,
     filters.dateFrom,
     filters.dateTo,
+    semanticQuery,
   ].filter(Boolean).length;
 
   return (
@@ -106,6 +115,30 @@ export default function HistoryExplorer({
 
           {isFiltersExpanded ? (
             <div className="mt-3 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <Field label="近似搜索" icon={<Search size={16} />}>
+              <form
+                className="flex gap-2"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  onSemanticSearch(semanticQueryDraft.trim());
+                }}
+              >
+                <input
+                  className="control min-w-0 flex-1"
+                  value={semanticQueryDraft}
+                  onChange={(event) => setSemanticQueryDraft(event.target.value)}
+                  placeholder="输入语义描述，例如：Oracle 向量检索"
+                />
+                <button
+                  className="shrink-0 rounded-md border border-mint-300/30 bg-mint-300/10 px-3 text-xs font-medium text-mint-200 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={!semanticQueryDraft.trim() && !isSimilaritySearch}
+                  type="submit"
+                >
+                  搜索
+                </button>
+              </form>
+            </Field>
+
             <Field label="用户" icon={<ShieldCheck size={16} />}>
               <select
                 className="control"
@@ -169,7 +202,7 @@ export default function HistoryExplorer({
                 />
               </Field>
               <Field label="向量状态" icon={<Database size={16} />}>
-                <select className="control" value={filters.vectorStatus} onChange={(event) => onFilterChange({ vectorStatus: event.target.value as HistoryFilters["vectorStatus"] })}>
+                <select className="control" disabled={isSimilaritySearch} value={isSimilaritySearch ? "0" : filters.vectorStatus} onChange={(event) => onFilterChange({ vectorStatus: event.target.value as HistoryFilters["vectorStatus"] })}>
                   <option value="all">全部</option>
                   <option value="1">待更新</option>
                   <option value="0">已就绪</option>
@@ -179,7 +212,7 @@ export default function HistoryExplorer({
 
             <div className="grid grid-cols-[1fr_120px] gap-3">
               <Field label="排序字段" icon={<ChartLine size={16} />}>
-                <select className="control" value={filters.sortBy} onChange={(event) => onFilterChange({ sortBy: event.target.value as HistoryFilters["sortBy"] })}>
+                <select className="control" disabled={isSimilaritySearch} value={filters.sortBy} onChange={(event) => onFilterChange({ sortBy: event.target.value as HistoryFilters["sortBy"] })}>
                   <option value="history_date">历史日期</option>
                   <option value="id">ID</option>
                   <option value="type">类型</option>
@@ -188,7 +221,7 @@ export default function HistoryExplorer({
                 </select>
               </Field>
               <Field label="方向" icon={<ChartLine size={16} />}>
-                <select className="control" value={filters.sortDir} onChange={(event) => onFilterChange({ sortDir: event.target.value as HistoryFilters["sortDir"] })}>
+                <select className="control" disabled={isSimilaritySearch} value={filters.sortDir} onChange={(event) => onFilterChange({ sortDir: event.target.value as HistoryFilters["sortDir"] })}>
                   <option value="desc">降序</option>
                   <option value="asc">升序</option>
                 </select>
@@ -263,6 +296,9 @@ export default function HistoryExplorer({
                         <span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-slate-400">
                           {item.week || "week -"} / {item.day || "day -"}
                         </span>
+                        {item.similarity !== null ? (
+                          <span className="rounded-md border border-mint-300/20 bg-mint-300/8 px-2 py-1 text-mint-200">相似度 {(item.similarity * 100).toFixed(1)}%</span>
+                        ) : null}
                       </div>
                       <p className="line-clamp-3 text-sm leading-6 text-slate-300">{item.content || "无内容"}</p>
                     </div>
@@ -370,6 +406,9 @@ function HistoryDetailDialog({ item, onClose }: { item: HistoryItem | null; onCl
           <div className="mt-4 flex flex-wrap gap-2 text-xs">
             <span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-slate-400">#{item.id}</span>
             <span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-slate-400">{formatHistoryDate(item.history_date)}</span>
+            {item.similarity !== null ? (
+              <span className="rounded-md border border-mint-300/20 bg-mint-300/8 px-2 py-1 text-mint-200">相似度 {(item.similarity * 100).toFixed(1)}%</span>
+            ) : null}
             <span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-slate-400">Level {item.learn_level ?? "-"}</span>
             <span
               className={`rounded-md border px-2 py-1 ${

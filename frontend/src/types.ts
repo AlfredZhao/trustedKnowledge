@@ -327,6 +327,7 @@ export interface HistoryItem {
   username: string | null;
   v_needs_update: number | null;
   learn_level: number | null;
+  similarity: number | null;
 }
 
 export interface HistorySummary {
