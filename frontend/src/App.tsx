@@ -106,6 +106,7 @@ import {
   updateTodo,
   validateBlogPublishConfig,
   publishBlogFactoryArticle,
+  refreshBlogFactoryVectors,
 } from "./api/knowledge";
 import {
   createPersonalSecret,
@@ -116,7 +117,7 @@ import {
   revealPersonalSecret,
   updatePersonalSecret,
 } from "./api/personalSecrets";
-import { fetchHistory, readCachedHistory } from "./api/history";
+import { fetchHistory, readCachedHistory, refreshHistoryVectors } from "./api/history";
 import {
   askHistory,
   createHistoryAskQuickQuestion,
@@ -147,6 +148,7 @@ import {
   fetchNextEnglishMaterialSequence,
   getEnglishMaterial,
   readCachedEnglishMaterials,
+  refreshEnglishMaterialVectors,
   updateEnglishMaterial,
 } from "./api/englishMaterials";
 import {
@@ -174,7 +176,7 @@ import {
   updateUserRelation,
 } from "./api/users";
 import { clearApiResponseCache } from "./api/localCache";
-import { Field, FilterClearButton, LoadingStack, MetricTile } from "./components/AppShellPrimitives";
+import { Field, FilterClearButton, LoadingStack, MetricTile, SemanticSearchField, VectorRefreshButton, VectorStatusBadge } from "./components/AppShellPrimitives";
 import { MarkdownPreview } from "./components/MarkdownPreview";
 import {
   copyMarkdownAsEnhancedRichText,
@@ -646,6 +648,7 @@ function App() {
   const [blogFactoryStatus, setBlogFactoryStatus] = useState<BlogFactoryStatus | "all">(restoredUiState.blogFactory.status);
   const [blogFactoryTopic, setBlogFactoryTopic] = useState(restoredUiState.blogFactory.topic);
   const [blogFactoryKnowledgeId, setBlogFactoryKnowledgeId] = useState(restoredUiState.blogFactory.knowledgeId);
+  const [blogFactoryVectorStatus, setBlogFactoryVectorStatus] = useState<"all" | "0" | "1">("all");
   const [blogFactorySortBy, setBlogFactorySortBy] = useState<BlogFactorySortBy>(restoredUiState.blogFactory.sortBy);
   const [blogFactorySortDir, setBlogFactorySortDir] = useState<SortDirection>(restoredUiState.blogFactory.sortDir);
   const [selectedBlogFactoryItem, setSelectedBlogFactoryItem] = useState<BlogFactoryItem | null>(null);
@@ -700,6 +703,7 @@ function App() {
   const [blogFactorySendBackNotice, setBlogFactorySendBackNotice] = useState<string | null>(null);
   const [blogFactoryDeleteTarget, setBlogFactoryDeleteTarget] = useState<BlogFactoryItem | null>(null);
   const [blogFactoryRefreshToken, setBlogFactoryRefreshToken] = useState(0);
+  const [isBlogFactoryVectorRefreshing, setIsBlogFactoryVectorRefreshing] = useState(false);
   const [blogPublishConfigs, setBlogPublishConfigs] = useState<BlogPublishConfig[]>([]);
   const [isBlogPublishConfigsLoading, setIsBlogPublishConfigsLoading] = useState(false);
   const [blogPublishConfigsError, setBlogPublishConfigsError] = useState<string | null>(null);
@@ -833,6 +837,7 @@ function App() {
   const [englishMaterialUsername, setEnglishMaterialUsername] = useState(restoredUiState.englishMaterials.username);
   const [englishMaterialCategory, setEnglishMaterialCategory] = useState(restoredUiState.englishMaterials.category);
   const [englishMaterialFlag, setEnglishMaterialFlag] = useState(restoredUiState.englishMaterials.flag);
+  const [englishMaterialVectorStatus, setEnglishMaterialVectorStatus] = useState<"all" | "0" | "1">("all");
   const [englishMaterialSortBy, setEnglishMaterialSortBy] = useState<EnglishMaterialSortBy>(restoredUiState.englishMaterials.sortBy);
   const [englishMaterialSortDir, setEnglishMaterialSortDir] = useState<SortDirection>(restoredUiState.englishMaterials.sortDir);
   const [selectedEnglishMaterial, setSelectedEnglishMaterial] = useState<EnglishMaterialItem | null>(null);
@@ -848,6 +853,7 @@ function App() {
   const [englishMaterialError, setEnglishMaterialError] = useState<string | null>(null);
   const [englishMaterialSaveError, setEnglishMaterialSaveError] = useState<string | null>(null);
   const [englishMaterialRefreshToken, setEnglishMaterialRefreshToken] = useState(0);
+  const [isEnglishMaterialVectorRefreshing, setIsEnglishMaterialVectorRefreshing] = useState(false);
   const englishMaterialSequenceTouchedRef = useRef(
     Boolean(restoredUiState.englishMaterials.draft.sequence_no) &&
       !isBlankEnglishMaterialDraftExceptSequence(restoredUiState.englishMaterials.draft),
@@ -878,6 +884,8 @@ function App() {
   const [historySortDir, setHistorySortDir] = useState<SortDirection>(restoredUiState.history.sortDir);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const [isHistoryVectorRefreshing, setIsHistoryVectorRefreshing] = useState(false);
+  const [historyRefreshToken, setHistoryRefreshToken] = useState(0);
   const [historyAskQuestion, setHistoryAskQuestion] = useState(restoredUiState.historyAsk.question);
   const [historyAskModelName, setHistoryAskModelName] = useState(AI_CODING_DEFAULT_MODEL);
   const [historyAskAnswer, setHistoryAskAnswer] = useState<HistoryAskResponse | null>(restoredUiState.historyAsk.answer);
@@ -1444,6 +1452,7 @@ function App() {
     historyDay,
     historyLearnLevel,
     historyPage,
+    historyRefreshToken,
     historyQuery,
     historySemanticQuery,
     historySortBy,
@@ -1924,6 +1933,7 @@ function App() {
       factoryStatus: blogFactoryStatus === "all" ? undefined : blogFactoryStatus,
       topic: blogFactoryTopic,
       knowledgeId: blogFactoryKnowledgeId,
+      vectorStatus: blogFactoryVectorStatus,
       sortBy: blogFactorySortBy,
       sortDir: blogFactorySortDir,
     };
@@ -1967,6 +1977,7 @@ function App() {
     activeView,
     apiKey,
     blogFactoryKnowledgeId,
+    blogFactoryVectorStatus,
     blogFactoryPage,
     blogFactoryRefreshToken,
     blogFactorySortBy,
@@ -2339,6 +2350,7 @@ function App() {
       username: englishMaterialUsername,
       category: englishMaterialCategory,
       flag: englishMaterialFlag,
+      vectorStatus: englishMaterialVectorStatus,
       sortBy: englishMaterialSortBy,
       sortDir: englishMaterialSortDir,
       limit: ENGLISH_MATERIALS_PAGE_SIZE,
@@ -2382,6 +2394,7 @@ function App() {
     debouncedEnglishMaterialQuery,
     englishMaterialCategory,
     englishMaterialFlag,
+    englishMaterialVectorStatus,
     englishMaterialPage,
     englishMaterialRefreshToken,
     englishMaterialSortBy,
@@ -2478,6 +2491,7 @@ function App() {
     historyDay,
     historyLearnLevel,
     historyPage,
+    historyRefreshToken,
     historySemanticQuery,
     historySortBy,
     historySortDir,
@@ -5302,6 +5316,7 @@ function App() {
               publishError={blogPublishError}
               publishSuccess={blogPublishSuccess}
               isPublishing={isBlogPublishing}
+              isVectorRefreshing={isBlogFactoryVectorRefreshing}
               editDraft={blogFactoryEditDraft}
               coverPromptTemplate={blogFactoryCoverPromptTemplate}
               coverPromptConfig={blogFactoryCoverPromptConfig}
@@ -5316,6 +5331,7 @@ function App() {
                 factoryStatus: blogFactoryStatus,
                 topic: blogFactoryTopic,
                 knowledgeId: blogFactoryKnowledgeId,
+                vectorStatus: blogFactoryVectorStatus,
                 sortBy: blogFactorySortBy,
                 sortDir: blogFactorySortDir,
               }}
@@ -5327,6 +5343,7 @@ function App() {
                 setBlogFactoryStatus("all");
                 setBlogFactoryTopic("");
                 setBlogFactoryKnowledgeId("");
+                setBlogFactoryVectorStatus("all");
                 setBlogFactorySortBy("copied_at");
                 setBlogFactorySortDir("desc");
               }}
@@ -5337,8 +5354,16 @@ function App() {
                 if (nextFilters.factoryStatus !== undefined) setBlogFactoryStatus(nextFilters.factoryStatus);
                 if (nextFilters.topic !== undefined) setBlogFactoryTopic(nextFilters.topic);
                 if (nextFilters.knowledgeId !== undefined) setBlogFactoryKnowledgeId(nextFilters.knowledgeId);
+                if (nextFilters.vectorStatus !== undefined) setBlogFactoryVectorStatus(nextFilters.vectorStatus);
                 if (nextFilters.sortBy !== undefined) setBlogFactorySortBy(nextFilters.sortBy);
                 if (nextFilters.sortDir !== undefined) setBlogFactorySortDir(nextFilters.sortDir);
+              }}
+              onRefreshVectors={() => {
+                setIsBlogFactoryVectorRefreshing(true);
+                refreshBlogFactoryVectors()
+                  .then(() => setBlogFactoryRefreshToken((token) => token + 1))
+                  .catch((error: Error) => setBlogFactoryError(error.message))
+                  .finally(() => setIsBlogFactoryVectorRefreshing(false));
               }}
               onPageChange={setBlogFactoryPage}
               onEditDraftChange={setBlogFactoryEditDraft}
@@ -5501,11 +5526,13 @@ function App() {
               copiedLabel={englishMaterialCopiedLabel}
               loadError={englishMaterialError}
               saveError={englishMaterialSaveError}
+              isVectorRefreshing={isEnglishMaterialVectorRefreshing}
               filters={{
                 username: englishMaterialUsername,
                 semanticQuery: englishMaterialSemanticQuery,
                 category: englishMaterialCategory,
                 flag: englishMaterialFlag,
+                vectorStatus: englishMaterialVectorStatus,
                 sortBy: englishMaterialSortBy,
                 sortDir: englishMaterialSortDir,
               }}
@@ -5516,6 +5543,7 @@ function App() {
                 setEnglishMaterialUsername(getClearedScopedUsernameFilter(authUser));
                 setEnglishMaterialCategory("");
                 setEnglishMaterialFlag("");
+                setEnglishMaterialVectorStatus("all");
                 setEnglishMaterialSortBy("id");
                 setEnglishMaterialSortDir("desc");
               }}
@@ -5526,8 +5554,16 @@ function App() {
                 if (nextFilters.semanticQuery !== undefined) setEnglishMaterialSemanticQuery(nextFilters.semanticQuery);
                 if (nextFilters.category !== undefined) setEnglishMaterialCategory(nextFilters.category);
                 if (nextFilters.flag !== undefined) setEnglishMaterialFlag(nextFilters.flag);
+                if (nextFilters.vectorStatus !== undefined) setEnglishMaterialVectorStatus(nextFilters.vectorStatus);
                 if (nextFilters.sortBy !== undefined) setEnglishMaterialSortBy(nextFilters.sortBy);
                 if (nextFilters.sortDir !== undefined) setEnglishMaterialSortDir(nextFilters.sortDir);
+              }}
+              onRefreshVectors={() => {
+                setIsEnglishMaterialVectorRefreshing(true);
+                refreshEnglishMaterialVectors()
+                  .then(() => setEnglishMaterialRefreshToken((token) => token + 1))
+                  .catch((error: Error) => setEnglishMaterialError(error.message))
+                  .finally(() => setIsEnglishMaterialVectorRefreshing(false));
               }}
               onCloseDetail={() => {
                 if (!isEnglishMaterialDetailLoading) setIsEnglishMaterialDetailOpen(false);
@@ -5549,6 +5585,7 @@ function App() {
                 authUser={authUser}
                 isLoading={isHistoryLoading}
                 loadError={historyError}
+                isVectorRefreshing={isHistoryVectorRefreshing}
                 semanticQuery={historySemanticQuery}
                 filters={{
                   type: historyType,
@@ -5579,6 +5616,13 @@ function App() {
                   setHistoryPage(1);
                   setHistorySemanticQuery(semanticQuery);
                   if (semanticQuery) setHistoryVectorStatus("0");
+                }}
+                onRefreshVectors={() => {
+                  setIsHistoryVectorRefreshing(true);
+                  refreshHistoryVectors()
+                    .then(() => setHistoryRefreshToken((token) => token + 1))
+                    .catch((error: Error) => setHistoryError(error.message))
+                    .finally(() => setIsHistoryVectorRefreshing(false));
                 }}
                 onClearFilters={() => {
                   setHistoryPage(1);
@@ -9238,6 +9282,7 @@ type BlogFactoryFilters = {
   factoryStatus: BlogFactoryStatus | "all";
   topic: string;
   knowledgeId: string;
+  vectorStatus: "all" | "0" | "1";
   sortBy: "copied_at" | "id" | "knowledge_id" | "factory_status";
   sortDir: "asc" | "desc";
 };
@@ -9259,6 +9304,7 @@ type EnglishMaterialFilters = {
   semanticQuery: string;
   category: string;
   flag: "" | "0" | "1";
+  vectorStatus: "all" | "0" | "1";
   sortBy: "id" | "sequence_no" | "category" | "base_expression" | "title" | "flag";
   sortDir: "asc" | "desc";
 };
@@ -9298,8 +9344,10 @@ function BlogFactoryRecords({
   maskError,
   maskNotice,
   hasCopiedTask,
+  isVectorRefreshing,
   filters,
   onFilterChange,
+  onRefreshVectors,
   onClearFilters,
   onPageChange,
   onEditDraftChange,
@@ -9353,8 +9401,10 @@ function BlogFactoryRecords({
   maskError: string | null;
   maskNotice: string | null;
   hasCopiedTask: boolean;
+  isVectorRefreshing: boolean;
   filters: BlogFactoryFilters;
   onFilterChange: (filters: Partial<BlogFactoryFilters>) => void;
+  onRefreshVectors: () => void;
   onClearFilters: () => void;
   onPageChange: (page: number) => void;
   onEditDraftChange: (draft: BlogFactoryEditDraft) => void;
@@ -9379,6 +9429,7 @@ function BlogFactoryRecords({
   const rangeEnd = Math.min(page * BLOG_FACTORY_PAGE_SIZE, total);
   const [taskCopyView, setTaskCopyView] = useState<BlogFactoryTaskCopyMode>("enhanced");
   const [isFiltersExpanded, setIsFiltersExpanded] = useState(false);
+  const [semanticQueryDraft, setSemanticQueryDraft] = useState(filters.semanticQuery);
   const [isTaskListCollapsed, setIsTaskListCollapsed] = useState(false);
   const [isTaskContentEditing, setIsTaskContentEditing] = useState(false);
   const [isMaskToolsExpanded, setIsMaskToolsExpanded] = useState(false);
@@ -9400,6 +9451,7 @@ function BlogFactoryRecords({
   } | null>(null);
   const [isCoverImageUploading, setIsCoverImageUploading] = useState(false);
   const [coverImageError, setCoverImageError] = useState<string | null>(null);
+  useEffect(() => setSemanticQueryDraft(filters.semanticQuery), [filters.semanticQuery]);
   const summarySaveStatus = assistSaveFeedback.summary;
   const coverSaveStatus = assistSaveFeedback.cover;
   const isSummarySavePending = summarySaveStatus === "saving";
@@ -9411,6 +9463,7 @@ function BlogFactoryRecords({
     filters.factoryStatus === "all" ? "" : filters.factoryStatus,
     filters.topic.trim(),
     filters.knowledgeId,
+    filters.vectorStatus === "all" ? "" : filters.vectorStatus,
   ].filter(Boolean).length;
   const publishMarkdown = selectedItem ? resolveBlogFactoryPublishMarkdown(selectedItem, selectedItem.article_markdown, editDraft.taskContent) : "";
   const publishTitle = selectedItem ? extractMarkdownHeading(publishMarkdown) || selectedItem.article_title || "" : "";
@@ -10442,26 +10495,28 @@ function BlogFactoryRecords({
                 </span>
               ) : null}
             </div>
-            <button
-              className="flex h-8 items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.035] px-2.5 text-xs text-slate-300 transition hover:border-mint-300/30 hover:text-mint-200"
-              type="button"
-              aria-expanded={isFiltersExpanded}
-              onClick={() => setIsFiltersExpanded((expanded) => !expanded)}
-            >
-              {isFiltersExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
-              {isFiltersExpanded ? "收起" : "展开"}
-            </button>
+            <div className="flex items-center gap-2">
+              {authUser?.is_admin ? <VectorRefreshButton isRefreshing={isVectorRefreshing} onRefresh={onRefreshVectors} /> : null}
+              <button
+                className="flex h-8 items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.035] px-2.5 text-xs text-slate-300 transition hover:border-mint-300/30 hover:text-mint-200"
+                type="button"
+                aria-expanded={isFiltersExpanded}
+                onClick={() => setIsFiltersExpanded((expanded) => !expanded)}
+              >
+                {isFiltersExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+                {isFiltersExpanded ? "收起" : "展开"}
+              </button>
+            </div>
           </div>
           {isFiltersExpanded ? (
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <Field label="近似检索" icon={<Search size={16} />}>
-              <input
-                className="control"
-                value={filters.semanticQuery}
-                onChange={(event) => onFilterChange({ semanticQuery: event.target.value })}
-                placeholder="按任务内容语义检索"
-              />
-            </Field>
+            <SemanticSearchField
+              isActive={Boolean(filters.semanticQuery)}
+              value={semanticQueryDraft}
+              placeholder="按任务内容语义检索"
+              onChange={setSemanticQueryDraft}
+              onSearch={() => onFilterChange({ semanticQuery: semanticQueryDraft.trim() })}
+            />
             <Field label="用户" icon={<ShieldCheck size={16} />}>
               <select
                 className="control"
@@ -10506,6 +10561,13 @@ function BlogFactoryRecords({
                 onChange={(event) => onFilterChange({ knowledgeId: event.target.value.replace(/\D/g, "") })}
                 placeholder="全部"
               />
+            </Field>
+            <Field label="向量状态" icon={<Database size={16} />}>
+              <select className="control" value={filters.vectorStatus} onChange={(event) => onFilterChange({ vectorStatus: event.target.value as BlogFactoryFilters["vectorStatus"] })}>
+                <option value="all">全部</option>
+                <option value="1">待更新</option>
+                <option value="0">已就绪</option>
+              </select>
             </Field>
             <div className="grid min-w-0 grid-cols-2 items-end gap-2 sm:col-span-2 sm:grid-cols-[minmax(100px,3fr)_minmax(108px,1fr)_auto]">
               <div className="col-span-2 min-w-0 sm:col-span-1">
@@ -10601,6 +10663,7 @@ function BlogFactoryRecords({
                   {item.similarity !== null ? (
                     <span className="rounded-md border border-mint-300/20 bg-mint-300/8 px-2 py-1 text-xs text-mint-200">相似度 {(item.similarity * 100).toFixed(1)}%</span>
                   ) : null}
+                  <VectorStatusBadge value={item.v_needs_update} />
                   {item.has_article ? (
                     <span className="rounded-md border border-mint-300/20 bg-mint-300/8 px-2 py-1 text-xs text-mint-200">
                       {item.article_title || "已生成 Markdown"}
@@ -12132,9 +12195,11 @@ function EnglishMaterialsWorkspace({
   copiedLabel,
   loadError,
   saveError,
+  isVectorRefreshing,
   filters,
   onDraftChange,
   onFilterChange,
+  onRefreshVectors,
   onClearFilters,
   onCloseDetail,
   onCopyText,
@@ -12159,9 +12224,11 @@ function EnglishMaterialsWorkspace({
   copiedLabel: string | null;
   loadError: string | null;
   saveError: string | null;
+  isVectorRefreshing: boolean;
   filters: EnglishMaterialFilters;
   onDraftChange: (draft: EnglishMaterialDraft) => void;
   onFilterChange: (filters: Partial<EnglishMaterialFilters>) => void;
+  onRefreshVectors: () => void;
   onClearFilters: () => void;
   onCloseDetail: () => void;
   onCopyText: (value: string, label: string) => void;
@@ -12184,7 +12251,9 @@ function EnglishMaterialsWorkspace({
   const allUsersLabel = isAdminUser ? "全部用户" : "全部可见用户";
   const [isFiltersExpanded, setIsFiltersExpanded] = useState(false);
   const [isEnglishMaterialListCollapsed, setIsEnglishMaterialListCollapsed] = useState(false);
-  const activeFilterCount = [filters.username, filters.semanticQuery, filters.category, filters.flag].filter(Boolean).length;
+  const [semanticQueryDraft, setSemanticQueryDraft] = useState(filters.semanticQuery);
+  useEffect(() => setSemanticQueryDraft(filters.semanticQuery), [filters.semanticQuery]);
+  const activeFilterCount = [filters.username, filters.semanticQuery, filters.category, filters.flag, filters.vectorStatus === "all" ? "" : filters.vectorStatus].filter(Boolean).length;
 
   return (
     <div className={`grid flex-1 gap-4 px-4 pb-4 pt-2 xl:gap-x-2 ${isEnglishMaterialListCollapsed ? "xl:grid-cols-[28px_minmax(0,1fr)]" : "xl:grid-cols-[minmax(520px,1fr)_380px]"}`}>
@@ -12210,22 +12279,24 @@ function EnglishMaterialsWorkspace({
               查询条件
               {activeFilterCount > 0 ? <span className="rounded-md border border-mint-300/20 bg-mint-300/10 px-1.5 py-0.5 text-[11px] font-medium text-mint-200">已筛选 {activeFilterCount} 项</span> : null}
             </div>
-            <button className="flex h-8 items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.035] px-2.5 text-xs text-slate-300 transition hover:border-mint-300/30 hover:text-mint-200" type="button" aria-expanded={isFiltersExpanded} onClick={() => setIsFiltersExpanded((expanded) => !expanded)}>
-              {isFiltersExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
-              {isFiltersExpanded ? "收起" : "展开"}
-            </button>
+            <div className="flex items-center gap-2">
+              {authUser?.is_admin ? <VectorRefreshButton isRefreshing={isVectorRefreshing} onRefresh={onRefreshVectors} /> : null}
+              <button className="flex h-8 items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.035] px-2.5 text-xs text-slate-300 transition hover:border-mint-300/30 hover:text-mint-200" type="button" aria-expanded={isFiltersExpanded} onClick={() => setIsFiltersExpanded((expanded) => !expanded)}>
+                {isFiltersExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+                {isFiltersExpanded ? "收起" : "展开"}
+              </button>
+            </div>
           </div>
           {isFiltersExpanded ? (
           <div className="mt-3 space-y-3">
           <div className="grid gap-3 md:grid-cols-[minmax(260px,1fr)_minmax(130px,0.42fr)_minmax(130px,0.42fr)]">
-          <Field label="近似检索" icon={<Search size={16} />}>
-            <input
-              className="control"
-              value={filters.semanticQuery}
-              onChange={(event) => onFilterChange({ semanticQuery: event.target.value })}
-              placeholder="按完整脚本语义检索"
-            />
-          </Field>
+          <SemanticSearchField
+            isActive={Boolean(filters.semanticQuery)}
+            value={semanticQueryDraft}
+            placeholder="按完整脚本语义检索"
+            onChange={setSemanticQueryDraft}
+            onSearch={() => onFilterChange({ semanticQuery: semanticQueryDraft.trim() })}
+          />
           <Field label="用户" icon={<ShieldCheck size={16} />}>
             <select
               className="control"
@@ -12266,6 +12337,13 @@ function EnglishMaterialsWorkspace({
               <option value="">全部状态</option>
               <option value="0">{englishMaterialFlagLabels["0"]}</option>
               <option value="1">{englishMaterialFlagLabels["1"]}</option>
+            </select>
+          </Field>
+          <Field label="向量状态" icon={<Database size={16} />}>
+            <select className="control" value={filters.vectorStatus} onChange={(event) => onFilterChange({ vectorStatus: event.target.value as EnglishMaterialFilters["vectorStatus"] })}>
+              <option value="all">全部</option>
+              <option value="1">待更新</option>
+              <option value="0">已就绪</option>
             </select>
           </Field>
           <Field label="排序" icon={<ChartLine size={16} />}>
@@ -12356,6 +12434,7 @@ function EnglishMaterialsWorkspace({
                       {item.similarity !== null ? (
                         <span className="mt-2 inline-block rounded-md border border-mint-300/20 bg-mint-300/8 px-2 py-1 text-xs text-mint-200">相似度 {(item.similarity * 100).toFixed(1)}%</span>
                       ) : null}
+                      <span className="mt-2 inline-block"><VectorStatusBadge value={item.v_needs_update} /></span>
                     </div>
                     <button
                       className="flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg border border-mint-300/25 bg-mint-300/10 px-3 text-xs font-medium text-mint-200 transition hover:bg-mint-300/16"

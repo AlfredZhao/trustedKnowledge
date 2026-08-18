@@ -13,6 +13,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Added / 新增
 
+- Added vector-status filters and administrator-only manual vector refresh controls to every similarity-search list: History, English Materials, and Blog Factory. The controls invoke their corresponding `PKG_AI_ASSISTANT` refresh procedures and reload the current list on completion.
+- 为历史查询、英语素材和博客工厂三个近似检索列表新增向量状态筛选与仅管理员可见的手动向量刷新控件；控件会调用各自的 `PKG_AI_ASSISTANT` 刷新过程，并在完成后重新加载当前列表。
+
 - Added semantic similarity retrieval for English Materials (`T_ENGLISH.full_script`) and Blog Factory (`AI_BLOG_FACTORY.task_content`). Both preserve existing visibility and relational filters, return only current vectors, and display cosine similarity scores.
 - 为英语素材（`T_ENGLISH.full_script`）和博客工厂（`AI_BLOG_FACTORY.task_content`）新增语义近似检索；保留既有可见范围与结构化筛选，仅返回当前有效向量，并展示余弦相似度。
 
@@ -37,6 +40,9 @@ The format follows the common GitHub changelog convention inspired by
 - 总览“最近 English”新增显示数量控制，可选 1、3、5 或 8 条，默认显示最近 3 条。
 
 #### Changed / 变更
+
+- Unified the History, English Materials, and Blog Factory similarity-search controls: each now uses an explicit search button, the same filter-header vector refresh action, and a consistent vector-status badge on every result card.
+- 统一历史查询、英语素材和博客工厂的近似检索控件：三处均改为显式“搜索”按钮、筛选区标题栏同款向量刷新操作，并在每张结果卡片显示一致的向量状态标签。
 
 - Retired the `T_DOUYIN_DETAILS` compatibility migration after validating its data in `T_ENGLISH`; backend startup and SQL helpers no longer reference the legacy table.
 - 已在验证 `T_ENGLISH` 数据完整后下线 `T_DOUYIN_DETAILS` 兼容迁移；后端启动流程与 SQL 辅助脚本不再引用旧表。

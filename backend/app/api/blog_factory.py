@@ -4,13 +4,14 @@ import oracledb
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.api.errors import oracle_http_exception
-from app.core.security import require_current_user
+from app.core.security import require_admin_user, require_current_user
 from app.repositories.blog_factory import (
     BlogFactoryItemNotPendingError,
     create_blog_factory_item,
     delete_blog_factory_item,
     get_blog_factory_item,
     list_blog_factory_items,
+    refresh_blog_factory_vectors,
     send_blog_factory_item_to_processing,
     update_blog_factory_article,
     update_blog_factory_content_status,
@@ -68,6 +69,7 @@ async def get_blog_factory_items(
     factory_status: Literal["待处理", "已处理", "已发布", "跳过"] | None = None,
     topic: Annotated[str | None, Query(min_length=1, max_length=100)] = None,
     knowledge_id: Annotated[int | None, Query(ge=1)] = None,
+    v_needs_update: Annotated[int | None, Query(ge=0, le=1)] = None,
     sort_by: Literal["copied_at", "id", "knowledge_id", "factory_status"] = "copied_at",
     sort_dir: Literal["asc", "desc"] = "desc",
     auth_context: AuthContext = Depends(require_current_user),
@@ -82,6 +84,7 @@ async def get_blog_factory_items(
             factory_status=factory_status,
             topic=topic,
             knowledge_id=knowledge_id,
+            v_needs_update=v_needs_update,
             sort_by=sort_by,
             sort_dir=sort_dir,
             auth_context=auth_context,
@@ -90,6 +93,14 @@ async def get_blog_factory_items(
         raise oracle_http_exception(exc, "Oracle rejected the blog factory query") from exc
 
     return BlogFactoryListResponse(items=items, total=total, limit=limit, offset=offset)
+
+
+@router.post("/refresh-vectors", status_code=status.HTTP_204_NO_CONTENT)
+async def post_refresh_blog_factory_vectors(_: AuthContext = Depends(require_admin_user)) -> None:
+    try:
+        await refresh_blog_factory_vectors()
+    except oracledb.Error as exc:
+        raise oracle_http_exception(exc, "Oracle rejected the Blog Factory vectors refresh") from exc
 
 
 @router.post("", response_model=BlogFactoryItem, status_code=status.HTTP_201_CREATED)

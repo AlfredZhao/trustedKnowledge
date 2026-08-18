@@ -326,6 +326,7 @@ export async function fetchBlogFactoryItems({
   factoryStatus,
   topic,
   knowledgeId,
+  vectorStatus,
   sortBy,
   sortDir,
 }: {
@@ -337,11 +338,12 @@ export async function fetchBlogFactoryItems({
   factoryStatus?: BlogFactoryStatus;
   topic?: string;
   knowledgeId?: string;
+  vectorStatus?: "all" | "0" | "1";
   sortBy?: "copied_at" | "id" | "knowledge_id" | "factory_status";
   sortDir?: "asc" | "desc";
 }): Promise<BlogFactoryListResponse> {
   return request<BlogFactoryListResponse>(
-    buildBlogFactoryListPath({ query, semanticQuery, username, limit, offset, factoryStatus, topic, knowledgeId, sortBy, sortDir }),
+    buildBlogFactoryListPath({ query, semanticQuery, username, limit, offset, factoryStatus, topic, knowledgeId, vectorStatus, sortBy, sortDir }),
   );
 }
 
@@ -354,6 +356,7 @@ export function readCachedBlogFactoryItems({
   factoryStatus,
   topic,
   knowledgeId,
+  vectorStatus,
   sortBy,
   sortDir,
 }: {
@@ -365,11 +368,12 @@ export function readCachedBlogFactoryItems({
   factoryStatus?: BlogFactoryStatus;
   topic?: string;
   knowledgeId?: string;
+  vectorStatus?: "all" | "0" | "1";
   sortBy?: "copied_at" | "id" | "knowledge_id" | "factory_status";
   sortDir?: "asc" | "desc";
 }): BlogFactoryListResponse | null {
   return readCachedGet<BlogFactoryListResponse>(
-    buildBlogFactoryListPath({ query, semanticQuery, username, limit, offset, factoryStatus, topic, knowledgeId, sortBy, sortDir }),
+    buildBlogFactoryListPath({ query, semanticQuery, username, limit, offset, factoryStatus, topic, knowledgeId, vectorStatus, sortBy, sortDir }),
   );
 }
 
@@ -382,6 +386,7 @@ function buildBlogFactoryListPath({
   factoryStatus,
   topic,
   knowledgeId,
+  vectorStatus,
   sortBy,
   sortDir,
 }: {
@@ -393,6 +398,7 @@ function buildBlogFactoryListPath({
   factoryStatus?: BlogFactoryStatus;
   topic?: string;
   knowledgeId?: string;
+  vectorStatus?: "all" | "0" | "1";
   sortBy?: "copied_at" | "id" | "knowledge_id" | "factory_status";
   sortDir?: "asc" | "desc";
 }): string {
@@ -407,11 +413,19 @@ function buildBlogFactoryListPath({
     factory_status: factoryStatus,
     topic,
     knowledge_id: knowledgeId,
+    v_needs_update: vectorStatus && vectorStatus !== "all" ? vectorStatus : undefined,
   })}`;
 }
 
 export async function getBlogFactoryItem(id: number): Promise<BlogFactoryItem> {
   return request<BlogFactoryItem>(`/api/blog-factory/${id}`);
+}
+
+export async function refreshBlogFactoryVectors(): Promise<void> {
+  return request<void>("/api/blog-factory/refresh-vectors", {
+    method: "POST",
+    invalidatePrefixes: ["/api/blog-factory"],
+  });
 }
 
 export async function updateBlogFactoryStatus(id: number, factoryStatus: BlogFactoryStatus): Promise<BlogFactoryItem> {

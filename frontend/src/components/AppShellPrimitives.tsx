@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { ChevronRight, X } from "lucide-react";
+import { ChevronRight, Database, RefreshCw, Search, X } from "lucide-react";
 
 export function MetricTile({
   icon,
@@ -103,5 +103,64 @@ export function FilterClearButton({
       <X size={15} />
       <span>{label}</span>
     </button>
+  );
+}
+
+export function SemanticSearchField({
+  value,
+  placeholder,
+  isActive = false,
+  onChange,
+  onSearch,
+}: {
+  value: string;
+  placeholder: string;
+  isActive?: boolean;
+  onChange: (value: string) => void;
+  onSearch: () => void;
+}) {
+  return (
+    <Field label="近似检索" icon={<Search size={16} />}>
+      <form
+        className="flex gap-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSearch();
+        }}
+      >
+        <input className="control min-w-0 flex-1" value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} />
+        <button
+          className="shrink-0 rounded-md border border-mint-300/30 bg-mint-300/10 px-3 text-xs font-medium text-mint-200 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:opacity-50"
+          disabled={!value.trim() && !isActive}
+          type="submit"
+        >
+          搜索
+        </button>
+      </form>
+    </Field>
+  );
+}
+
+export function VectorRefreshButton({ isRefreshing, onRefresh }: { isRefreshing: boolean; onRefresh: () => void }) {
+  return (
+    <button
+      className="flex h-8 items-center justify-center gap-1.5 rounded-md border border-mint-300/30 bg-mint-300/10 px-2.5 text-xs font-medium text-mint-200 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:opacity-50"
+      disabled={isRefreshing}
+      type="button"
+      onClick={onRefresh}
+    >
+      <RefreshCw className={isRefreshing ? "animate-spin" : ""} size={15} />
+      {isRefreshing ? "刷新中" : "刷新向量"}
+    </button>
+  );
+}
+
+export function VectorStatusBadge({ value }: { value: number | null | undefined }) {
+  const needsUpdate = value === 1;
+  return (
+    <span className={`rounded-md border px-2 py-1 text-xs ${needsUpdate ? "border-amberline/30 bg-amberline/10 text-amberline" : "border-mint-300/20 bg-mint-300/8 text-mint-200"}`}>
+      <Database className="mr-1 inline-block align-[-2px]" size={13} />
+      {needsUpdate ? "向量待更新" : "向量就绪"}
+    </span>
   );
 }

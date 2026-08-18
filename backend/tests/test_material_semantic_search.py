@@ -64,6 +64,18 @@ class MaterialSemanticSearchTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn(":semantic_query", list_sql)
         self.assertEqual(list_params["semantic_query"], "meeting update")
 
+    async def test_english_vector_status_is_bound_to_count_and_list_queries(self) -> None:
+        cursor = FakeCursor()
+        with patch("app.repositories.english_materials.acquire_connection", return_value=FakeAcquire(FakeConnection(cursor))):
+            await english_materials.list_english_materials(limit=20, offset=0, v_needs_update=1, auth_context=self.auth)
+
+        count_sql, count_params = cursor.executed[0]
+        list_sql, list_params = cursor.executed[1]
+        self.assertIn("nvl(material.v_needs_update, 0) = :v_needs_update", count_sql)
+        self.assertIn("nvl(material.v_needs_update, 0) = :v_needs_update", list_sql)
+        self.assertEqual(count_params["v_needs_update"], 1)
+        self.assertEqual(list_params["v_needs_update"], 1)
+
     async def test_blog_semantic_bind_is_used_only_by_list_sql(self) -> None:
         cursor = FakeCursor()
         with (
@@ -78,6 +90,21 @@ class MaterialSemanticSearchTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("semantic_query", count_params)
         self.assertIn(":semantic_query", list_sql)
         self.assertEqual(list_params["semantic_query"], "Oracle APEX")
+
+    async def test_blog_vector_status_is_bound_to_count_and_list_queries(self) -> None:
+        cursor = FakeCursor()
+        with (
+            patch("app.repositories.blog_factory.acquire_connection", return_value=FakeAcquire(FakeConnection(cursor))),
+            patch("app.repositories.blog_factory._ensure_blog_factory_table", new=AsyncMock()),
+        ):
+            await blog_factory.list_blog_factory_items(limit=20, offset=0, v_needs_update=0, auth_context=self.auth)
+
+        count_sql, count_params = cursor.executed[0]
+        list_sql, list_params = cursor.executed[1]
+        self.assertIn("nvl(factory_item.v_needs_update, 0) = :v_needs_update", count_sql)
+        self.assertIn("nvl(factory_item.v_needs_update, 0) = :v_needs_update", list_sql)
+        self.assertEqual(count_params["v_needs_update"], 0)
+        self.assertEqual(list_params["v_needs_update"], 0)
 
 
 if __name__ == "__main__":

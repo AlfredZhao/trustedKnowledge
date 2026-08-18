@@ -66,6 +66,20 @@ class HistoryRepositoryTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn(":semantic_query", list_sql)
         self.assertEqual(list_params["semantic_query"], "Oracle vector search")
 
+    async def test_vector_status_is_bound_to_history_queries(self) -> None:
+        cursor = FakeCursor()
+        auth = AuthContext(user_id=10, username="alice", is_admin=False, is_admin_role=False, visible_user_ids=(10,))
+
+        with patch("app.repositories.history.acquire_connection", return_value=FakeAcquire(FakeConnection(cursor))):
+            await history.list_history(limit=20, offset=0, v_needs_update=1, auth_context=auth)
+
+        count_sql, count_params = cursor.executed[0]
+        list_sql, list_params = cursor.executed[-1]
+        self.assertIn("history_record.v_needs_update = :v_needs_update", count_sql)
+        self.assertIn("history_record.v_needs_update = :v_needs_update", list_sql)
+        self.assertEqual(count_params["v_needs_update"], 1)
+        self.assertEqual(list_params["v_needs_update"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

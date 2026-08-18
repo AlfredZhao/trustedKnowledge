@@ -43,7 +43,8 @@ COMMON_COLUMNS = """
     factory_item.remote_last_synced_at,
     factory_item.assist_summary,
     factory_item.cover_image_markdown,
-    case when factory_item.article_markdown is null then 0 else 1 end
+    case when factory_item.article_markdown is null then 0 else 1 end,
+    factory_item.v_needs_update
 """
 
 DETAIL_COLUMNS = f"""
@@ -94,9 +95,10 @@ def _row_to_dict(row: Any, *, has_similarity: bool = False) -> dict[str, Any]:
         "assist_summary": row[22],
         "cover_image_markdown": row[23],
         "has_article": bool(row[24]),
-        "article_markdown": row[25] if len(row) > 25 and not has_similarity else None,
+        "v_needs_update": row[25],
+        "article_markdown": row[26] if len(row) > 26 and not has_similarity else None,
     }
-    item["similarity"] = row[25] if has_similarity else None
+    item["similarity"] = row[26] if has_similarity else None
     return item
 
 
@@ -222,6 +224,7 @@ def _build_filters(
     factory_status: str | None,
     topic: str | None,
     knowledge_id: int | None,
+    v_needs_update: int | None,
     auth_context: AuthContext,
 ) -> tuple[list[str], dict[str, Any]]:
     clauses: list[str] = []
@@ -253,6 +256,10 @@ def _build_filters(
         clauses.append("factory_item.knowledge_id = :knowledge_id")
         params["knowledge_id"] = knowledge_id
 
+    if v_needs_update is not None:
+        clauses.append("nvl(factory_item.v_needs_update, 0) = :v_needs_update")
+        params["v_needs_update"] = v_needs_update
+
     append_user_visibility_clause(clauses, params, auth_context, "factory_item.user_id")
     return clauses, params
 
@@ -267,6 +274,7 @@ async def list_blog_factory_items(
     factory_status: str | None = None,
     topic: str | None = None,
     knowledge_id: int | None = None,
+    v_needs_update: int | None = None,
     sort_by: str = "copied_at",
     sort_dir: str = "desc",
     auth_context: AuthContext,
@@ -276,7 +284,7 @@ async def list_blog_factory_items(
 
     async with acquire_connection() as connection:
         await _ensure_blog_factory_table(connection)
-        clauses, params = _build_filters(q, semantic_query, factory_status, topic, knowledge_id, auth_context)
+        clauses, params = _build_filters(q, semantic_query, factory_status, topic, knowledge_id, v_needs_update, auth_context)
         await append_requested_username_clause(
             connection,
             clauses,
@@ -317,6 +325,13 @@ async def list_blog_factory_items(
         rows = await cursor.fetchall()
 
     return [_row_to_dict(row, has_similarity=True) for row in rows], total
+
+
+async def refresh_blog_factory_vectors() -> None:
+    async with acquire_connection() as connection:
+        cursor = connection.cursor()
+        await cursor.execute("begin pkg_ai_assistant.refresh_blog_factory_vectors; end;")
+        await connection.commit()
 
 
 async def get_blog_factory_item(item_id: int, auth_context: AuthContext | None = None) -> dict[str, Any] | None:

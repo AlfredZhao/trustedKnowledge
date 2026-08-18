@@ -14,6 +14,7 @@ export interface EnglishMaterialQuery {
   username?: string;
   category?: string;
   flag?: string;
+  vectorStatus?: "all" | "0" | "1";
   sortBy?: "id" | "sequence_no" | "category" | "base_expression" | "title" | "flag";
   sortDir?: "asc" | "desc";
   limit: number;
@@ -56,12 +57,20 @@ function buildEnglishMaterialsPath(query: EnglishMaterialQuery): string {
     username: query.username,
     category: query.category,
     flag: query.flag,
+    v_needs_update: query.vectorStatus && query.vectorStatus !== "all" ? query.vectorStatus : undefined,
     include_total: query.includeTotal === false ? false : undefined,
   })}`;
 }
 
 export async function getEnglishMaterial(id: number): Promise<EnglishMaterialItem> {
   return request<EnglishMaterialItem>(`/api/english-materials/${id}`);
+}
+
+export async function refreshEnglishMaterialVectors(): Promise<void> {
+  return request<void>("/api/english-materials/refresh-vectors", {
+    method: "POST",
+    invalidatePrefixes: ["/api/english-materials"],
+  });
 }
 
 export async function createEnglishMaterial(draft: EnglishMaterialDraft): Promise<EnglishMaterialItem> {

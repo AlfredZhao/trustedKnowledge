@@ -5,8 +5,8 @@ import oracledb
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.api.errors import oracle_http_exception
-from app.core.security import require_current_user
-from app.repositories.history import list_history
+from app.core.security import require_admin_user, require_current_user
+from app.repositories.history import list_history, refresh_history_vectors
 from app.repositories.users import AuthContext
 from app.schemas.history import HistoryListResponse
 
@@ -54,3 +54,11 @@ async def get_history(
         raise oracle_http_exception(exc, "Oracle rejected the history query") from exc
 
     return HistoryListResponse(items=items, total=total, limit=limit, offset=offset, summary=summary)
+
+
+@router.post("/refresh-vectors", status_code=status.HTTP_204_NO_CONTENT)
+async def post_refresh_history_vectors(_: AuthContext = Depends(require_admin_user)) -> None:
+    try:
+        await refresh_history_vectors()
+    except oracledb.Error as exc:
+        raise oracle_http_exception(exc, "Oracle rejected the History vectors refresh") from exc

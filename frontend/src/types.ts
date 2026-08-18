@@ -93,6 +93,7 @@ export interface BlogFactoryItem {
   remote_published_at: string | null;
   remote_last_synced_at: string | null;
   has_article: boolean;
+  v_needs_update: number | null;
   similarity: number | null;
 }
 
@@ -296,6 +297,7 @@ export interface EnglishMaterialItem {
   full_script: string | null;
   flag: number;
   title: string | null;
+  v_needs_update: number | null;
   similarity: number | null;
 }
 

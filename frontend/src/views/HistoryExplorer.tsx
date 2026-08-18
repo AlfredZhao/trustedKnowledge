@@ -12,14 +12,13 @@ import {
   Filter,
   History,
   Layers3,
-  Search,
   ShieldCheck,
   TriangleAlert,
   X,
 } from "lucide-react";
 
 import type { AuthUser } from "../api/auth";
-import { Field, FilterClearButton, LoadingStack, MetricTile } from "../components/AppShellPrimitives";
+import { Field, FilterClearButton, LoadingStack, MetricTile, SemanticSearchField, VectorRefreshButton, VectorStatusBadge } from "../components/AppShellPrimitives";
 import type { HistoryItem, HistorySummary } from "../types";
 import { HISTORY_PAGE_SIZE } from "../uiConfig";
 import { formatAmount, formatDateOnly, formatHistoryDate } from "../utils/appUtils";
@@ -48,6 +47,8 @@ export default function HistoryExplorer({
   semanticQuery,
   filters,
   onFilterChange,
+  isVectorRefreshing,
+  onRefreshVectors,
   onSemanticSearch,
   onClearFilters,
   onPageChange,
@@ -62,6 +63,8 @@ export default function HistoryExplorer({
   semanticQuery: string;
   filters: HistoryFilters;
   onFilterChange: (filters: Partial<HistoryFilters>) => void;
+  isVectorRefreshing: boolean;
+  onRefreshVectors: () => void;
   onSemanticSearch: (query: string) => void;
   onClearFilters: () => void;
   onPageChange: (page: number) => void;
@@ -102,42 +105,23 @@ export default function HistoryExplorer({
                 <span className="rounded-md border border-mint-300/20 bg-mint-300/10 px-1.5 py-0.5 text-[11px] font-medium text-mint-200">已筛选 {activeFilterCount} 项</span>
               ) : null}
             </div>
-            <button
-              className="flex h-8 items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.035] px-2.5 text-xs text-slate-300 transition hover:border-mint-300/30 hover:text-mint-200"
-              type="button"
-              aria-expanded={isFiltersExpanded}
-              onClick={() => setIsFiltersExpanded((expanded) => !expanded)}
-            >
-              {isFiltersExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
-              {isFiltersExpanded ? "收起" : "展开"}
-            </button>
+            <div className="flex items-center gap-2">
+              {isAdminUser ? <VectorRefreshButton isRefreshing={isVectorRefreshing} onRefresh={onRefreshVectors} /> : null}
+              <button
+                className="flex h-8 items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.035] px-2.5 text-xs text-slate-300 transition hover:border-mint-300/30 hover:text-mint-200"
+                type="button"
+                aria-expanded={isFiltersExpanded}
+                onClick={() => setIsFiltersExpanded((expanded) => !expanded)}
+              >
+                {isFiltersExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+                {isFiltersExpanded ? "收起" : "展开"}
+              </button>
+            </div>
           </div>
 
           {isFiltersExpanded ? (
             <div className="mt-3 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <Field label="近似搜索" icon={<Search size={16} />}>
-              <form
-                className="flex gap-2"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  onSemanticSearch(semanticQueryDraft.trim());
-                }}
-              >
-                <input
-                  className="control min-w-0 flex-1"
-                  value={semanticQueryDraft}
-                  onChange={(event) => setSemanticQueryDraft(event.target.value)}
-                  placeholder="输入语义描述，例如：Oracle 向量检索"
-                />
-                <button
-                  className="shrink-0 rounded-md border border-mint-300/30 bg-mint-300/10 px-3 text-xs font-medium text-mint-200 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:opacity-50"
-                  disabled={!semanticQueryDraft.trim() && !isSimilaritySearch}
-                  type="submit"
-                >
-                  搜索
-                </button>
-              </form>
-            </Field>
+            <SemanticSearchField isActive={isSimilaritySearch} value={semanticQueryDraft} placeholder="输入语义描述，例如：Oracle 向量检索" onChange={setSemanticQueryDraft} onSearch={() => onSemanticSearch(semanticQueryDraft.trim())} />
 
             <Field label="用户" icon={<ShieldCheck size={16} />}>
               <select
@@ -305,13 +289,7 @@ export default function HistoryExplorer({
                     <div className="flex shrink-0 flex-wrap gap-2 md:justify-end">
                       <span className="rounded-md border border-mint-300/20 bg-mint-300/8 px-2 py-1 text-xs text-mint-200">{item.type || "未分类"}</span>
                       <span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-xs text-slate-400">Level {item.learn_level ?? "-"}</span>
-                      <span
-                        className={`rounded-md border px-2 py-1 text-xs ${
-                          item.v_needs_update === 1 ? "border-amberline/30 bg-amberline/10 text-amberline" : "border-mint-300/20 bg-mint-300/8 text-mint-200"
-                        }`}
-                      >
-                        {item.v_needs_update === 1 ? "向量待更新" : "向量就绪"}
-                      </span>
+                      <VectorStatusBadge value={item.v_needs_update} />
                     </div>
                   </div>
                 </article>
@@ -410,13 +388,7 @@ function HistoryDetailDialog({ item, onClose }: { item: HistoryItem | null; onCl
               <span className="rounded-md border border-mint-300/20 bg-mint-300/8 px-2 py-1 text-mint-200">相似度 {(item.similarity * 100).toFixed(1)}%</span>
             ) : null}
             <span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-slate-400">Level {item.learn_level ?? "-"}</span>
-            <span
-              className={`rounded-md border px-2 py-1 ${
-                item.v_needs_update === 1 ? "border-amberline/30 bg-amberline/10 text-amberline" : "border-mint-300/20 bg-mint-300/8 text-mint-200"
-              }`}
-            >
-              {item.v_needs_update === 1 ? "向量待更新" : "向量就绪"}
-            </span>
+            <VectorStatusBadge value={item.v_needs_update} />
           </div>
         </div>
 

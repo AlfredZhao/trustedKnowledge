@@ -22,6 +22,7 @@ LIST_COLUMNS = """
     material.full_script,
     material.is_flagged,
     material.title,
+    material.v_needs_update,
     cast(null as binary_double) as similarity
 """
 
@@ -57,7 +58,8 @@ def _row_to_dict(row: Any) -> dict[str, Any]:
         "full_script": row[6],
         "flag": row[7],
         "title": row[8],
-        "similarity": row[9],
+        "v_needs_update": row[9],
+        "similarity": row[10],
     }
 
 
@@ -66,6 +68,7 @@ def _build_filters(
     semantic_query: str | None,
     category: str | None,
     flag: int | None,
+    v_needs_update: int | None,
     auth_context: AuthContext,
 ) -> tuple[list[str], dict[str, Any]]:
     clauses: list[str] = []
@@ -94,6 +97,10 @@ def _build_filters(
         clauses.append("material.is_flagged = :flag")
         params["flag"] = flag
 
+    if v_needs_update is not None:
+        clauses.append("nvl(material.v_needs_update, 0) = :v_needs_update")
+        params["v_needs_update"] = v_needs_update
+
     append_user_visibility_clause(clauses, params, auth_context, "material.user_id")
     return clauses, params
 
@@ -108,6 +115,7 @@ async def list_english_materials(
     username: str | None = None,
     category: str | None = None,
     flag: int | None = None,
+    v_needs_update: int | None = None,
     sort_by: str = "id",
     sort_dir: str = "desc",
     auth_context: AuthContext,
@@ -116,7 +124,7 @@ async def list_english_materials(
     sort_direction = "asc" if sort_dir == "asc" else "desc"
 
     async with acquire_connection() as connection:
-        clauses, params = _build_filters(q, semantic_query, category, flag, auth_context)
+        clauses, params = _build_filters(q, semantic_query, category, flag, v_needs_update, auth_context)
         await append_requested_username_clause(
             connection,
             clauses,
@@ -161,6 +169,13 @@ async def list_english_materials(
 
     items = [_row_to_dict(row) for row in rows]
     return items, total if include_total else len(items)
+
+
+async def refresh_english_vectors() -> None:
+    async with acquire_connection() as connection:
+        cursor = connection.cursor()
+        await cursor.execute("begin pkg_ai_assistant.refresh_english_vectors; end;")
+        await connection.commit()
 
 
 async def get_english_material(material_id: int, auth_context: AuthContext | None = None) -> dict[str, Any] | None:

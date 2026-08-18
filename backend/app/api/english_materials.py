@@ -4,11 +4,12 @@ import oracledb
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.api.errors import oracle_http_exception
-from app.core.security import require_current_user
+from app.core.security import require_admin_user, require_current_user
 from app.repositories.english_materials import (
     create_english_material,
     get_english_material,
     list_english_materials,
+    refresh_english_vectors,
     update_english_material,
 )
 from app.repositories.users import AuthContext
@@ -33,6 +34,7 @@ async def get_english_materials(
     username: Annotated[str | None, Query(min_length=1, max_length=100)] = None,
     category: Annotated[str | None, Query(min_length=1, max_length=50)] = None,
     flag: Annotated[int | None, Query(ge=0, le=1)] = None,
+    v_needs_update: Annotated[int | None, Query(ge=0, le=1)] = None,
     sort_by: Literal["id", "sequence_no", "category", "base_expression", "title", "flag"] = "id",
     sort_dir: Literal["asc", "desc"] = "desc",
     auth_context: AuthContext = Depends(require_current_user),
@@ -47,6 +49,7 @@ async def get_english_materials(
             username=username,
             category=category,
             flag=flag,
+            v_needs_update=v_needs_update,
             sort_by=sort_by,
             sort_dir=sort_dir,
             auth_context=auth_context,
@@ -55,6 +58,14 @@ async def get_english_materials(
         raise oracle_http_exception(exc, "Oracle rejected the English materials query") from exc
 
     return EnglishMaterialListResponse(items=items, total=total, limit=limit, offset=offset)
+
+
+@router.post("/refresh-vectors", status_code=status.HTTP_204_NO_CONTENT)
+async def post_refresh_english_vectors(_: AuthContext = Depends(require_admin_user)) -> None:
+    try:
+        await refresh_english_vectors()
+    except oracledb.Error as exc:
+        raise oracle_http_exception(exc, "Oracle rejected the English vectors refresh") from exc
 
 
 @router.get("/{material_id}", response_model=EnglishMaterialItem)

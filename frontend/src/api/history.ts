@@ -30,6 +30,13 @@ export async function fetchHistory(query: HistoryQuery): Promise<HistoryListResp
   return request<HistoryListResponse>(buildHistoryPath(query));
 }
 
+export async function refreshHistoryVectors(): Promise<void> {
+  return request<void>("/api/history/refresh-vectors", {
+    method: "POST",
+    invalidatePrefixes: ["/api/history"],
+  });
+}
+
 export function readCachedHistory(query: HistoryQuery): HistoryListResponse | null {
   return readCachedGet<HistoryListResponse>(buildHistoryPath(query));
 }

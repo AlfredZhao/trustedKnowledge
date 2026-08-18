@@ -249,6 +249,13 @@ async def list_history(
     return [_row_to_dict(row) for row in rows], total, summary
 
 
+async def refresh_history_vectors() -> None:
+    async with acquire_connection() as connection:
+        cursor = connection.cursor()
+        await cursor.execute("begin pkg_ai_assistant.refresh_history_vectors; end;")
+        await connection.commit()
+
+
 def _append_visibility_clause(clauses: list[str], params: dict[str, Any], auth_context: AuthContext) -> None:
     if auth_context.is_admin or auth_context.visible_user_ids is None:
         return

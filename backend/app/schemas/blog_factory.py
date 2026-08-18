@@ -50,6 +50,7 @@ class BlogFactoryItem(BaseModel):
     remote_published_at: datetime | None = None
     remote_last_synced_at: datetime | None = None
     has_article: bool = False
+    v_needs_update: int | None = None
     similarity: float | None = None
 
     model_config = ConfigDict(from_attributes=True)
