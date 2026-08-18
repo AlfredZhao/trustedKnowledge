@@ -6223,14 +6223,14 @@ function Topbar({
 
   return (
     <header className="relative z-40 flex flex-col gap-4 border-b border-white/8 bg-ink-900/72 px-4 py-4 backdrop-blur-xl lg:flex-row lg:items-center lg:justify-between lg:gap-3 lg:py-3">
-      <div>
+      <div className="pr-32 lg:pr-0">
         <div className="mb-1 flex items-center gap-2 text-xs uppercase tracking-[0.22em] text-mint-300/80 lg:mb-0.5">
           <ShieldCheck size={14} />
           {subtitle}
         </div>
         <h1 className="text-2xl font-semibold tracking-normal text-slate-50 lg:text-xl">{title}</h1>
       </div>
-      <div className="flex items-center gap-2 lg:hidden">
+      <div className="absolute right-4 top-4 lg:hidden">
         <button
           className={`flex h-11 items-center gap-2 rounded-lg border px-3 text-sm font-medium transition ${
             isMobileNavVisible

@@ -15,6 +15,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Changed / 变更
 
+- Moved the mobile PWA “显示导航 / 隐藏导航” control to the top-right corner of the top bar, so it no longer occupies a separate row.
+- 将手机端 PWA 的“显示导航 / 隐藏导航”控件移至顶部栏右上角，不再独占一行空间。
+
 #### Fixed / 修复
 
 - Fixed English material edits containing `full_script` and `sequence_no`: the row-lock query now receives only its own bind parameters, preventing Oracle `DPY-4008` errors.
