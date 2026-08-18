@@ -5615,7 +5615,7 @@ function App() {
               />
             </Suspense>
           ) : activeView === "workbench" ? (
-            <div className={`grid flex-1 gap-4 px-4 pb-4 pt-2 lg:grid-cols-[minmax(440px,0.95fr)_minmax(420px,1.05fr)] xl:gap-x-2 ${isKnowledgeEntryCollapsed ? "xl:grid-cols-[28px_minmax(460px,0.72fr)_300px]" : "xl:grid-cols-[minmax(500px,0.9fr)_minmax(460px,0.72fr)_300px]"}`}>
+            <div className={`grid flex-1 gap-4 px-4 pb-4 pt-2 lg:grid-cols-[minmax(440px,0.95fr)_minmax(420px,1.05fr)] xl:gap-x-2 ${isKnowledgeEntryCollapsed ? "xl:grid-cols-[28px_minmax(0,1fr)_minmax(300px,0.45fr)]" : "xl:grid-cols-[minmax(500px,0.9fr)_minmax(460px,0.72fr)_300px]"}`}>
               <div className={`relative min-w-0 rounded-lg border border-white/10 bg-ink-900/72 shadow-soft-glow backdrop-blur-xl ${isKnowledgeEntryCollapsed ? "xl:p-0" : "p-4"}`}>
                 <div className={isKnowledgeEntryCollapsed ? "xl:hidden" : "xl:pr-7"}>
                   <KnowledgeForm
