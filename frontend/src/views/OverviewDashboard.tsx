@@ -1,9 +1,9 @@
 import type { ReactNode } from "react";
-import { BookOpenCheck, ChartLine, CircleGauge, ClipboardCheck, FileText, RefreshCw, ShieldCheck, TriangleAlert } from "lucide-react";
+import { BookOpenCheck, ChartLine, ClipboardCheck, FileText, RefreshCw, ShieldCheck, TriangleAlert } from "lucide-react";
 
 import { MetricTile, LoadingStack } from "../components/AppShellPrimitives";
 import type { AppView, EnglishMaterialItem, KnowledgeItem, LlmUsageSample, TodoItem } from "../types";
-import { formatAmount, formatDate, formatDateTime, formatPercent, formatUsdAmount, getUsagePercent } from "../utils/appUtils";
+import { clampPercent, formatAmount, formatDate, formatDateTime, formatPercent } from "../utils/appUtils";
 
 type OverviewData = {
   usageItems: LlmUsageSample[];
@@ -68,7 +68,7 @@ export default function OverviewDashboard({
   onEnglishLimitChange: (limit: number) => void;
 }) {
   const latestUsage = canViewUsage && data.usageItems.length > 0 ? data.usageItems[data.usageItems.length - 1] : null;
-  const usagePercent = latestUsage ? getUsagePercent(latestUsage) : 0;
+  const remainingPercent = latestUsage ? clampPercent((latestUsage.remaining_budget / latestUsage.total_budget) * 100) : 0;
   const recentEnglish = data.recentEnglishMaterials;
   const hasOverviewData =
     latestUsage ||
@@ -120,16 +120,21 @@ export default function OverviewDashboard({
   return (
     <div className="flex-1 px-4 pb-4 pt-2">
       <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div>
+        <div className="min-w-0">
           <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
             <ChartLine size={17} />
             Overview
           </div>
-          <div className="flex flex-wrap items-end gap-x-3 gap-y-1">
-            <h2 className="text-xl font-semibold text-slate-50">关键状态</h2>
-            <span className="text-xs text-slate-500">
-              {isRefreshing ? "正在读取最新数据" : lastUpdatedAt ? `最后更新 ${formatDateTime(lastUpdatedAt)}` : "尚未完成在线更新"}
-            </span>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-end gap-x-3 gap-y-1">
+                <h2 className="text-xl font-semibold text-slate-50">关键状态</h2>
+                <span className="text-xs text-slate-500">
+                  {isRefreshing ? "正在读取最新数据" : lastUpdatedAt ? `最后更新 ${formatDateTime(lastUpdatedAt)}` : "尚未完成在线更新"}
+                </span>
+              </div>
+            </div>
+            {canViewUsage ? <LlmBatteryIndicator remainingPercent={remainingPercent} hasUsage={Boolean(latestUsage)} onClick={() => onOpenView("usage")} /> : null}
           </div>
         </div>
         <button
@@ -145,17 +150,7 @@ export default function OverviewDashboard({
 
       {loadError ? <div className="mb-4 rounded-lg border border-amberline/25 bg-amberline/10 p-3 text-sm text-amber-100/80">{loadError}</div> : null}
 
-      <div className={`mb-4 grid grid-cols-2 gap-4 ${canViewUsage ? "xl:grid-cols-3" : "xl:grid-cols-2"}`}>
-        {canViewUsage ? (
-          <MetricTile
-            icon={<CircleGauge size={17} />}
-            label="LLM 用量"
-            value={latestUsage ? formatPercent(usagePercent) : "暂无"}
-            detail={latestUsage ? `已使用: ${formatUsdAmount(latestUsage.used_amount)} · 剩余: ${formatUsdAmount(latestUsage.remaining_budget)}` : "暂无采样"}
-            actionLabel="查看用量"
-            onAction={() => onOpenView("usage")}
-          />
-        ) : null}
+      <div className="mb-4 grid grid-cols-2 gap-4">
         <MetricTile
           icon={<ClipboardCheck size={17} />}
           label="处理中 Todo"
@@ -287,6 +282,42 @@ export default function OverviewDashboard({
         )}
       </section>
     </div>
+  );
+}
+
+function LlmBatteryIndicator({
+  remainingPercent,
+  hasUsage,
+  onClick,
+}: {
+  remainingPercent: number;
+  hasUsage: boolean;
+  onClick: () => void;
+}) {
+  const isLow = hasUsage && remainingPercent < 20;
+  const tone = isLow ? "border-red-400 text-red-300" : "border-mint-300 text-mint-300";
+  const fillTone = isLow ? "bg-red-400" : "bg-mint-300";
+  const label = hasUsage ? `LLM 剩余 ${formatPercent(remainingPercent)}，查看 AI 用量详情` : "暂无 LLM 用量采样，查看 AI 用量详情";
+
+  return (
+    <button
+      className="group -mr-1 -mt-1 flex shrink-0 items-center gap-2 rounded-lg px-1 py-1 text-left transition hover:bg-white/[0.035] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mint-300/70"
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+    >
+      <span className="text-xs font-medium text-slate-400">LLM</span>
+      <span className="flex items-center gap-1.5" aria-hidden="true">
+        <span className={`relative h-6 w-11 rounded-[5px] border-2 ${tone}`}>
+          <span className="absolute inset-[3px] overflow-hidden rounded-[2px]">
+            <span className={`absolute inset-y-0 left-0 rounded-[2px] ${fillTone} animate-[battery-fill_700ms_ease-out] transition-[width,background-color] duration-700 motion-reduce:animate-none motion-reduce:transition-none`} style={{ width: `${remainingPercent}%` }} />
+          </span>
+          <span className={`absolute -right-[5px] top-1/2 h-2.5 w-1 -translate-y-1/2 rounded-r-sm ${fillTone}`} />
+        </span>
+        <span className={`min-w-9 text-right text-sm font-semibold ${isLow ? "text-red-300" : "text-slate-200"}`}>{hasUsage ? formatPercent(remainingPercent) : "--"}</span>
+      </span>
+    </button>
   );
 }
 

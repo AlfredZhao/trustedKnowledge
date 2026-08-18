@@ -115,6 +115,16 @@ button:disabled {
   cursor: not-allowed;
 }
 
+@keyframes battery-fill {
+  from {
+    transform: scaleX(0);
+  }
+
+  to {
+    transform: scaleX(1);
+  }
+}
+
 ::selection {
   background: var(--selection-bg);
   color: var(--selection-text);
