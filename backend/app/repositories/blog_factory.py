@@ -467,15 +467,18 @@ async def update_blog_factory_item(
 
     assignments = [f"{column} = :{column}" for column in values]
     params = {**values, "item_id": item_id}
-    clauses = ["id = :item_id"]
-    append_user_visibility_clause(clauses, params, auth_context, "user_id")
+    lock_params: dict[str, Any] = {"item_id": item_id}
+    lock_clauses = ["id = :item_id"]
+    append_user_visibility_clause(lock_clauses, lock_params, auth_context, "user_id")
+    update_clauses = ["id = :item_id"]
+    append_user_visibility_clause(update_clauses, params, auth_context, "user_id")
     async with acquire_connection() as connection:
         await _ensure_blog_factory_table(connection)
         cursor = connection.cursor()
         if "task_content" in values:
             await cursor.execute(
-                f"select task_content from ai_blog_factory where {' and '.join(clauses)} for update",
-                params,
+                f"select task_content from ai_blog_factory where {' and '.join(lock_clauses)} for update",
+                lock_params,
             )
             current = await cursor.fetchone()
             if current is None:
@@ -486,7 +489,7 @@ async def update_blog_factory_item(
         sql = f"""
             update ai_blog_factory
             set {", ".join(assignments)}
-            where {" and ".join(clauses)}
+            where {" and ".join(update_clauses)}
         """
         await cursor.execute(sql, params)
         if cursor.rowcount == 0:

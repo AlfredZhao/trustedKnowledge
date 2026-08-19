@@ -59,6 +59,28 @@ AI 编程任务失败或由用户终止后，错误信息和输出持续显示�
 
 运行 `python -m pytest backend/tests/test_english_materials.py`。`test_update_with_script_uses_only_lock_query_bind_parameters` 必须验证锁定查询不接收 `sequence_no`，而更新 SQL 仍正确接收该字段。
 
+## Oracle 更新流程的每条 SQL 必须使用独立且精确的绑定参数
+
+### Symptom
+
+博客工厂编辑已有任务时保存失败，Oracle 返回 `DPY-4008: no bind placeholder named ":task_content" was found in the SQL text`。
+
+### Trigger
+
+`PATCH /blog-factory/{item_id}` 同时更新 `task_content` 与任意其它可编辑字段。为比较旧正文并标记向量待更新，仓储会先执行 `select task_content ... for update`。
+
+### Root Cause
+
+`backend/app/repositories/blog_factory.py:update_blog_factory_item()` 将包含更新业务字段的 `params` 直接传给行锁 SQL；该 SQL 只有 `:item_id` 和可见用户占位符，并不包含 `:task_content` 或其它更新字段。python-oracledb 会拒绝多余绑定。
+
+### Safe Pattern
+
+动态更新流程中，每次 `execute()` 均建立或使用仅包含该 SQL 文本所需占位符的参数字典。行锁查询使用 `lock_params` / `lock_clauses`，最终 `UPDATE` 使用包含业务字段的 `params` / `update_clauses`；计数、摘要和向量查询也遵循同一规则。不要为方便而复用跨语句的完整参数字典。
+
+### Guardrail
+
+运行 `python -m pytest backend/tests/test_blog_factory_bindings.py`。`test_update_with_task_content_uses_only_lock_query_bind_parameters` 必须验证锁定查询不接收 `task_content` 或其它业务字段，而最终更新仍接收它们。
+
 ## 英语素材迁移后 identity 必须越过已有 ID
 
 ### Symptom

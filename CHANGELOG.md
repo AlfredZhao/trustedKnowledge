@@ -9,6 +9,17 @@ The format follows the common GitHub changelog convention inspired by
 
 ## 本次版本更新
 
+### [Unreleased]
+
+#### Added / 新增
+
+#### Changed / 变更
+
+#### Fixed / 修复
+
+- Fixed Blog Factory item edits failing with Oracle `DPY-4008`: the task-content row-lock query now receives only its own bind parameters before the final update runs.
+- 修复博客工厂编辑任务时的 Oracle `DPY-4008` 保存失败：任务内容行锁查询现在只接收自身所需的绑定参数，再执行最终更新。
+
 ### [0.4.0] - 2026-08-19
 
 #### Added / 新增

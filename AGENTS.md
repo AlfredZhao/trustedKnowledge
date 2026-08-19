@@ -30,6 +30,7 @@
 - Before completing any UI-affecting requirement, check the affected page at both desktop-web and mobile widths for clipped, overflowing, or unreachable controls; also check the relevant theme and state variants when they exist.
 - For user-scoped modules, default filters and `清空筛选条件` behavior should return to the current user's default visible scope unless the requirement explicitly says otherwise. Do not silently change a module to a global cross-user default.
 - Do not change API fields, database structure, or authentication behavior unless explicitly requested.
+- For every Oracle SQL execution, pass only bind names that occur in that statement's SQL text. In update workflows, keep row-lock/read, update, count, and vector-query parameter dictionaries separate; never reuse business-field binds for a preceding `SELECT ... FOR UPDATE` query. Add a regression test when changing dynamic SQL bindings.
 - Do not delete user data, logs, or existing business code unless explicitly requested.
 - If a service command fails because of sandbox or port permissions, report the exact command and error before changing process state.
 - Do not start, stop, restart, or infer the real runtime status of frontend/backend services. When service restarts are needed, tell the user the exact command(s) to run and let the user operate them.
