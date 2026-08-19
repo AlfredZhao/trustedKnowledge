@@ -146,6 +146,7 @@ import {
   createEnglishMaterial,
   fetchEnglishMaterials,
   fetchNextEnglishMaterialSequence,
+  generateEnglishMaterial,
   getEnglishMaterial,
   readCachedEnglishMaterials,
   refreshEnglishMaterialVectors,
@@ -1733,14 +1734,14 @@ function App() {
   }, [activeView, apiKey, historyAskDomainCode]);
 
   useEffect(() => {
-    if (!apiKey || (activeView !== "skills" && activeView !== "historyAsk" && activeView !== "factory")) return;
+    if (!apiKey || (activeView !== "skills" && activeView !== "historyAsk" && activeView !== "factory" && activeView !== "englishMaterials")) return;
 
     let cancelled = false;
     setIsSkillLoading(true);
     setSkillError(null);
     fetchSkills({
       q: activeView === "skills" ? debouncedSkillQuery : undefined,
-      enabled: activeView === "historyAsk" || activeView === "factory" ? true : undefined,
+      enabled: activeView === "historyAsk" || activeView === "factory" || activeView === "englishMaterials" ? true : undefined,
       scope: activeView === "skills" ? skillListScope : "callable",
     })
       .then((response) => {
@@ -5647,6 +5648,10 @@ function App() {
               loadError={englishMaterialError}
               saveError={englishMaterialSaveError}
               isVectorRefreshing={isEnglishMaterialVectorRefreshing}
+              modelOptions={historyAskModelOptions}
+              skills={skillItems}
+              skillsError={skillError}
+              skillsLoading={isSkillLoading}
               filters={{
                 username: englishMaterialUsername,
                 semanticQuery: englishMaterialSemanticQuery,
@@ -12420,6 +12425,10 @@ function EnglishMaterialsWorkspace({
   loadError,
   saveError,
   isVectorRefreshing,
+  modelOptions,
+  skills,
+  skillsError,
+  skillsLoading,
   filters,
   onDraftChange,
   onFilterChange,
@@ -12453,6 +12462,10 @@ function EnglishMaterialsWorkspace({
   loadError: string | null;
   saveError: string | null;
   isVectorRefreshing: boolean;
+  modelOptions: { value: string; label: string }[];
+  skills: SkillSummary[];
+  skillsError: string | null;
+  skillsLoading: boolean;
   filters: EnglishMaterialFilters;
   onDraftChange: (draft: EnglishMaterialDraft) => void;
   onFilterChange: (filters: Partial<EnglishMaterialFilters>) => void;
@@ -12744,6 +12757,9 @@ function EnglishMaterialsWorkspace({
             New Material
           </div>
           <h2 className="text-xl font-semibold text-slate-50">录入英语素材</h2>
+          <div className="mt-3">
+            <EnglishMaterialAiGeneration draft={draft} modelOptions={modelOptions} skills={skills} skillsError={skillsError} skillsLoading={skillsLoading} onGenerated={onDraftChange} onOpen={() => setIsEnglishMaterialListCollapsed(true)} />
+          </div>
         </div>
 
         <form className="space-y-4" onSubmit={onSubmit}>
@@ -12776,6 +12792,10 @@ function EnglishMaterialsWorkspace({
         onClearDraft={onClearCreateDraft}
         onClose={onCloseCreate}
         onDraftChange={onDraftChange}
+        modelOptions={modelOptions}
+        skills={skills}
+        skillsError={skillsError}
+        skillsLoading={skillsLoading}
         onSubmit={onSubmit}
       />
 
@@ -12831,13 +12851,14 @@ function EnglishMaterialCreateFields({
 
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="分类标识" icon={<Tags size={16} />}>
-          <select className="control" value={draft.category} onChange={(event) => onDraftChange({ ...draft, category: event.target.value })}>
+          <select className="control" disabled={draft.category === "AI生成"} value={draft.category} onChange={(event) => onDraftChange({ ...draft, category: event.target.value })}>
             {ENGLISH_MATERIAL_CATEGORIES.map((category) => (
               <option key={category} value={category}>
                 {category}
               </option>
             ))}
           </select>
+          {draft.category === "AI生成" ? <p className="mt-1 text-xs leading-5 text-sky-200">AI 生成内容统一归类为“AI生成”。</p> : null}
         </Field>
         <Field label="发布状态" icon={<CircleGauge size={16} />}>
           <select className="control" value={draft.flag} onChange={(event) => onDraftChange({ ...draft, flag: event.target.value as EnglishMaterialDraft["flag"] })}>
@@ -12900,6 +12921,10 @@ function EnglishMaterialCreateDialog({
   onClose,
   onDraftChange,
   onSubmit,
+  modelOptions,
+  skills,
+  skillsError,
+  skillsLoading,
 }: {
   draft: EnglishMaterialDraft;
   hasDraft: boolean;
@@ -12910,6 +12935,10 @@ function EnglishMaterialCreateDialog({
   onClose: () => void;
   onDraftChange: (draft: EnglishMaterialDraft) => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+  modelOptions: { value: string; label: string }[];
+  skills: SkillSummary[];
+  skillsError: string | null;
+  skillsLoading: boolean;
 }) {
   const canSubmit = draft.base_expression.trim().length > 0 && !isSaving;
 
@@ -12942,6 +12971,9 @@ function EnglishMaterialCreateDialog({
               New Material
             </div>
             <h2 className="text-xl font-semibold text-slate-50">{hasDraft ? "继续录入英语素材" : "录入英语素材"}</h2>
+            <div className="mt-3">
+              <EnglishMaterialAiGeneration draft={draft} modelOptions={modelOptions} skills={skills} skillsError={skillsError} skillsLoading={skillsLoading} onGenerated={onDraftChange} />
+            </div>
           </div>
           <button
             className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600"
@@ -12998,6 +13030,114 @@ function EnglishMaterialCreateDialog({
         </div>
       </section>
     </div>
+  );
+}
+
+function EnglishMaterialAiGeneration({
+  draft,
+  modelOptions,
+  skills,
+  skillsError,
+  skillsLoading,
+  onGenerated,
+  onOpen,
+}: {
+  draft: EnglishMaterialDraft;
+  modelOptions: { value: string; label: string }[];
+  skills: SkillSummary[];
+  skillsError: string | null;
+  skillsLoading: boolean;
+  onGenerated: (draft: EnglishMaterialDraft) => void;
+  onOpen?: () => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [modelName, setModelName] = useState(AI_CODING_DEFAULT_MODEL);
+  const [topicMode, setTopicMode] = useState<"trend" | "truth" | "motivation" | "workplace" | "custom">("trend");
+  const [topic, setTopic] = useState("");
+  const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
+  const canGenerate = !isGenerating && (topicMode !== "custom" || topic.trim().length > 0);
+
+  useEffect(() => {
+    setSelectedSkillIds((current) => current.filter((id) => skills.some((skill) => skill.id === id)));
+  }, [skills]);
+
+  async function handleGenerate() {
+    if (!canGenerate) return;
+    setIsGenerating(true);
+    setError(null);
+    try {
+      const usesConfiguredModel = modelName === HISTORY_ASK_CONFIGURED_MODEL;
+      const result = await generateEnglishMaterial({
+        topicMode,
+        topic,
+        skillIds: selectedSkillIds,
+        executionProvider: usesConfiguredModel ? "history_ask_llm" : "codex",
+        modelName: modelName === AI_CODING_DEFAULT_MODEL ? "" : modelName,
+      });
+      onGenerated({
+        ...draft,
+        category: "AI生成",
+        title: result.title,
+        base_expression: result.base_expression,
+        professional_sentence: result.professional_sentence,
+        chinese_translation: result.chinese_translation,
+        full_script: result.full_script,
+        flag: "0",
+      });
+      setIsOpen(false);
+    } catch (generationError) {
+      setError(generationError instanceof Error ? generationError.message : "AI 生成失败，请稍后重试。");
+    } finally {
+      setIsGenerating(false);
+    }
+  }
+
+  return (
+    <>
+      <button
+        className="flex h-10 items-center justify-center gap-2 rounded-lg border border-sky-300/30 bg-sky-300/10 px-3 text-sm font-medium text-sky-200 transition hover:bg-sky-300/16"
+        type="button"
+        onClick={() => { onOpen?.(); setError(null); setIsOpen(true); }}
+      >
+        <WandSparkles size={16} />
+        AI生成
+      </button>
+      {isOpen ? (
+        <div className="fixed inset-0 z-[60] flex items-end bg-black/62 px-0 backdrop-blur-sm sm:items-center sm:justify-center sm:px-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !isGenerating) setIsOpen(false); }}>
+          <section aria-modal="true" className="flex max-h-[100dvh] w-full max-w-2xl flex-col overflow-hidden rounded-t-lg border border-mint-300/20 bg-ink-900 shadow-soft-glow sm:max-h-[88vh] sm:rounded-lg" role="dialog" aria-label="AI 生成英语素材">
+            <div className="flex shrink-0 items-start justify-between gap-4 border-b border-white/10 p-4 sm:p-5">
+              <div>
+                <div className="mb-2 flex items-center gap-2 text-sm text-mint-300"><WandSparkles size={17} />AI Material</div>
+                <h2 className="text-xl font-semibold text-slate-50">AI生成英语素材</h2>
+                <p className="mt-1 text-xs leading-5 text-slate-500">生成后仅回填当前草稿，不会自动保存。趋势话题基于通用知识，不代表实时热点。</p>
+              </div>
+              <button className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-300 transition hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600" disabled={isGenerating} type="button" title="关闭" onClick={() => setIsOpen(false)}><X size={17} /></button>
+            </div>
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 sm:p-5">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="执行模型" icon={<Settings2 size={16} />}>
+                  <select className="control" disabled={isGenerating} value={modelName} onChange={(event) => setModelName(event.target.value)}>{modelOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
+                </Field>
+                <Field label="主题方向" icon={<Sparkles size={16} />}>
+                  <select className="control" disabled={isGenerating} value={topicMode} onChange={(event) => setTopicMode(event.target.value as typeof topicMode)}>
+                    <option value="trend">趋势型话题</option><option value="truth">人生真理</option><option value="motivation">励志成长</option><option value="workplace">职场成长</option><option value="custom">自定义主题</option>
+                  </select>
+                </Field>
+              </div>
+              {topicMode === "custom" ? <Field label="自定义主题" icon={<FileText size={16} />}><input className="control" disabled={isGenerating} maxLength={300} value={topic} onChange={(event) => setTopic(event.target.value)} placeholder="例如：在不确定中保持行动力" /></Field> : null}
+              <div className="rounded-lg border border-white/10 bg-white/[0.025] p-3">
+                <div className="mb-3 flex items-center justify-between gap-3"><div className="flex items-center gap-2 text-sm font-medium text-slate-200"><Layers3 className="text-mint-300" size={16} />调用 Skill</div><span className="text-xs text-slate-500">已选择 {selectedSkillIds.length} 个</span></div>
+                {skillsLoading ? <div className="flex items-center gap-2 text-sm text-slate-500"><Loader2 className="animate-spin" size={15} />正在加载可用 Skill...</div> : skillsError ? <div className="text-sm text-red-200">{skillsError}</div> : skills.length ? <div className="grid gap-2 sm:grid-cols-2">{skills.map((skill) => { const selected = selectedSkillIds.includes(skill.id); return <button key={skill.id} className={`min-h-16 rounded-lg border px-3 py-2 text-left transition ${selected ? "border-mint-300/30 bg-mint-300/10 text-mint-100" : "border-white/10 bg-white/[0.028] text-slate-300 hover:border-mint-300/25"}`} disabled={isGenerating} type="button" onClick={() => setSelectedSkillIds((current) => selected ? current.filter((id) => id !== skill.id) : [...current, skill.id])}><div className="flex items-center justify-between gap-2"><span className="truncate text-sm font-medium">{skill.name}</span>{selected ? <CheckCircle2 className="shrink-0 text-mint-300" size={15} /> : null}</div><p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{skill.description || "无描述"}</p></button>; })}</div> : <p className="text-sm text-slate-500">暂无可调用 Skill；未选择时将使用默认口播风格。</p>}
+              </div>
+              {error ? <div className="flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100"><TriangleAlert className="mt-0.5 shrink-0 text-red-300" size={17} /><span>{error}</span></div> : null}
+            </div>
+            <div className="flex shrink-0 justify-end gap-3 border-t border-white/10 p-4"><button className="h-11 rounded-lg border border-white/10 bg-white/[0.035] px-4 text-sm text-slate-300 disabled:cursor-not-allowed disabled:text-slate-600" disabled={isGenerating} type="button" onClick={() => setIsOpen(false)}>取消</button><button className="flex h-11 items-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 text-sm font-medium text-mint-300 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500" disabled={!canGenerate} type="button" onClick={() => void handleGenerate()}>{isGenerating ? <Loader2 className="animate-spin" size={17} /> : <WandSparkles size={17} />}{isGenerating ? "生成中" : "生成并回填"}</button></div>
+          </section>
+        </div>
+      ) : null}
+    </>
   );
 }
 

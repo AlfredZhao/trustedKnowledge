@@ -1,4 +1,4 @@
-import type { EnglishMaterialDraft, EnglishMaterialItem } from "../types";
+import type { EnglishMaterialDraft, EnglishMaterialGenerationResult, EnglishMaterialItem } from "../types";
 import { buildQuery, readCachedGet, request } from "./client";
 
 export interface EnglishMaterialListResponse {
@@ -86,6 +86,31 @@ export async function createEnglishMaterial(draft: EnglishMaterialDraft): Promis
       full_script: draft.full_script || null,
       title: draft.title || null,
       flag: Number(draft.flag),
+    }),
+  });
+}
+
+export async function generateEnglishMaterial({
+  topicMode,
+  topic,
+  skillIds,
+  executionProvider,
+  modelName,
+}: {
+  topicMode: "trend" | "truth" | "motivation" | "workplace" | "custom";
+  topic: string;
+  skillIds: string[];
+  executionProvider: "codex" | "history_ask_llm";
+  modelName: string;
+}): Promise<EnglishMaterialGenerationResult> {
+  return request<EnglishMaterialGenerationResult>("/api/english-materials/generate", {
+    method: "POST",
+    body: JSON.stringify({
+      topic_mode: topicMode,
+      topic: topic.trim() || null,
+      skill_ids: skillIds,
+      execution_provider: executionProvider,
+      model_name: modelName,
     }),
   });
 }

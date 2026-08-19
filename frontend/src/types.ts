@@ -312,6 +312,15 @@ export interface EnglishMaterialDraft {
   flag: "0" | "1";
 }
 
+export interface EnglishMaterialGenerationResult {
+  category: "AI生成";
+  title: string;
+  base_expression: string;
+  professional_sentence: string;
+  chinese_translation: string;
+  full_script: string;
+}
+
 export interface LlmUsageSample {
   sample_time: string;
   used_amount: number;

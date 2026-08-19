@@ -16,12 +16,18 @@ The format follows the common GitHub changelog convention inspired by
 - Added `AI生成` to the English Materials `分类标识` options for future AI-generated material workflows.
 - 在英语素材 `分类标识` 可选项中新增 `AI生成`，为后续 AI 生成素材功能做准备。
 
+- Added an AI generation flow to English Materials: users can choose an execution model, theme direction, and callable Skills, then review the generated draft before saving it manually.
+- 为英语素材新增 AI 生成功能：可选择执行模型、主题方向和可调用 Skill，生成内容只回填草稿，仍需用户手动保存。
+
 #### Changed / 变更
 
 - Changed the current-login username area in the shared top bar into a shortcut back to Overview, including keyboard focus and a descriptive tooltip.
 - 将共享顶部栏的当前登录用户名区域改为返回总览的快捷入口，并补充键盘焦点样式和提示说明。
 
 #### Fixed / 修复
+
+- Fixed the English Materials `AI生成` button text contrast in light theme and collapse the desktop material list when opening the generation dialog.
+- 修复浅色主题下英语素材 `AI生成` 按钮文字对比度不足的问题；桌面端打开生成弹窗时会收起素材列表。
 
 - Fixed Blog Factory item edits failing with Oracle `DPY-4008`: the task-content row-lock query now receives only its own bind parameters before the final update runs.
 - 修复博客工厂编辑任务时的 Oracle `DPY-4008` 保存失败：任务内容行锁查询现在只接收自身所需的绑定参数，再执行最终更新。

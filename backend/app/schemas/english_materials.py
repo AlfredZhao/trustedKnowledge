@@ -1,4 +1,6 @@
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class EnglishMaterialCreate(BaseModel):
@@ -33,6 +35,37 @@ class EnglishMaterialCreate(BaseModel):
         if not value:
             raise ValueError("base_expression cannot be blank")
         return value
+
+
+class EnglishMaterialGenerationRequest(BaseModel):
+    topic_mode: Literal["trend", "truth", "motivation", "workplace", "custom"] = "trend"
+    topic: str | None = Field(default=None, max_length=300)
+    skill_ids: list[str] = Field(default_factory=list, max_length=8)
+    execution_provider: Literal["codex", "history_ask_llm"] = "codex"
+    model_name: str = Field(default="", max_length=120)
+
+    @field_validator("topic", mode="before")
+    @classmethod
+    def strip_optional_topic(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        return stripped or None
+
+    @model_validator(mode="after")
+    def require_custom_topic(self) -> "EnglishMaterialGenerationRequest":
+        if self.topic_mode == "custom" and not self.topic:
+            raise ValueError("自定义主题不能为空")
+        return self
+
+
+class EnglishMaterialGenerationResult(BaseModel):
+    category: Literal["AI生成"] = "AI生成"
+    title: str = Field(..., min_length=1, max_length=200)
+    base_expression: str = Field(..., min_length=1, max_length=50)
+    professional_sentence: str = Field(..., min_length=1, max_length=255)
+    chinese_translation: str = Field(..., min_length=1, max_length=255)
+    full_script: str = Field(..., min_length=1, max_length=4000)
 
 
 class EnglishMaterialUpdate(BaseModel):

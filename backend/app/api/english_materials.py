@@ -12,9 +12,12 @@ from app.repositories.english_materials import (
     refresh_english_vectors,
     update_english_material,
 )
+from app.repositories.english_generation import generate_english_material
 from app.repositories.users import AuthContext
 from app.schemas.english_materials import (
     EnglishMaterialCreate,
+    EnglishMaterialGenerationRequest,
+    EnglishMaterialGenerationResult,
     EnglishMaterialItem,
     EnglishMaterialListResponse,
     EnglishMaterialUpdate,
@@ -66,6 +69,17 @@ async def post_refresh_english_vectors(_: AuthContext = Depends(require_admin_us
         await refresh_english_vectors()
     except oracledb.Error as exc:
         raise oracle_http_exception(exc, "Oracle rejected the English vectors refresh") from exc
+
+
+@router.post("/generate", response_model=EnglishMaterialGenerationResult)
+async def post_generate_english_material(
+    payload: EnglishMaterialGenerationRequest,
+    auth_context: AuthContext = Depends(require_current_user),
+) -> EnglishMaterialGenerationResult:
+    try:
+        return await generate_english_material(payload, auth_context)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
 @router.get("/{material_id}", response_model=EnglishMaterialItem)
