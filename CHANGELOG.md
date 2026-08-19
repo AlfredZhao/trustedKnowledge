@@ -15,6 +15,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Changed / 变更
 
+- Changed the current-login username area in the shared top bar into a shortcut back to Overview, including keyboard focus and a descriptive tooltip.
+- 将共享顶部栏的当前登录用户名区域改为返回总览的快捷入口，并补充键盘焦点样式和提示说明。
+
 #### Fixed / 修复
 
 - Fixed Blog Factory item edits failing with Oracle `DPY-4008`: the task-content row-lock query now receives only its own bind parameters before the final update runs.

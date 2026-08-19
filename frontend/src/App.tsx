@@ -6485,13 +6485,18 @@ function Topbar({
             <span className="sm:hidden">AI 编程{aiCodingNoticeMeta.shortLabel}</span>
           </button>
         ) : null}
-        <div
-          className="flex h-11 min-w-0 max-w-full items-center rounded-lg border border-white/10 bg-white/[0.028] px-3 text-sm text-slate-400"
-          title={`当前登录用户：${currentUsername}`}
+        <button
+          className="flex h-11 min-w-0 max-w-full items-center rounded-lg border border-white/10 bg-white/[0.028] px-3 text-sm text-slate-400 transition hover:border-mint-300/30 hover:bg-mint-300/10 hover:text-mint-200 focus:outline-none focus:ring-2 focus:ring-mint-300/30"
+          title={`当前登录用户：${currentUsername}。点击返回总览`}
+          type="button"
+          onClick={() => {
+            onViewChange("overview");
+            onMobileNavVisibilityChange(false);
+          }}
         >
           <span className="mr-1 hidden text-slate-500 sm:inline">您好，</span>
           <span className="truncate font-medium text-slate-200">{currentUsername}</span>
-        </div>
+        </button>
         <button
           className="grid h-11 w-11 place-items-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-300 transition hover:border-red-300/30 hover:text-red-200"
           title="退出登录"
