@@ -15,6 +15,28 @@ When fixing a bug with meaningful regression risk, add a short entry with:
 
 Keep entries concrete. Prefer file paths, function names, SQL placeholders, and test names over broad advice.
 
+## AI 编程终态任务必须都可手工清理展示
+
+### Symptom
+
+AI 编程任务失败或由用户终止后，错误信息和输出持续显示，只有提交新任务后才会从页面中消失。
+
+### Trigger
+
+最近一条 `AiCodingMessage` 的状态为 `failed` 或 `cancelled`，且任务未生成完整的 `response`。
+
+### Root Cause
+
+`handleClearCodexMessageDisplay()` 曾只接受带 `response` 的完成任务；失败和终止卡片也没有触发该处理器的按钮，导致已存在的 `isDisplayCleared` 持久化状态无法用于这些终态。
+
+### Safe Pattern
+
+所有不再运行的 AI 编程任务卡片都应提供同一类手工清理操作，并仅把对应消息标为 `isDisplayCleared`；不得删除任务记录或改变后端 job 状态。
+
+### Guardrail
+
+在 AI 编程页面分别构造无 `response` 的 `failed` 与 `cancelled` 最新消息，确认两者均显示“清理结果”；点击后应显示等待任务空状态，刷新页面后仍保持隐藏。运行 `cd frontend && npm run build`。
+
 ## 英语素材脚本更新不得将业务绑定传给行锁 SQL
 
 ### Symptom

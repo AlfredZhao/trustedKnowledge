@@ -581,6 +581,7 @@ function App() {
   const [activeView, setActiveView] = useState<AppView>(restoredUiState.activeView);
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(restoredUiState.sidebarExpanded);
   const [isKnowledgeEntryCollapsed, setIsKnowledgeEntryCollapsed] = useState(false);
+  const [isWorkbenchDetailsCollapsed, setIsWorkbenchDetailsCollapsed] = useState(false);
   const [isMobileNavVisible, setIsMobileNavVisible] = useState(restoredUiState.mobileNavVisible);
   const [themeMode, setThemeMode] = useState<ThemeMode>(restoredUiState.themeMode);
   const [items, setItems] = useState<KnowledgeItem[]>([]);
@@ -606,6 +607,8 @@ function App() {
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [lastCreatedId, setLastCreatedId] = useState<number | null>(null);
   const pendingKnowledgeNavigationRef = useRef<"previous" | "next" | null>(null);
+  const pendingFactoryNavigationRef = useRef<"previous" | "next" | null>(null);
+  const pendingBlogFactoryNavigationRef = useRef<"previous" | "next" | null>(null);
   const [factoryItems, setFactoryItems] = useState<KnowledgeItem[]>([]);
   const [factoryTotalItems, setFactoryTotalItems] = useState(0);
   const [factoryPage, setFactoryPage] = useState(restoredUiState.factory.page);
@@ -843,6 +846,7 @@ function App() {
   const [selectedEnglishMaterial, setSelectedEnglishMaterial] = useState<EnglishMaterialItem | null>(null);
   todoCurrentAppendTargetRef.current = todoCurrentAppendTarget;
   const [isEnglishMaterialDetailOpen, setIsEnglishMaterialDetailOpen] = useState(false);
+  const [isEnglishMaterialCreateOpen, setIsEnglishMaterialCreateOpen] = useState(false);
   const [englishMaterialDraft, setEnglishMaterialDraft] = useState<EnglishMaterialDraft>(restoredUiState.englishMaterials.draft);
   const [englishMaterialDetailDraft, setEnglishMaterialDetailDraft] = useState<EnglishMaterialDraft>(emptyEnglishMaterialDraft);
   const [isEnglishMaterialLoading, setIsEnglishMaterialLoading] = useState(false);
@@ -1897,6 +1901,18 @@ function App() {
         setFactoryError(null);
 
         setFactorySelectedId((currentSelectedId) => {
+          const pendingDirection = pendingFactoryNavigationRef.current;
+          if (pendingDirection) {
+            pendingFactoryNavigationRef.current = null;
+            const navigatedItem = pendingDirection === "previous" ? data.items[data.items.length - 1] : data.items[0];
+            if (navigatedItem) {
+              setFactoryTask("");
+              setHasCopiedFactoryTask(false);
+              setFactoryCopyError(null);
+              return navigatedItem.id;
+            }
+          }
+
           const selectedStillVisible = data.items.some((item) => item.id === currentSelectedId);
           if (selectedStillVisible) return currentSelectedId;
 
@@ -1951,6 +1967,15 @@ function App() {
         setBlogFactoryItems(data.items);
         setBlogFactoryTotal(data.total);
         setBlogFactoryError(null);
+        const pendingDirection = pendingBlogFactoryNavigationRef.current;
+        if (pendingDirection) {
+          pendingBlogFactoryNavigationRef.current = null;
+          const navigatedItem = pendingDirection === "previous" ? data.items[data.items.length - 1] : data.items[0];
+          if (navigatedItem) {
+            void handleSelectBlogFactoryItem(navigatedItem);
+            return;
+          }
+        }
         setSelectedBlogFactoryItem((current) => {
           const targetItemId = current?.id ?? restoredBlogFactorySelectionRef.current;
           const visibleItem = targetItemId ? data.items.find((item) => item.id === targetItemId) : null;
@@ -3059,6 +3084,7 @@ function App() {
     setEnglishMaterialUsername("");
     setSelectedEnglishMaterial(null);
     setIsEnglishMaterialDetailOpen(false);
+    setIsEnglishMaterialCreateOpen(false);
     englishMaterialSequenceTouchedRef.current = false;
     setEnglishMaterialDraft(emptyEnglishMaterialDraft);
     setEnglishMaterialDetailDraft(emptyEnglishMaterialDraft);
@@ -3182,6 +3208,35 @@ function App() {
     }
   }
 
+  function handleSelectFactoryItem(item: KnowledgeItem) {
+    if (isFactoryGenerating || isFactoryAutoSaving) return;
+    setFactorySelectedId(item.id);
+    setFactoryTask("");
+    setFactoryCodexStatus("");
+    setHasCopiedFactoryTask(false);
+    setFactoryCopyError(null);
+    setFactorySavedKnowledgeId(null);
+  }
+
+  function handleSelectAdjacentFactoryKnowledge(direction: "previous" | "next") {
+    if (isFactoryGenerating || isFactoryAutoSaving || factorySelectedId === null) return;
+
+    const selectedIndex = factoryItems.findIndex((item) => item.id === factorySelectedId);
+    if (selectedIndex === -1) return;
+
+    const adjacentItem = direction === "previous" ? factoryItems[selectedIndex - 1] : factoryItems[selectedIndex + 1];
+    if (adjacentItem) {
+      handleSelectFactoryItem(adjacentItem);
+      return;
+    }
+
+    const canMovePage = direction === "previous" ? factoryPage > 1 : factoryPage * FACTORY_PAGE_SIZE < factoryTotalItems;
+    if (canMovePage) {
+      pendingFactoryNavigationRef.current = direction;
+      setFactoryPage((current) => (direction === "previous" ? Math.max(1, current - 1) : current + 1));
+    }
+  }
+
   async function handleSelectBlogFactoryItem(item: BlogFactoryItem) {
     const requestId = ++blogFactoryDetailRequestRef.current;
     setSelectedBlogFactoryItem(item);
@@ -3206,6 +3261,37 @@ function App() {
       if (requestId === blogFactoryDetailRequestRef.current) {
         setIsBlogFactoryDetailLoading(false);
       }
+    }
+  }
+
+  function handleSelectAdjacentBlogFactoryItem(direction: "previous" | "next") {
+    if (
+      !selectedBlogFactoryItem ||
+      isBlogFactoryDetailLoading ||
+      isBlogFactoryStatusSaving ||
+      isBlogFactoryItemSaving ||
+      blogFactoryAssistSavingTargets.length > 0 ||
+      isBlogFactorySendingToProcessing ||
+      isBlogFactoryArticleSaving ||
+      isBlogFactoryDeleting ||
+      isBlogPublishing
+    ) {
+      return;
+    }
+
+    const selectedIndex = blogFactoryItems.findIndex((item) => item.id === selectedBlogFactoryItem.id);
+    if (selectedIndex === -1) return;
+
+    const adjacentItem = direction === "previous" ? blogFactoryItems[selectedIndex - 1] : blogFactoryItems[selectedIndex + 1];
+    if (adjacentItem) {
+      void handleSelectBlogFactoryItem(adjacentItem);
+      return;
+    }
+
+    const canMovePage = direction === "previous" ? blogFactoryPage > 1 : blogFactoryPage * BLOG_FACTORY_PAGE_SIZE < blogFactoryTotal;
+    if (canMovePage) {
+      pendingBlogFactoryNavigationRef.current = direction;
+      setBlogFactoryPage((current) => (direction === "previous" ? Math.max(1, current - 1) : current + 1));
     }
   }
 
@@ -4211,6 +4297,7 @@ function App() {
       setEnglishMaterialDraft(emptyEnglishMaterialDraft);
       setSelectedEnglishMaterial(created);
       setIsEnglishMaterialDetailOpen(false);
+      setIsEnglishMaterialCreateOpen(false);
       setEnglishMaterialPage(1);
       setEnglishMaterialRefreshToken((current) => current + 1);
     } catch (error) {
@@ -4227,6 +4314,13 @@ function App() {
       }
       return nextDraft;
     });
+  }
+
+  function handleClearEnglishMaterialDraft() {
+    if (isEnglishMaterialSaving) return;
+    englishMaterialSequenceTouchedRef.current = false;
+    setEnglishMaterialDraft(emptyEnglishMaterialDraft);
+    setEnglishMaterialSaveError(null);
   }
 
   async function handleSelectEnglishMaterial(item: EnglishMaterialItem, { openDetail = true }: { openDetail?: boolean } = {}) {
@@ -4894,7 +4988,7 @@ function App() {
   }
 
   async function handleRestartServices() {
-    if (restartConfirm !== "RESTART" || isRestartingServices) return;
+    if (restartConfirm !== "restart" || isRestartingServices) return;
 
     setIsRestartingServices(true);
     setRestartError(null);
@@ -4966,8 +5060,6 @@ function App() {
   }
 
   function handleClearCodexMessageDisplay(message: AiCodingMessage) {
-    if (!message.response) return;
-
     setAiCodingMessages((current) =>
       current.map((item) => (item.id === message.id ? { ...item, isDisplayCleared: true } : item)),
     );
@@ -5016,6 +5108,30 @@ function App() {
     selectedKnowledgeIndex >= 0 &&
     (selectedKnowledgeIndex < items.length - 1 || page * PAGE_SIZE < totalItems) &&
     !isKnowledgeNavigationBlocked;
+  const factorySelectedIndex = factorySelectedId === null ? -1 : factoryItems.findIndex((item) => item.id === factorySelectedId);
+  const isFactoryNavigationBlocked = isFactoryGenerating || isFactoryAutoSaving;
+  const canSelectPreviousFactoryKnowledge =
+    (factorySelectedIndex > 0 || (factorySelectedIndex === 0 && factoryPage > 1)) && !isFactoryNavigationBlocked;
+  const canSelectNextFactoryKnowledge =
+    factorySelectedIndex >= 0 &&
+    (factorySelectedIndex < factoryItems.length - 1 || factoryPage * FACTORY_PAGE_SIZE < factoryTotalItems) &&
+    !isFactoryNavigationBlocked;
+  const blogFactorySelectedIndex = selectedBlogFactoryItem ? blogFactoryItems.findIndex((item) => item.id === selectedBlogFactoryItem.id) : -1;
+  const isBlogFactoryNavigationBlocked =
+    isBlogFactoryDetailLoading ||
+    isBlogFactoryStatusSaving ||
+    isBlogFactoryItemSaving ||
+    blogFactoryAssistSavingTargets.length > 0 ||
+    isBlogFactorySendingToProcessing ||
+    isBlogFactoryArticleSaving ||
+    isBlogFactoryDeleting ||
+    isBlogPublishing;
+  const canSelectPreviousBlogFactoryItem =
+    (blogFactorySelectedIndex > 0 || (blogFactorySelectedIndex === 0 && blogFactoryPage > 1)) && !isBlogFactoryNavigationBlocked;
+  const canSelectNextBlogFactoryItem =
+    blogFactorySelectedIndex >= 0 &&
+    (blogFactorySelectedIndex < blogFactoryItems.length - 1 || blogFactoryPage * BLOG_FACTORY_PAGE_SIZE < blogFactoryTotal) &&
+    !isBlogFactoryNavigationBlocked;
   const selectedTodoIndex = selectedTodoId === null ? -1 : todoItems.findIndex((item) => item.id === selectedTodoId);
   const isTodoNavigationBlocked = isTodoDetailLoading || isTodoSaving || isConvertingTodoToKnowledge;
   const hasUnsavedSelectedTodoChanges =
@@ -5295,6 +5411,8 @@ function App() {
               total={blogFactoryTotal}
               page={blogFactoryPage}
               selectedItem={selectedBlogFactoryItem}
+              canSelectPrevious={canSelectPreviousBlogFactoryItem}
+              canSelectNext={canSelectNextBlogFactoryItem}
               isMobileDetailOpen={isMobileBlogFactoryDetailOpen}
               isLoading={isBlogFactoryLoading}
               isDetailLoading={isBlogFactoryDetailLoading}
@@ -5381,6 +5499,7 @@ function App() {
               onSaveAssist={handleSaveBlogFactoryAssistMetadata}
               onSaveItem={handleSaveBlogFactoryItem}
               onSelect={handleSelectBlogFactoryItem}
+              onSelectAdjacent={handleSelectAdjacentBlogFactoryItem}
               onStatusChange={handleUpdateBlogFactoryStatus}
             />
           ) : activeView === "todos" ? (
@@ -5517,6 +5636,7 @@ function App() {
               page={englishMaterialPage}
               selectedItem={selectedEnglishMaterial}
               isDetailOpen={isEnglishMaterialDetailOpen}
+              isCreateOpen={isEnglishMaterialCreateOpen}
               draft={englishMaterialDraft}
               detailDraft={englishMaterialDetailDraft}
               isLoading={isEnglishMaterialLoading}
@@ -5568,11 +5688,16 @@ function App() {
               onCloseDetail={() => {
                 if (!isEnglishMaterialDetailLoading) setIsEnglishMaterialDetailOpen(false);
               }}
+              onCloseCreate={() => {
+                if (!isEnglishMaterialSaving) setIsEnglishMaterialCreateOpen(false);
+              }}
+              onClearCreateDraft={handleClearEnglishMaterialDraft}
               onCopyText={handleCopyEnglishMaterialText}
               onDetailDraftChange={setEnglishMaterialDetailDraft}
               onPageChange={setEnglishMaterialPage}
               onSaveDetail={handleSaveEnglishMaterialDetail}
               onSelect={handleSelectEnglishMaterial}
+              onOpenCreate={() => setIsEnglishMaterialCreateOpen(true)}
               onSubmit={handleCreateEnglishMaterial}
             />
           ) : activeView === "history" ? (
@@ -5658,7 +5783,17 @@ function App() {
               />
             </Suspense>
           ) : activeView === "workbench" ? (
-            <div className={`grid flex-1 gap-4 px-4 pb-4 pt-2 lg:grid-cols-[minmax(440px,0.95fr)_minmax(420px,1.05fr)] xl:gap-x-2 ${isKnowledgeEntryCollapsed ? "xl:grid-cols-[28px_minmax(0,1fr)_minmax(300px,0.45fr)]" : "xl:grid-cols-[minmax(500px,0.9fr)_minmax(460px,0.72fr)_300px]"}`}>
+            <div
+              className={`grid flex-1 gap-4 px-4 pb-4 pt-2 lg:grid-cols-[minmax(440px,0.95fr)_minmax(420px,1.05fr)] xl:gap-x-2 ${
+                isKnowledgeEntryCollapsed
+                  ? isWorkbenchDetailsCollapsed
+                    ? "xl:grid-cols-[28px_minmax(0,1fr)_28px]"
+                    : "xl:grid-cols-[28px_minmax(0,1fr)_300px_28px]"
+                  : isWorkbenchDetailsCollapsed
+                    ? "xl:grid-cols-[minmax(500px,1fr)_28px]"
+                    : "xl:grid-cols-[minmax(500px,0.9fr)_minmax(460px,0.72fr)_300px_28px]"
+              }`}
+            >
               <div className={`relative min-w-0 rounded-lg border border-white/10 bg-ink-900/72 shadow-soft-glow backdrop-blur-xl ${isKnowledgeEntryCollapsed ? "xl:p-0" : "p-4"}`}>
                 <div className={isKnowledgeEntryCollapsed ? "xl:hidden" : "xl:pr-7"}>
                   <KnowledgeForm
@@ -5690,34 +5825,44 @@ function App() {
                 <WorkspaceSidebarCollapseToggle isCollapsed={isKnowledgeEntryCollapsed} label="信息录入面板" onToggle={() => setIsKnowledgeEntryCollapsed((collapsed) => !collapsed)} />
               </div>
 
-              <KnowledgeList
-                authUser={authUser}
-                items={items}
-                totalItems={totalItems}
-                page={page}
-                pageSize={PAGE_SIZE}
-                isLoading={isLoading}
-                loadError={loadError}
-                selectedId={selectedId}
-                lastCreatedId={lastCreatedId}
-                username={workbenchUsername}
-                status={statusFilter}
-                onPageChange={setPage}
-                onUsernameChange={(nextUsername) => {
-                  setPage(1);
-                  setWorkbenchUsername(nextUsername);
-                }}
-                onStatusChange={(nextStatus) => {
-                  setPage(1);
-                  setStatusFilter(nextStatus);
-                }}
-                onSelect={handleSelectItem}
-              />
+              <div className={isWorkbenchDetailsCollapsed ? "xl:hidden" : "min-w-0"}>
+                <KnowledgeList
+                  authUser={authUser}
+                  items={items}
+                  totalItems={totalItems}
+                  page={page}
+                  pageSize={PAGE_SIZE}
+                  isLoading={isLoading}
+                  loadError={loadError}
+                  selectedId={selectedId}
+                  lastCreatedId={lastCreatedId}
+                  username={workbenchUsername}
+                  status={statusFilter}
+                  onPageChange={setPage}
+                  onUsernameChange={(nextUsername) => {
+                    setPage(1);
+                    setWorkbenchUsername(nextUsername);
+                  }}
+                  onStatusChange={(nextStatus) => {
+                    setPage(1);
+                    setStatusFilter(nextStatus);
+                  }}
+                  onSelect={handleSelectItem}
+                />
+              </div>
 
-              <TrustPanel
-                draft={draft}
-                trustScore={trustScore}
-                hasSensitiveSignal={hasSensitiveSignal}
+              <div className={isWorkbenchDetailsCollapsed ? "xl:hidden" : "min-w-0"}>
+                <TrustPanel
+                  draft={draft}
+                  trustScore={trustScore}
+                  hasSensitiveSignal={hasSensitiveSignal}
+                />
+              </div>
+
+              <WorkspaceRightSidebarCollapseToggle
+                isCollapsed={isWorkbenchDetailsCollapsed}
+                label="已录入知识和可信度检查"
+                onToggle={() => setIsWorkbenchDetailsCollapsed((collapsed) => !collapsed)}
               />
             </div>
           ) : (
@@ -5731,6 +5876,8 @@ function App() {
               isGenerating={isFactoryGenerating}
               loadError={factoryError}
               selectedId={factorySelectedId}
+              canSelectPrevious={canSelectPreviousFactoryKnowledge}
+              canSelectNext={canSelectNextFactoryKnowledge}
               task={factoryTask}
               selectedSkillIds={factorySkillIds}
               skills={skillItems}
@@ -5759,15 +5906,8 @@ function App() {
                 setFactoryPage(1);
                 setFactoryUsername(nextUsername);
               }}
-              onSelect={(item) => {
-                if (isFactoryGenerating || isFactoryAutoSaving) return;
-                setFactorySelectedId(item.id);
-                setFactoryTask("");
-                setFactoryCodexStatus("");
-                setHasCopiedFactoryTask(false);
-                setFactoryCopyError(null);
-                setFactorySavedKnowledgeId(null);
-              }}
+              onSelect={handleSelectFactoryItem}
+              onSelectAdjacent={handleSelectAdjacentFactoryKnowledge}
               onToggleSkill={handleToggleFactorySkill}
             />
           )}
@@ -6155,6 +6295,28 @@ function WorkspaceSidebarCollapseToggle({
       onClick={onToggle}
     >
       <ChevronLeft className="mt-2 shrink-0" size={16} />
+    </button>
+  );
+}
+
+function WorkspaceRightSidebarCollapseToggle({
+  isCollapsed,
+  label,
+  onToggle,
+}: {
+  isCollapsed: boolean;
+  label: string;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      className="hidden h-full min-h-[420px] w-full flex-col items-center rounded-md text-slate-500 transition hover:bg-mint-300/10 hover:text-mint-200 focus:outline-none focus:ring-2 focus:ring-mint-300/30 xl:flex"
+      type="button"
+      aria-label={`${isCollapsed ? "展开" : "收起"}${label}`}
+      title={isCollapsed ? `展开${label}` : `收起${label}，专注编辑可信知识`}
+      onClick={onToggle}
+    >
+      {isCollapsed ? <ChevronLeft className="mt-2 shrink-0" size={17} /> : <ChevronRight className="mt-2 shrink-0" size={16} />}
     </button>
   );
 }
@@ -8600,6 +8762,8 @@ function KnowledgeFactory({
   isGenerating,
   loadError,
   selectedId,
+  canSelectPrevious,
+  canSelectNext,
   task,
   selectedSkillIds,
   skills,
@@ -8623,6 +8787,7 @@ function KnowledgeFactory({
   onPageChange,
   onUsernameChange,
   onSelect,
+  onSelectAdjacent,
   onToggleSkill,
 }: {
   authUser: AuthUser | null;
@@ -8634,6 +8799,8 @@ function KnowledgeFactory({
   isGenerating: boolean;
   loadError: string | null;
   selectedId: number | null;
+  canSelectPrevious: boolean;
+  canSelectNext: boolean;
   task: string;
   selectedSkillIds: string[];
   skills: SkillSummary[];
@@ -8657,6 +8824,7 @@ function KnowledgeFactory({
   onPageChange: (page: number) => void;
   onUsernameChange: (username: string) => void;
   onSelect: (item: KnowledgeItem) => void;
+  onSelectAdjacent: (direction: "previous" | "next") => void;
   onToggleSkill: (skillId: string) => void;
 }) {
   const selectedItem = items.find((item) => item.id === selectedId) ?? null;
@@ -8886,12 +9054,36 @@ function KnowledgeFactory({
 
       <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/68 p-4 backdrop-blur-xl">
         <div className="mb-4 flex flex-col gap-4">
-          <div>
-            <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
-              <FileText size={17} />
-              Source Context
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
+                <FileText size={17} />
+                Source Context
+              </div>
+              <h2 className="text-xl font-semibold text-slate-50">知识原文</h2>
             </div>
-            <h2 className="text-xl font-semibold text-slate-50">知识原文</h2>
+            <div className="flex items-center gap-2">
+              <button
+                className="flex h-10 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-sm font-medium text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600"
+                disabled={!canSelectPrevious}
+                title="上一条待加工知识"
+                type="button"
+                onClick={() => onSelectAdjacent("previous")}
+              >
+                <ChevronLeft size={16} />
+                上一条
+              </button>
+              <button
+                className="flex h-10 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-sm font-medium text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600"
+                disabled={!canSelectNext}
+                title="下一条待加工知识"
+                type="button"
+                onClick={() => onSelectAdjacent("next")}
+              >
+                下一条
+                <ChevronRight size={16} />
+              </button>
+            </div>
           </div>
           <div className="flex w-full min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
             <Field label="执行模型" icon={<Settings2 size={16} />}>
@@ -9315,6 +9507,8 @@ function BlogFactoryRecords({
   total,
   page,
   selectedItem,
+  canSelectPrevious,
+  canSelectNext,
   isMobileDetailOpen,
   isLoading,
   isDetailLoading,
@@ -9365,6 +9559,7 @@ function BlogFactoryRecords({
   onSaveAssist,
   onSaveItem,
   onSelect,
+  onSelectAdjacent,
   onStatusChange,
 }: {
   authUser: AuthUser | null;
@@ -9372,6 +9567,8 @@ function BlogFactoryRecords({
   total: number;
   page: number;
   selectedItem: BlogFactoryItem | null;
+  canSelectPrevious: boolean;
+  canSelectNext: boolean;
   isMobileDetailOpen: boolean;
   isLoading: boolean;
   isDetailLoading: boolean;
@@ -9422,6 +9619,7 @@ function BlogFactoryRecords({
   onSaveAssist: (target: "summary" | "cover") => Promise<void>;
   onSaveItem: () => Promise<boolean>;
   onSelect: (item: BlogFactoryItem) => void;
+  onSelectAdjacent: (direction: "previous" | "next") => void;
   onStatusChange: (status: BlogFactoryStatus) => void;
 }) {
   const totalPages = Math.max(1, Math.ceil(total / BLOG_FACTORY_PAGE_SIZE));
@@ -9722,7 +9920,27 @@ function BlogFactoryRecords({
           </div>
           <h2 className="text-lg font-semibold text-slate-50">任务详情</h2>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <button
+            className="flex h-9 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-xs text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600"
+            disabled={!canSelectPrevious}
+            title="上一条博客工厂任务"
+            type="button"
+            onClick={() => onSelectAdjacent("previous")}
+          >
+            <ChevronLeft size={15} />
+            上一条
+          </button>
+          <button
+            className="flex h-9 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-xs text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600"
+            disabled={!canSelectNext}
+            title="下一条博客工厂任务"
+            type="button"
+            onClick={() => onSelectAdjacent("next")}
+          >
+            下一条
+            <ChevronRight size={15} />
+          </button>
           {isDetailLoading ? <Loader2 className="animate-spin text-mint-300" size={17} /> : null}
           <button
             className="grid h-9 w-9 place-items-center rounded-lg border border-red-300/20 bg-red-400/10 text-red-200 transition hover:bg-red-400/16 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-600"
@@ -12186,6 +12404,7 @@ function EnglishMaterialsWorkspace({
   page,
   selectedItem,
   isDetailOpen,
+  isCreateOpen,
   draft,
   detailDraft,
   isLoading,
@@ -12201,12 +12420,15 @@ function EnglishMaterialsWorkspace({
   onFilterChange,
   onRefreshVectors,
   onClearFilters,
+  onClearCreateDraft,
+  onCloseCreate,
   onCloseDetail,
   onCopyText,
   onDetailDraftChange,
   onPageChange,
   onSaveDetail,
   onSelect,
+  onOpenCreate,
   onSubmit,
 }: {
   authUser: AuthUser | null;
@@ -12215,6 +12437,7 @@ function EnglishMaterialsWorkspace({
   page: number;
   selectedItem: EnglishMaterialItem | null;
   isDetailOpen: boolean;
+  isCreateOpen: boolean;
   draft: EnglishMaterialDraft;
   detailDraft: EnglishMaterialDraft;
   isLoading: boolean;
@@ -12230,12 +12453,15 @@ function EnglishMaterialsWorkspace({
   onFilterChange: (filters: Partial<EnglishMaterialFilters>) => void;
   onRefreshVectors: () => void;
   onClearFilters: () => void;
+  onClearCreateDraft: () => void;
+  onCloseCreate: () => void;
   onCloseDetail: () => void;
   onCopyText: (value: string, label: string) => void;
   onDetailDraftChange: (draft: EnglishMaterialDraft) => void;
   onPageChange: (page: number) => void;
   onSaveDetail: () => void;
   onSelect: (item: EnglishMaterialItem) => void;
+  onOpenCreate: () => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
 }) {
   const totalPages = Math.max(1, Math.ceil(total / ENGLISH_MATERIALS_PAGE_SIZE));
@@ -12254,6 +12480,14 @@ function EnglishMaterialsWorkspace({
   const [semanticQueryDraft, setSemanticQueryDraft] = useState(filters.semanticQuery);
   useEffect(() => setSemanticQueryDraft(filters.semanticQuery), [filters.semanticQuery]);
   const activeFilterCount = [filters.username, filters.semanticQuery, filters.category, filters.flag, filters.vectorStatus === "all" ? "" : filters.vectorStatus].filter(Boolean).length;
+  const hasCreateDraft = Boolean(
+    draft.title.trim() ||
+      draft.sequence_no ||
+      draft.base_expression.trim() ||
+      draft.professional_sentence.trim() ||
+      draft.chinese_translation.trim() ||
+      draft.full_script.trim(),
+  );
 
   return (
     <div className={`grid flex-1 gap-4 px-4 pb-4 pt-2 xl:gap-x-2 ${isEnglishMaterialListCollapsed ? "xl:grid-cols-[28px_minmax(0,1fr)]" : "xl:grid-cols-[minmax(520px,1fr)_380px]"}`}>
@@ -12267,8 +12501,18 @@ function EnglishMaterialsWorkspace({
             </div>
             <h2 className="text-xl font-semibold text-slate-50">英语素材列表</h2>
           </div>
-          <div className="rounded-lg border border-white/10 bg-white/[0.035] px-3 py-2 text-sm text-slate-300">
-            {total} 条素材
+          <div className="flex items-center gap-2">
+            <div className="rounded-lg border border-white/10 bg-white/[0.035] px-3 py-2 text-sm text-slate-300">
+              {total} 条素材
+            </div>
+            <button
+              className="flex h-10 items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-3 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20 xl:hidden"
+              type="button"
+              onClick={onOpenCreate}
+            >
+              <Plus size={16} />
+              {hasCreateDraft ? "继续录入" : "录入素材"}
+            </button>
           </div>
         </div>
 
@@ -12488,7 +12732,7 @@ function EnglishMaterialsWorkspace({
         <WorkspaceSidebarCollapseToggle isCollapsed={isEnglishMaterialListCollapsed} label="英语素材列表" onToggle={() => setIsEnglishMaterialListCollapsed((collapsed) => !collapsed)} />
       </section>
 
-      <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/72 p-4 shadow-soft-glow backdrop-blur-xl">
+      <section className="hidden min-w-0 rounded-lg border border-white/10 bg-ink-900/72 p-4 shadow-soft-glow backdrop-blur-xl xl:block">
         <div className="mb-5">
           <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
             <Plus size={17} />
@@ -12498,93 +12742,7 @@ function EnglishMaterialsWorkspace({
         </div>
 
         <form className="space-y-4" onSubmit={onSubmit}>
-          <div className="grid grid-cols-[1fr_110px] gap-3">
-            <Field label="标题" icon={<FileText size={16} />}>
-              <input
-                className="control"
-                maxLength={200}
-                value={draft.title}
-                onChange={(event) => onDraftChange({ ...draft, title: event.target.value })}
-                placeholder="素材标题"
-              />
-            </Field>
-            <Field label="序号" icon={<CircleGauge size={16} />}>
-              <input
-                className="control"
-                min={1}
-                type="number"
-                value={draft.sequence_no}
-                onChange={(event) => onDraftChange({ ...draft, sequence_no: event.target.value.replace(/\D/g, "") })}
-                placeholder="可空"
-              />
-            </Field>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="分类标识" icon={<Tags size={16} />}>
-              <select
-                className="control"
-                value={draft.category}
-                onChange={(event) => onDraftChange({ ...draft, category: event.target.value })}
-              >
-                {ENGLISH_MATERIAL_CATEGORIES.map((category) => (
-                  <option key={category} value={category}>
-                    {category}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="发布状态" icon={<CircleGauge size={16} />}>
-              <select
-                className="control"
-                value={draft.flag}
-                onChange={(event) => onDraftChange({ ...draft, flag: event.target.value as EnglishMaterialDraft["flag"] })}
-              >
-                <option value="0">{englishMaterialFlagLabels["0"]}</option>
-                <option value="1">{englishMaterialFlagLabels["1"]}</option>
-              </select>
-            </Field>
-          </div>
-
-          <Field label="基础表达" icon={<BookOpenCheck size={16} />}>
-            <input
-              className="control"
-              maxLength={50}
-              value={draft.base_expression}
-              onChange={(event) => onDraftChange({ ...draft, base_expression: event.target.value })}
-              placeholder="必填，例如 make it happen"
-            />
-          </Field>
-
-          <Field label="职业完整句式" icon={<FileText size={16} />}>
-            <textarea
-              className="control min-h-[110px] resize-none leading-7"
-              maxLength={255}
-              value={draft.professional_sentence}
-              onChange={(event) => onDraftChange({ ...draft, professional_sentence: event.target.value })}
-              placeholder="适合职场场景的完整英文句式。"
-            />
-          </Field>
-
-          <Field label="地道中文翻译" icon={<FileText size={16} />}>
-            <textarea
-              className="control min-h-[110px] resize-none leading-7"
-              maxLength={255}
-              value={draft.chinese_translation}
-              onChange={(event) => onDraftChange({ ...draft, chinese_translation: event.target.value })}
-              placeholder="中文解释或翻译。"
-            />
-          </Field>
-
-          <Field label="完整口播内容" icon={<ClipboardList size={16} />}>
-            <textarea
-              className="control min-h-[180px] resize-none leading-7"
-              maxLength={4000}
-              value={draft.full_script}
-              onChange={(event) => onDraftChange({ ...draft, full_script: event.target.value })}
-              placeholder="用于短视频口播的完整内容。"
-            />
-          </Field>
+          <EnglishMaterialCreateFields draft={draft} onDraftChange={onDraftChange} />
 
           {saveError ? (
             <div className="flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100">
@@ -12604,6 +12762,18 @@ function EnglishMaterialsWorkspace({
         </form>
       </section>
 
+      <EnglishMaterialCreateDialog
+        draft={draft}
+        hasDraft={hasCreateDraft}
+        isOpen={isCreateOpen}
+        isSaving={isSaving}
+        saveError={saveError}
+        onClearDraft={onClearCreateDraft}
+        onClose={onCloseCreate}
+        onDraftChange={onDraftChange}
+        onSubmit={onSubmit}
+      />
+
       <EnglishMaterialDetailDialog
         copiedLabel={copiedLabel}
         draft={detailDraft}
@@ -12619,6 +12789,209 @@ function EnglishMaterialsWorkspace({
         onSave={onSaveDetail}
         previousItem={previousItem}
       />
+    </div>
+  );
+}
+
+function EnglishMaterialCreateFields({
+  draft,
+  onDraftChange,
+}: {
+  draft: EnglishMaterialDraft;
+  onDraftChange: (draft: EnglishMaterialDraft) => void;
+}) {
+  return (
+    <>
+      <div className="grid gap-3 sm:grid-cols-[1fr_110px]">
+        <Field label="标题" icon={<FileText size={16} />}>
+          <input
+            className="control"
+            maxLength={200}
+            value={draft.title}
+            onChange={(event) => onDraftChange({ ...draft, title: event.target.value })}
+            placeholder="素材标题"
+          />
+        </Field>
+        <Field label="序号" icon={<CircleGauge size={16} />}>
+          <input
+            className="control"
+            min={1}
+            type="number"
+            value={draft.sequence_no}
+            onChange={(event) => onDraftChange({ ...draft, sequence_no: event.target.value.replace(/\D/g, "") })}
+            placeholder="可空"
+          />
+        </Field>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="分类标识" icon={<Tags size={16} />}>
+          <select className="control" value={draft.category} onChange={(event) => onDraftChange({ ...draft, category: event.target.value })}>
+            {ENGLISH_MATERIAL_CATEGORIES.map((category) => (
+              <option key={category} value={category}>
+                {category}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="发布状态" icon={<CircleGauge size={16} />}>
+          <select className="control" value={draft.flag} onChange={(event) => onDraftChange({ ...draft, flag: event.target.value as EnglishMaterialDraft["flag"] })}>
+            <option value="0">{englishMaterialFlagLabels["0"]}</option>
+            <option value="1">{englishMaterialFlagLabels["1"]}</option>
+          </select>
+        </Field>
+      </div>
+
+      <Field label="基础表达" icon={<BookOpenCheck size={16} />}>
+        <input
+          className="control"
+          maxLength={50}
+          value={draft.base_expression}
+          onChange={(event) => onDraftChange({ ...draft, base_expression: event.target.value })}
+          placeholder="必填，例如 make it happen"
+        />
+      </Field>
+
+      <Field label="职业完整句式" icon={<FileText size={16} />}>
+        <textarea
+          className="control min-h-[110px] resize-none leading-7"
+          maxLength={255}
+          value={draft.professional_sentence}
+          onChange={(event) => onDraftChange({ ...draft, professional_sentence: event.target.value })}
+          placeholder="适合职场场景的完整英文句式。"
+        />
+      </Field>
+
+      <Field label="地道中文翻译" icon={<FileText size={16} />}>
+        <textarea
+          className="control min-h-[110px] resize-none leading-7"
+          maxLength={255}
+          value={draft.chinese_translation}
+          onChange={(event) => onDraftChange({ ...draft, chinese_translation: event.target.value })}
+          placeholder="中文解释或翻译。"
+        />
+      </Field>
+
+      <Field label="完整口播内容" icon={<ClipboardList size={16} />}>
+        <textarea
+          className="control min-h-[180px] resize-none leading-7"
+          maxLength={4000}
+          value={draft.full_script}
+          onChange={(event) => onDraftChange({ ...draft, full_script: event.target.value })}
+          placeholder="用于短视频口播的完整内容。"
+        />
+      </Field>
+    </>
+  );
+}
+
+function EnglishMaterialCreateDialog({
+  draft,
+  hasDraft,
+  isOpen,
+  isSaving,
+  saveError,
+  onClearDraft,
+  onClose,
+  onDraftChange,
+  onSubmit,
+}: {
+  draft: EnglishMaterialDraft;
+  hasDraft: boolean;
+  isOpen: boolean;
+  isSaving: boolean;
+  saveError: string | null;
+  onClearDraft: () => void;
+  onClose: () => void;
+  onDraftChange: (draft: EnglishMaterialDraft) => void;
+  onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+}) {
+  const canSubmit = draft.base_expression.trim().length > 0 && !isSaving;
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape" && !isSaving) onClose();
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, isSaving, onClose]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end bg-black/62 px-0 backdrop-blur-sm xl:hidden"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !isSaving) onClose();
+      }}
+    >
+      <section aria-modal="true" className="flex max-h-[100dvh] w-full flex-col overflow-hidden rounded-t-lg border border-white/10 bg-ink-900 shadow-soft-glow" role="dialog">
+        <div className="flex shrink-0 items-start justify-between gap-4 border-b border-white/10 p-4">
+          <div>
+            <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
+              <Plus size={17} />
+              New Material
+            </div>
+            <h2 className="text-xl font-semibold text-slate-50">{hasDraft ? "继续录入英语素材" : "录入英语素材"}</h2>
+          </div>
+          <button
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600"
+            disabled={isSaving}
+            title="关闭并保留草稿"
+            type="button"
+            onClick={onClose}
+          >
+            <X size={17} />
+          </button>
+        </div>
+
+        <form id="english-material-create-form" className="min-h-0 flex-1 overflow-y-auto p-4" onSubmit={onSubmit}>
+          <div className="space-y-4">
+            {hasDraft ? <p className="rounded-lg border border-mint-300/20 bg-mint-300/8 px-3 py-2 text-xs leading-5 text-mint-100">当前显示的是本机保留的未提交草稿；关闭、网络失败或刷新页面都不会清空内容。</p> : null}
+            <EnglishMaterialCreateFields draft={draft} onDraftChange={onDraftChange} />
+            {saveError ? (
+              <div className="flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100">
+                <TriangleAlert className="mt-0.5 shrink-0 text-red-300" size={17} />
+                <span>{saveError}</span>
+              </div>
+            ) : null}
+          </div>
+        </form>
+
+        <div className="flex shrink-0 justify-end gap-3 border-t border-white/10 p-4">
+          {hasDraft ? (
+            <button
+              className="mr-auto h-11 rounded-lg border border-red-300/20 bg-red-400/10 px-4 text-sm font-medium text-red-100 transition hover:bg-red-400/16 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-600"
+              disabled={isSaving}
+              type="button"
+              onClick={onClearDraft}
+            >
+              清空草稿
+            </button>
+          ) : null}
+          <button
+            className="h-11 rounded-lg border border-white/10 bg-white/[0.035] px-4 text-sm font-medium text-slate-300 transition hover:border-white/20 hover:text-slate-100 disabled:cursor-not-allowed disabled:text-slate-600"
+            disabled={isSaving}
+            type="button"
+            onClick={onClose}
+          >
+            保留草稿并关闭
+          </button>
+          <button
+            className="flex h-11 items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
+            disabled={!canSubmit}
+            form="english-material-create-form"
+            type="submit"
+          >
+            {isSaving ? <Loader2 className="animate-spin" size={18} /> : <Plus size={18} />}
+            {isSaving ? "写入中" : "保存到 T_ENGLISH"}
+          </button>
+        </div>
+      </section>
     </div>
   );
 }

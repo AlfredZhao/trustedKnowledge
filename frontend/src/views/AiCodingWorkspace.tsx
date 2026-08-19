@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   Archive,
-  Bot,
   CheckCircle2,
   Github,
   History,
@@ -92,7 +91,7 @@ export default function AiCodingWorkspace({
 }) {
   const canRunCodex = prompt.trim().length >= 2 && !isCodexRunning;
   const canSyncCode = !isGithubSyncing;
-  const canRestart = restartConfirm === "RESTART" && !isRestartingServices;
+  const canRestart = restartConfirm === "restart" && !isRestartingServices;
   const latestMessage = messages[0];
   const visibleLatestMessage = latestMessage?.archivedKnowledgeId || latestMessage?.isDisplayCleared ? null : latestMessage;
   const modelOptions = useMemo(() => buildAiCodingModelOptions(null), []);
@@ -196,15 +195,7 @@ export default function AiCodingWorkspace({
                   终止当前任务
                 </button>
               </div>
-            ) : !visibleLatestMessage ? (
-              <div className="grid min-h-[260px] place-items-center rounded-lg border border-white/10 bg-white/[0.025] p-6 text-center">
-                <div>
-                  <Bot className="mx-auto mb-3 text-slate-600" size={36} />
-                  <div className="mb-1 font-medium text-slate-300">等待编程任务</div>
-                  <p className="text-sm text-slate-500">提交后会显示 Codex 输出、退出码和本次工作区变更。</p>
-                </div>
-              </div>
-            ) : (
+            ) : visibleLatestMessage ? (
               <AiCodingMessageCard
                 defaultModelName={null}
                 archiveLoadingId={archiveLoadingId}
@@ -212,7 +203,7 @@ export default function AiCodingWorkspace({
                 onArchiveMessage={onArchiveMessage}
                 onClearMessageDisplay={onClearMessageDisplay}
               />
-            )}
+            ) : null}
           </div>
 
           <section className="mt-5 rounded-lg border border-white/10 bg-white/[0.025] p-4">
@@ -365,7 +356,7 @@ export default function AiCodingWorkspace({
                   disabled={isRestartingServices}
                   value={restartConfirm}
                   onChange={(event) => onRestartConfirmChange(event.target.value)}
-                  placeholder="输入 RESTART"
+                  placeholder="输入 restart"
                 />
               </Field>
 
@@ -528,9 +519,12 @@ function AiCodingMessageCard({
       {failedWithoutResponse ? (
         <div className="space-y-3">
           <div className="rounded-lg border border-red-400/25 bg-red-400/10 p-3">
-            <div className="mb-2 flex items-center gap-2 text-sm font-medium text-red-100">
-              <TriangleAlert size={17} />
-              任务执行失败
+            <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2 text-sm font-medium text-red-100">
+                <TriangleAlert size={17} />
+                任务执行失败
+              </div>
+              <ClearCodexMessageDisplayButton onClick={() => onClearMessageDisplay(message)} />
             </div>
             <div className="text-sm leading-6 text-red-50">{message.errorMessage || "Codex 任务未能完成，请稍后重试。"}</div>
             <div className="mt-2 text-xs leading-5 text-red-100/75">{formatDateTime(message.completedAt ?? message.startedAt)}</div>
@@ -544,9 +538,12 @@ function AiCodingMessageCard({
       {cancelledWithoutResponse ? (
         <div className="space-y-3">
           <div className="rounded-lg border border-amberline/25 bg-amberline/10 p-3">
-            <div className="mb-2 flex items-center gap-2 text-sm font-medium text-amber-100">
-              <X size={17} />
-              任务已终止
+            <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2 text-sm font-medium text-amber-100">
+                <X size={17} />
+                任务已终止
+              </div>
+              <ClearCodexMessageDisplayButton onClick={() => onClearMessageDisplay(message)} />
             </div>
             <div className="text-sm leading-6 text-amber-50">{message.errorMessage || "Codex 任务已由用户终止。"}</div>
             <div className="mt-2 text-xs leading-5 text-amber-100/75">{formatDateTime(message.completedAt ?? message.startedAt)}</div>
@@ -608,6 +605,19 @@ function CodexOutputBlock({
       </div>
       <pre className="max-h-[420px] overflow-auto whitespace-pre-wrap break-words text-xs leading-5 text-slate-300">{value}</pre>
     </div>
+  );
+}
+
+function ClearCodexMessageDisplayButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      className="flex h-8 shrink-0 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-xs text-slate-300 transition hover:border-red-400/30 hover:text-red-100"
+      type="button"
+      onClick={onClick}
+    >
+      <Trash2 size={14} />
+      清理结果
+    </button>
   );
 }
 

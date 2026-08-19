@@ -9,11 +9,29 @@ The format follows the common GitHub changelog convention inspired by
 
 ## 本次版本更新
 
-### [Unreleased]
+### [0.4.0] - 2026-08-19
 
 #### Added / 新增
 
+- Added a mobile English Materials create drawer opened from the list header. It preserves the local draft through closing, failed saves, and PWA refreshes, and offers a “continue entry” action when an unsaved draft exists.
+- 为手机端英语素材新增从列表标题区打开的录入抽屉；关闭、保存失败和 PWA 刷新都会保留本地草稿，存在未提交草稿时显示“继续录入”入口。
+
+- Added previous/next task navigation to Knowledge Factory's source-context panel and Blog Factory's task-detail panel. The controls respect the active ordering and continue across page boundaries.
+- 为知识加工的知识原文区和博客工厂的任务详情区新增上一条/下一条导航；按钮遵循当前排序，并可跨分页连续切换。
+
+- Added a desktop-only right-collapse rail for the Information Entry workspace. It hides the Knowledge List and Trust Panel together, giving trusted-knowledge editing the full working width.
+- 为信息录入工作区新增仅桌面端可用的右侧折叠轨道：可同时收起已录入知识与可信度检查，为可信知识编辑腾出完整工作宽度。
+
+- Added a manual `清理结果` action to failed and manually terminated AI Coding task cards, so their retained output can be hidden without submitting another task.
+- 为失败和手工终止的 AI 编程任务卡片新增手动“清理结果”操作，无需提交新任务即可隐藏保留的输出。
+
 #### Changed / 变更
+
+- Changed the AI Coding service-restart confirmation text from `RESTART` to lowercase `restart`.
+- 将 AI 编程服务重启的确认文本由大写 `RESTART` 改为小写 `restart`。
+
+- Removed the oversized empty AI Coding task panel when no task output is available, so the project changelog remains reachable without unused vertical space.
+- AI 编程没有任务输出或已清空展示时不再显示大面积空状态面板，让项目变更日志无需经过无效垂直占位即可访问。
 
 - Positioned the Overview LLM battery with the right-side desktop actions while retaining its top-right mobile placement; its integer percentage now appears inside the battery.
 - 调整总览 LLM 电池在桌面端与右侧操作区对齐，同时保留手机端标题区右侧位置；整数百分比现在显示在电池内部。
