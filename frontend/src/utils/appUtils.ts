@@ -42,7 +42,7 @@ import { removeLeakedMarkdownCodePlaceholders } from "./markdown";
 
 export const NEW_KNOWLEDGE_DRAFT_STORAGE_KEY = "trustedKnowledge.newDraft";
 const UI_STATE_STORAGE_KEY = "trustedKnowledge.uiState.v2";
-export const ENGLISH_MATERIAL_CATEGORIES = ["影子跟读", "职场英语", "生活口语"] as const;
+export const ENGLISH_MATERIAL_CATEGORIES = ["影子跟读", "职场英语", "生活口语", "AI生成"] as const;
 export const DEFAULT_ENGLISH_MATERIAL_CATEGORY = "职场英语";
 export type AiCodingNoticeStatus = "running" | "completed" | "failed" | "cancelled";
 export type ThemeMode = "dark" | "light";

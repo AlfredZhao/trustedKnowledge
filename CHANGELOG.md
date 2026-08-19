@@ -13,6 +13,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Added / 新增
 
+- Added `AI生成` to the English Materials `分类标识` options for future AI-generated material workflows.
+- 在英语素材 `分类标识` 可选项中新增 `AI生成`，为后续 AI 生成素材功能做准备。
+
 #### Changed / 变更
 
 - Changed the current-login username area in the shared top bar into a shortcut back to Overview, including keyboard focus and a descriptive tooltip.
