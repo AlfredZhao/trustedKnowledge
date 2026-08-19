@@ -3,7 +3,7 @@ import { BookOpenCheck, ChartLine, ClipboardCheck, FileText, RefreshCw, ShieldCh
 
 import { MetricTile, LoadingStack } from "../components/AppShellPrimitives";
 import type { AppView, EnglishMaterialItem, KnowledgeItem, LlmUsageSample, TodoItem } from "../types";
-import { clampPercent, formatAmount, formatDate, formatDateTime, formatPercent } from "../utils/appUtils";
+import { clampPercent, formatAmount, formatDate, formatDateTime } from "../utils/appUtils";
 
 type OverviewData = {
   usageItems: LlmUsageSample[];
@@ -134,18 +134,29 @@ export default function OverviewDashboard({
                 </span>
               </div>
             </div>
-            {canViewUsage ? <LlmBatteryIndicator remainingPercent={remainingPercent} hasUsage={Boolean(latestUsage)} onClick={() => onOpenView("usage")} /> : null}
+            {canViewUsage ? (
+              <div className="lg:hidden">
+                <LlmBatteryIndicator remainingPercent={remainingPercent} hasUsage={Boolean(latestUsage)} onClick={() => onOpenView("usage")} />
+              </div>
+            ) : null}
           </div>
         </div>
-        <button
-          className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-sm text-slate-300 transition hover:border-mint-300/30 hover:bg-white/[0.055] hover:text-mint-300 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
-          type="button"
-          disabled={isRefreshing}
-          onClick={onRefresh}
-        >
-          <RefreshCw className={isRefreshing ? "animate-spin" : ""} size={16} />
-          {isRefreshing ? "刷新中" : "刷新总览"}
-        </button>
+        <div className="flex items-center justify-end gap-3">
+          {canViewUsage ? (
+            <div className="hidden lg:block">
+              <LlmBatteryIndicator remainingPercent={remainingPercent} hasUsage={Boolean(latestUsage)} onClick={() => onOpenView("usage")} />
+            </div>
+          ) : null}
+          <button
+            className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-sm text-slate-300 transition hover:border-mint-300/30 hover:bg-white/[0.055] hover:text-mint-300 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+            type="button"
+            disabled={isRefreshing}
+            onClick={onRefresh}
+          >
+            <RefreshCw className={isRefreshing ? "animate-spin" : ""} size={16} />
+            {isRefreshing ? "刷新中" : "刷新总览"}
+          </button>
+        </div>
       </div>
 
       {loadError ? <div className="mb-4 rounded-lg border border-amberline/25 bg-amberline/10 p-3 text-sm text-amber-100/80">{loadError}</div> : null}
@@ -167,7 +178,7 @@ export default function OverviewDashboard({
 
       {canViewUsage && sectionErrors.usage ? <OverviewInlineError message={`LLM 用量读取失败：${sectionErrors.usage}`} /> : null}
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.7fr)]">
+      <div className="grid gap-4 xl:grid-cols-2">
         <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
           <OverviewSectionHeader icon={<ClipboardCheck size={17} />} title="处理中 Todo" actionLabel="查看待办" onAction={() => onOpenView("todos")} />
           {sectionErrors.todos ? <OverviewInlineError message={`处理中 Todo 读取失败：${sectionErrors.todos}`} /> : null}
@@ -297,7 +308,8 @@ function LlmBatteryIndicator({
   const isLow = hasUsage && remainingPercent < 20;
   const tone = isLow ? "border-red-400 text-red-300" : "border-mint-300 text-mint-300";
   const fillTone = isLow ? "bg-red-400" : "bg-mint-300";
-  const label = hasUsage ? `LLM 剩余 ${formatPercent(remainingPercent)}，查看 AI 用量详情` : "暂无 LLM 用量采样，查看 AI 用量详情";
+  const displayPercent = Math.round(remainingPercent);
+  const label = hasUsage ? `LLM 剩余 ${displayPercent}%，查看 AI 用量详情` : "暂无 LLM 用量采样，查看 AI 用量详情";
 
   return (
     <button
@@ -308,14 +320,14 @@ function LlmBatteryIndicator({
       onClick={onClick}
     >
       <span className="text-xs font-medium text-slate-400">LLM</span>
-      <span className="flex items-center gap-1.5" aria-hidden="true">
-        <span className={`relative h-6 w-11 rounded-[5px] border-2 ${tone}`}>
+      <span className="flex items-center" aria-hidden="true">
+        <span className={`relative h-7 w-14 rounded-[5px] border-2 ${tone}`}>
           <span className="absolute inset-[3px] overflow-hidden rounded-[2px]">
             <span className={`absolute inset-y-0 left-0 rounded-[2px] ${fillTone} animate-[battery-fill_700ms_ease-out] transition-[width,background-color] duration-700 motion-reduce:animate-none motion-reduce:transition-none`} style={{ width: `${remainingPercent}%` }} />
           </span>
+          <span className="absolute inset-0 z-10 grid place-items-center text-[11px] font-bold leading-none text-white mix-blend-difference">{hasUsage ? `${displayPercent}%` : "--"}</span>
           <span className={`absolute -right-[5px] top-1/2 h-2.5 w-1 -translate-y-1/2 rounded-r-sm ${fillTone}`} />
         </span>
-        <span className={`min-w-9 text-right text-sm font-semibold ${isLow ? "text-red-300" : "text-slate-200"}`}>{hasUsage ? formatPercent(remainingPercent) : "--"}</span>
       </span>
     </button>
   );

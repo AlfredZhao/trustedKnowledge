@@ -15,6 +15,12 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Changed / 变更
 
+- Positioned the Overview LLM battery with the right-side desktop actions while retaining its top-right mobile placement; its integer percentage now appears inside the battery.
+- 调整总览 LLM 电池在桌面端与右侧操作区对齐，同时保留手机端标题区右侧位置；整数百分比现在显示在电池内部。
+
+- Aligned the desktop Overview Todo and Knowledge panels to the two equal-width metric cards above them.
+- 将桌面端总览的 Todo 与可信知识面板调整为与上方两个指标卡一致的等宽双列布局。
+
 - Replaced the Overview LLM metric card with a compact, iPhone-style remaining-budget battery beside the title. It opens AI Usage on tap and turns red below 20% remaining.
 - 将总览 LLM 指标卡改为标题旁紧凑的 iPhone 风格剩余额度电池；点击可进入 AI 用量，剩余低于 20% 时显示红色预警。
 
