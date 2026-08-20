@@ -37,6 +37,28 @@ Keep entries concrete. Prefer file paths, function names, SQL placeholders, and 
 
 在 Skill 管理选择可删除 Skill 后点击删除，确认不出现浏览器原生对话框，而是显示“确认删除 Skill”应用内弹窗；取消不发请求，确认后列表和已选 Skill 均更新。分别检查桌面/移动宽度及深色/浅色主题，并运行 `cd frontend && npm run build`。
 
+## SKILL.md 字符统计必须匹配调用截断规则
+
+### Symptom
+
+用户在 Skill 管理中编辑或新建 `SKILL.md` 时不知道 AI 只会使用前 6,000 个字符，导致末尾规则保存后未生效。
+
+### Trigger
+
+在 `SKILL.md` 编辑器或新建自定义 Skill 内容输入框中输入接近或超过 6,000 个 Unicode 字符。
+
+### Root Cause
+
+后端 `get_prompt_skills()` 使用 Python `skill_markdown[:6000]` 截断提示词，但前端此前没有显示对应的实时长度和截断状态。
+
+### Safe Pattern
+
+`frontend/src/App.tsx:SkillPromptCharacterNotice` 必须通过 `Array.from(content).length` 统计 Unicode 码位，不能用 JavaScript `content.length`；超过限制只警告、不阻止保存。统计仅适用于 `SKILL.md`，其它 Skill 文件不应误标为调用内容。
+
+### Guardrail
+
+分别在新建输入框和已选 `SKILL.md` 文件编辑器输入 5,999、6,000、6,001 个字符，确认前两者显示剩余字符，后者显示“调用时仅使用前 6,000 字符”，且三种内容均可保存。验证中英文、换行和 emoji 输入，检查桌面/移动及深浅主题，并运行 `cd frontend && npm run build`。
+
 ## 三个 AI 模块的 Skill 选择范围必须一致
 
 ### Symptom

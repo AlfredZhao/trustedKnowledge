@@ -143,6 +143,7 @@ import {
 } from "./api/currentRecords";
 import { releaseCodeToGithub, restartServices, syncCodeToGithub } from "./api/system";
 import {
+  completeEnglishMaterial,
   createEnglishMaterial,
   fetchEnglishMaterials,
   fetchNextEnglishMaterialSequence,
@@ -335,6 +336,7 @@ import type {
   CurrentRecordItem,
   CurrentRecordOptions,
   CurrentWeek,
+  EnglishMaterialCompletionResult,
   EnglishMaterialDraft,
   EnglishMaterialItem,
   GithubSyncResponse,
@@ -12801,6 +12803,7 @@ function EnglishMaterialsWorkspace({
         isLoading={isDetailLoading}
         isSaving={isDetailSaving}
         item={isDetailOpen ? selectedItem : null}
+        modelOptions={modelOptions}
         nextItem={nextItem}
         onClose={onCloseDetail}
         onCopyText={onCopyText}
@@ -13282,6 +13285,7 @@ function EnglishMaterialDetailDialog({
   isLoading,
   isSaving,
   item,
+  modelOptions,
   nextItem,
   onClose,
   onCopyText,
@@ -13296,6 +13300,7 @@ function EnglishMaterialDetailDialog({
   isLoading: boolean;
   isSaving: boolean;
   item: EnglishMaterialItem | null;
+  modelOptions: { value: string; label: string }[];
   nextItem: EnglishMaterialItem | null;
   onClose: () => void;
   onCopyText: (value: string, label: string) => void;
@@ -13468,6 +13473,9 @@ function EnglishMaterialDetailDialog({
                   placeholder="用于短视频口播的完整内容。"
                 />
               </Field>
+              <div className="flex justify-end">
+                <EnglishMaterialAiCompletion draft={draft} disabled={isLoading || isSaving} modelOptions={modelOptions} onCompleted={onDraftChange} />
+              </div>
             </div>
           )}
         </div>
@@ -13524,6 +13532,79 @@ function EnglishMaterialDetailDialog({
       </section>
     </div>
   );
+}
+
+function EnglishMaterialAiCompletion({
+  draft,
+  disabled,
+  modelOptions,
+  onCompleted,
+}: {
+  draft: EnglishMaterialDraft;
+  disabled: boolean;
+  modelOptions: { value: string; label: string }[];
+  onCompleted: (draft: EnglishMaterialDraft) => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [isCompleting, setIsCompleting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<EnglishMaterialCompletionResult | null>(null);
+  const [modelName, setModelName] = useState(AI_CODING_DEFAULT_MODEL);
+  const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
+  const canComplete = !disabled && !isCompleting && draft.full_script.trim().length > 0;
+
+  function closeDialog() {
+    if (isCompleting) return;
+    setIsOpen(false);
+    setError(null);
+    setResult(null);
+  }
+
+  async function handleComplete() {
+    if (!canComplete) return;
+    setIsCompleting(true);
+    setError(null);
+    try {
+      const usesConfiguredModel = modelName === HISTORY_ASK_CONFIGURED_MODEL;
+      const next = await completeEnglishMaterial({
+        fullScript: draft.full_script,
+        skillIds: selectedSkillIds,
+        executionProvider: usesConfiguredModel ? "history_ask_llm" : "codex",
+        modelName: modelName === AI_CODING_DEFAULT_MODEL ? "" : modelName,
+      });
+      setResult(next);
+    } catch (completionError) {
+      setError(completionError instanceof Error ? completionError.message : "AI 补全失败，请稍后重试。");
+    } finally {
+      setIsCompleting(false);
+    }
+  }
+
+  function applyResult() {
+    if (!result) return;
+    onCompleted({
+      ...draft,
+      title: draft.title.trim() ? draft.title : result.title,
+      base_expression: draft.base_expression.trim() ? draft.base_expression : result.base_expression,
+      professional_sentence: draft.professional_sentence.trim() ? draft.professional_sentence : result.professional_sentence,
+      chinese_translation: draft.chinese_translation.trim() ? draft.chinese_translation : result.chinese_translation,
+    });
+    closeDialog();
+  }
+
+  return <>
+    <button className="flex h-10 items-center justify-center gap-2 rounded-lg border border-sky-300/30 bg-sky-300/10 px-3 text-sm font-medium text-sky-200 transition hover:bg-sky-300/16 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500" disabled={!draft.full_script.trim() || disabled} title={draft.full_script.trim() ? "根据完整口播内容补全空字段" : "请先填写完整口播内容"} type="button" onClick={() => { setError(null); setResult(null); setIsOpen(true); }}><WandSparkles size={16} />AI补全</button>
+    {isOpen ? <div className="fixed inset-0 z-[60] flex items-end bg-black/62 px-0 backdrop-blur-sm sm:items-center sm:justify-center sm:px-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeDialog(); }}>
+      <section aria-modal="true" className="flex max-h-[100dvh] w-full max-w-2xl flex-col overflow-hidden rounded-t-lg border border-mint-300/20 bg-ink-900 shadow-soft-glow sm:max-h-[88vh] sm:rounded-lg" role="dialog" aria-label="AI 补全英语素材">
+        <div className="flex shrink-0 items-start justify-between gap-4 border-b border-white/10 p-4 sm:p-5"><div><div className="mb-2 flex items-center gap-2 text-sm text-mint-300"><WandSparkles size={17} />AI Material</div><h2 className="text-xl font-semibold text-slate-50">AI补全英语素材</h2><p className="mt-1 text-xs leading-5 text-slate-500">只根据当前完整口播内容提炼字段。确认回填时仅填充空字段，不会自动保存。</p></div><button className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-300 transition hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600" disabled={isCompleting} type="button" title="关闭" onClick={closeDialog}><X size={17} /></button></div>
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 sm:p-5">
+          {!result ? <><div className="grid gap-3 sm:grid-cols-2"><Field label="执行模型" icon={<Settings2 size={16} />}><select className="control" disabled={isCompleting} value={modelName} onChange={(event) => setModelName(event.target.value)}>{modelOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field></div><SkillSelector disabled={isCompleting} selectedSkillIds={selectedSkillIds} onSelectedSkillIdsChange={setSelectedSkillIds} /></> : <div className="space-y-3"><p className="text-sm leading-6 text-slate-300">以下结果将只填入当前为空的字段：</p><EnglishMaterialDetailBlock label="标题" value={result.title} /><EnglishMaterialDetailBlock label="基础表达" value={result.base_expression} /><EnglishMaterialDetailBlock label="职业完整句式" value={result.professional_sentence} /><EnglishMaterialDetailBlock label="地道中文翻译" value={result.chinese_translation} /></div>}
+          {error ? <div className="flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100"><TriangleAlert className="mt-0.5 shrink-0 text-red-300" size={17} /><span>{error}</span></div> : null}
+        </div>
+        <div className="flex shrink-0 justify-end gap-3 border-t border-white/10 p-4"><button className="h-11 rounded-lg border border-white/10 bg-white/[0.035] px-4 text-sm text-slate-300 disabled:cursor-not-allowed disabled:text-slate-600" disabled={isCompleting} type="button" onClick={closeDialog}>取消</button>{result ? <button className="flex h-11 items-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20" type="button" onClick={applyResult}><ClipboardCheck size={17} />确认回填</button> : <button className="flex h-11 items-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 text-sm font-medium text-mint-300 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500" disabled={!canComplete} type="button" onClick={() => void handleComplete()}>{isCompleting ? <Loader2 className="animate-spin" size={17} /> : <WandSparkles size={17} />}{isCompleting ? "补全中" : "生成补全建议"}</button>}</div>
+      </section>
+    </div> : null}
+  </>;
 }
 
 function CurrentRecordEditDialog({
@@ -14656,9 +14737,13 @@ function SkillManager({
   onSelect: (skillId: string) => void;
   onUpload: (file: File | null) => void;
 }) {
+  const skillPromptCharacterLimit = 6000;
   const canCreate = newDraft.name.trim().length > 0 && !isSaving;
   const canSave = Boolean(detail?.can_edit) && draft.name.trim().length > 0 && !isSaving;
   const canSaveFile = Boolean(detail?.can_edit && selectedFile?.editable) && !isFileSaving;
+  const newSkillContentCharacterCount = Array.from(newDraft.content).length;
+  const isSelectedSkillMarkdown = selectedFile?.path.endsWith("SKILL.md") ?? false;
+  const selectedSkillMarkdownCharacterCount = Array.from(fileContent).length;
   const [isCreateSkillFormExpanded, setIsCreateSkillFormExpanded] = useState(false);
   const [isUploadSkillZipExpanded, setIsUploadSkillZipExpanded] = useState(false);
   const [isSkillSidebarCollapsed, setIsSkillSidebarCollapsed] = useState(false);
@@ -14853,6 +14938,7 @@ function SkillManager({
                 onChange={(event) => onNewDraftChange({ ...newDraft, content: event.target.value })}
                 placeholder={"# Skill 名称\n\n描述：...\n\n## 使用规则\n- ..."}
               />
+              <SkillPromptCharacterNotice characterCount={newSkillContentCharacterCount} limit={skillPromptCharacterLimit} />
               <label className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.028] px-3 py-2 text-sm text-slate-300">
                 <span>发布给其他用户调用</span>
                 <input
@@ -15049,6 +15135,11 @@ function SkillManager({
                             : "当前文件不可在线预览。"
                         : "支持编辑 Markdown、JSON、YAML、代码和文本文件。"}
                     </div>
+                    {isSelectedSkillMarkdown ? (
+                      <div className="mt-2">
+                        <SkillPromptCharacterNotice characterCount={selectedSkillMarkdownCharacterCount} limit={skillPromptCharacterLimit} />
+                      </div>
+                    ) : null}
                   </div>
                   <button
                     className="flex h-9 items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-3 text-xs font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
@@ -15094,6 +15185,22 @@ function SkillManager({
           </div>
         ) : null}
       </section>
+    </div>
+  );
+}
+
+function SkillPromptCharacterNotice({ characterCount, limit }: { characterCount: number; limit: number }) {
+  const overflow = Math.max(0, characterCount - limit);
+  const remaining = Math.max(0, limit - characterCount);
+
+  return (
+    <div className={`text-xs leading-5 ${overflow > 0 ? "text-amberline" : "text-slate-500"}`}>
+      <span>AI 调用内容：{formatAmount(characterCount)} / {formatAmount(limit)} 字符</span>
+      {overflow > 0 ? (
+        <span> · 超出 {formatAmount(overflow)} 字符；调用时仅使用前 {formatAmount(limit)} 字符。</span>
+      ) : (
+        <span> · 剩余 {formatAmount(remaining)} 字符</span>
+      )}
     </div>
   );
 }

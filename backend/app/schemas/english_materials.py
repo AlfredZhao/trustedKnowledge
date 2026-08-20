@@ -68,6 +68,25 @@ class EnglishMaterialGenerationResult(BaseModel):
     full_script: str = Field(..., min_length=1, max_length=4000)
 
 
+class EnglishMaterialCompletionRequest(BaseModel):
+    full_script: str = Field(..., min_length=1, max_length=4000)
+    skill_ids: list[str] = Field(default_factory=list, max_length=8)
+    execution_provider: Literal["codex", "history_ask_llm"] = "codex"
+    model_name: str = Field(default="", max_length=120)
+
+    @field_validator("full_script", mode="before")
+    @classmethod
+    def strip_full_script(cls, value: str) -> str:
+        return value.strip() if isinstance(value, str) else value
+
+
+class EnglishMaterialCompletionResult(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200)
+    base_expression: str = Field(..., min_length=1, max_length=50)
+    professional_sentence: str = Field(..., min_length=1, max_length=255)
+    chinese_translation: str = Field(..., min_length=1, max_length=255)
+
+
 class EnglishMaterialUpdate(BaseModel):
     sequence_no: int | None = Field(default=None, ge=1)
     category: str | None = Field(default=None, max_length=50)

@@ -321,6 +321,13 @@ export interface EnglishMaterialGenerationResult {
   full_script: string;
 }
 
+export interface EnglishMaterialCompletionResult {
+  title: string;
+  base_expression: string;
+  professional_sentence: string;
+  chinese_translation: string;
+}
+
 export interface LlmUsageSample {
   sample_time: string;
   used_amount: number;

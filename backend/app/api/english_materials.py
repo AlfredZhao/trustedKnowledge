@@ -12,10 +12,12 @@ from app.repositories.english_materials import (
     refresh_english_vectors,
     update_english_material,
 )
-from app.repositories.english_generation import generate_english_material
+from app.repositories.english_generation import complete_english_material, generate_english_material
 from app.repositories.users import AuthContext
 from app.schemas.english_materials import (
     EnglishMaterialCreate,
+    EnglishMaterialCompletionRequest,
+    EnglishMaterialCompletionResult,
     EnglishMaterialGenerationRequest,
     EnglishMaterialGenerationResult,
     EnglishMaterialItem,
@@ -78,6 +80,17 @@ async def post_generate_english_material(
 ) -> EnglishMaterialGenerationResult:
     try:
         return await generate_english_material(payload, auth_context)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.post("/complete", response_model=EnglishMaterialCompletionResult)
+async def post_complete_english_material(
+    payload: EnglishMaterialCompletionRequest,
+    auth_context: AuthContext = Depends(require_current_user),
+) -> EnglishMaterialCompletionResult:
+    try:
+        return await complete_english_material(payload, auth_context)
     except RuntimeError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 

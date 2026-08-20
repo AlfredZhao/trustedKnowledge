@@ -13,6 +13,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Added / 新增
 
+- Added `AI补全` to English Material detail editing. It extracts title, core expression, professional sentence, and Chinese translation from the current full script with an optional Skill, previews the result, fills only blank fields after confirmation, and never saves automatically.
+- 在英语素材详情编辑中新增 `AI补全`：可结合可选 Skill 从当前完整口播内容提炼标题、核心表达、职业句式和中文翻译；结果先预览，确认后仅回填空字段，且绝不自动保存。
+
 - Added a mobile PWA collapse control for the Information Entry `录入可信知识` area. It starts expanded and lets users hide the form until they are ready to enter knowledge.
 - 为信息录入的手机端 PWA `录入可信知识` 区域新增折叠控件：默认展开，暂不录入时可手动收起，随后可随时继续录入。
 
@@ -26,6 +29,9 @@ The format follows the common GitHub changelog convention inspired by
 
 - Changed Skill scope switching to keep the current selector content visible and cache both scopes, avoiding layout jumps in Knowledge Factory and English Materials AI generation.
 - 调整 Skill 范围切换：保留当前选择器内容并缓存两种范围，避免知识加工与英语素材 AI 生成出现布局跳动。
+
+- Added live Unicode character counts and a 6,000-character prompt truncation notice to Skill `SKILL.md` editing and creation.
+- 在 Skill `SKILL.md` 在线编辑与新建输入框中新增实时 Unicode 字符统计及 6,000 字符调用截断提示。
 
 #### Fixed / 修复
 

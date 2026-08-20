@@ -1,4 +1,4 @@
-import type { EnglishMaterialDraft, EnglishMaterialGenerationResult, EnglishMaterialItem } from "../types";
+import type { EnglishMaterialCompletionResult, EnglishMaterialDraft, EnglishMaterialGenerationResult, EnglishMaterialItem } from "../types";
 import { buildQuery, readCachedGet, request } from "./client";
 
 export interface EnglishMaterialListResponse {
@@ -108,6 +108,28 @@ export async function generateEnglishMaterial({
     body: JSON.stringify({
       topic_mode: topicMode,
       topic: topic.trim() || null,
+      skill_ids: skillIds,
+      execution_provider: executionProvider,
+      model_name: modelName,
+    }),
+  });
+}
+
+export async function completeEnglishMaterial({
+  fullScript,
+  skillIds,
+  executionProvider,
+  modelName,
+}: {
+  fullScript: string;
+  skillIds: string[];
+  executionProvider: "codex" | "history_ask_llm";
+  modelName: string;
+}): Promise<EnglishMaterialCompletionResult> {
+  return request<EnglishMaterialCompletionResult>("/api/english-materials/complete", {
+    method: "POST",
+    body: JSON.stringify({
+      full_script: fullScript,
       skill_ids: skillIds,
       execution_provider: executionProvider,
       model_name: modelName,
