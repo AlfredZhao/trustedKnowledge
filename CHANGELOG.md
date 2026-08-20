@@ -21,6 +21,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Added / 新增
 
+- Added title and Chinese-translation copy actions to English Material detail editing, with the existing copied-state feedback.
+- 在英语素材详情编辑中新增“复制标题”和“复制翻译”，沿用既有的复制成功反馈。
+
 - Added a keyboard toggle for Markdown edit and preview modes: `⌘ + \\` on macOS and `Ctrl + \\` on Windows/Linux, available in trusted-knowledge editing and Todo task content.
 - 为 Markdown 编辑/预览模式新增键盘切换：macOS 使用 `⌘ + \\`，Windows/Linux 使用 `Ctrl + \\`，适用于可信知识编辑与待办任务内容。
 

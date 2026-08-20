@@ -13665,7 +13665,16 @@ function EnglishMaterialDetailDialog({
         </div>
 
         <div className="shrink-0 border-t border-white/10 bg-ink-900/96 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-4">
-          <div className="grid gap-2 sm:grid-cols-4">
+          <div className="grid gap-2 sm:grid-cols-3">
+            <button
+              className="flex h-11 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-sm font-medium text-slate-300 transition hover:border-mint-300/30 hover:text-mint-200 disabled:cursor-not-allowed disabled:text-slate-600"
+              disabled={isLoading || !draft.title}
+              type="button"
+              onClick={() => onCopyText(draft.title, "标题")}
+            >
+              {copiedLabel === "标题" ? <CheckCircle2 size={16} /> : <Copy size={16} />}
+              {copiedLabel === "标题" ? "已复制" : "复制标题"}
+            </button>
             <button
               className="flex h-11 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-sm font-medium text-slate-300 transition hover:border-mint-300/30 hover:text-mint-200 disabled:cursor-not-allowed disabled:text-slate-600"
               disabled={isLoading || !draft.professional_sentence}
@@ -13683,6 +13692,15 @@ function EnglishMaterialDetailDialog({
             >
               {copiedLabel === "完整口播内容" ? <CheckCircle2 size={16} /> : <ClipboardList size={16} />}
               {copiedLabel === "完整口播内容" ? "已复制" : "复制脚本"}
+            </button>
+            <button
+              className="flex h-11 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-sm font-medium text-slate-300 transition hover:border-mint-300/30 hover:text-mint-200 disabled:cursor-not-allowed disabled:text-slate-600"
+              disabled={isLoading || !draft.chinese_translation}
+              type="button"
+              onClick={() => onCopyText(draft.chinese_translation, "地道中文翻译")}
+            >
+              {copiedLabel === "地道中文翻译" ? <CheckCircle2 size={16} /> : <Copy size={16} />}
+              {copiedLabel === "地道中文翻译" ? "已复制" : "复制翻译"}
             </button>
             <button
               className="flex h-11 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-sm font-medium text-slate-300 transition hover:border-mint-300/30 hover:text-mint-200 disabled:cursor-not-allowed disabled:text-slate-600"
