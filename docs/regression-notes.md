@@ -15,6 +15,10 @@ When fixing a bug with meaningful regression risk, add a short entry with:
 
 Keep entries concrete. Prefer file paths, function names, SQL placeholders, and test names over broad advice.
 
+## Shared Baseline: Oracle Bind Isolation
+
+All Oracle executions must receive only bind names present in that statement's SQL text. In multi-step repository flows, keep row-lock/read, update, count, and vector-query parameter dictionaries and `setinputsizes()` calls separate; do not let business-field binds or CLOB declarations leak into a preceding `SELECT ... FOR UPDATE` or summary query. Add or retain a regression test whenever dynamic SQL bindings change. Module-specific `DPY-4008` incidents below document concrete triggers and guardrails.
+
 ## Web Codex 任务不能等待终端审批
 
 ### Symptom

@@ -27,6 +27,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Changed / 变更
 
+- Consolidated the project UI acceptance rules into one cross-module verification matrix covering reachable desktop/mobile controls and applicable theme and presentation states; added a shared Oracle bind-isolation baseline to the regression guide.
+- 合并项目 UI 验收规则为一条跨模块验证矩阵，覆盖桌面/移动端核心操作可达性及适用主题、展示状态；并在防回归指南中新增 Oracle 绑定隔离通用基线。
+
 - Changed Web AI Coding prompts to treat the browser run as non-interactive: database/SQLcl, service-control, Git publish/push, and confirmation-required commands are reported for user execution instead of being attempted by the unattended CLI.
 - 调整 Web AI 编程提示词：浏览器任务视为非交互执行；数据库/SQLcl、服务控制、Git 发布/推送及需要确认的命令会改为报告给用户执行，避免无人值守 CLI 卡在确认流程。
 
