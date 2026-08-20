@@ -61,6 +61,8 @@ class CodexJobState:
     error_message: str | None = None
     started_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     completed_at: datetime | None = None
+    last_activity_at: datetime | None = None
+    last_event: str | None = None
     slot_reserved: bool = False
 
 
@@ -324,6 +326,9 @@ def _build_prompt(
         lines = [
             "You are running from the trustedKnowledge web AI coding interface.",
             "Follow the repository AGENTS.md instructions strictly.",
+            "This is a non-interactive web task: no person can answer terminal approval or input prompts.",
+            "Never execute SQLcl or other database commands, service start/stop/restart commands, git push/release commands, or any command that needs confirmation.",
+            "For those operations, explain the exact command, its reason, and any prerequisite; leave execution to the user or an explicitly designed web control.",
             "Do not start, stop, or restart frontend/backend services.",
             "When service restart is needed, tell the user to use the web restart button.",
         ]
@@ -377,14 +382,16 @@ async def _run_codex_job(job: CodexJobState, auth_context: AuthContext) -> None:
             return
 
         _codex_job_processes[job.job_id] = process
+        job.last_activity_at = datetime.now(UTC)
+        job.last_event = "Codex 子进程已启动，正在分析任务。"
 
         assert process.stdin is not None
         process.stdin.write(prompt.encode("utf-8"))
         await process.stdin.drain()
         process.stdin.close()
 
-        stdout_task = asyncio.create_task(_read_process_lines("stdout", process.stdout, None, job.output_parts))
-        stderr_task = asyncio.create_task(_read_process_lines("stderr", process.stderr, None, job.error_parts))
+        stdout_task = asyncio.create_task(_read_process_lines("stdout", process.stdout, None, job.output_parts, job))
+        stderr_task = asyncio.create_task(_read_process_lines("stderr", process.stderr, None, job.error_parts, job))
         wait_task = asyncio.create_task(process.wait())
         deadline = time.monotonic() + CODEX_TIMEOUT_SECONDS
 
@@ -594,6 +601,7 @@ async def _read_process_lines(
     stream: asyncio.StreamReader | None,
     queue: asyncio.Queue[dict[str, str]] | None,
     parts: list[str],
+    job: CodexJobState | None = None,
 ) -> None:
     if stream is None:
         return
@@ -606,8 +614,31 @@ async def _read_process_lines(
         if not text:
             continue
         parts.append(text)
+        if job is not None:
+            job.last_activity_at = datetime.now(UTC)
+            job.last_event = _summarize_codex_event(text, stream_name)
         if queue is not None:
             await queue.put({"type": stream_name, "message": text})
+
+
+def _summarize_codex_event(text: str, stream_name: str) -> str:
+    try:
+        event = json.loads(text)
+    except json.JSONDecodeError:
+        return "Codex 正在输出错误信息。" if stream_name == "stderr" else "Codex 正在处理任务。"
+    if not isinstance(event, dict):
+        return "Codex 正在处理任务。"
+    event_type = str(event.get("type") or "")
+    normalized = event_type.lower()
+    if any(token in normalized for token in ("approval", "approve", "confirmation")):
+        return "Codex 可能在等待审批；Web 任务无法响应交互确认。"
+    if "command" in normalized:
+        return "Codex 正在执行受沙箱约束的命令。"
+    if "error" in normalized or stream_name == "stderr":
+        return "Codex 正在输出错误或诊断信息。"
+    if "completed" in normalized or "done" in normalized:
+        return "Codex 已完成一个执行步骤。"
+    return "Codex 正在处理任务。"
 
 
 def _snapshot_codex_job(job: CodexJobState) -> CodexJobSnapshot:
@@ -622,6 +653,8 @@ def _snapshot_codex_job(job: CodexJobState) -> CodexJobSnapshot:
         error_message=job.error_message,
         started_at=job.started_at.isoformat(),
         completed_at=job.completed_at.isoformat() if job.completed_at else None,
+        last_activity_at=job.last_activity_at.isoformat() if job.last_activity_at else None,
+        last_event=job.last_event,
     )
 
 

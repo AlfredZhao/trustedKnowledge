@@ -561,6 +561,8 @@ export interface CodexJobSnapshot {
   error_message: string | null;
   started_at: string;
   completed_at: string | null;
+  last_activity_at: string | null;
+  last_event: string | null;
 }
 
 export interface CodexConfig {

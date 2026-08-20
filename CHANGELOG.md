@@ -13,6 +13,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Added / 新增
 
+- Added Web AI Coding activity feedback: the running task now reports its latest Codex event and warns after 60 seconds without output, with the existing cancel action kept available.
+- 为 Web AI 编程新增运行活动反馈：任务会显示最近 Codex 事件，60 秒无输出时明确提示可能在等待外部步骤，并保留终止操作。
+
 - Added AI Review to Blog Factory task content. It returns a review conclusion and selectable, safe text-replacement suggestions; applying selections updates only the local draft and opens edit mode, while final persistence remains a manual save.
 - 为博客工厂任务内容新增 AI Review：返回审阅结论及可选择的安全文本替换建议；应用后只更新本地草稿并进入编辑模式，最终写入仍需手动保存。
 
@@ -23,6 +26,9 @@ The format follows the common GitHub changelog convention inspired by
 - 为信息录入的手机端 PWA `录入可信知识` 区域新增折叠控件：默认展开，暂不录入时可手动收起，随后可随时继续录入。
 
 #### Changed / 变更
+
+- Changed Web AI Coding prompts to treat the browser run as non-interactive: database/SQLcl, service-control, Git publish/push, and confirmation-required commands are reported for user execution instead of being attempted by the unattended CLI.
+- 调整 Web AI 编程提示词：浏览器任务视为非交互执行；数据库/SQLcl、服务控制、Git 发布/推送及需要确认的命令会改为报告给用户执行，避免无人值守 CLI 卡在确认流程。
 
 - Changed Blog Factory AI Review into a top-aligned review workspace with explicit model and Skill selection before review, so long articles no longer hide the dialog and review behavior is configurable.
 - 将博客工厂 AI Review 调整为顶部对齐的审阅工作台，审阅前可明确选择模型和 Skill，避免长文章遮挡弹窗并支持后续微调。

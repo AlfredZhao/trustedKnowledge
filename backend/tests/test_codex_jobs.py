@@ -38,6 +38,12 @@ class CodexJobCancellationTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.job.slot_reserved)
         self.assertNotIn("alice", codex._codex_active_run_counts)
 
+    def test_approval_event_is_exposed_as_noninteractive_warning(self) -> None:
+        summary = codex._summarize_codex_event('{"type":"approval_requested"}', "stdout")
+
+        self.assertIn("等待审批", summary)
+        self.assertIn("无法响应", summary)
+
 
 if __name__ == "__main__":
     unittest.main()

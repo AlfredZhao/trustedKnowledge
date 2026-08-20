@@ -35,6 +35,8 @@ class CodexJobSnapshot(BaseModel):
     error_message: str | None
     started_at: str
     completed_at: str | None
+    last_activity_at: str | None = None
+    last_event: str | None = None
 
 
 class CodexConfigResponse(BaseModel):

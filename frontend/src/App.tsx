@@ -992,6 +992,8 @@ function App() {
   const [liveCodexOutput, setLiveCodexOutput] = useState("");
   const [liveCodexErrorOutput, setLiveCodexErrorOutput] = useState("");
   const [liveCodexStatus, setLiveCodexStatus] = useState(restoredUiState.aiCoding.activeJobId ? "正在恢复 Codex 任务状态..." : "");
+  const [liveCodexLastActivityAt, setLiveCodexLastActivityAt] = useState<string | null>(null);
+  const [liveCodexLastEvent, setLiveCodexLastEvent] = useState<string | null>(null);
   const [isCodexRunning, setIsCodexRunning] = useState(Boolean(restoredUiState.aiCoding.activeJobId));
   const [aiCodingNoticeStatus, setAiCodingNoticeStatus] = useState<AiCodingNoticeStatus | null>(
     restoredUiState.aiCoding.activeJobId ? "running" : null,
@@ -1021,6 +1023,8 @@ function App() {
   function applyAiCodingJobSnapshot(job: CodexJobSnapshot) {
     setLiveCodexOutput(job.output);
     setLiveCodexErrorOutput(job.error_output);
+    setLiveCodexLastActivityAt(job.last_activity_at);
+    setLiveCodexLastEvent(job.last_event);
     setAiCodingMessages((current) => upsertCodexJobMessage(current, job));
 
     if (job.status === "running") {
@@ -4929,6 +4933,8 @@ function App() {
     setCodexError(null);
     setLiveCodexOutput("");
     setLiveCodexErrorOutput("");
+    setLiveCodexLastActivityAt(null);
+    setLiveCodexLastEvent(null);
     setLiveCodexStatus("正在启动 Codex...");
     setAiCodingNoticeStatus("running");
     hasRestoredLatestCodexJobRef.current = false;
@@ -4953,6 +4959,8 @@ function App() {
       setActiveCodexJobId(job.job_id);
       setLiveCodexOutput(job.output);
       setLiveCodexErrorOutput(job.error_output);
+      setLiveCodexLastActivityAt(job.last_activity_at);
+      setLiveCodexLastEvent(job.last_event);
       setLiveCodexStatus("Codex 任务已提交，正在运行...");
       setAiCodingPrompt("");
     } catch (error) {
@@ -5378,6 +5386,8 @@ function App() {
                 isGithubSyncing={isGithubSyncing}
                 isRestartingServices={isRestartingServices}
                 liveErrorOutput={liveCodexErrorOutput}
+                liveLastActivityAt={liveCodexLastActivityAt}
+                liveLastEvent={liveCodexLastEvent}
                 liveOutput={liveCodexOutput}
                 liveStatus={liveCodexStatus}
                 modelName={aiCodingModelName}

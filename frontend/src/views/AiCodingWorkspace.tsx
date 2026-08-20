@@ -37,6 +37,8 @@ export default function AiCodingWorkspace({
   isGithubSyncing,
   isRestartingServices,
   liveErrorOutput,
+  liveLastActivityAt,
+  liveLastEvent,
   liveOutput,
   liveStatus,
   modelName,
@@ -67,6 +69,8 @@ export default function AiCodingWorkspace({
   isGithubSyncing: boolean;
   isRestartingServices: boolean;
   liveErrorOutput: string;
+  liveLastActivityAt: string | null;
+  liveLastEvent: string | null;
   liveOutput: string;
   liveStatus: string;
   modelName: string;
@@ -101,12 +105,21 @@ export default function AiCodingWorkspace({
   const [isReleaseDialogOpen, setIsReleaseDialogOpen] = useState(false);
   const [releaseVersion, setReleaseVersion] = useState("");
   const [releaseConfirm, setReleaseConfirm] = useState("");
+  const [currentTime, setCurrentTime] = useState(() => Date.now());
   const releaseVersionSuggestion = useMemo(() => {
     const match = projectChangelog?.markdown.match(/^### \[(\d+)\.(\d+)\.(\d+)]/m);
     if (!match) return "0.3.9";
     return `${match[1]}.${match[2]}.${Number(match[3]) + 1}`;
   }, [projectChangelog?.markdown]);
   const canReleaseCode = !isGithubSyncing && /^\d+\.\d+\.\d+$/.test(releaseVersion) && releaseConfirm === "ok";
+  const inactiveSeconds = liveLastActivityAt ? Math.max(0, Math.floor((currentTime - Date.parse(liveLastActivityAt)) / 1000)) : 0;
+  const isCodexInactive = isCodexRunning && inactiveSeconds >= 60;
+
+  useEffect(() => {
+    if (!isCodexRunning) return;
+    const timer = window.setInterval(() => setCurrentTime(Date.now()), 10_000);
+    return () => window.clearInterval(timer);
+  }, [isCodexRunning]);
 
   const loadProjectChangelog = () => {
     setIsProjectChangelogLoading(true);
@@ -162,7 +175,7 @@ export default function AiCodingWorkspace({
             />
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="text-xs leading-5 text-slate-500">
-                Codex 会在当前项目目录内运行；需要重启服务时，请使用右侧人工确认按钮。
+                Web 任务无法回答终端确认；数据库、服务控制、发布/推送等操作会改为报告命令，由用户或右侧受控操作执行。
               </div>
               <button
                 className="flex h-11 min-w-32 items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
@@ -185,6 +198,11 @@ export default function AiCodingWorkspace({
                   <Loader2 className="animate-spin" size={17} />
                   <span>{liveStatus || "Codex 正在运行..."}</span>
                 </div>
+                <div className="rounded-lg border border-white/10 bg-black/15 px-3 py-2 text-xs leading-5 text-slate-400">
+                  最近活动：{liveLastEvent || "等待 Codex 输出事件..."}
+                  {liveLastActivityAt ? ` · ${inactiveSeconds} 秒前` : ""}
+                </div>
+                {isCodexInactive ? <div className="rounded-lg border border-amberline/25 bg-amberline/10 px-3 py-3 text-sm leading-6 text-amber-100">超过 {inactiveSeconds} 秒没有新输出。任务可能正在等待外部命令、网络、审批或长耗时步骤；Web 端无法回答终端确认，请查看输出或终止任务。</div> : null}
                 <CodexOutputBlock title="Live Output" value={liveOutput || "等待 Codex 输出事件..."} />
                 {liveErrorOutput ? <CodexOutputBlock title="Live Error Output" value={liveErrorOutput} tone="warning" /> : null}
                 <button

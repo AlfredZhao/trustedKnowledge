@@ -15,6 +15,28 @@ When fixing a bug with meaningful regression risk, add a short entry with:
 
 Keep entries concrete. Prefer file paths, function names, SQL placeholders, and test names over broad advice.
 
+## Web Codex 任务不能等待终端审批
+
+### Symptom
+
+浏览器发起的 AI 编程任务长时间显示运行中，用户无法得知任务是否在等待 SQLcl、服务控制或其他命令的交互确认，最终可能只看到超时。
+
+### Trigger
+
+后端以非交互 `codex exec` 启动任务，stdin 在写入初始 prompt 后关闭，而 Codex 或子命令尝试请求人工审批/输入。
+
+### Root Cause
+
+浏览器任务没有终端 TTY，也没有把 Codex 审批协议桥接为前端确认操作；若允许任务尝试高风险外部命令，用户无法回答确认提示。
+
+### Safe Pattern
+
+`backend/app/api/codex.py:_build_prompt()` 必须明确禁止 Web Codex 直接执行 SQLcl/数据库、服务控制、Git 发布推送和需要确认的命令，并要求报告命令与前置条件。`CodexJobState.last_activity_at` 与 `last_event` 必须随 stdout/stderr 事件更新，前端在 60 秒无活动时显示可终止的风险提示。不要为消除卡住而使用绕过审批和沙箱的参数。
+
+### Guardrail
+
+运行 `python -m unittest tests.test_codex_jobs`，确认审批事件会呈现“Web 任务无法响应交互确认”的提示；检查 AI 编程页面在无新活动 60 秒后显示警告和“终止当前任务”按钮。验证桌面/移动与深浅主题，并运行 `cd frontend && npm run build`。
+
 ## Skill 删除必须使用应用内确认弹窗
 
 ### Symptom
