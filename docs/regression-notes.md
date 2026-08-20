@@ -15,6 +15,50 @@ When fixing a bug with meaningful regression risk, add a short entry with:
 
 Keep entries concrete. Prefer file paths, function names, SQL placeholders, and test names over broad advice.
 
+## Skill 删除必须使用应用内确认弹窗
+
+### Symptom
+
+在 Skill 管理中删除用户自建 Skill 时，浏览器显示原生系统确认框，外观和交互与应用不一致。
+
+### Trigger
+
+选中一个当前用户可删除的 Skill，并点击详情区的“删除 Skill”。
+
+### Root Cause
+
+`frontend/src/App.tsx:handleDeleteSelectedSkill()` 直接调用了 `window.confirm()`，绕过了其他模块共用的 `AppConfirmDialog`。
+
+### Safe Pattern
+
+删除动作先把目标保存到独立的删除目标 state，再用 `AppConfirmDialog` 请求确认；只有确认回调才能调用删除 API。删除进行中必须禁用关闭和重复提交。
+
+### Guardrail
+
+在 Skill 管理选择可删除 Skill 后点击删除，确认不出现浏览器原生对话框，而是显示“确认删除 Skill”应用内弹窗；取消不发请求，确认后列表和已选 Skill 均更新。分别检查桌面/移动宽度及深色/浅色主题，并运行 `cd frontend && npm run build`。
+
+## 三个 AI 模块的 Skill 选择范围必须一致
+
+### Symptom
+
+知识加工、英语素材 AI 生成和 AI 问数显示的 Skill 范围或选择交互不一致，或默认直接暴露其他用户共享的 Skill。
+
+### Trigger
+
+在任一模块打开“选择 Skill”，并切换“全部 Skill”；随后取消勾选或切换到另一个 AI 模块。
+
+### Root Cause
+
+三个模块曾复用一个全局 `scope=callable` 的列表请求，但各自维护独立的下拉框、卡片选择与筛选逻辑，导致范围和后续修改难以同步。
+
+### Safe Pattern
+
+三个模块都必须复用 `frontend/src/App.tsx:SkillSelector`。默认请求 `scope=owned` 且 `enabled=true`；只有用户主动勾选“全部 Skill”才请求 `scope=callable`。两个范围分别缓存；切换期间不得清空当前卡片或以整块 loading 替换内容，只能在选择器内部显示轻量状态。回到默认范围后，所选 ID 必须限定为本次 `owned` 响应中的项目。
+
+### Guardrail
+
+分别在知识加工、英语素材 AI 生成和 AI 问数验证：初始只显示自己的启用 Skill；勾选“全部 Skill”才出现当前用户有权限调用的共享 Skill；取消勾选会移除已选共享 Skill。首次切换仅显示选择器内的轻量 loading，现有卡片与模块其它按钮不应塌缩或位移；重复切换应命中缓存。知识加工仍最多选择一个，AI 问数仍最多选择 8 个。检查桌面/移动和深浅主题，并运行 `cd frontend && npm run build`。
+
 ## AI 编程终态任务必须都可手工清理展示
 
 ### Symptom

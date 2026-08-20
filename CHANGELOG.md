@@ -9,6 +9,29 @@ The format follows the common GitHub changelog convention inspired by
 
 ## 本次版本更新
 
+### [Unreleased]
+
+#### Added / 新增
+
+- Added a mobile PWA collapse control for the Information Entry `录入可信知识` area. It starts expanded and lets users hide the form until they are ready to enter knowledge.
+- 为信息录入的手机端 PWA `录入可信知识` 区域新增折叠控件：默认展开，暂不录入时可手动收起，随后可随时继续录入。
+
+#### Changed / 变更
+
+- Changed the mobile Information Entry collapse control to sit at the title's upper-right edge; the inline Trust percentage is hidden while the entry area is collapsed.
+- 调整信息录入手机端折叠控件至“录入可信知识”标题右上侧；录入区域收起时不再显示内联 Trust 百分比。
+
+- Unified Skill selection in Knowledge Factory, English Materials AI generation, and AI Ask. Each now defaults to the user's own enabled Skills; checking `全部 Skill` reveals permitted shared Skills.
+- 统一知识加工、英语素材 AI 生成与 AI 问数的 Skill 选择器：默认仅显示自己的启用 Skill，勾选“全部 Skill”后才显示权限内可调用的共享 Skill。
+
+- Changed Skill scope switching to keep the current selector content visible and cache both scopes, avoiding layout jumps in Knowledge Factory and English Materials AI generation.
+- 调整 Skill 范围切换：保留当前选择器内容并缓存两种范围，避免知识加工与英语素材 AI 生成出现布局跳动。
+
+#### Fixed / 修复
+
+- Fixed Skill deletion to use the app's styled confirmation dialog instead of the browser's system prompt.
+- 修复删除 Skill 时仍使用浏览器系统确认框的问题，现统一使用应用内确认弹窗。
+
 ### [0.4.1] - 2026-08-19
 
 #### Added / 新增

@@ -582,6 +582,7 @@ function App() {
   const [activeView, setActiveView] = useState<AppView>(restoredUiState.activeView);
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(restoredUiState.sidebarExpanded);
   const [isKnowledgeEntryCollapsed, setIsKnowledgeEntryCollapsed] = useState(false);
+  const [isMobileKnowledgeEntryCollapsed, setIsMobileKnowledgeEntryCollapsed] = useState(false);
   const [isWorkbenchDetailsCollapsed, setIsWorkbenchDetailsCollapsed] = useState(false);
   const [isMobileNavVisible, setIsMobileNavVisible] = useState(restoredUiState.mobileNavVisible);
   const [themeMode, setThemeMode] = useState<ThemeMode>(restoredUiState.themeMode);
@@ -922,6 +923,7 @@ function App() {
   const debouncedSkillQuery = useDebouncedValue(skillQuery.trim());
   const [skillListScope, setSkillListScope] = useState<"owned" | "callable">("owned");
   const [selectedSkill, setSelectedSkill] = useState<SkillDetail | null>(null);
+  const [skillDeleteTarget, setSkillDeleteTarget] = useState<SkillDetail | null>(null);
   const [newSkillDraft, setNewSkillDraft] = useState<SkillDraft>(emptySkillDraft);
   const [skillDraft, setSkillDraft] = useState<SkillDraft>(emptySkillDraft);
   const [selectedSkillFile, setSelectedSkillFile] = useState<SkillFile | null>(null);
@@ -1734,22 +1736,19 @@ function App() {
   }, [activeView, apiKey, historyAskDomainCode]);
 
   useEffect(() => {
-    if (!apiKey || (activeView !== "skills" && activeView !== "historyAsk" && activeView !== "factory" && activeView !== "englishMaterials")) return;
+    if (!apiKey || activeView !== "skills") return;
 
     let cancelled = false;
     setIsSkillLoading(true);
     setSkillError(null);
     fetchSkills({
       q: activeView === "skills" ? debouncedSkillQuery : undefined,
-      enabled: activeView === "historyAsk" || activeView === "factory" || activeView === "englishMaterials" ? true : undefined,
-      scope: activeView === "skills" ? skillListScope : "callable",
+      scope: skillListScope,
     })
       .then((response) => {
         if (cancelled) return;
         setSkillItems(response.items);
         setSkillTotal(response.total);
-        setHistoryAskSkillIds((current) => current.filter((skillId) => response.items.some((item) => item.id === skillId)));
-        setFactorySkillIds((current) => current.filter((skillId) => response.items.some((item) => item.id === skillId)));
       })
       .catch((error: Error) => {
         if (cancelled) return;
@@ -3008,6 +3007,7 @@ function App() {
     setWorkbenchUsername(getDefaultOwnedUsername(nextAuthUser));
     setSelectedId(null);
     setIsMobileKnowledgeEditorOpen(false);
+    setIsMobileKnowledgeEntryCollapsed(false);
     setDraft(readStoredNewDraft() ?? emptyDraft);
     setIsTodoEntry(false);
     setFactoryUsername(getDefaultOwnedUsername(nextAuthUser));
@@ -3032,6 +3032,7 @@ function App() {
     setWorkbenchUsername("");
     setSelectedId(null);
     setIsMobileKnowledgeEditorOpen(false);
+    setIsMobileKnowledgeEntryCollapsed(false);
     setDraft(emptyDraft);
     setNewTodoStatus("处理中");
     setFactoryItems([]);
@@ -4487,16 +4488,6 @@ function App() {
     }
   }
 
-  function handleToggleHistoryAskSkill(skillId: string) {
-    setHistoryAskSkillIds((current) =>
-      current.includes(skillId) ? current.filter((item) => item !== skillId) : [...current, skillId].slice(0, 8),
-    );
-  }
-
-  function handleToggleFactorySkill(skillId: string) {
-    setFactorySkillIds(skillId ? [skillId] : []);
-  }
-
   function getPreferredSkillFile(files: SkillFile[]) {
     return files.find((file) => file.path.endsWith("SKILL.md") && file.readable) ?? files.find((file) => file.readable) ?? null;
   }
@@ -4746,22 +4737,26 @@ function App() {
     }
   }
 
-  async function handleDeleteSelectedSkill() {
+  function handleRequestDeleteSelectedSkill() {
     if (!selectedSkill || !selectedSkill.can_delete || isSkillSaving) return;
-    const confirmed = window.confirm(`确定删除 Skill「${selectedSkill.name}」吗？`);
-    if (!confirmed) return;
+    setSkillDeleteTarget(selectedSkill);
+  }
+
+  async function handleConfirmDeleteSelectedSkill() {
+    if (!skillDeleteTarget || isSkillSaving) return;
 
     setIsSkillSaving(true);
     setSkillSaveError(null);
     try {
-      await deleteSkill(selectedSkill.id);
-      setSkillItems((current) => current.filter((item) => item.id !== selectedSkill.id));
+      await deleteSkill(skillDeleteTarget.id);
+      setSkillItems((current) => current.filter((item) => item.id !== skillDeleteTarget.id));
       setSkillTotal((current) => Math.max(0, current - 1));
-      setHistoryAskSkillIds((current) => current.filter((skillId) => skillId !== selectedSkill.id));
-      setFactorySkillIds((current) => current.filter((skillId) => skillId !== selectedSkill.id));
+      setHistoryAskSkillIds((current) => current.filter((skillId) => skillId !== skillDeleteTarget.id));
+      setFactorySkillIds((current) => current.filter((skillId) => skillId !== skillDeleteTarget.id));
       setSelectedSkill(null);
       setSelectedSkillFile(null);
       setSkillFileContent("");
+      setSkillDeleteTarget(null);
     } catch (error) {
       setSkillSaveError(error instanceof Error ? error.message : "Skill 删除失败。");
     } finally {
@@ -5276,7 +5271,7 @@ function App() {
               selectedFile={selectedSkillFile}
               total={skillTotal}
               onCreate={handleCreateSkill}
-              onDelete={handleDeleteSelectedSkill}
+              onDelete={handleRequestDeleteSelectedSkill}
               onDraftChange={setSkillDraft}
               onFileChange={setSkillFileContent}
               onFileSelect={handleSelectSkillFile}
@@ -5342,9 +5337,6 @@ function App() {
               modelOptions={historyAskModelOptions}
               question={historyAskQuestion}
               selectedSkillIds={historyAskSkillIds}
-              skills={skillItems}
-              skillsError={skillError}
-              skillsLoading={isSkillLoading}
               onCopyAnswer={handleCopyHistoryAskAnswer}
               onLlmConfigDraftChange={setHistoryAskLlmConfigDraft}
               onLlmConfigSave={handleSaveHistoryAskLlmConfig}
@@ -5369,7 +5361,7 @@ function App() {
               onOpenHistory={handleOpenHistoryFromAsk}
               onQuestionChange={setHistoryAskQuestion}
               onSubmit={handleAskHistory}
-              onToggleSkill={handleToggleHistoryAskSkill}
+              onSelectedSkillIdsChange={setHistoryAskSkillIds}
             />
           ) : activeView === "aiCoding" ? (
             <Suspense fallback={lazyViewFallback}>
@@ -5649,9 +5641,6 @@ function App() {
               saveError={englishMaterialSaveError}
               isVectorRefreshing={isEnglishMaterialVectorRefreshing}
               modelOptions={historyAskModelOptions}
-              skills={skillItems}
-              skillsError={skillError}
-              skillsLoading={isSkillLoading}
               filters={{
                 username: englishMaterialUsername,
                 semanticQuery: englishMaterialSemanticQuery,
@@ -5803,6 +5792,7 @@ function App() {
                 <div className={isKnowledgeEntryCollapsed ? "xl:hidden" : "xl:pr-7"}>
                   <KnowledgeForm
                 embedded
+                isMobileCollapsed={isMobileKnowledgeEntryCollapsed}
                 draft={draft}
                 mode={isEditing ? "edit" : "create"}
                 selectedId={selectedId}
@@ -5824,6 +5814,7 @@ function App() {
                 onTodoStatusChange={setNewTodoStatus}
                 onNewEntry={handleNewEntry}
                 onSelectAdjacent={handleSelectAdjacentKnowledge}
+                onToggleMobileCollapsed={() => setIsMobileKnowledgeEntryCollapsed((collapsed) => !collapsed)}
                     onSubmit={handleSubmit}
                   />
                 </div>
@@ -5885,9 +5876,6 @@ function App() {
               canSelectNext={canSelectNextFactoryKnowledge}
               task={factoryTask}
               selectedSkillIds={factorySkillIds}
-              skills={skillItems}
-              skillsError={skillError}
-              skillsLoading={isSkillLoading}
               hasCopied={hasCopiedFactoryTask}
               isAutoSaving={isFactoryAutoSaving}
               isCopySaving={isFactoryCopySaving}
@@ -5913,7 +5901,7 @@ function App() {
               }}
               onSelect={handleSelectFactoryItem}
               onSelectAdjacent={handleSelectAdjacentFactoryKnowledge}
-              onToggleSkill={handleToggleFactorySkill}
+              onSelectedSkillIdsChange={setFactorySkillIds}
             />
           )}
         </section>
@@ -5977,6 +5965,22 @@ function App() {
           if (!isDeleting) setDeleteTarget(null);
         }}
         onConfirm={handleDeleteSelected}
+      />
+      <AppConfirmDialog
+        confirmLabel={isSkillSaving ? "删除中" : "确认删除"}
+        description="删除后将移除该 Skill 及其所有文件，且无法从界面撤销。"
+        icon={<Trash2 size={19} />}
+        isOpen={skillDeleteTarget !== null}
+        isPending={isSkillSaving}
+        target={skillDeleteTarget?.name ?? ""}
+        title="确认删除 Skill"
+        tone="danger"
+        onCancel={() => {
+          if (!isSkillSaving) setSkillDeleteTarget(null);
+        }}
+        onConfirm={() => {
+          void handleConfirmDeleteSelectedSkill();
+        }}
       />
       <AppConfirmDialog
         confirmLabel={
@@ -8181,6 +8185,7 @@ function EditorField({
 
 function KnowledgeForm({
   embedded = false,
+  isMobileCollapsed = false,
   draft,
   mode,
   selectedId,
@@ -8202,9 +8207,11 @@ function KnowledgeForm({
   onTodoStatusChange,
   onNewEntry,
   onSelectAdjacent,
+  onToggleMobileCollapsed,
   onSubmit,
 }: {
   embedded?: boolean;
+  isMobileCollapsed?: boolean;
   draft: KnowledgeDraft;
   mode: "create" | "edit";
   selectedId: number | null;
@@ -8226,6 +8233,7 @@ function KnowledgeForm({
   onTodoStatusChange: (status: TodoStatus) => void;
   onNewEntry: () => void;
   onSelectAdjacent: (direction: "previous" | "next") => void;
+  onToggleMobileCollapsed?: () => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
 }) {
   const [answerView, setAnswerView] = useState<"edit" | "preview">("edit");
@@ -8243,15 +8251,29 @@ function KnowledgeForm({
 
   return (
     <section className={`min-w-0 ${embedded ? "" : "rounded-lg border border-white/10 bg-ink-900/74 p-4 shadow-soft-glow backdrop-blur-xl"}`}>
-      <div className="mb-4 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-        <div>
-          <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
-            {isEditing ? <Pencil size={17} /> : <FilePlus2 size={17} />}
-            {isEditing ? `Editing #${selectedId}` : "New Entry"}
+      <div className={`${isMobileCollapsed ? "mb-0 xl:mb-4" : "mb-4"} flex flex-col gap-4 md:flex-row md:items-start md:justify-between`}>
+        <div className="flex min-w-0 items-start justify-between gap-3">
+          <div>
+            <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
+              {isEditing ? <Pencil size={17} /> : <FilePlus2 size={17} />}
+              {isEditing ? `Editing #${selectedId}` : "New Entry"}
+            </div>
+            <h2 className="text-xl font-semibold text-slate-50">
+              {formTitle}
+            </h2>
           </div>
-          <h2 className="text-xl font-semibold text-slate-50">
-            {formTitle}
-          </h2>
+          {onToggleMobileCollapsed ? (
+            <button
+              className="flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-sm font-medium text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300 focus:outline-none focus:ring-2 focus:ring-mint-300/30 xl:hidden"
+              type="button"
+              aria-expanded={!isMobileCollapsed}
+              aria-label={`${isMobileCollapsed ? "展开" : "收起"}${formTitle}区域`}
+              onClick={onToggleMobileCollapsed}
+            >
+              {isMobileCollapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+              {isMobileCollapsed ? "展开录入" : "收起录入"}
+            </button>
+          ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-2 md:justify-end">
           {isEditing ? (
@@ -8288,14 +8310,14 @@ function KnowledgeForm({
               <X size={17} />
             </button>
           ) : null}
-          <div className="rounded-lg border border-white/10 bg-white/[0.035] px-3 py-2 text-right">
+          <div className={`${isMobileCollapsed ? "hidden xl:block" : ""} rounded-lg border border-white/10 bg-white/[0.035] px-3 py-2 text-right`}>
             <div className="text-[11px] uppercase tracking-[0.18em] text-slate-500">Trust</div>
             <div className="text-lg font-semibold text-mint-300">{trustScore}%</div>
           </div>
         </div>
       </div>
 
-      <form className="space-y-4" onSubmit={onSubmit}>
+      <form className={`space-y-4 ${isMobileCollapsed ? "hidden xl:block" : ""}`} onSubmit={onSubmit}>
         {!isEditing ? (
           <label className="flex items-start gap-3 rounded-lg border border-white/10 bg-white/[0.028] px-3 py-3">
             <input
@@ -8776,9 +8798,6 @@ function KnowledgeFactory({
   canSelectNext,
   task,
   selectedSkillIds,
-  skills,
-  skillsError,
-  skillsLoading,
   hasCopied,
   isAutoSaving,
   isCopySaving,
@@ -8798,7 +8817,7 @@ function KnowledgeFactory({
   onUsernameChange,
   onSelect,
   onSelectAdjacent,
-  onToggleSkill,
+  onSelectedSkillIdsChange,
 }: {
   authUser: AuthUser | null;
   items: KnowledgeItem[];
@@ -8813,9 +8832,6 @@ function KnowledgeFactory({
   canSelectNext: boolean;
   task: string;
   selectedSkillIds: string[];
-  skills: SkillSummary[];
-  skillsError: string | null;
-  skillsLoading: boolean;
   hasCopied: boolean;
   isAutoSaving: boolean;
   isCopySaving: boolean;
@@ -8835,7 +8851,7 @@ function KnowledgeFactory({
   onUsernameChange: (username: string) => void;
   onSelect: (item: KnowledgeItem) => void;
   onSelectAdjacent: (direction: "previous" | "next") => void;
-  onToggleSkill: (skillId: string) => void;
+  onSelectedSkillIdsChange: (skillIds: string[]) => void;
 }) {
   const selectedItem = items.find((item) => item.id === selectedId) ?? null;
   const [selectedMergeItems, setSelectedMergeItems] = useState<KnowledgeItem[]>([]);
@@ -9115,21 +9131,6 @@ function KnowledgeFactory({
                 使用“AI 问数”中已启用的供应商、Base URL、模型名和后端 API Key 配置。
               </p>
             ) : null}
-            <Field label="选择 Skill" icon={<Layers3 size={16} />}>
-              <select
-                className="control h-10 sm:w-52"
-                disabled={isGenerating || skillsLoading || skills.length === 0}
-                value={selectedSkillIds[0] ?? ""}
-                onChange={(event) => onToggleSkill(event.target.value)}
-              >
-                <option value="">请选择 Skill</option>
-                {skills.map((skill) => (
-                  <option key={skill.id} value={skill.id}>
-                    {skill.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
             {selectedItem ? (
               <button
                 className="flex h-10 items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-3 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
@@ -9143,10 +9144,14 @@ function KnowledgeFactory({
               </button>
             ) : null}
           </div>
+          <SkillSelector
+            disabled={isGenerating}
+            mode="single"
+            selectedSkillIds={selectedSkillIds}
+            onSelectedSkillIdsChange={onSelectedSkillIdsChange}
+          />
         </div>
 
-        {skillsLoading ? <p className="mb-4 text-sm text-slate-500">正在加载可用 Skill...</p> : null}
-        {skillsError ? <p className="mb-4 text-sm text-red-200">{skillsError}</p> : null}
         {copyError ? (
           <div className="mb-4 flex items-start gap-2 rounded-lg border border-amberline/25 bg-amberline/10 px-3 py-3 text-sm text-amber-100">
             <TriangleAlert className="mt-0.5 shrink-0 text-amberline" size={17} />
@@ -12426,9 +12431,6 @@ function EnglishMaterialsWorkspace({
   saveError,
   isVectorRefreshing,
   modelOptions,
-  skills,
-  skillsError,
-  skillsLoading,
   filters,
   onDraftChange,
   onFilterChange,
@@ -12463,9 +12465,6 @@ function EnglishMaterialsWorkspace({
   saveError: string | null;
   isVectorRefreshing: boolean;
   modelOptions: { value: string; label: string }[];
-  skills: SkillSummary[];
-  skillsError: string | null;
-  skillsLoading: boolean;
   filters: EnglishMaterialFilters;
   onDraftChange: (draft: EnglishMaterialDraft) => void;
   onFilterChange: (filters: Partial<EnglishMaterialFilters>) => void;
@@ -12758,7 +12757,7 @@ function EnglishMaterialsWorkspace({
           </div>
           <h2 className="text-xl font-semibold text-slate-50">录入英语素材</h2>
           <div className="mt-3">
-            <EnglishMaterialAiGeneration draft={draft} modelOptions={modelOptions} skills={skills} skillsError={skillsError} skillsLoading={skillsLoading} onGenerated={onDraftChange} onOpen={() => setIsEnglishMaterialListCollapsed(true)} />
+            <EnglishMaterialAiGeneration draft={draft} modelOptions={modelOptions} onGenerated={onDraftChange} onOpen={() => setIsEnglishMaterialListCollapsed(true)} />
           </div>
         </div>
 
@@ -12793,9 +12792,6 @@ function EnglishMaterialsWorkspace({
         onClose={onCloseCreate}
         onDraftChange={onDraftChange}
         modelOptions={modelOptions}
-        skills={skills}
-        skillsError={skillsError}
-        skillsLoading={skillsLoading}
         onSubmit={onSubmit}
       />
 
@@ -12922,9 +12918,6 @@ function EnglishMaterialCreateDialog({
   onDraftChange,
   onSubmit,
   modelOptions,
-  skills,
-  skillsError,
-  skillsLoading,
 }: {
   draft: EnglishMaterialDraft;
   hasDraft: boolean;
@@ -12936,9 +12929,6 @@ function EnglishMaterialCreateDialog({
   onDraftChange: (draft: EnglishMaterialDraft) => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
   modelOptions: { value: string; label: string }[];
-  skills: SkillSummary[];
-  skillsError: string | null;
-  skillsLoading: boolean;
 }) {
   const canSubmit = draft.base_expression.trim().length > 0 && !isSaving;
 
@@ -12972,7 +12962,7 @@ function EnglishMaterialCreateDialog({
             </div>
             <h2 className="text-xl font-semibold text-slate-50">{hasDraft ? "继续录入英语素材" : "录入英语素材"}</h2>
             <div className="mt-3">
-              <EnglishMaterialAiGeneration draft={draft} modelOptions={modelOptions} skills={skills} skillsError={skillsError} skillsLoading={skillsLoading} onGenerated={onDraftChange} />
+              <EnglishMaterialAiGeneration draft={draft} modelOptions={modelOptions} onGenerated={onDraftChange} />
             </div>
           </div>
           <button
@@ -13033,20 +13023,159 @@ function EnglishMaterialCreateDialog({
   );
 }
 
+function SkillSelector({
+  disabled = false,
+  maxSelections,
+  mode = "multiple",
+  selectedSkillIds,
+  onSelectedSkillIdsChange,
+}: {
+  disabled?: boolean;
+  maxSelections?: number;
+  mode?: "single" | "multiple";
+  selectedSkillIds: string[];
+  onSelectedSkillIdsChange: (skillIds: string[]) => void;
+}) {
+  const [showAllSkills, setShowAllSkills] = useState(false);
+  const [skills, setSkills] = useState<SkillSummary[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const skillsByScopeRef = useRef<Partial<Record<"owned" | "callable", SkillSummary[]>>>({});
+  const selectedSkillIdsRef = useRef(selectedSkillIds);
+  const selectionLimit = mode === "single" ? 1 : maxSelections;
+
+  useEffect(() => {
+    selectedSkillIdsRef.current = selectedSkillIds;
+  }, [selectedSkillIds]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const scope = showAllSkills ? "callable" : "owned";
+    const cachedSkills = skillsByScopeRef.current[scope];
+
+    function reconcileSelection(availableSkills: SkillSummary[]) {
+      const allowedIds = new Set(availableSkills.map((skill) => skill.id));
+      const nextSelectedSkillIds = selectedSkillIdsRef.current.filter((skillId) => allowedIds.has(skillId));
+      const selectionUnchanged =
+        nextSelectedSkillIds.length === selectedSkillIdsRef.current.length &&
+        nextSelectedSkillIds.every((skillId, index) => skillId === selectedSkillIdsRef.current[index]);
+      if (!selectionUnchanged) onSelectedSkillIdsChange(nextSelectedSkillIds);
+    }
+
+    if (cachedSkills) {
+      setSkills(cachedSkills);
+      setError(null);
+      setIsLoading(false);
+      reconcileSelection(cachedSkills);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    fetchSkills({ enabled: true, scope })
+      .then((response) => {
+        if (cancelled) return;
+        skillsByScopeRef.current[scope] = response.items;
+        setSkills(response.items);
+        reconcileSelection(response.items);
+      })
+      .catch((loadError: Error) => {
+        if (!cancelled) setError(loadError.message);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [showAllSkills, onSelectedSkillIdsChange]);
+
+  function handleToggleSkill(skillId: string) {
+    if (mode === "single") {
+      onSelectedSkillIdsChange(selectedSkillIds.includes(skillId) ? [] : [skillId]);
+      return;
+    }
+
+    if (selectedSkillIds.includes(skillId)) {
+      onSelectedSkillIdsChange(selectedSkillIds.filter((currentId) => currentId !== skillId));
+      return;
+    }
+
+    if (selectionLimit !== undefined && selectedSkillIds.length >= selectionLimit) return;
+    onSelectedSkillIdsChange([...selectedSkillIds, skillId]);
+  }
+
+  return (
+    <section className="min-h-48 min-w-0 rounded-lg border border-white/10 bg-white/[0.025] p-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex items-center gap-2 text-sm font-medium text-slate-200">
+          <Layers3 className="text-mint-300" size={16} />
+          选择 Skill
+        </div>
+        <label className="flex cursor-pointer items-center gap-2 text-xs text-slate-400">
+          <input
+            checked={showAllSkills}
+            className="h-4 w-4 accent-mint-300"
+            disabled={disabled}
+            type="checkbox"
+            onChange={(event) => setShowAllSkills(event.target.checked)}
+          />
+          全部 Skill
+          {isLoading ? <Loader2 className="animate-spin text-mint-300" size={14} /> : null}
+        </label>
+      </div>
+      <div className="mt-1 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+        <span>{showAllSkills ? "显示你有权限调用的共享 Skill。" : "默认仅显示自己的启用 Skill。"}</span>
+        <span>已选择 {formatAmount(selectedSkillIds.length)} 个{selectionLimit ? ` / ${selectionLimit}` : ""}</span>
+      </div>
+      {isLoading && skills.length === 0 ? (
+        <div className="mt-3 flex items-center gap-2 text-sm text-slate-500"><Loader2 className="animate-spin" size={15} />正在加载 Skill...</div>
+      ) : error ? (
+        <div className="mt-3 text-sm text-red-200">{error}</div>
+      ) : skills.length ? (
+        <div className="mt-3 grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2">
+          {skills.map((skill) => {
+            const selected = selectedSkillIds.includes(skill.id);
+            const reachedLimit = !selected && selectionLimit !== undefined && selectedSkillIds.length >= selectionLimit;
+            return (
+              <button
+                key={skill.id}
+                className={`min-h-16 min-w-0 overflow-hidden rounded-lg border px-3 py-2 text-left transition ${selected ? "border-mint-300/30 bg-mint-300/10 text-mint-100" : "border-white/10 bg-white/[0.028] text-slate-300 hover:border-mint-300/25"}`}
+                disabled={disabled || isLoading || reachedLimit}
+                type="button"
+                onClick={() => handleToggleSkill(skill.id)}
+              >
+                <div className="flex min-w-0 items-center justify-between gap-2">
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium">{skill.name}</span>
+                  {selected ? <CheckCircle2 className="shrink-0 text-mint-300" size={15} /> : null}
+                </div>
+                <p className="mt-1 line-clamp-2 break-words text-xs leading-5 text-slate-500 [overflow-wrap:anywhere]">{skill.description || "无描述"}</p>
+                {showAllSkills ? <div className="mt-2 text-[11px] text-slate-600">{skill.owner_username ? `Owner: ${skill.owner_username}` : "系统 Skill"}</div> : null}
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="mt-3 text-sm leading-5 text-slate-500">
+          {showAllSkills ? "暂无可调用的启用 Skill。" : "暂无自己的启用 Skill；勾选“全部 Skill”可查看有权限调用的共享 Skill。"}
+        </p>
+      )}
+    </section>
+  );
+}
+
 function EnglishMaterialAiGeneration({
   draft,
   modelOptions,
-  skills,
-  skillsError,
-  skillsLoading,
   onGenerated,
   onOpen,
 }: {
   draft: EnglishMaterialDraft;
   modelOptions: { value: string; label: string }[];
-  skills: SkillSummary[];
-  skillsError: string | null;
-  skillsLoading: boolean;
   onGenerated: (draft: EnglishMaterialDraft) => void;
   onOpen?: () => void;
 }) {
@@ -13058,10 +13187,6 @@ function EnglishMaterialAiGeneration({
   const [topic, setTopic] = useState("");
   const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
   const canGenerate = !isGenerating && (topicMode !== "custom" || topic.trim().length > 0);
-
-  useEffect(() => {
-    setSelectedSkillIds((current) => current.filter((id) => skills.some((skill) => skill.id === id)));
-  }, [skills]);
 
   async function handleGenerate() {
     if (!canGenerate) return;
@@ -13127,10 +13252,11 @@ function EnglishMaterialAiGeneration({
                 </Field>
               </div>
               {topicMode === "custom" ? <Field label="自定义主题" icon={<FileText size={16} />}><input className="control" disabled={isGenerating} maxLength={300} value={topic} onChange={(event) => setTopic(event.target.value)} placeholder="例如：在不确定中保持行动力" /></Field> : null}
-              <div className="rounded-lg border border-white/10 bg-white/[0.025] p-3">
-                <div className="mb-3 flex items-center justify-between gap-3"><div className="flex items-center gap-2 text-sm font-medium text-slate-200"><Layers3 className="text-mint-300" size={16} />调用 Skill</div><span className="text-xs text-slate-500">已选择 {selectedSkillIds.length} 个</span></div>
-                {skillsLoading ? <div className="flex items-center gap-2 text-sm text-slate-500"><Loader2 className="animate-spin" size={15} />正在加载可用 Skill...</div> : skillsError ? <div className="text-sm text-red-200">{skillsError}</div> : skills.length ? <div className="grid gap-2 sm:grid-cols-2">{skills.map((skill) => { const selected = selectedSkillIds.includes(skill.id); return <button key={skill.id} className={`min-h-16 rounded-lg border px-3 py-2 text-left transition ${selected ? "border-mint-300/30 bg-mint-300/10 text-mint-100" : "border-white/10 bg-white/[0.028] text-slate-300 hover:border-mint-300/25"}`} disabled={isGenerating} type="button" onClick={() => setSelectedSkillIds((current) => selected ? current.filter((id) => id !== skill.id) : [...current, skill.id])}><div className="flex items-center justify-between gap-2"><span className="truncate text-sm font-medium">{skill.name}</span>{selected ? <CheckCircle2 className="shrink-0 text-mint-300" size={15} /> : null}</div><p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{skill.description || "无描述"}</p></button>; })}</div> : <p className="text-sm text-slate-500">暂无可调用 Skill；未选择时将使用默认口播风格。</p>}
-              </div>
+              <SkillSelector
+                disabled={isGenerating}
+                selectedSkillIds={selectedSkillIds}
+                onSelectedSkillIdsChange={setSelectedSkillIds}
+              />
               {error ? <div className="flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100"><TriangleAlert className="mt-0.5 shrink-0 text-red-300" size={17} /><span>{error}</span></div> : null}
             </div>
             <div className="flex shrink-0 justify-end gap-3 border-t border-white/10 p-4"><button className="h-11 rounded-lg border border-white/10 bg-white/[0.035] px-4 text-sm text-slate-300 disabled:cursor-not-allowed disabled:text-slate-600" disabled={isGenerating} type="button" onClick={() => setIsOpen(false)}>取消</button><button className="flex h-11 items-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 text-sm font-medium text-mint-300 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500" disabled={!canGenerate} type="button" onClick={() => void handleGenerate()}>{isGenerating ? <Loader2 className="animate-spin" size={17} /> : <WandSparkles size={17} />}{isGenerating ? "生成中" : "生成并回填"}</button></div>
@@ -15000,9 +15126,6 @@ function HistoryAskPanel({
   modelOptions,
   question,
   selectedSkillIds,
-  skills,
-  skillsError,
-  skillsLoading,
   onCopyAnswer,
   onLlmConfigDraftChange,
   onLlmConfigSave,
@@ -15019,7 +15142,7 @@ function HistoryAskPanel({
   onOpenHistory,
   onQuestionChange,
   onSubmit,
-  onToggleSkill,
+  onSelectedSkillIdsChange,
 }: {
   answer: HistoryAskResponse | null;
   error: string | null;
@@ -15048,9 +15171,6 @@ function HistoryAskPanel({
   modelOptions: { value: string; label: string }[];
   question: string;
   selectedSkillIds: string[];
-  skills: SkillSummary[];
-  skillsError: string | null;
-  skillsLoading: boolean;
   onCopyAnswer: (view: MarkdownContentView) => void;
   onLlmConfigDraftChange: (draft: LlmConfigDraft) => void;
   onLlmConfigSave: (event: React.FormEvent<HTMLFormElement>) => void;
@@ -15067,10 +15187,9 @@ function HistoryAskPanel({
   onOpenHistory: () => void;
   onQuestionChange: (question: string) => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
-  onToggleSkill: (skillId: string) => void;
+  onSelectedSkillIdsChange: (skillIds: string[]) => void;
 }) {
   const [answerView, setAnswerView] = useState<MarkdownContentView>("rendered");
-  const [isSkillsExpanded, setIsSkillsExpanded] = useState(false);
   const [isModelConfigExpanded, setIsModelConfigExpanded] = useState(false);
   const [isOntologyExpanded, setIsOntologyExpanded] = useState(false);
   const [isAuditExpanded, setIsAuditExpanded] = useState(false);
@@ -15094,7 +15213,6 @@ function HistoryAskPanel({
   };
   const examples = quickQuestions.length ? quickQuestions.map((item) => item.question) : examplesByDomain[domainCode];
   const selectedDomain = domains.find((domain) => domain.code === domainCode);
-  const selectedSkills = skills.filter((skill) => selectedSkillIds.includes(skill.id));
   const answerDomainCode = answer?.domain?.code;
   const recordDestinationLabel = answerDomainCode === "todos" ? "查看待办事项" : answerDomainCode === "knowledge" ? "查看可信知识" : answerDomainCode === "english_materials" ? "查看英语素材" : "查看历史记录";
 
@@ -15213,78 +15331,12 @@ function HistoryAskPanel({
                 </div>
               ) : null}
             </div>
-            <div className="rounded-lg border border-white/10 bg-white/[0.025] p-3">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-center gap-2 text-sm font-medium text-slate-200">
-                  <Layers3 className="text-mint-300" size={16} />
-                  调用 Skill
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-xs text-slate-500">已选择 {formatAmount(selectedSkillIds.length)} 个</span>
-                  <button
-                    className="text-xs text-mint-200 transition hover:text-mint-100"
-                    type="button"
-                    onClick={() => setIsSkillsExpanded((expanded) => !expanded)}
-                  >
-                    {isSkillsExpanded ? "收起" : "选择 Skill"}
-                  </button>
-                </div>
-              </div>
-              {!isSkillsExpanded && selectedSkills.length > 0 ? (
-                <div className="mt-3 flex min-w-0 flex-wrap items-center gap-2 rounded-lg border border-mint-300/15 bg-mint-300/[0.045] px-2.5 py-2">
-                  <span className="shrink-0 text-[11px] font-medium text-mint-200">已调用</span>
-                  {selectedSkills.map((skill) => (
-                    <span
-                      key={skill.id}
-                      className="max-w-full truncate rounded-md border border-mint-300/20 bg-mint-300/10 px-2 py-1 text-xs text-mint-100"
-                      title={skill.name}
-                    >
-                      {skill.name}
-                    </span>
-                  ))}
-                </div>
-              ) : null}
-              {isSkillsExpanded && skillsLoading ? (
-                <div className="flex items-center gap-2 text-sm text-slate-500">
-                  <Loader2 className="animate-spin" size={15} />
-                  正在加载可用 skill...
-                </div>
-              ) : isSkillsExpanded && skillsError ? (
-                <div className="text-sm text-red-200">{skillsError}</div>
-              ) : isSkillsExpanded && skills.length > 0 ? (
-                <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2">
-                  {skills.map((skill) => {
-                    const selected = selectedSkillIds.includes(skill.id);
-                    return (
-                      <button
-                        key={skill.id}
-                        className={`min-h-16 min-w-0 max-w-full overflow-hidden rounded-lg border px-3 py-2 text-left transition ${
-                          selected
-                            ? "border-mint-300/30 bg-mint-300/10 text-mint-100"
-                            : "border-white/10 bg-white/[0.028] text-slate-300 hover:border-mint-300/25"
-                        }`}
-                        type="button"
-                        onClick={() => onToggleSkill(skill.id)}
-                      >
-                        <div className="flex min-w-0 items-center justify-between gap-2">
-                          <span className="min-w-0 flex-1 truncate text-sm font-medium">{skill.name}</span>
-                          {selected ? <CheckCircle2 className="shrink-0 text-mint-300" size={15} /> : null}
-                        </div>
-                        <p className="mt-1 line-clamp-2 break-words text-xs leading-5 text-slate-500 [overflow-wrap:anywhere]">{skill.description || "无描述"}</p>
-                        <div className="mt-2 flex min-w-0 flex-wrap gap-2 text-[11px] text-slate-600">
-                          <span className="break-words [overflow-wrap:anywhere]">{skill.skill_type === "system" ? "系统自带" : "用户自建"}</span>
-                          <span className="min-w-0 break-words [overflow-wrap:anywhere]">{skill.owner_username ? skill.owner_username : "系统"}</span>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : isSkillsExpanded ? (
-                <div className="text-sm text-slate-500">暂无启用的 skill，可在 Skill 管理中新增或上传。</div>
-              ) : (
-                <p className="mt-2 text-xs leading-5 text-slate-500">默认按基础查询展示实际数据结果；需要自定义输出结构或分析框架时再选择 Skill。</p>
-              )}
-            </div>
+            <SkillSelector
+              disabled={isLoading}
+              maxSelections={8}
+              selectedSkillIds={selectedSkillIds}
+              onSelectedSkillIdsChange={onSelectedSkillIdsChange}
+            />
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="text-xs leading-5 text-slate-500">
                 当前按记录数、活跃日期、类型分布和代表性记录统计；不会直接让 AI 执行任意 SQL。
