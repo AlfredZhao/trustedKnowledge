@@ -1,6 +1,7 @@
 import type {
   BlogPublishCategory,
   BlogFactoryPublishResult,
+  BlogFactoryReviewResult,
   BlogFactorySendToProcessingResult,
   BlogFactoryItem,
   BlogPublishSubmissionOption,
@@ -503,6 +504,34 @@ export async function updateBlogFactoryItem({
       topic_tag_snapshot: topicTagSnapshot || null,
       assist_summary: assistSummary || null,
       cover_image_markdown: coverImageMarkdown || null,
+    }),
+  });
+}
+
+export async function reviewBlogFactoryContent({
+  taskContent,
+  questionSnapshot,
+  answerSnapshot,
+  skillIds,
+  executionProvider,
+  modelName,
+}: {
+  taskContent: string;
+  questionSnapshot?: string;
+  answerSnapshot?: string;
+  skillIds: string[];
+  executionProvider: "codex" | "history_ask_llm";
+  modelName: string;
+}): Promise<BlogFactoryReviewResult> {
+  return request<BlogFactoryReviewResult>("/api/blog-factory/review", {
+    method: "POST",
+    body: JSON.stringify({
+      task_content: taskContent,
+      question_snapshot: questionSnapshot || null,
+      answer_snapshot: answerSnapshot || null,
+      skill_ids: skillIds,
+      execution_provider: executionProvider,
+      model_name: modelName,
     }),
   });
 }

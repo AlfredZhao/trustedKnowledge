@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.schemas.validators import normalize_optional_file_path, normalize_optional_short_text, normalize_optional_topic_tag
 from app.schemas.knowledge import KnowledgeItem
@@ -144,6 +144,48 @@ class BlogFactoryUpdate(BaseModel):
     def normalize_assist_metadata(cls, value: str | None, info) -> str | None:
         max_length = 100 if info.field_name == "assist_summary" else 2000
         return normalize_optional_short_text(value, field_name=info.field_name, max_length=max_length)
+
+
+class BlogFactoryReviewRequest(BaseModel):
+    task_content: str = Field(..., min_length=1, max_length=30000)
+    question_snapshot: str | None = Field(default=None, max_length=4000)
+    answer_snapshot: str | None = Field(default=None, max_length=12000)
+    skill_ids: list[str] = Field(default_factory=list, max_length=8)
+    execution_provider: Literal["codex", "history_ask_llm"] = "codex"
+    model_name: str = Field(default="", max_length=120)
+
+    @field_validator("task_content", "question_snapshot", "answer_snapshot", mode="before")
+    @classmethod
+    def strip_review_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        return stripped or None
+
+
+class BlogFactoryReviewSuggestion(BaseModel):
+    id: str = Field(..., min_length=1, max_length=80)
+    severity: Literal["需要修改", "建议优化"]
+    category: Literal["结构", "逻辑", "表达", "一致性", "Markdown"]
+    quote: str = Field(..., min_length=1, max_length=1000)
+    problem: str = Field(..., min_length=1, max_length=1000)
+    suggestion: str = Field(..., min_length=1, max_length=1000)
+    before: str = Field(..., min_length=1, max_length=4000)
+    after: str = Field(..., min_length=1, max_length=4000)
+
+
+class BlogFactoryReviewResult(BaseModel):
+    status: Literal["no_issues", "issues_found"]
+    summary: str = Field(..., min_length=1, max_length=1000)
+    suggestions: list[BlogFactoryReviewSuggestion] = Field(default_factory=list, max_length=20)
+
+    @model_validator(mode="after")
+    def validate_review_status(self) -> "BlogFactoryReviewResult":
+        if self.status == "no_issues" and self.suggestions:
+            raise ValueError("no_issues result cannot contain suggestions")
+        if self.status == "issues_found" and not self.suggestions:
+            raise ValueError("issues_found result must contain suggestions")
+        return self
 
 
 class BlogFactoryArticleUpdate(BaseModel):

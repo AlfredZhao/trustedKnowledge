@@ -13,6 +13,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Added / 新增
 
+- Added AI Review to Blog Factory task content. It returns a review conclusion and selectable, safe text-replacement suggestions; applying selections updates only the local draft and opens edit mode, while final persistence remains a manual save.
+- 为博客工厂任务内容新增 AI Review：返回审阅结论及可选择的安全文本替换建议；应用后只更新本地草稿并进入编辑模式，最终写入仍需手动保存。
+
 - Added `AI补全` to English Material detail editing. It extracts title, core expression, professional sentence, and Chinese translation from the current full script with an optional Skill, previews the result, fills only blank fields after confirmation, and never saves automatically.
 - 在英语素材详情编辑中新增 `AI补全`：可结合可选 Skill 从当前完整口播内容提炼标题、核心表达、职业句式和中文翻译；结果先预览，确认后仅回填空字段，且绝不自动保存。
 
@@ -20,6 +23,9 @@ The format follows the common GitHub changelog convention inspired by
 - 为信息录入的手机端 PWA `录入可信知识` 区域新增折叠控件：默认展开，暂不录入时可手动收起，随后可随时继续录入。
 
 #### Changed / 变更
+
+- Changed Blog Factory AI Review into a top-aligned review workspace with explicit model and Skill selection before review, so long articles no longer hide the dialog and review behavior is configurable.
+- 将博客工厂 AI Review 调整为顶部对齐的审阅工作台，审阅前可明确选择模型和 Skill，避免长文章遮挡弹窗并支持后续微调。
 
 - Changed the mobile Information Entry collapse control to sit at the title's upper-right edge; the inline Trust percentage is hidden while the entry area is collapsed.
 - 调整信息录入手机端折叠控件至“录入可信知识”标题右上侧；录入区域收起时不再显示内联 Trust 百分比。

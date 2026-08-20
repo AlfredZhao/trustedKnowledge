@@ -18,6 +18,7 @@ from app.repositories.blog_factory import (
     update_blog_factory_item,
     update_blog_factory_status,
 )
+from app.repositories.blog_review import review_blog_factory_content
 from app.repositories.blog_publish import (
     BlogFactoryPublishTargetNotFoundError,
     BlogPublishConfigNotFoundError,
@@ -36,6 +37,8 @@ from app.schemas.blog_factory import (
     BlogFactoryCreate,
     BlogFactoryItem,
     BlogFactoryListResponse,
+    BlogFactoryReviewRequest,
+    BlogFactoryReviewResult,
     BlogFactorySendToProcessing,
     BlogFactorySendToProcessingResult,
     BlogFactoryStatusUpdate,
@@ -57,6 +60,17 @@ from app.services.metaweblog import MetaWeblogError
 
 
 router = APIRouter(prefix="/blog-factory", tags=["blog-factory"])
+
+
+@router.post("/review", response_model=BlogFactoryReviewResult)
+async def post_review_blog_factory_content(
+    payload: BlogFactoryReviewRequest,
+    auth_context: AuthContext = Depends(require_current_user),
+) -> BlogFactoryReviewResult:
+    try:
+        return await review_blog_factory_content(payload, auth_context)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
 @router.get("", response_model=BlogFactoryListResponse)

@@ -97,6 +97,23 @@ export interface BlogFactoryItem {
   similarity: number | null;
 }
 
+export interface BlogFactoryReviewSuggestion {
+  id: string;
+  severity: "需要修改" | "建议优化";
+  category: "结构" | "逻辑" | "表达" | "一致性" | "Markdown";
+  quote: string;
+  problem: string;
+  suggestion: string;
+  before: string;
+  after: string;
+}
+
+export interface BlogFactoryReviewResult {
+  status: "no_issues" | "issues_found";
+  summary: string;
+  suggestions: BlogFactoryReviewSuggestion[];
+}
+
 export type BlogPublishType = "METAWEBLOG_API";
 export type BlogPublishSubmissionOption = "CNBLOGS_HOME" | "PERSONAL_ONLY";
 

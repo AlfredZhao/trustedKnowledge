@@ -96,6 +96,7 @@ import {
   readCachedBlogPublishCategories,
   readCachedKnowledge,
   readCachedTodos,
+  reviewBlogFactoryContent,
   sendBlogFactoryItemToProcessing,
   updateBlogFactoryArticle,
   updateBlogFactoryAssistMetadata,
@@ -325,6 +326,7 @@ import type {
   AppView,
   BlogPublishCategory,
   BlogFactoryItem,
+  BlogFactoryReviewResult,
   BlogFactoryPublishResult,
   BlogFactoryStatus,
   BlogPublishConfig,
@@ -5430,6 +5432,7 @@ function App() {
               publishSuccess={blogPublishSuccess}
               isPublishing={isBlogPublishing}
               isVectorRefreshing={isBlogFactoryVectorRefreshing}
+              modelOptions={historyAskModelOptions}
               editDraft={blogFactoryEditDraft}
               coverPromptTemplate={blogFactoryCoverPromptTemplate}
               coverPromptConfig={blogFactoryCoverPromptConfig}
@@ -9556,6 +9559,7 @@ function BlogFactoryRecords({
   maskNotice,
   hasCopiedTask,
   isVectorRefreshing,
+  modelOptions,
   filters,
   onFilterChange,
   onRefreshVectors,
@@ -9616,6 +9620,7 @@ function BlogFactoryRecords({
   maskNotice: string | null;
   hasCopiedTask: boolean;
   isVectorRefreshing: boolean;
+  modelOptions: { value: string; label: string }[];
   filters: BlogFactoryFilters;
   onFilterChange: (filters: Partial<BlogFactoryFilters>) => void;
   onRefreshVectors: () => void;
@@ -10128,6 +10133,18 @@ function BlogFactoryRecords({
                     <Pencil size={15} />
                     {isTaskContentEditing ? "编辑中" : "编辑任务内容"}
                   </button>
+                  <BlogFactoryAiReview
+                    answerSnapshot={editDraft.answerSnapshot}
+                    disabled={isRecordSaving || isDeleting}
+                    modelOptions={modelOptions}
+                    questionSnapshot={editDraft.questionSnapshot}
+                    taskContent={editDraft.taskContent}
+                    onApply={(taskContent) => {
+                      onEditDraftChange({ ...editDraft, taskContent });
+                      setIsTaskContentEditing(true);
+                      setIsMaskToolsExpanded(false);
+                    }}
+                  />
                   {isTaskContentEditing ? (
                     <button
                       aria-expanded={isMaskToolsExpanded}
@@ -11016,6 +11033,100 @@ function DetailBlock({
       </p>
     </div>
   );
+}
+
+function BlogFactoryAiReview({
+  answerSnapshot,
+  disabled,
+  modelOptions,
+  questionSnapshot,
+  taskContent,
+  onApply,
+}: {
+  answerSnapshot: string;
+  disabled: boolean;
+  modelOptions: { value: string; label: string }[];
+  questionSnapshot: string;
+  taskContent: string;
+  onApply: (taskContent: string) => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [isReviewing, setIsReviewing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<BlogFactoryReviewResult | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [modelName, setModelName] = useState(AI_CODING_DEFAULT_MODEL);
+  const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
+  const canReview = !disabled && !isReviewing && taskContent.trim().length > 0;
+
+  function closeDialog() {
+    if (isReviewing) return;
+    setIsOpen(false);
+    setError(null);
+    setResult(null);
+    setSelectedIds([]);
+  }
+
+  async function handleReview() {
+    if (!canReview) return;
+    setIsReviewing(true);
+    setError(null);
+    try {
+      const usesConfiguredModel = modelName === HISTORY_ASK_CONFIGURED_MODEL;
+      const next = await reviewBlogFactoryContent({
+        taskContent,
+        questionSnapshot,
+        answerSnapshot,
+        skillIds: selectedSkillIds,
+        executionProvider: usesConfiguredModel ? "history_ask_llm" : "codex",
+        modelName: modelName === AI_CODING_DEFAULT_MODEL ? "" : modelName,
+      });
+      setResult(next);
+      setSelectedIds(next.suggestions.map((suggestion) => suggestion.id));
+    } catch (reviewError) {
+      setError(reviewError instanceof Error ? reviewError.message : "AI 审阅失败，请稍后重试。");
+    } finally {
+      setIsReviewing(false);
+    }
+  }
+
+  function toggleSuggestion(id: string) {
+    setSelectedIds((current) => (current.includes(id) ? current.filter((currentId) => currentId !== id) : [...current, id]));
+  }
+
+  function applySuggestions() {
+    if (!result) return;
+    let nextContent = taskContent;
+    const failures: string[] = [];
+    for (const suggestion of result.suggestions.filter((item) => selectedIds.includes(item.id))) {
+      const firstIndex = nextContent.indexOf(suggestion.before);
+      if (firstIndex === -1 || firstIndex !== nextContent.lastIndexOf(suggestion.before)) {
+        failures.push(suggestion.id);
+        continue;
+      }
+      nextContent = `${nextContent.slice(0, firstIndex)}${suggestion.after}${nextContent.slice(firstIndex + suggestion.before.length)}`;
+    }
+    if (failures.length > 0) {
+      setError(`有 ${failures.length} 条建议无法安全定位原文；请刷新审阅结果或手动修改。其余建议已保留在当前选择中。`);
+      return;
+    }
+    onApply(nextContent);
+    closeDialog();
+  }
+
+  return <>
+    <button className="flex h-9 items-center gap-2 rounded-lg border border-sky-300/30 bg-sky-300/10 px-3 text-xs font-medium text-sky-200 transition hover:bg-sky-300/16 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500" disabled={!taskContent.trim() || disabled} title={taskContent.trim() ? "审阅当前任务内容，不会自动保存" : "当前任务内容为空"} type="button" onClick={() => { setError(null); setResult(null); setSelectedIds([]); setIsOpen(true); }}><WandSparkles size={15} />AI Review</button>
+    {isOpen ? <div className="fixed inset-0 z-[60] flex items-end bg-black/62 px-0 backdrop-blur-sm sm:items-start sm:justify-center sm:px-4 sm:py-6" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeDialog(); }}>
+      <section aria-modal="true" className="flex max-h-[100dvh] w-full max-w-3xl flex-col overflow-hidden rounded-t-lg border border-mint-300/20 bg-ink-900 shadow-soft-glow sm:max-h-[calc(100dvh-3rem)] sm:rounded-lg" role="dialog" aria-label="AI 审阅任务内容">
+        <div className="flex shrink-0 items-start justify-between gap-4 border-b border-white/10 p-4 sm:p-5"><div><div className="mb-2 flex items-center gap-2 text-sm text-mint-300"><WandSparkles size={17} />AI Review</div><h2 className="text-xl font-semibold text-slate-50">审阅任务内容</h2><p className="mt-1 text-xs leading-5 text-slate-500">审阅结果不会自动保存。可勾选部分建议，应用后会进入编辑模式，由你确认保存。</p></div><button className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-300 transition hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600" disabled={isReviewing} title="关闭" type="button" onClick={closeDialog}><X size={17} /></button></div>
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 sm:p-5">
+          {!result ? <><div className="rounded-lg border border-white/10 bg-white/[0.025] p-4 text-sm leading-7 text-slate-400">将审阅结构、逻辑、表达、与问题/答案快照的一致性及 Markdown。不会联网核验事实；Skill 只能调整审阅侧重点，不能改变安全替换和不自动保存规则。</div><Field label="执行模型" icon={<Settings2 size={16} />}><select className="control" disabled={isReviewing} value={modelName} onChange={(event) => setModelName(event.target.value)}>{modelOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field><SkillSelector disabled={isReviewing} selectedSkillIds={selectedSkillIds} onSelectedSkillIdsChange={setSelectedSkillIds} /></> : result.status === "no_issues" ? <div className="rounded-lg border border-mint-300/25 bg-mint-300/10 p-4 text-sm leading-7 text-mint-100"><div className="mb-1 flex items-center gap-2 font-medium text-mint-200"><CheckCircle2 size={17} />未发现需要修改的问题</div>{result.summary}</div> : <div className="space-y-3"><div className="rounded-lg border border-white/10 bg-white/[0.025] p-3 text-sm leading-6 text-slate-300">{result.summary}</div>{result.suggestions.map((suggestion) => <label key={suggestion.id} className="block cursor-pointer rounded-lg border border-white/10 bg-white/[0.025] p-4 transition hover:border-mint-300/25"><div className="flex items-start gap-3"><input checked={selectedIds.includes(suggestion.id)} className="mt-1" type="checkbox" onChange={() => toggleSuggestion(suggestion.id)} /><div className="min-w-0 flex-1 space-y-2"><div className="flex flex-wrap gap-2 text-xs"><span className="rounded-md border border-red-300/25 bg-red-300/10 px-2 py-1 text-red-100">{suggestion.severity}</span><span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-slate-300">{suggestion.category}</span></div><p className="text-sm text-slate-200">{suggestion.problem}</p><p className="text-sm leading-6 text-slate-400">建议：{suggestion.suggestion}</p><div className="rounded bg-black/20 p-2 font-mono text-xs leading-5 text-slate-400">定位：{suggestion.quote}</div><div className="grid gap-2 lg:grid-cols-2"><div className="rounded bg-red-400/5 p-2 text-xs leading-5 text-red-100"><span className="mb-1 block text-red-200">替换前</span>{suggestion.before}</div><div className="rounded bg-mint-300/5 p-2 text-xs leading-5 text-mint-100"><span className="mb-1 block text-mint-200">替换后</span>{suggestion.after}</div></div></div></div></label>)}</div>}
+          {error ? <div className="flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100"><TriangleAlert className="mt-0.5 shrink-0 text-red-300" size={17} /><span>{error}</span></div> : null}
+        </div>
+        <div className="flex shrink-0 justify-end gap-3 border-t border-white/10 p-4"><button className="h-11 rounded-lg border border-white/10 bg-white/[0.035] px-4 text-sm text-slate-300 disabled:cursor-not-allowed disabled:text-slate-600" disabled={isReviewing} type="button" onClick={closeDialog}>取消</button>{result?.status === "issues_found" ? <button className="flex h-11 items-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500" disabled={selectedIds.length === 0} type="button" onClick={applySuggestions}><Pencil size={17} />应用所选建议</button> : <button className="flex h-11 items-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500" disabled={!canReview} type="button" onClick={() => void handleReview()}>{isReviewing ? <Loader2 className="animate-spin" size={17} /> : <WandSparkles size={17} />}{isReviewing ? "审阅中" : "开始审阅"}</button>}</div>
+      </section>
+    </div> : null}
+  </>;
 }
 
 function PersonalSecretsWorkspace({
