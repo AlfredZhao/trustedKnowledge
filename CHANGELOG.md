@@ -9,9 +9,12 @@ The format follows the common GitHub changelog convention inspired by
 
 ## 本次版本更新
 
-### [Unreleased]
+### [0.4.2] - 2026-08-20
 
 #### Added / 新增
+
+- Added a keyboard toggle for Markdown edit and preview modes: `⌘ + \\` on macOS and `Ctrl + \\` on Windows/Linux, available in trusted-knowledge editing and Todo task content.
+- 为 Markdown 编辑/预览模式新增键盘切换：macOS 使用 `⌘ + \\`，Windows/Linux 使用 `Ctrl + \\`，适用于可信知识编辑与待办任务内容。
 
 - Added Web AI Coding activity feedback: the running task now reports its latest Codex event and warns after 60 seconds without output, with the existing cancel action kept available.
 - 为 Web AI 编程新增运行活动反馈：任务会显示最近 Codex 事件，60 秒无输出时明确提示可能在等待外部步骤，并保留终止操作。
@@ -49,6 +52,9 @@ The format follows the common GitHub changelog convention inspired by
 - 在 Skill `SKILL.md` 在线编辑与新建输入框中新增实时 Unicode 字符统计及 6,000 字符调用截断提示。
 
 #### Fixed / 修复
+
+- Fixed long Markdown editor content jumping back to the first line after a toolbar format action. The shared editor now preserves the selection and its scroll position.
+- 修复长 Markdown 正文使用工具栏格式化后跳回首行的问题；共用编辑器现会同时保留选区和滚动位置。
 
 - Fixed Skill deletion to use the app's styled confirmation dialog instead of the browser's system prompt.
 - 修复删除 Skill 时仍使用浏览器系统确认框的问题，现统一使用应用内确认弹窗。

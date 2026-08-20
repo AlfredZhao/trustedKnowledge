@@ -7910,6 +7910,25 @@ function MarkdownImageTextarea({
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
 
+  function restoreEditorSelection(
+    selectionStart: number,
+    selectionEnd: number,
+    scrollTop: number,
+    scrollLeft: number,
+  ) {
+    window.requestAnimationFrame(() => {
+      const textarea = textareaRef.current;
+      if (!textarea) return;
+      // Formatting changes the controlled value and moves focus to the toolbar.
+      // Preserve the editor viewport so a long document does not jump back to its
+      // first line while the selection is restored.
+      textarea.focus({ preventScroll: true });
+      textarea.setSelectionRange(selectionStart, selectionEnd);
+      textarea.scrollTop = scrollTop;
+      textarea.scrollLeft = scrollLeft;
+    });
+  }
+
   async function uploadAndInsert(files: File[]) {
     const imageFiles = files.filter((file) => file.type.startsWith("image/"));
     if (!imageFiles.length || disabled) return;
@@ -7931,6 +7950,8 @@ function MarkdownImageTextarea({
     const textarea = textareaRef.current;
     const start = textarea?.selectionStart ?? value.length;
     const end = textarea?.selectionEnd ?? value.length;
+    const scrollTop = textarea?.scrollTop ?? 0;
+    const scrollLeft = textarea?.scrollLeft ?? 0;
     const before = value.slice(0, start);
     const after = value.slice(end);
     const prefix = before && !before.endsWith("\n") ? "\n\n" : "";
@@ -7939,11 +7960,8 @@ function MarkdownImageTextarea({
     const nextValue = `${before}${insertion}${after}`;
 
     onChange(nextValue);
-    window.requestAnimationFrame(() => {
-      textareaRef.current?.focus();
-      const nextCursor = start + insertion.length;
-      textareaRef.current?.setSelectionRange(nextCursor, nextCursor);
-    });
+    const nextCursor = start + insertion.length;
+    restoreEditorSelection(nextCursor, nextCursor, scrollTop, scrollLeft);
   }
 
   function replaceSelection(
@@ -7956,14 +7974,13 @@ function MarkdownImageTextarea({
     const textarea = textareaRef.current;
     const start = replaceRange?.start ?? textarea?.selectionStart ?? value.length;
     const end = replaceRange?.end ?? textarea?.selectionEnd ?? value.length;
+    const scrollTop = textarea?.scrollTop ?? 0;
+    const scrollLeft = textarea?.scrollLeft ?? 0;
     onChange(`${value.slice(0, start)}${markdown}${value.slice(end)}`);
 
-    window.requestAnimationFrame(() => {
-      textareaRef.current?.focus();
-      const nextStart = start + selectionStart;
-      const nextEnd = start + selectionEnd;
-      textareaRef.current?.setSelectionRange(selectInserted ? nextStart : nextEnd, nextEnd);
-    });
+    const nextStart = start + selectionStart;
+    const nextEnd = start + selectionEnd;
+    restoreEditorSelection(selectInserted ? nextStart : nextEnd, nextEnd, scrollTop, scrollLeft);
   }
 
   function applyLineFormat(prefix: string, fallback: string) {
@@ -8178,6 +8195,16 @@ function MarkdownImageTextarea({
   );
 }
 
+function isMarkdownViewToggleShortcut(event: KeyboardEvent) {
+  if (event.code !== "Backslash" || event.altKey || event.shiftKey || event.isComposing) return false;
+  const isMac = /Macintosh|Mac OS X/.test(navigator.userAgent);
+  return isMac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
+}
+
+function getMarkdownViewToggleShortcutLabel() {
+  return /Macintosh|Mac OS X/.test(navigator.userAgent) ? "⌘ + \\" : "Ctrl + \\";
+}
+
 function EditorField({
   label,
   icon,
@@ -8252,6 +8279,7 @@ function KnowledgeForm({
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
 }) {
   const [answerView, setAnswerView] = useState<"edit" | "preview">("edit");
+  const markdownViewShortcutLabel = getMarkdownViewToggleShortcutLabel();
   const canSubmit = draft.question.trim().length > 0 && draft.answer.trim().length > 0 && !isSaving;
   const isEditing = mode === "edit";
   const formTitle = isEditing ? "编辑可信知识" : isTodoEntry ? "录入待办事项" : "录入可信知识";
@@ -8263,6 +8291,19 @@ function KnowledgeForm({
   const contentPlaceholder = isTodoEntry
     ? "补充待办事项背景、验收标准或下一步动作。"
     : "写入可验证、可复用、上下文完整的答案...";
+
+  useEffect(() => {
+    if (!isEditing) return;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.defaultPrevented || !isMarkdownViewToggleShortcut(event)) return;
+      event.preventDefault();
+      setAnswerView((current) => (current === "edit" ? "preview" : "edit"));
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isEditing]);
 
   return (
     <section className={`min-w-0 ${embedded ? "" : "rounded-lg border border-white/10 bg-ink-900/74 p-4 shadow-soft-glow backdrop-blur-xl"}`}>
@@ -8372,6 +8413,8 @@ function KnowledgeForm({
                   className={`rounded-md px-3 py-1.5 transition ${
                     answerView === "edit" ? "bg-mint-300/15 text-mint-200" : "text-slate-400 hover:text-slate-200"
                   }`}
+                  aria-keyshortcuts={/Macintosh|Mac OS X/.test(navigator.userAgent) ? "Meta+Backslash" : "Control+Backslash"}
+                  title={`切换到编辑（${markdownViewShortcutLabel}）`}
                   type="button"
                   onClick={() => setAnswerView("edit")}
                 >
@@ -8381,6 +8424,8 @@ function KnowledgeForm({
                   className={`rounded-md px-3 py-1.5 transition ${
                     answerView === "preview" ? "bg-mint-300/15 text-mint-200" : "text-slate-400 hover:text-slate-200"
                   }`}
+                  aria-keyshortcuts={/Macintosh|Mac OS X/.test(navigator.userAgent) ? "Meta+Backslash" : "Control+Backslash"}
+                  title={`切换到 Markdown 预览（${markdownViewShortcutLabel}）`}
                   type="button"
                   onClick={() => setAnswerView("preview")}
                 >
@@ -11645,6 +11690,7 @@ function TodoWorkspace({
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
 }) {
   const [taskContentView, setTaskContentView] = useState<"edit" | "preview">("edit");
+  const markdownViewShortcutLabel = getMarkdownViewToggleShortcutLabel();
   const [isFiltersExpanded, setIsFiltersExpanded] = useState(false);
   const [isTodoListCollapsed, setIsTodoListCollapsed] = useState(false);
   const totalPages = Math.max(1, Math.ceil(total / TODO_PAGE_SIZE));
@@ -11668,6 +11714,19 @@ function TodoWorkspace({
     !isSaving &&
     !isConvertingToKnowledge;
   const canCopyContent = selectedId !== null && (draft.title.trim().length > 0 || draft.content.trim().length > 0);
+
+  useEffect(() => {
+    if (selectedId === null) return;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.defaultPrevented || !isMarkdownViewToggleShortcut(event)) return;
+      event.preventDefault();
+      setTaskContentView((current) => (current === "edit" ? "preview" : "edit"));
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedId]);
   const todoDetailPanel = (
     <>
       <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -11733,6 +11792,8 @@ function TodoWorkspace({
                   className={`rounded-md px-3 py-1.5 transition ${
                     taskContentView === "edit" ? "bg-mint-300/15 text-mint-200" : "text-slate-400 hover:text-slate-200"
                   }`}
+                  aria-keyshortcuts={/Macintosh|Mac OS X/.test(navigator.userAgent) ? "Meta+Backslash" : "Control+Backslash"}
+                  title={`切换到编辑（${markdownViewShortcutLabel}）`}
                   type="button"
                   onClick={() => setTaskContentView("edit")}
                 >
@@ -11742,6 +11803,8 @@ function TodoWorkspace({
                   className={`rounded-md px-3 py-1.5 transition ${
                     taskContentView === "preview" ? "bg-mint-300/15 text-mint-200" : "text-slate-400 hover:text-slate-200"
                   }`}
+                  aria-keyshortcuts={/Macintosh|Mac OS X/.test(navigator.userAgent) ? "Meta+Backslash" : "Control+Backslash"}
+                  title={`切换到 Markdown 预览（${markdownViewShortcutLabel}）`}
                   type="button"
                   onClick={() => setTaskContentView("preview")}
                 >

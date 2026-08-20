@@ -415,6 +415,28 @@ In `frontend/src/App.tsx`, route assist saves through `handleSaveBlogFactoryAssi
 
 Manually verify summary and cover saves at desktop and mobile widths in dark and light themes, including a record with a blank snapshot: each button changes only itself to `保存中`, then `已保存` or `保存失败`, without restyling the other button. Trigger both saves before either response returns and confirm both saved fields remain displayed; re-clicking the same button during its request must not issue a duplicate PATCH.
 
+## Markdown Toolbar Formatting Must Preserve the Long-Document Viewport
+
+### Symptom
+
+When a user applied a Markdown toolbar action to content near the bottom of a long editor, the editor could jump back to its first line even though the selected text was restored.
+
+### Trigger
+
+Scroll a trusted-knowledge, Todo, merge, Blog Factory, or task-content Markdown editor away from its first line, select visible text, then apply a toolbar format action or insert an image.
+
+### Root Cause
+
+`MarkdownImageTextarea` restored its selection after the controlled value update but did not retain the textarea scroll offsets. Browser focus and selection restoration may reset the native textarea viewport during that update.
+
+### Safe Pattern
+
+Capture `scrollTop` and `scrollLeft` before changing the controlled value. On the next animation frame, focus the textarea with `preventScroll`, restore the selection, and then restore both offsets. Keep this behavior in the shared `MarkdownImageTextarea` helper so every Markdown editor receives the same protection.
+
+### Guardrail
+
+At desktop and mobile widths, in dark and light themes, scroll each Markdown editor to a lower section and apply heading, list, inline-code, code-block, table, comment, and image-insertion actions. The formatted text and selection must remain correct, while both the editor viewport and page viewport stay at the current section.
+
 ## Markdown Toolbar Must Toggle Without Crossing a Selected Line Boundary
 
 ### Symptom
