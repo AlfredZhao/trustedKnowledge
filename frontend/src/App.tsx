@@ -1,6 +1,7 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import {
   Archive,
+  Bold,
   Bot,
   CalendarClock,
   ChartLine,
@@ -8034,6 +8035,29 @@ function MarkdownImageTextarea({
     replaceSelection(markdown, offset, offset + content.length, true, isWrappedSelection ? { start: start - 1, end: end + 1 } : undefined);
   }
 
+  function applyBold() {
+    const textarea = textareaRef.current;
+    const start = textarea?.selectionStart ?? value.length;
+    const end = textarea?.selectionEnd ?? value.length;
+    // Selecting a whole line in a textarea can include its trailing newline.
+    // Keep that newline outside the bold markers so the next line remains
+    // structurally separate and a second click can recognize the toggle.
+    const selectionEnd = end > start && value[end - 1] === "\n" ? end - 1 : end;
+    const selected = value.slice(start, selectionEnd);
+    const isWrappedSelection = selected.length > 0 && value.slice(Math.max(0, start - 2), start) === "**" && value.slice(selectionEnd, selectionEnd + 2) === "**";
+    const isFormatted = (selected.startsWith("**") && selected.endsWith("**")) || isWrappedSelection;
+    const content = selected.startsWith("**") && selected.endsWith("**") ? selected.slice(2, -2) : selected || "加粗文字";
+    const markdown = isFormatted ? content : `**${content}**`;
+    const offset = isFormatted ? 0 : 2;
+    replaceSelection(
+      markdown,
+      offset,
+      offset + content.length,
+      true,
+      isWrappedSelection ? { start: start - 2, end: selectionEnd + 2 } : { start, end: selectionEnd },
+    );
+  }
+
   function applyCodeBlock() {
     const textarea = textareaRef.current;
     const start = textarea?.selectionStart ?? value.length;
@@ -8133,6 +8157,9 @@ function MarkdownImageTextarea({
               </button>
             ))}
             <span className="hidden h-5 w-px bg-white/10 sm:block" />
+            <button className="markdown-tool-button" disabled={disabled} title="加粗" type="button" onClick={applyBold}>
+              <Bold size={15} /> <span>加粗</span>
+            </button>
             <button className="markdown-tool-button" disabled={disabled} title="行内代码" type="button" onClick={applyInlineCode}>
               <Code2 size={15} /> <span>行内代码</span>
             </button>

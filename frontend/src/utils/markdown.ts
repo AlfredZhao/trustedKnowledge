@@ -98,6 +98,13 @@ export function markdownToHtml(markdown: string) {
       continue;
     }
 
+    if (isMarkdownHorizontalRule(line)) {
+      flushParagraph();
+      flushList();
+      html.push("<hr />");
+      continue;
+    }
+
     if (isMarkdownTableHeader(line) && index + 1 < lines.length && isMarkdownTableDelimiter(lines[index + 1])) {
       flushParagraph();
       flushList();
@@ -737,6 +744,10 @@ function readLatexCommand(state: LatexParserState): string {
 function isMarkdownTableHeader(line: string) {
   const trimmed = line.trim();
   return trimmed.includes("|") && parseMarkdownTableCells(trimmed).length > 1;
+}
+
+function isMarkdownHorizontalRule(line: string) {
+  return /^(?: {0,3})(?:\*[ \t]*){3,}$/.test(line) || /^(?: {0,3})(?:-[ \t]*){3,}$/.test(line) || /^(?: {0,3})(?:_[ \t]*){3,}$/.test(line);
 }
 
 function isMarkdownTableDelimiter(line: string) {

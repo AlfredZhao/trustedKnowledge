@@ -13,9 +13,18 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Added / 新增
 
+- Added a `加粗` shortcut to the shared Markdown editor toolbar. It toggles `**...**` around the current selection, or inserts editable bold text at the cursor.
+- 为共用 Markdown 编辑器工具栏新增“加粗”快捷按钮：可为当前选区添加或取消 `**...**`，未选中文本时会在光标处插入可编辑的加粗文本。
+
 #### Changed / 变更
 
 #### Fixed / 修复
+
+- Fixed the Markdown `加粗` shortcut so line selections that include a trailing newline keep the closing `**` on the same line and can be toggled off again.
+- 修复 Markdown“加粗”快捷按钮处理含尾部换行的整行选区时将闭合 `**` 写到下一行、导致无法再次取消的问题。
+
+- Fixed Markdown preview and rich-copy rendering so standalone `---`, `***`, and `___` lines render as horizontal rules.
+- 修复 Markdown 预览与富文本复制中独立的 `---`、`***`、`___` 行未渲染为分隔横线的问题。
 
 ### [0.4.2] - 2026-08-20
 

@@ -736,3 +736,25 @@ Treat `NEXT_RESET_AT` as the exact availability time. `getResetReadyAt()` may va
 ### Guardrail
 
 For a reset timestamp such as `2026-08-12T00:00:00Z`, verify both `NEXT_RESET_AT` and `NEXT_CYCLE_READY` render as `08-12 08:00` in Shanghai time and have the same countdown.
+
+## Markdown Line Selection and Horizontal Rule Rendering
+
+### Symptom
+
+Applying the Markdown `加粗` shortcut to a whole-line selection could place the closing `**` after the newline, preventing a later toggle-off. A standalone `---` line was shown as literal text in preview and rich-copy output.
+
+### Trigger
+
+Select a line whose textarea selection includes its trailing newline, then click `加粗`; or preview/copy a Markdown document containing a standalone `---`, `***`, or `___` line.
+
+### Root Cause
+
+`applyBold()` used the unnormalized textarea selection end, unlike the line-formatting actions. The shared `markdownToHtml()` parser did not recognize Markdown thematic-break syntax, so it fell through to paragraph rendering.
+
+### Safe Pattern
+
+Inline-format actions that wrap a line selection must exclude a trailing newline from the replacement range and preserve that newline after the closing marker. Keep thematic-break detection in the shared `markdownToHtml()` parser, before paragraph fallback, so preview and rich-copy use identical output; style the emitted `<hr>` through `.markdown-preview hr` with theme variables.
+
+### Guardrail
+
+Verify that selecting `文本\n` and toggling `加粗` produces `**文本**\n`, then restores `文本\n` on a second toggle. Verify standalone `---`, `***`, and `___` each produce an `<hr />` in `markdownToHtml()` and do not affect table delimiter parsing.
