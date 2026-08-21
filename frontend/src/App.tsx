@@ -13686,21 +13686,21 @@ function EnglishMaterialDetailDialog({
             </button>
             <button
               className="flex h-11 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-sm font-medium text-slate-300 transition hover:border-mint-300/30 hover:text-mint-200 disabled:cursor-not-allowed disabled:text-slate-600"
-              disabled={isLoading || !draft.full_script}
-              type="button"
-              onClick={() => onCopyText(draft.full_script, "完整口播内容")}
-            >
-              {copiedLabel === "完整口播内容" ? <CheckCircle2 size={16} /> : <ClipboardList size={16} />}
-              {copiedLabel === "完整口播内容" ? "已复制" : "复制脚本"}
-            </button>
-            <button
-              className="flex h-11 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-sm font-medium text-slate-300 transition hover:border-mint-300/30 hover:text-mint-200 disabled:cursor-not-allowed disabled:text-slate-600"
               disabled={isLoading || !draft.chinese_translation}
               type="button"
               onClick={() => onCopyText(draft.chinese_translation, "地道中文翻译")}
             >
               {copiedLabel === "地道中文翻译" ? <CheckCircle2 size={16} /> : <Copy size={16} />}
               {copiedLabel === "地道中文翻译" ? "已复制" : "复制翻译"}
+            </button>
+            <button
+              className="flex h-11 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-sm font-medium text-slate-300 transition hover:border-mint-300/30 hover:text-mint-200 disabled:cursor-not-allowed disabled:text-slate-600"
+              disabled={isLoading || !draft.full_script}
+              type="button"
+              onClick={() => onCopyText(draft.full_script, "完整口播内容")}
+            >
+              {copiedLabel === "完整口播内容" ? <CheckCircle2 size={16} /> : <ClipboardList size={16} />}
+              {copiedLabel === "完整口播内容" ? "已复制" : "复制脚本"}
             </button>
             <button
               className="flex h-11 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-sm font-medium text-slate-300 transition hover:border-mint-300/30 hover:text-mint-200 disabled:cursor-not-allowed disabled:text-slate-600"

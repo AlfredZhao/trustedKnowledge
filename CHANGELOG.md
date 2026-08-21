@@ -41,6 +41,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Changed / 变更
 
+- Swapped the `复制翻译` and `复制脚本` button order in English Material detail editing.
+- 互换英语素材详情编辑中“复制翻译”与“复制脚本”按钮的位置顺序。
+
 - Consolidated the project UI acceptance rules into one cross-module verification matrix covering reachable desktop/mobile controls and applicable theme and presentation states; added a shared Oracle bind-isolation baseline to the regression guide.
 - 合并项目 UI 验收规则为一条跨模块验证矩阵，覆盖桌面/移动端核心操作可达性及适用主题、展示状态；并在防回归指南中新增 Oracle 绑定隔离通用基线。
 
