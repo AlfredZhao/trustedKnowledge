@@ -543,6 +543,10 @@ html[data-theme="light"] .text-sky-200 {
   color: #0f4c81 !important;
 }
 
+html[data-theme="light"] .text-fuchsia-100 {
+  color: #86198f !important;
+}
+
 html[data-theme="light"] .text-red-50,
 html[data-theme="light"] .text-red-100 {
   color: #991b1b !important;
