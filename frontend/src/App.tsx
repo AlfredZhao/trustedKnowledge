@@ -15120,7 +15120,7 @@ function SkillManager({
                     <p className="line-clamp-2 text-xs leading-5 text-slate-500">{skill.description || "无描述"}</p>
                     <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-600">
                       <span>{skill.skill_type === "system" ? "系统自带" : "用户自建"}</span>
-                      <span>{skill.published ? "已发布" : "仅自己可见"}</span>
+                      <span>{skill.published ? "已分享" : "仅自己可见"}</span>
                       <span>{skill.owner_username ? `Owner: ${skill.owner_username}` : "Owner: 系统"}</span>
                       <span>{formatAmount(skill.file_count)} files</span>
                     </div>
@@ -15173,7 +15173,7 @@ function SkillManager({
               />
               <SkillPromptCharacterNotice characterCount={newSkillContentCharacterCount} limit={skillPromptCharacterLimit} />
               <label className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.028] px-3 py-2 text-sm text-slate-300">
-                <span>发布给其他用户调用</span>
+                <span>与其他用户分享</span>
                 <input
                   checked={newDraft.published}
                   className="h-4 w-4 accent-mint-300"
@@ -15248,7 +15248,7 @@ function SkillManager({
                   <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-500">
                     <span>{detail.skill_type === "system" ? "系统自带" : "用户自建"}</span>
                     <span>{detail.owner_username ? `Owner: ${detail.owner_username}` : "Owner: 系统"}</span>
-                    <span>{detail.published ? "已发布" : "未发布"}</span>
+                    <span>{detail.published ? "已分享" : "仅自己可见"}</span>
                     {!detail.can_edit ? <span>当前仅可调用，不可编辑</span> : null}
                   </div>
                 </div>
@@ -15272,7 +15272,7 @@ function SkillManager({
                   </button>
                 </div>
               </div>
-              <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_150px]">
+              <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_150px_150px]">
                 <label className="block text-xs font-medium text-slate-500">
                   名称
                   <input
@@ -15293,7 +15293,7 @@ function SkillManager({
                   />
                 </label>
                 <label className="flex items-center justify-between gap-3 self-end rounded-lg border border-white/10 bg-white/[0.028] px-3 py-2 text-sm text-slate-300">
-                  <span>发布</span>
+                  <span>分享</span>
                   <input
                     checked={draft.published}
                     className="h-4 w-4 accent-mint-300"
