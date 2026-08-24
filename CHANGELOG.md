@@ -29,6 +29,9 @@ The format follows the common GitHub changelog convention inspired by
 - Fixed AI 问数 result concept chips such as `概念：我` being unreadable in the light theme by applying a darker fuchsia foreground.
 - 修复 AI 问数结果中“概念：我”等概念标签在浅色主题下前景色过浅、文字不可见的问题。
 
+- Fixed the light-theme contrast of the AI 问数 SQL audit heading, including `本次执行 SQL（只读）`.
+- 修复 AI 问数 SQL 审计标题（包括“本次执行 SQL（只读）”）在浅色主题下对比度不足的问题。
+
 - Fixed the desktop English Material entry `AI补全` dialog being constrained to the narrow entry column. It now expands the workspace like `AI生成`, so the dialog is immediately visible without scrolling.
 - 修复桌面端英语素材录入区 `AI补全` 弹窗受限于窄录入栏、需要滚动后才能完整查看的问题；现与 `AI生成` 一致，打开时扩展工作区并可直接查看弹窗。
 

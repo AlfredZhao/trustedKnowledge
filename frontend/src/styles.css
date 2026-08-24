@@ -539,6 +539,7 @@ html[data-theme="light"] .text-mint-200 {
   color: #0f766e !important;
 }
 
+html[data-theme="light"] .text-sky-100,
 html[data-theme="light"] .text-sky-200 {
   color: #0f4c81 !important;
 }
