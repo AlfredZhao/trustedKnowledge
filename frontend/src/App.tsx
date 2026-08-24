@@ -12969,8 +12969,9 @@ function EnglishMaterialsWorkspace({
             New Material
           </div>
           <h2 className="text-xl font-semibold text-slate-50">录入英语素材</h2>
-          <div className="mt-3">
+          <div className="mt-3 flex flex-wrap gap-2">
             <EnglishMaterialAiGeneration draft={draft} modelOptions={modelOptions} onGenerated={onDraftChange} onOpen={() => setIsEnglishMaterialListCollapsed(true)} />
+            <EnglishMaterialAiCompletion draft={draft} disabled={isSaving} modelOptions={modelOptions} onCompleted={onDraftChange} onOpen={() => setIsEnglishMaterialListCollapsed(true)} />
           </div>
         </div>
 
@@ -13175,8 +13176,9 @@ function EnglishMaterialCreateDialog({
               New Material
             </div>
             <h2 className="text-xl font-semibold text-slate-50">{hasDraft ? "继续录入英语素材" : "录入英语素材"}</h2>
-            <div className="mt-3">
+            <div className="mt-3 flex flex-wrap gap-2">
               <EnglishMaterialAiGeneration draft={draft} modelOptions={modelOptions} onGenerated={onDraftChange} />
+              <EnglishMaterialAiCompletion draft={draft} disabled={isSaving} modelOptions={modelOptions} onCompleted={onDraftChange} />
             </div>
           </div>
           <button
@@ -13768,11 +13770,13 @@ function EnglishMaterialAiCompletion({
   disabled,
   modelOptions,
   onCompleted,
+  onOpen,
 }: {
   draft: EnglishMaterialDraft;
   disabled: boolean;
   modelOptions: { value: string; label: string }[];
   onCompleted: (draft: EnglishMaterialDraft) => void;
+  onOpen?: () => void;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
@@ -13822,7 +13826,7 @@ function EnglishMaterialAiCompletion({
   }
 
   return <>
-    <button className="flex h-10 items-center justify-center gap-2 rounded-lg border border-sky-300/30 bg-sky-300/10 px-3 text-sm font-medium text-sky-200 transition hover:bg-sky-300/16 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500" disabled={!draft.full_script.trim() || disabled} title={draft.full_script.trim() ? "根据完整口播内容补全空字段" : "请先填写完整口播内容"} type="button" onClick={() => { setError(null); setResult(null); setIsOpen(true); }}><WandSparkles size={16} />AI补全</button>
+    <button className="flex h-10 items-center justify-center gap-2 rounded-lg border border-sky-300/30 bg-sky-300/10 px-3 text-sm font-medium text-sky-200 transition hover:bg-sky-300/16 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500" disabled={!draft.full_script.trim() || disabled} title={draft.full_script.trim() ? "根据完整口播内容补全空字段" : "请先填写完整口播内容"} type="button" onClick={() => { onOpen?.(); setError(null); setResult(null); setIsOpen(true); }}><WandSparkles size={16} />AI补全</button>
     {isOpen ? <div className="fixed inset-0 z-[60] flex items-end bg-black/62 px-0 backdrop-blur-sm sm:items-center sm:justify-center sm:px-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeDialog(); }}>
       <section aria-modal="true" className="flex max-h-[100dvh] w-full max-w-2xl flex-col overflow-hidden rounded-t-lg border border-mint-300/20 bg-ink-900 shadow-soft-glow sm:max-h-[88vh] sm:rounded-lg" role="dialog" aria-label="AI 补全英语素材">
         <div className="flex shrink-0 items-start justify-between gap-4 border-b border-white/10 p-4 sm:p-5"><div><div className="mb-2 flex items-center gap-2 text-sm text-mint-300"><WandSparkles size={17} />AI Material</div><h2 className="text-xl font-semibold text-slate-50">AI补全英语素材</h2><p className="mt-1 text-xs leading-5 text-slate-500">只根据当前完整口播内容提炼字段。确认回填时仅填充空字段，不会自动保存。</p></div><button className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-300 transition hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600" disabled={isCompleting} type="button" title="关闭" onClick={closeDialog}><X size={17} /></button></div>

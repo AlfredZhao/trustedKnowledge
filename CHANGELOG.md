@@ -13,12 +13,18 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Added / 新增
 
+- Added `AI补全` to English Material entry on desktop and mobile. It uses the current full-script draft, previews suggestions, and fills only blank fields after confirmation without saving automatically.
+- 在桌面端与移动端的英语素材录入区新增 `AI补全`：它使用当前完整口播草稿，先预览建议，确认后仅回填空字段，且不会自动保存。
+
 - Added a `加粗` shortcut to the shared Markdown editor toolbar. It toggles `**...**` around the current selection, or inserts editable bold text at the cursor.
 - 为共用 Markdown 编辑器工具栏新增“加粗”快捷按钮：可为当前选区添加或取消 `**...**`，未选中文本时会在光标处插入可编辑的加粗文本。
 
 #### Changed / 变更
 
 #### Fixed / 修复
+
+- Fixed the desktop English Material entry `AI补全` dialog being constrained to the narrow entry column. It now expands the workspace like `AI生成`, so the dialog is immediately visible without scrolling.
+- 修复桌面端英语素材录入区 `AI补全` 弹窗受限于窄录入栏、需要滚动后才能完整查看的问题；现与 `AI生成` 一致，打开时扩展工作区并可直接查看弹窗。
 
 - Fixed the Markdown `加粗` shortcut so line selections that include a trailing newline keep the closing `**` on the same line and can be toggled off again.
 - 修复 Markdown“加粗”快捷按钮处理含尾部换行的整行选区时将闭合 `**` 写到下一行、导致无法再次取消的问题。
