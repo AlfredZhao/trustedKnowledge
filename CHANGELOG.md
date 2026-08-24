@@ -21,6 +21,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Changed / 变更
 
+- Changed Personal Secrets on mobile PWA and other narrow screens so selecting a record opens its detail in a bottom sheet, instead of requiring users to scroll below the list; the desktop `xl` side-by-side detail layout remains unchanged.
+- 调整个人机密在手机 PWA 及其他窄屏下的查看方式：点击记录后在底部弹窗中展示详情，无需再下滑到列表下方；桌面 `xl` 双栏详情布局保持不变。
+
 - Changed Skill management terminology from “发布” to “分享”. A shared Skill is visible and callable by other signed-in users, while an unshared Skill remains visible only to its owner; the desktop metadata controls for name, enabled, and sharing now sit in one row.
 - 调整 Skill 管理术语：将“发布”改为“分享”。勾选分享后其他登录用户可查看并调用，未勾选时仅所有者可见；桌面端名称、启用与分享元信息控件现并排在同一行。
 

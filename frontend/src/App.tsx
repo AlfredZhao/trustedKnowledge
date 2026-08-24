@@ -770,6 +770,7 @@ function App() {
   const [selectedPersonalSecretId, setSelectedPersonalSecretId] = useState<number | null>(restoredUiState.personalSecrets.selectedId);
   const [personalSecretDraft, setPersonalSecretDraft] = useState<PersonalSecretDraft>(emptyPersonalSecretDraft);
   const [isPersonalSecretEditorOpen, setIsPersonalSecretEditorOpen] = useState(false);
+  const [isMobilePersonalSecretDetailOpen, setIsMobilePersonalSecretDetailOpen] = useState(false);
   const [isPersonalSecretLoading, setIsPersonalSecretLoading] = useState(false);
   const [isPersonalSecretDetailLoading, setIsPersonalSecretDetailLoading] = useState(false);
   const [isPersonalSecretSaving, setIsPersonalSecretSaving] = useState(false);
@@ -4020,6 +4021,7 @@ function App() {
 
   async function handleSelectPersonalSecret(item: PersonalSecretItem) {
     setSelectedPersonalSecretId(item.id);
+    setIsMobilePersonalSecretDetailOpen(true);
     setPersonalSecretSaveError(null);
     setPersonalSecretCopyNotice(null);
     setPersonalSecretCopiedField(null);
@@ -4081,6 +4083,7 @@ function App() {
       setSelectedPersonalSecretId(null);
       setPersonalSecretDraft(emptyPersonalSecretDraft);
       setIsPersonalSecretEditorOpen(false);
+      setIsMobilePersonalSecretDetailOpen(false);
       setPersonalSecretCopiedField(null);
       setPersonalSecretRefreshToken((current) => current + 1);
     } catch (error) {
@@ -5561,6 +5564,7 @@ function App() {
               total={personalSecretTotal}
               page={personalSecretPage}
               selectedItem={selectedPersonalSecret}
+              isMobileDetailOpen={isMobilePersonalSecretDetailOpen}
               isLoading={isPersonalSecretLoading}
               isDetailLoading={isPersonalSecretDetailLoading}
               loadError={personalSecretError}
@@ -5580,6 +5584,7 @@ function App() {
               }}
               onPageChange={setPersonalSecretPage}
               onSelect={handleSelectPersonalSecret}
+              onCloseMobileDetail={() => setIsMobilePersonalSecretDetailOpen(false)}
               onLoadForEdit={handleLoadPersonalSecretForEdit}
               onCopyField={handleCopyPersonalSecretField}
             />
@@ -11216,6 +11221,7 @@ function PersonalSecretsWorkspace({
   total,
   page,
   selectedItem,
+  isMobileDetailOpen,
   isLoading,
   isDetailLoading,
   loadError,
@@ -11226,6 +11232,7 @@ function PersonalSecretsWorkspace({
   onNew,
   onPageChange,
   onSelect,
+  onCloseMobileDetail,
   onLoadForEdit,
   onCopyField,
 }: {
@@ -11233,6 +11240,7 @@ function PersonalSecretsWorkspace({
   total: number;
   page: number;
   selectedItem: PersonalSecretItem | null;
+  isMobileDetailOpen: boolean;
   isLoading: boolean;
   isDetailLoading: boolean;
   loadError: string | null;
@@ -11243,6 +11251,7 @@ function PersonalSecretsWorkspace({
   onNew: () => void;
   onPageChange: (page: number) => void;
   onSelect: (item: PersonalSecretItem) => void;
+  onCloseMobileDetail: () => void;
   onLoadForEdit: (secretId: number) => void;
   onCopyField: (field: PersonalSecretRevealField) => void;
 }) {
@@ -11269,6 +11278,71 @@ function PersonalSecretsWorkspace({
       </button>
     );
   };
+
+  const renderDetailPanel = () => (
+    <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
+            <LockKeyhole size={17} />
+            Secret Detail
+          </div>
+          <h2 className="text-lg font-semibold text-slate-50">{selectedItem ? selectedItem.system_name : "选择一条机密"}</h2>
+          <p className="mt-1 text-sm leading-6 text-slate-500">字段可单独复制；整体复制会临时解密所需字段。</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {selectedItem ? (
+            <>
+              <button
+                className="flex h-9 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-xs text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300"
+                disabled={isDetailLoading}
+                type="button"
+                onClick={() => onLoadForEdit(selectedItem.id)}
+              >
+                {isDetailLoading ? <Loader2 className="animate-spin" size={15} /> : <Pencil size={15} />}
+                编辑
+              </button>
+              <button
+                className={`flex h-9 items-center justify-center gap-2 rounded-lg border px-3 text-xs font-medium transition ${
+                  copiedField === "all"
+                    ? "border-mint-300/30 bg-mint-300/14 text-mint-300"
+                    : "border-mint-300/30 bg-mint-300/14 text-mint-300 hover:bg-mint-300/20"
+                }`}
+                title={copiedField === "all" ? "已复制" : "复制整体"}
+                type="button"
+                onClick={() => onCopyField("all")}
+              >
+                {copiedField === "all" ? <ClipboardCheck size={15} /> : <Copy size={15} />}
+                {copiedField === "all" ? "已复制" : "复制整体"}
+              </button>
+            </>
+          ) : null}
+        </div>
+      </div>
+
+      {saveError ? <div className="mb-4 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-2 text-sm text-red-100">{saveError}</div> : null}
+      {copyNotice ? <div className="mb-4 rounded-lg border border-mint-300/20 bg-mint-300/10 px-3 py-2 text-sm text-mint-100">{copyNotice}</div> : null}
+
+      {selectedItem ? (
+        <div className="mb-4 grid gap-3 sm:grid-cols-2">
+          <SecretDisplayField label="系统名称" value={selectedItem.system_name} action={copyButton("system_name")} />
+          <SecretDisplayField label="登录地址" value={selectedItem.login_url || "未记录"} action={copyButton("login_url")} />
+          <SecretDisplayField label="用户名" value={selectedItem.username_preview || "未记录"} action={copyButton("username")} />
+          <SecretDisplayField label="密码" value={selectedItem.has_password ? "••••••••" : "未记录"} action={copyButton("password")} />
+          <SecretDisplayField label="备注" value={selectedItem.notes_preview || "未记录"} action={copyButton("notes")} />
+          <SecretDisplayField label="标签" value={selectedItem.tags || "未记录"} />
+        </div>
+      ) : (
+        <div className="grid min-h-[260px] place-items-center rounded-lg border border-dashed border-white/10 bg-white/[0.02] p-6 text-center">
+          <div>
+            <LockKeyhole className="mx-auto mb-3 text-slate-600" size={34} />
+            <div className="mb-1 font-medium text-slate-300">选择一条机密</div>
+            <p className="text-sm leading-6 text-slate-500">从左侧列表查看安全摘要，或点击新增创建一条记录。</p>
+          </div>
+        </div>
+      )}
+    </section>
+  );
 
   return (
     <div className={`grid gap-4 xl:gap-x-2 ${isSecretListCollapsed ? "xl:grid-cols-[28px_minmax(420px,1.1fr)]" : "xl:grid-cols-[minmax(0,0.9fr)_minmax(420px,1.1fr)]"}`}>
@@ -11362,71 +11436,80 @@ function PersonalSecretsWorkspace({
         <WorkspaceSidebarCollapseToggle isCollapsed={isSecretListCollapsed} label="个人机密列表" onToggle={() => setIsSecretListCollapsed((collapsed) => !collapsed)} />
       </section>
 
-      <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
-        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
-              <LockKeyhole size={17} />
-              Secret Detail
+      <div className="hidden xl:block">{renderDetailPanel()}</div>
+
+      <PersonalSecretDetailDialog
+        isBusy={isDetailLoading}
+        isOpen={isMobileDetailOpen && selectedItem !== null}
+        title={selectedItem?.system_name || "个人机密详情"}
+        onClose={onCloseMobileDetail}
+      >
+        {renderDetailPanel()}
+      </PersonalSecretDetailDialog>
+    </div>
+  );
+}
+
+function PersonalSecretDetailDialog({
+  children,
+  isBusy,
+  isOpen,
+  title,
+  onClose,
+}: {
+  children: React.ReactNode;
+  isBusy: boolean;
+  isOpen: boolean;
+  title: string;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    if (!isOpen) return;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape" && !isBusy) {
+        onClose();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isBusy, isOpen, onClose]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end bg-black/62 px-0 backdrop-blur-sm xl:hidden"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !isBusy) {
+          onClose();
+        }
+      }}
+    >
+      <section aria-label="个人机密详情" aria-modal="true" className="flex max-h-[100dvh] w-full flex-col overflow-hidden rounded-t-lg border border-white/10 bg-ink-950 shadow-soft-glow" role="dialog">
+        <div className="shrink-0 border-b border-white/10 p-4">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
+                <LockKeyhole size={17} />
+                Secret Detail
+              </div>
+              <h2 className="line-clamp-2 text-lg font-semibold text-slate-50">{title}</h2>
             </div>
-            <h2 className="text-lg font-semibold text-slate-50">{selectedItem ? selectedItem.system_name : "选择一条机密"}</h2>
-            <p className="mt-1 text-sm leading-6 text-slate-500">字段可单独复制；整体复制会临时解密所需字段。</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {selectedItem ? (
-              <>
-                <button
-                  className="flex h-9 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-xs text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300"
-                  disabled={isDetailLoading}
-                  type="button"
-                  onClick={() => onLoadForEdit(selectedItem.id)}
-                >
-                  {isDetailLoading ? <Loader2 className="animate-spin" size={15} /> : <Pencil size={15} />}
-                  编辑
-                </button>
-                <button
-                  className={`flex h-9 items-center justify-center gap-2 rounded-lg border px-3 text-xs font-medium transition ${
-                    copiedField === "all"
-                      ? "border-mint-300/30 bg-mint-300/14 text-mint-300"
-                      : "border-mint-300/30 bg-mint-300/14 text-mint-300 hover:bg-mint-300/20"
-                  }`}
-                  title={copiedField === "all" ? "已复制" : "复制整体"}
-                  type="button"
-                  onClick={() => onCopyField("all")}
-                >
-                  {copiedField === "all" ? <ClipboardCheck size={15} /> : <Copy size={15} />}
-                  {copiedField === "all" ? "已复制" : "复制整体"}
-                </button>
-              </>
-            ) : null}
+            <button
+              className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600"
+              disabled={isBusy}
+              title="关闭"
+              type="button"
+              onClick={onClose}
+            >
+              <X size={17} />
+            </button>
           </div>
         </div>
-
-        {saveError ? (
-          <div className="mb-4 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-2 text-sm text-red-100">{saveError}</div>
-        ) : null}
-        {copyNotice ? (
-          <div className="mb-4 rounded-lg border border-mint-300/20 bg-mint-300/10 px-3 py-2 text-sm text-mint-100">{copyNotice}</div>
-        ) : null}
-
-        {selectedItem ? (
-          <div className="mb-4 grid gap-3 sm:grid-cols-2">
-            <SecretDisplayField label="系统名称" value={selectedItem.system_name} action={copyButton("system_name")} />
-            <SecretDisplayField label="登录地址" value={selectedItem.login_url || "未记录"} action={copyButton("login_url")} />
-            <SecretDisplayField label="用户名" value={selectedItem.username_preview || "未记录"} action={copyButton("username")} />
-            <SecretDisplayField label="密码" value={selectedItem.has_password ? "••••••••" : "未记录"} action={copyButton("password")} />
-            <SecretDisplayField label="备注" value={selectedItem.notes_preview || "未记录"} action={copyButton("notes")} />
-            <SecretDisplayField label="标签" value={selectedItem.tags || "未记录"} />
-          </div>
-        ) : (
-          <div className="grid min-h-[260px] place-items-center rounded-lg border border-dashed border-white/10 bg-white/[0.02] p-6 text-center">
-            <div>
-              <LockKeyhole className="mx-auto mb-3 text-slate-600" size={34} />
-              <div className="mb-1 font-medium text-slate-300">选择一条机密</div>
-              <p className="text-sm leading-6 text-slate-500">从左侧列表查看安全摘要，或点击新增创建一条记录。</p>
-            </div>
-          </div>
-        )}
+        <div className="min-h-0 flex-1 overflow-y-auto p-3">{children}</div>
       </section>
     </div>
   );
