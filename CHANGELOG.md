@@ -13,6 +13,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Added / 新增
 
+- Added a per-block copy control to shared Markdown previews. It copies only the selected fenced code block and provides success or failure feedback.
+- 为共用 Markdown 预览新增逐代码块复制控件：仅复制所选围栏代码块，并提供成功或失败反馈。
+
 - Added Arrow Up/Down keyboard navigation for the Agent sidebar, without intercepting keys while editing form controls.
 - 为 Agent 左侧导航新增上下方向键切换，并在输入控件编辑时不拦截按键。
 

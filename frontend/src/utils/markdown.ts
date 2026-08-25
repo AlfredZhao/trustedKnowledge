@@ -12,6 +12,7 @@ export function markdownToHtml(markdown: string) {
   let inCodeBlock = false;
   let codeLanguage = "";
   let codeLines: string[] = [];
+  let codeBlockIndex = 0;
   let inMathBlock = false;
   let mathLines: string[] = [];
 
@@ -30,7 +31,10 @@ export function markdownToHtml(markdown: string) {
 
   const flushCodeBlock = () => {
     const languageClass = codeLanguage ? ` class="language-${escapeAttribute(codeLanguage)}"` : "";
-    html.push(`<pre><code${languageClass}>${escapeHtml(codeLines.join("\n"))}</code></pre>`);
+    const codeBlockId = `code-block-${codeBlockIndex++}`;
+    html.push(
+      `<div class="markdown-code-block" data-code-block="${codeBlockId}"><button type="button" class="markdown-code-copy-button" data-copy-code-block="${codeBlockId}" aria-label="复制代码">复制</button><pre><code${languageClass}>${escapeHtml(codeLines.join("\n"))}</code></pre></div>`,
+    );
     inCodeBlock = false;
     codeLanguage = "";
     codeLines = [];

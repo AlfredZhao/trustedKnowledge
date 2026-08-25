@@ -301,12 +301,38 @@ button:disabled {
     padding: 0.08rem 0.28rem;
   }
 
+  .markdown-preview .markdown-code-block {
+    position: relative;
+  }
+
+  .markdown-preview .markdown-code-copy-button {
+    position: absolute;
+    z-index: 1;
+    top: 0.45rem;
+    right: 0.45rem;
+    border: 1px solid var(--border-soft);
+    border-radius: 0.35rem;
+    background: var(--markdown-code-bg);
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 0.72rem;
+    line-height: 1.25;
+    padding: 0.22rem 0.45rem;
+  }
+
+  .markdown-preview .markdown-code-copy-button:hover,
+  .markdown-preview .markdown-code-copy-button:focus-visible {
+    border-color: rgba(125, 211, 199, 0.6);
+    color: var(--text-strong);
+    outline: none;
+  }
+
   .markdown-preview pre {
     overflow-x: auto;
     border-radius: 0.5rem;
     border: 1px solid var(--border-soft);
     background: var(--markdown-pre-bg);
-    padding: 0.85rem;
+    padding: 2.35rem 0.85rem 0.85rem;
   }
 
   .markdown-preview pre code {

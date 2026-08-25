@@ -15,6 +15,7 @@
 - 展示配置：分页数量、导航项、排序字段和状态选项集中在 `frontend/src/uiConfig.ts`。
 - Markdown 渲染：`frontend/src/components/MarkdownPreview.tsx` 和 `frontend/src/utils/markdown.ts`。
 - Markdown 围栏代码块会保留原始换行与每行前导空格；清理泄漏的内部代码占位符不能压缩其它 Markdown 空白，确保 Python、YAML 等嵌套代码在预览中保持缩进。
+- 所有共用 Markdown 预览中的围栏代码块右上角均提供独立“复制”按钮；它只复制该代码块的纯文本，不包含围栏标记或语言标识，并会显示短暂的成功或失败反馈，方便将命令、SQL 或代码送至受控环境校验。
 - 单下划线斜体仅在独立 Markdown 标记中生效；变量名、路径和文件名中的词内下划线（如 `v_needs_update`、`my_file_name.md`）按普通文本显示，避免预览、富文本复制和增强 HTML 导出出现误斜体。
 - 博客工厂的增强美化 HTML 离线导出脚本为 `scripts/export-enhanced-html.mjs`；它与应用内增强美化渲染同步支持 H1-H4、代码块缩进、表格、图片内联和 `$$...$$` LaTex 公式块，修改该渲染能力时须在同一次变更中同步脚本。
 - Markdown 图片：可信知识和 Todo 正文仍保存为文本 Markdown，图片由后端媒体 API 上传到本地媒体仓库，正文中插入 `/api/media/{public_id}/content` 形式的图片链接。
