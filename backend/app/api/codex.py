@@ -294,7 +294,7 @@ def _build_prompt(
     auth_context: AuthContext | None = None,
     output_mode: str = "full",
 ) -> str:
-    selected_skills = get_prompt_skills(skill_ids or [], auth_context) if auth_context else []
+    selected_skills = get_prompt_skills(skill_ids or [], auth_context, agent_code="knowledge-processing") if auth_context else []
     if output_mode == "final":
         lines = [
             "You are running from the trustedKnowledge Knowledge Processing interface.",
@@ -467,7 +467,7 @@ async def _get_enabled_history_ask_llm_config() -> dict[str, object]:
 
 
 def _build_history_ask_llm_prompt(job: CodexJobState, auth_context: AuthContext) -> tuple[str, str]:
-    selected_skills = get_prompt_skills(job.skill_ids, auth_context)
+    selected_skills = get_prompt_skills(job.skill_ids, auth_context, agent_code="knowledge-processing")
     skill_instructions = _format_selected_skills_for_prompt(selected_skills)
     prompt_parts = [
         "这是知识加工任务。请仅输出最终加工结果，不要输出过程、计划、说明或代码修改建议。",

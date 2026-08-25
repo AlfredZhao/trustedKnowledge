@@ -165,6 +165,7 @@ import {
   updateSkillFile,
   uploadSkillZip,
 } from "./api/skills";
+import { fetchCapabilityAgents, updateCapabilityAgent, updateMyAgentSkills, type CapabilityAgent } from "./api/agents";
 import { fetchLlmUsage, readCachedLlmUsage } from "./api/usage";
 import { uploadMediaImage } from "./api/media";
 import {
@@ -5126,7 +5127,7 @@ function App() {
               : activeView === "users"
                 ? "User Management"
               : activeView === "skills"
-                ? "Skill Registry"
+                ? "Capability Hub"
               : activeView === "historyAsk"
                 ? "Ask Data"
                 : activeView === "aiCoding"
@@ -9257,6 +9258,7 @@ function KnowledgeFactory({
             ) : null}
           </div>
           <SkillSelector
+            agentCode="knowledge-processing"
             disabled={isGenerating}
             mode="single"
             selectedSkillIds={selectedSkillIds}
@@ -11227,7 +11229,7 @@ function BlogFactoryAiReview({
       <section aria-modal="true" className="flex max-h-[100dvh] w-full max-w-3xl flex-col overflow-hidden rounded-t-lg border border-mint-300/20 bg-ink-900 shadow-soft-glow sm:max-h-[calc(100dvh-3rem)] sm:rounded-lg" role="dialog" aria-label="AI 审阅任务内容">
         <div className="flex shrink-0 items-start justify-between gap-4 border-b border-white/10 p-4 sm:p-5"><div><div className="mb-2 flex items-center gap-2 text-sm text-mint-300"><WandSparkles size={17} />AI Review</div><h2 className="text-xl font-semibold text-slate-50">审阅任务内容</h2><p className="mt-1 text-xs leading-5 text-slate-500">审阅结果不会自动保存。可勾选部分建议，应用后会进入编辑模式，由你确认保存。</p></div><button className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-300 transition hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600" disabled={isReviewing} title="关闭" type="button" onClick={closeDialog}><X size={17} /></button></div>
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 sm:p-5">
-          {!result ? <><div className="rounded-lg border border-white/10 bg-white/[0.025] p-4 text-sm leading-7 text-slate-400">将审阅结构、逻辑、表达、与问题/答案快照的一致性及 Markdown。不会联网核验事实；Skill 只能调整审阅侧重点，不能改变安全替换和不自动保存规则。</div><Field label="执行模型" icon={<Settings2 size={16} />}><select className="control" disabled={isReviewing} value={modelName} onChange={(event) => setModelName(event.target.value)}>{modelOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field><SkillSelector disabled={isReviewing} selectedSkillIds={selectedSkillIds} onSelectedSkillIdsChange={setSelectedSkillIds} /></> : result.status === "no_issues" ? <div className="rounded-lg border border-mint-300/25 bg-mint-300/10 p-4 text-sm leading-7 text-mint-100"><div className="mb-1 flex items-center gap-2 font-medium text-mint-200"><CheckCircle2 size={17} />未发现需要修改的问题</div>{result.summary}</div> : <div className="space-y-3"><div className="rounded-lg border border-white/10 bg-white/[0.025] p-3 text-sm leading-6 text-slate-300">{result.summary}</div>{result.suggestions.map((suggestion) => <label key={suggestion.id} className="block cursor-pointer rounded-lg border border-white/10 bg-white/[0.025] p-4 transition hover:border-mint-300/25"><div className="flex items-start gap-3"><input checked={selectedIds.includes(suggestion.id)} className="mt-1" type="checkbox" onChange={() => toggleSuggestion(suggestion.id)} /><div className="min-w-0 flex-1 space-y-2"><div className="flex flex-wrap gap-2 text-xs"><span className="rounded-md border border-red-300/25 bg-red-300/10 px-2 py-1 text-red-100">{suggestion.severity}</span><span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-slate-300">{suggestion.category}</span></div><p className="text-sm text-slate-200">{suggestion.problem}</p><p className="text-sm leading-6 text-slate-400">建议：{suggestion.suggestion}</p><div className="rounded bg-black/20 p-2 font-mono text-xs leading-5 text-slate-400">定位：{suggestion.quote}</div><div className="grid gap-2 lg:grid-cols-2"><div className="rounded bg-red-400/5 p-2 text-xs leading-5 text-red-100"><span className="mb-1 block text-red-200">替换前</span>{suggestion.before}</div><div className="rounded bg-mint-300/5 p-2 text-xs leading-5 text-mint-100"><span className="mb-1 block text-mint-200">替换后</span>{suggestion.after}</div></div></div></div></label>)}</div>}
+          {!result ? <><div className="rounded-lg border border-white/10 bg-white/[0.025] p-4 text-sm leading-7 text-slate-400">将审阅结构、逻辑、表达、与问题/答案快照的一致性及 Markdown。不会联网核验事实；Skill 只能调整审阅侧重点，不能改变安全替换和不自动保存规则。</div><Field label="执行模型" icon={<Settings2 size={16} />}><select className="control" disabled={isReviewing} value={modelName} onChange={(event) => setModelName(event.target.value)}>{modelOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field><SkillSelector agentCode="blog-review" disabled={isReviewing} selectedSkillIds={selectedSkillIds} onSelectedSkillIdsChange={setSelectedSkillIds} /></> : result.status === "no_issues" ? <div className="rounded-lg border border-mint-300/25 bg-mint-300/10 p-4 text-sm leading-7 text-mint-100"><div className="mb-1 flex items-center gap-2 font-medium text-mint-200"><CheckCircle2 size={17} />未发现需要修改的问题</div>{result.summary}</div> : <div className="space-y-3"><div className="rounded-lg border border-white/10 bg-white/[0.025] p-3 text-sm leading-6 text-slate-300">{result.summary}</div>{result.suggestions.map((suggestion) => <label key={suggestion.id} className="block cursor-pointer rounded-lg border border-white/10 bg-white/[0.025] p-4 transition hover:border-mint-300/25"><div className="flex items-start gap-3"><input checked={selectedIds.includes(suggestion.id)} className="mt-1" type="checkbox" onChange={() => toggleSuggestion(suggestion.id)} /><div className="min-w-0 flex-1 space-y-2"><div className="flex flex-wrap gap-2 text-xs"><span className="rounded-md border border-red-300/25 bg-red-300/10 px-2 py-1 text-red-100">{suggestion.severity}</span><span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-slate-300">{suggestion.category}</span></div><p className="text-sm text-slate-200">{suggestion.problem}</p><p className="text-sm leading-6 text-slate-400">建议：{suggestion.suggestion}</p><div className="rounded bg-black/20 p-2 font-mono text-xs leading-5 text-slate-400">定位：{suggestion.quote}</div><div className="grid gap-2 lg:grid-cols-2"><div className="rounded bg-red-400/5 p-2 text-xs leading-5 text-red-100"><span className="mb-1 block text-red-200">替换前</span>{suggestion.before}</div><div className="rounded bg-mint-300/5 p-2 text-xs leading-5 text-mint-100"><span className="mb-1 block text-mint-200">替换后</span>{suggestion.after}</div></div></div></div></label>)}</div>}
           {error ? <div className="flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100"><TriangleAlert className="mt-0.5 shrink-0 text-red-300" size={17} /><span>{error}</span></div> : null}
         </div>
         <div className="flex shrink-0 justify-end gap-3 border-t border-white/10 p-4"><button className="h-11 rounded-lg border border-white/10 bg-white/[0.035] px-4 text-sm text-slate-300 disabled:cursor-not-allowed disabled:text-slate-600" disabled={isReviewing} type="button" onClick={closeDialog}>取消</button>{result?.status === "issues_found" ? <button className="flex h-11 items-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500" disabled={selectedIds.length === 0} type="button" onClick={applySuggestions}><Pencil size={17} />应用所选建议</button> : <button className="flex h-11 items-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500" disabled={!canReview} type="button" onClick={() => void handleReview()}>{isReviewing ? <Loader2 className="animate-spin" size={17} /> : <WandSparkles size={17} />}{isReviewing ? "审阅中" : "开始审阅"}</button>}</div>
@@ -13342,36 +13344,71 @@ function EnglishMaterialCreateDialog({
   );
 }
 
+function AgentNavigation() {
+  const [agents, setAgents] = useState<CapabilityAgent[]>([]);
+  useEffect(() => { fetchCapabilityAgents().then((response) => setAgents(response.items)).catch(() => setAgents([])); }, []);
+  return <div className="space-y-2">{agents.map((agent) => <button key={agent.code} className="block w-full rounded-lg border border-white/10 bg-white/[0.028] p-3 text-left transition hover:border-mint-300/25" type="button" onClick={() => window.dispatchEvent(new CustomEvent("capability-agent-selected", { detail: agent.code }))}><div className="text-sm font-medium text-slate-100">{agent.name}</div><div className="mt-1 text-xs text-slate-500">{agent.module_label}</div></button>)}</div>;
+}
+
+function CapabilityManager() {
+  const [agents, setAgents] = useState<CapabilityAgent[]>([]);
+  const [skills, setSkills] = useState<SkillSummary[]>([]);
+  const [selectedCode, setSelectedCode] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { Promise.all([fetchCapabilityAgents(), fetchSkills({ enabled: true, scope: "callable" })]).then(([a, s]) => { setAgents(a.items); setSkills(s.items); setSelectedCode(a.items[0]?.code ?? null); }).catch((e: Error) => setError(e.message)); }, []);
+  useEffect(() => { const select = (event: Event) => setSelectedCode((event as CustomEvent<string>).detail); window.addEventListener("capability-agent-selected", select); return () => window.removeEventListener("capability-agent-selected", select); }, []);
+  const agent = agents.find((item) => item.code === selectedCode) ?? null;
+  const admin = Boolean(agent?.can_manage);
+  const own = skills.filter((skill) => skill.can_edit);
+  const active = admin ? (agent?.system_skill_ids ?? []) : (agent?.personal_skill_ids ?? []);
+  const defaults = admin ? (agent?.default_skill_ids ?? []) : (agent?.personal_default_skill_ids ?? []);
+  function toggle(id: string) { if (!agent) return; const next = active.includes(id) ? active.filter((value) => value !== id) : [...active, id]; setAgents((all) => all.map((item) => item.code === agent.code ? { ...item, [admin ? "system_skill_ids" : "personal_skill_ids"]: next, [admin ? "default_skill_ids" : "personal_default_skill_ids"]: defaults.filter((value) => value !== id || next.includes(id)) } : item)); }
+  function toggleDefault(id: string) { if (!agent) return; setAgents((all) => all.map((item) => item.code === agent.code ? { ...item, [admin ? "default_skill_ids" : "personal_default_skill_ids"]: defaults.includes(id) ? defaults.filter((value) => value !== id) : [...defaults, id] } : item)); }
+  async function save() { if (!agent) return; setSaving(true); setError(null); try { if (admin) await updateCapabilityAgent(agent.code, { system_skill_ids: agent.system_skill_ids, default_skill_ids: agent.default_skill_ids.filter((id) => agent.system_skill_ids.includes(id)), allow_personal_skills: agent.allow_personal_skills }); else await updateMyAgentSkills(agent.code, agent.personal_skill_ids, agent.personal_default_skill_ids.filter((id) => agent.personal_skill_ids.includes(id))); window.dispatchEvent(new Event("capability-agents-updated")); } catch (e) { setError(e instanceof Error ? e.message : "保存失败。"); } finally { setSaving(false); } }
+  const connectedSkills = skills.filter((skill) => active.includes(skill.id));
+  return <section className="mb-5 rounded-lg border border-mint-300/20 bg-white/[0.02] p-4">
+    <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div><div className="text-sm text-mint-300">Agent Workspace</div><h2 className="text-lg font-semibold text-slate-50">Agent 与 Skill</h2></div><div className="flex flex-wrap gap-1.5">{agents.map((item) => <button key={item.code} className={`rounded-md border px-2 py-1 text-xs ${item.code === selectedCode ? "border-mint-300/30 bg-mint-300/10 text-mint-200" : "border-white/10 text-slate-400"}`} type="button" onClick={() => setSelectedCode(item.code)}>{item.name}</button>)}</div></div>
+    {agent ? <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)_minmax(220px,0.8fr)]"><div className="rounded-lg border border-white/10 bg-black/10 p-3"><div className="text-xs text-slate-500">使用模块</div><div className="mt-1 font-medium text-slate-100">{agent.module_label}</div><div className="mt-3 text-xs text-slate-500">内部标识</div><div className="mt-1 break-all font-mono text-xs text-slate-300">{agent.code}</div><div className="mt-3 text-xs text-slate-500">个人挂载</div><div className="mt-1 text-sm text-slate-300">{agent.allow_personal_skills ? "允许" : "不允许"}</div></div><div className="rounded-lg border border-mint-300/20 bg-mint-300/[0.04] p-3"><div className="mb-3 text-xs text-slate-500">实时关系图</div><div className="flex min-h-32 items-center gap-3 overflow-x-auto"><div className="shrink-0 rounded-lg border border-mint-300/35 bg-mint-300/10 px-3 py-2 text-sm font-medium text-mint-100">{agent.name}<div className="mt-1 text-[11px] text-mint-200">Agent</div></div><div className="h-px min-w-8 flex-1 bg-mint-300/35" /> <div className="flex min-w-40 flex-col gap-2">{connectedSkills.length ? connectedSkills.map((skill) => <div key={skill.id} className={`rounded-md border px-2 py-1.5 text-xs ${skill.is_personal_binding ? "border-sky-300/30 bg-sky-300/10 text-sky-100" : "border-white/15 bg-white/[0.04] text-slate-200"}`}>{skill.name}{defaults.includes(skill.id) ? <span className="ml-2 text-[10px] text-mint-200">默认</span> : null}</div>) : <div className="text-xs text-slate-500">尚未关联 Skill</div>}</div></div><div className="mt-2 flex gap-3 text-[11px]"><span className="text-slate-400">系统 Skill</span><span className="text-sky-200">我的 Skill</span></div></div><div className="rounded-lg border border-white/10 bg-black/10 p-3"><div className="mb-2 text-xs text-slate-500">关联配置</div>{admin && active.length === 0 ? <p className="mb-2 text-xs text-amber-100">待配置：当前仍使用旧版范围。</p> : null}{(admin ? skills : own).map((skill) => <div key={skill.id} className="mb-1 flex items-center gap-2 text-xs text-slate-300"><label className="flex min-w-0 flex-1 items-center gap-2"><input checked={active.includes(skill.id)} className="accent-mint-300" disabled={saving || (!admin && !agent.allow_personal_skills)} type="checkbox" onChange={() => toggle(skill.id)} /><span className="truncate">{skill.name}</span></label>{active.includes(skill.id) ? <label className="flex items-center gap-1 text-[10px] text-mint-200"><input checked={defaults.includes(skill.id)} className="accent-mint-300" type="checkbox" onChange={() => toggleDefault(skill.id)} />默认</label> : null}</div>)}{admin ? <label className="mt-2 flex items-center gap-2 text-xs text-slate-400"><input checked={agent.allow_personal_skills} className="accent-mint-300" type="checkbox" onChange={() => setAgents((all) => all.map((item) => item.code === agent.code ? { ...item, allow_personal_skills: !item.allow_personal_skills } : item))} />允许个人挂载</label> : null}<button className="mt-3 rounded-md border border-mint-300/30 bg-mint-300/10 px-3 py-1.5 text-xs text-mint-200 disabled:opacity-50" disabled={saving || (!admin && !agent.allow_personal_skills)} type="button" onClick={() => void save()}>{saving ? "保存中" : "保存关联"}</button></div></div> : <p className="text-sm text-slate-500">正在加载 Agent…</p>}{error ? <p className="mt-2 text-xs text-red-200">{error}</p> : null}
+  </section>;
+}
+
 function SkillSelector({
+  agentCode,
   disabled = false,
   maxSelections,
   mode = "multiple",
   selectedSkillIds,
   onSelectedSkillIdsChange,
 }: {
+  agentCode: string;
   disabled?: boolean;
   maxSelections?: number;
   mode?: "single" | "multiple";
   selectedSkillIds: string[];
   onSelectedSkillIdsChange: (skillIds: string[]) => void;
 }) {
-  const [showAllSkills, setShowAllSkills] = useState(false);
   const [skills, setSkills] = useState<SkillSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const skillsByScopeRef = useRef<Partial<Record<"owned" | "callable", SkillSummary[]>>>({});
+  const [agentRevision, setAgentRevision] = useState(0);
   const selectedSkillIdsRef = useRef(selectedSkillIds);
+  const selectionSourceRef = useRef<"empty" | "system_default" | "personal_default" | "manual">("empty");
   const selectionLimit = mode === "single" ? 1 : maxSelections;
 
   useEffect(() => {
     selectedSkillIdsRef.current = selectedSkillIds;
+    if (selectedSkillIds.length === 0) selectionSourceRef.current = "empty";
   }, [selectedSkillIds]);
 
   useEffect(() => {
-    let cancelled = false;
-    const scope = showAllSkills ? "callable" : "owned";
-    const cachedSkills = skillsByScopeRef.current[scope];
+    const refresh = () => setAgentRevision((value) => value + 1);
+    window.addEventListener("capability-agents-updated", refresh);
+    return () => window.removeEventListener("capability-agents-updated", refresh);
+  }, []);
 
+  useEffect(() => {
+    let cancelled = false;
     function reconcileSelection(availableSkills: SkillSummary[]) {
       const allowedIds = new Set(availableSkills.map((skill) => skill.id));
       const nextSelectedSkillIds = selectedSkillIdsRef.current.filter((skillId) => allowedIds.has(skillId));
@@ -13381,25 +13418,23 @@ function SkillSelector({
       if (!selectionUnchanged) onSelectedSkillIdsChange(nextSelectedSkillIds);
     }
 
-    if (cachedSkills) {
-      setSkills(cachedSkills);
-      setError(null);
-      setIsLoading(false);
-      reconcileSelection(cachedSkills);
-      return () => {
-        cancelled = true;
-      };
-    }
-
     setIsLoading(true);
     setError(null);
 
-    fetchSkills({ enabled: true, scope })
+    fetchSkills({ enabled: true, scope: "owned", agentCode })
       .then((response) => {
         if (cancelled) return;
-        skillsByScopeRef.current[scope] = response.items;
         setSkills(response.items);
         reconcileSelection(response.items);
+        const canApplyDefault = selectedSkillIdsRef.current.length === 0 || selectionSourceRef.current === "system_default" || selectionSourceRef.current === "personal_default";
+        if (canApplyDefault) {
+          const defaults = response.items.filter((skill) => skill.is_default).map((skill) => skill.id);
+          const nextDefaults = selectionLimit === undefined ? defaults : defaults.slice(0, selectionLimit);
+          if (nextDefaults.length) {
+            onSelectedSkillIdsChange(nextDefaults);
+            selectionSourceRef.current = response.items.some((skill) => skill.is_default && skill.is_personal_binding) ? "personal_default" : "system_default";
+          }
+        }
       })
       .catch((loadError: Error) => {
         if (!cancelled) setError(loadError.message);
@@ -13411,9 +13446,10 @@ function SkillSelector({
     return () => {
       cancelled = true;
     };
-  }, [showAllSkills, onSelectedSkillIdsChange]);
+  }, [agentCode, agentRevision, onSelectedSkillIdsChange, selectionLimit]);
 
   function handleToggleSkill(skillId: string) {
+    selectionSourceRef.current = "manual";
     if (mode === "single") {
       onSelectedSkillIdsChange(selectedSkillIds.includes(skillId) ? [] : [skillId]);
       return;
@@ -13435,20 +13471,10 @@ function SkillSelector({
           <Layers3 className="text-mint-300" size={16} />
           选择 Skill
         </div>
-        <label className="flex cursor-pointer items-center gap-2 text-xs text-slate-400">
-          <input
-            checked={showAllSkills}
-            className="h-4 w-4 accent-mint-300"
-            disabled={disabled}
-            type="checkbox"
-            onChange={(event) => setShowAllSkills(event.target.checked)}
-          />
-          全部 Skill
-          {isLoading ? <Loader2 className="animate-spin text-mint-300" size={14} /> : null}
-        </label>
+        {isLoading ? <Loader2 className="animate-spin text-mint-300" size={14} /> : null}
       </div>
       <div className="mt-1 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
-        <span>{showAllSkills ? "显示你有权限调用的共享 Skill。" : "默认仅显示自己的启用 Skill。"}</span>
+        <span>仅显示当前 Agent 允许调用的 Skill。</span>
         <span>已选择 {formatAmount(selectedSkillIds.length)} 个{selectionLimit ? ` / ${selectionLimit}` : ""}</span>
       </div>
       {isLoading && skills.length === 0 ? (
@@ -13473,14 +13499,14 @@ function SkillSelector({
                   {selected ? <CheckCircle2 className="shrink-0 text-mint-300" size={15} /> : null}
                 </div>
                 <p className="mt-1 line-clamp-2 break-words text-xs leading-5 text-slate-500 [overflow-wrap:anywhere]">{skill.description || "无描述"}</p>
-                {showAllSkills ? <div className="mt-2 text-[11px] text-slate-600">{skill.owner_username ? `Owner: ${skill.owner_username}` : "系统 Skill"}</div> : null}
+                {skill.is_default || skill.is_personal_binding ? <div className="mt-2 text-[11px] text-slate-600">{skill.is_default ? "默认" : "我的 Skill"}</div> : null}
               </button>
             );
           })}
         </div>
       ) : (
         <p className="mt-3 text-sm leading-5 text-slate-500">
-          {showAllSkills ? "暂无可调用的启用 Skill。" : "暂无自己的启用 Skill；勾选“全部 Skill”可查看有权限调用的共享 Skill。"}
+          当前 Agent 暂无可调用 Skill。
         </p>
       )}
     </section>
@@ -13572,6 +13598,7 @@ function EnglishMaterialAiGeneration({
               </div>
               {topicMode === "custom" ? <Field label="自定义主题" icon={<FileText size={16} />}><input className="control" disabled={isGenerating} maxLength={300} value={topic} onChange={(event) => setTopic(event.target.value)} placeholder="例如：在不确定中保持行动力" /></Field> : null}
               <SkillSelector
+                agentCode="english-generation"
                 disabled={isGenerating}
                 selectedSkillIds={selectedSkillIds}
                 onSelectedSkillIdsChange={setSelectedSkillIds}
@@ -13934,7 +13961,7 @@ function EnglishMaterialAiCompletion({
       <section aria-modal="true" className="flex max-h-[100dvh] w-full max-w-2xl flex-col overflow-hidden rounded-t-lg border border-mint-300/20 bg-ink-900 shadow-soft-glow sm:max-h-[88vh] sm:rounded-lg" role="dialog" aria-label="AI 补全英语素材">
         <div className="flex shrink-0 items-start justify-between gap-4 border-b border-white/10 p-4 sm:p-5"><div><div className="mb-2 flex items-center gap-2 text-sm text-mint-300"><WandSparkles size={17} />AI Material</div><h2 className="text-xl font-semibold text-slate-50">AI补全英语素材</h2><p className="mt-1 text-xs leading-5 text-slate-500">只根据当前完整口播内容提炼字段。确认回填时仅填充空字段，不会自动保存。</p></div><button className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-300 transition hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600" disabled={isCompleting} type="button" title="关闭" onClick={closeDialog}><X size={17} /></button></div>
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 sm:p-5">
-          {!result ? <><div className="grid gap-3 sm:grid-cols-2"><Field label="执行模型" icon={<Settings2 size={16} />}><select className="control" disabled={isCompleting} value={modelName} onChange={(event) => setModelName(event.target.value)}>{modelOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field></div><SkillSelector disabled={isCompleting} selectedSkillIds={selectedSkillIds} onSelectedSkillIdsChange={setSelectedSkillIds} /></> : <div className="space-y-3"><p className="text-sm leading-6 text-slate-300">以下结果将只填入当前为空的字段：</p><EnglishMaterialDetailBlock label="标题" value={result.title} /><EnglishMaterialDetailBlock label="基础表达" value={result.base_expression} /><EnglishMaterialDetailBlock label="职业完整句式" value={result.professional_sentence} /><EnglishMaterialDetailBlock label="地道中文翻译" value={result.chinese_translation} /></div>}
+          {!result ? <><div className="grid gap-3 sm:grid-cols-2"><Field label="执行模型" icon={<Settings2 size={16} />}><select className="control" disabled={isCompleting} value={modelName} onChange={(event) => setModelName(event.target.value)}>{modelOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field></div><SkillSelector agentCode="english-extraction" disabled={isCompleting} selectedSkillIds={selectedSkillIds} onSelectedSkillIdsChange={setSelectedSkillIds} /></> : <div className="space-y-3"><p className="text-sm leading-6 text-slate-300">以下结果将只填入当前为空的字段：</p><EnglishMaterialDetailBlock label="标题" value={result.title} /><EnglishMaterialDetailBlock label="基础表达" value={result.base_expression} /><EnglishMaterialDetailBlock label="职业完整句式" value={result.professional_sentence} /><EnglishMaterialDetailBlock label="地道中文翻译" value={result.chinese_translation} /></div>}
           {error ? <div className="flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100"><TriangleAlert className="mt-0.5 shrink-0 text-red-300" size={17} /><span>{error}</span></div> : null}
         </div>
         <div className="flex shrink-0 justify-end gap-3 border-t border-white/10 p-4"><button className="h-11 rounded-lg border border-white/10 bg-white/[0.035] px-4 text-sm text-slate-300 disabled:cursor-not-allowed disabled:text-slate-600" disabled={isCompleting} type="button" onClick={closeDialog}>取消</button>{result ? <button className="flex h-11 items-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20" type="button" onClick={applyResult}><ClipboardCheck size={17} />确认回填</button> : <button className="flex h-11 items-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 text-sm font-medium text-mint-300 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500" disabled={!canComplete} type="button" onClick={() => void handleComplete()}>{isCompleting ? <Loader2 className="animate-spin" size={17} /> : <WandSparkles size={17} />}{isCompleting ? "补全中" : "生成补全建议"}</button>}</div>
@@ -15083,6 +15110,7 @@ function SkillManager({
   const [isCreateSkillFormExpanded, setIsCreateSkillFormExpanded] = useState(false);
   const [isUploadSkillZipExpanded, setIsUploadSkillZipExpanded] = useState(false);
   const [isSkillSidebarCollapsed, setIsSkillSidebarCollapsed] = useState(false);
+  const [abilityMode, setAbilityMode] = useState<"agents" | "skills">("agents");
   const [expandedSkillDirectories, setExpandedSkillDirectories] = useState<Set<string>>(() => new Set());
   const skillFileGroups = useMemo(() => {
     const rootFiles: SkillFile[] = [];
@@ -15155,15 +15183,20 @@ function SkillManager({
             <div>
               <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
                 <Layers3 size={17} />
-                Skill Registry
+                Capability Hub
               </div>
-              <h2 className="text-lg font-semibold text-slate-50">已安装 Skill</h2>
+              <h2 className="text-lg font-semibold text-slate-50">Agent 与 Skill</h2>
             </div>
             <span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-xs text-slate-400">
               {formatAmount(total)}
             </span>
           </div>
 
+          <div className="mb-4 flex gap-2">
+            <button className={`rounded-lg border px-3 py-2 text-xs transition ${abilityMode === "agents" ? "border-mint-300/30 bg-mint-300/12 text-mint-200" : "border-white/10 bg-white/[0.03] text-slate-400"}`} type="button" onClick={() => setAbilityMode("agents")}>Agent</button>
+            <button className={`rounded-lg border px-3 py-2 text-xs transition ${abilityMode === "skills" ? "border-mint-300/30 bg-mint-300/12 text-mint-200" : "border-white/10 bg-white/[0.03] text-slate-400"}`} type="button" onClick={() => setAbilityMode("skills")}>Skill</button>
+          </div>
+          {abilityMode === "skills" ? <>
           <div className="mb-4 flex gap-2">
             <button
               className={`rounded-lg border px-3 py-2 text-xs transition ${
@@ -15236,6 +15269,7 @@ function SkillManager({
               暂无 skill。可以新建自定义 skill，或上传标准 skill zip 包。
             </div>
           )}
+          </> : <AgentNavigation />}
         </section>
 
         <section className="rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
@@ -15338,7 +15372,7 @@ function SkillManager({
       </aside>
 
       <section className="min-w-0 rounded-lg border border-white/10 bg-ink-900/72 p-4 shadow-soft-glow backdrop-blur-xl">
-        {detail ? (
+        {abilityMode === "agents" ? <CapabilityManager /> : detail ? (
           <div className="space-y-5">
             <form className="rounded-lg border border-white/10 bg-white/[0.025] p-4" onSubmit={onSave}>
               <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -15775,6 +15809,7 @@ function HistoryAskPanel({
               ) : null}
             </div>
             <SkillSelector
+              agentCode={domainCode === "todos" ? "todo-ask" : domainCode === "knowledge" ? "knowledge-ask" : domainCode === "english_materials" ? "english-ask" : "history-ask"}
               disabled={isLoading}
               maxSelections={8}
               selectedSkillIds={selectedSkillIds}

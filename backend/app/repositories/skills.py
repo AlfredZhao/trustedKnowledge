@@ -252,16 +252,24 @@ def list_skills(
     q: str | None = None,
     enabled: bool | None = None,
     scope: str = "callable",
+    agent_code: str | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
     if scope not in LIST_SCOPES:
         raise SkillValidationError("Skill 列表范围不合法")
 
     query = q.strip().lower() if q else ""
+    allowed_ids: set[str] | None = None
+    default_ids: list[str] = []
+    if agent_code:
+        from app.repositories.agents import allowed_skill_ids
+        allowed_ids, default_ids = allowed_skill_ids(agent_code, auth_context)
     items = []
     for skill_dir in sorted(_storage_root().iterdir(), key=lambda item: item.stat().st_mtime, reverse=True):
         if not skill_dir.is_dir():
             continue
         summary = _to_summary(skill_dir, auth_context)
+        if allowed_ids is not None and summary["id"] not in allowed_ids:
+            continue
         if not _can_view(summary, auth_context):
             continue
         if scope == "owned" and not summary["can_edit"]:
@@ -272,7 +280,7 @@ def list_skills(
             continue
         if query and query not in f"{summary['name']} {summary['description']} {summary['id']}".lower():
             continue
-        items.append(summary)
+        items.append({**summary, "is_default": summary["id"] in default_ids, "is_personal_binding": bool(agent_code and allowed_ids is not None and summary["id"] in allowed_ids and _is_owner(summary, auth_context))})
     return items, len(items)
 
 
@@ -431,9 +439,15 @@ def update_skill_file(skill_id: str, file_path: str, content: str, auth_context:
     return read_skill_file(skill_id, file_path, auth_context)
 
 
-def get_prompt_skills(skill_ids: list[str], auth_context: AuthContext) -> list[dict[str, str]]:
+def get_prompt_skills(skill_ids: list[str], auth_context: AuthContext, *, agent_code: str | None = None) -> list[dict[str, str]]:
+    allowed_ids: set[str] | None = None
+    if agent_code:
+        from app.repositories.agents import allowed_skill_ids
+        allowed_ids, _ = allowed_skill_ids(agent_code, auth_context)
     selected = []
     for skill_id in skill_ids[:8]:
+        if allowed_ids is not None and skill_id not in allowed_ids:
+            continue
         try:
             skill_dir = _skill_dir(skill_id)
             detail = get_skill(skill_id, auth_context)

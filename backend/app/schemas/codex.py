@@ -10,6 +10,7 @@ class CodexRunRequest(BaseModel):
     output_mode: Literal["full", "final"] = "full"
     model_name: str = Field("", max_length=120)
     execution_provider: Literal["codex", "history_ask_llm"] = "codex"
+    agent_code: str = Field("", max_length=80)
 
 
 class CodexRunResponse(BaseModel):

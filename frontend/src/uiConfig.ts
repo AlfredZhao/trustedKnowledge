@@ -64,7 +64,7 @@ export const FUNCTION_NAV_ITEMS: FunctionNavItem[] = [
   { icon: BookOpenCheck, label: "英语素材", view: "englishMaterials" },
   { icon: Network, label: "AI 图谱", view: "aiGraph" },
   { icon: UserCog, label: "用户管理", view: "users" },
-  { icon: Layers3, label: "Skill 管理", view: "skills" },
+  { icon: Layers3, label: "能力管理", view: "skills" },
   { icon: Bot, label: "AI 问数", view: "historyAsk" },
   { icon: WandSparkles, label: "AI 编程", view: "aiCoding" },
   { icon: Bot, label: "AI 用量", view: "usage" },

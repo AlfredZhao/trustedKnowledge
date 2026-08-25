@@ -758,3 +758,24 @@ Inline-format actions that wrap a line selection must exclude a trailing newline
 ### Guardrail
 
 Verify that selecting `文本\n` and toggling `加粗` produces `**文本**\n`, then restores `文本\n` on a second toggle. Verify standalone `---`, `***`, and `___` each produce an `<hr />` in `markdownToHtml()` and do not affect table delimiter parsing.
+# Agent 范围必须在前后端同时生效
+
+## 症状
+
+用户在业务模块的 Skill 选择器中看到了无关 Skill，或通过修改请求的 `skill_ids` 绕过了界面限制。
+
+## 触发条件
+
+在知识加工、任一 AI 问数业务域、博客审阅、英语生成或英语补全中选择 Skill，或直接提交不属于当前 Agent 的 Skill ID。
+
+## 根因
+
+原有 Skill 可见性只按所有者、分享和启用状态判断，没有业务 Agent 上下文。
+
+## 安全模式
+
+前端 `SkillSelector` 必须携带 `agentCode` 请求列表；后端调用 `get_prompt_skills` 必须传入对应 `agent_code`，由 Agent 白名单再次过滤。
+
+## 守护测试
+
+为每个模块验证仅显示当前 Agent 的系统/个人 Skill、默认 Skill 自动选中、个人 Skill 不被其他用户看到；再以 API 提交越权 Skill ID，确认它不会进入提示词或执行结果。

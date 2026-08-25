@@ -1,8 +1,8 @@
 import type { SkillDetail, SkillDraft, SkillListResponse, SkillSummary } from "../types";
 import { buildQuery, request } from "./client";
 
-export async function fetchSkills(params?: { q?: string; enabled?: boolean; scope?: "owned" | "callable" }): Promise<SkillListResponse> {
-  return request<SkillListResponse>(`/api/skills${buildQuery({ q: params?.q, enabled: params?.enabled, scope: params?.scope })}`);
+export async function fetchSkills(params?: { q?: string; enabled?: boolean; scope?: "owned" | "callable"; agentCode?: string }): Promise<SkillListResponse> {
+  return request<SkillListResponse>(`/api/skills${buildQuery({ q: params?.q, enabled: params?.enabled, scope: params?.scope, agent_code: params?.agentCode })}`);
 }
 
 export async function fetchSkill(skillId: string): Promise<SkillDetail> {

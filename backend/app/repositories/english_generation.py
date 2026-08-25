@@ -63,7 +63,7 @@ full_script 是完整英文口播稿，不超过4000字符。内容要原创、�
 
 
 async def generate_english_material(payload: EnglishMaterialGenerationRequest, auth_context: AuthContext) -> EnglishMaterialGenerationResult:
-    selected_skills = get_prompt_skills(payload.skill_ids, auth_context)
+    selected_skills = get_prompt_skills(payload.skill_ids, auth_context, agent_code="english-generation")
     system, prompt = _build_prompt(payload, selected_skills)
     if payload.execution_provider == "codex":
         if not settings.allow_web_codex:
@@ -106,7 +106,7 @@ professional_sentence 是忠实摘自或忠实整理自原稿的一句完整英�
 
 
 async def complete_english_material(payload: EnglishMaterialCompletionRequest, auth_context: AuthContext) -> EnglishMaterialCompletionResult:
-    selected_skills = get_prompt_skills(payload.skill_ids, auth_context)
+    selected_skills = get_prompt_skills(payload.skill_ids, auth_context, agent_code="english-extraction")
     system, prompt = _build_completion_prompt(payload, selected_skills)
     if payload.execution_provider == "codex":
         if not settings.allow_web_codex:

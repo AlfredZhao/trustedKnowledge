@@ -449,6 +449,8 @@ export interface HistoryAskQuickQuestion {
   domain_code: "history" | "todos" | "knowledge" | "english_materials";
   created_at: string;
   updated_at: string;
+  is_default?: boolean;
+  is_personal_binding?: boolean;
 }
 
 export interface HistoryOntologyTerm {
@@ -495,6 +497,8 @@ export interface SkillSummary {
   can_use: boolean;
   created_at: string;
   updated_at: string;
+  is_default?: boolean;
+  is_personal_binding?: boolean;
 }
 
 export interface SkillFile {

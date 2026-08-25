@@ -584,7 +584,7 @@ async def ask_history(
             model_name=model_name,
             auth_context=auth_context,
         )
-    selected_skills = get_prompt_skills(skill_ids or [], auth_context)
+    selected_skills = get_prompt_skills(skill_ids or [], auth_context, agent_code="history-ask")
     async with acquire_connection() as connection:
         cursor = connection.cursor()
         visibility_clauses: list[str] = []
@@ -847,7 +847,7 @@ async def _ask_todos(
     model_name: str,
     auth_context: AuthContext,
 ) -> dict[str, Any]:
-    selected_skills = get_prompt_skills(skill_ids or [], auth_context)
+    selected_skills = get_prompt_skills(skill_ids or [], auth_context, agent_code="todo-ask")
     async with acquire_connection() as connection:
         await _ensure_todo_table(connection)
         cursor = connection.cursor()
@@ -1091,7 +1091,7 @@ async def _finalize_catalog_ask(
 async def _ask_knowledge(
     question: str, *, skill_ids: list[str] | None, execution_provider: str, model_name: str, auth_context: AuthContext
 ) -> dict[str, Any]:
-    selected_skills = get_prompt_skills(skill_ids or [], auth_context)
+    selected_skills = get_prompt_skills(skill_ids or [], auth_context, agent_code="knowledge-ask")
     async with acquire_connection() as connection:
         cursor = connection.cursor()
         keyword = _extract_keyword(question)
@@ -1143,7 +1143,7 @@ async def _ask_knowledge(
 async def _ask_english_materials(
     question: str, *, skill_ids: list[str] | None, execution_provider: str, model_name: str, auth_context: AuthContext
 ) -> dict[str, Any]:
-    selected_skills = get_prompt_skills(skill_ids or [], auth_context)
+    selected_skills = get_prompt_skills(skill_ids or [], auth_context, agent_code="english-ask")
     async with acquire_connection() as connection:
         cursor = connection.cursor()
         keyword = _extract_keyword(question)

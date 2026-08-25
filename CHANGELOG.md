@@ -7,11 +7,12 @@ The format follows the common GitHub changelog convention inspired by
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 格式遵循 GitHub 常见变更日志规范，并参考 Keep a Changelog。
 
-## 本次版本更新
-
 ### [Unreleased]
 
 #### Added / 新增
+
+- Added Agent capability management with staged migration: configured Agents scope their module Skills, while unconfigured Agents preserve the existing user-owned Skill experience.
+- 新增带渐进迁移的 Agent 能力管理：已配置 Agent 才会限定模块 Skill；未配置 Agent 保持原有“当前用户自有 Skill”的使用体验。
 
 - Added `AI补全` to English Material entry on desktop and mobile. It uses the current full-script draft, previews suggestions, and fills only blank fields after confirmation without saving automatically.
 - 在桌面端与移动端的英语素材录入区新增 `AI补全`：它使用当前完整口播草稿，先预览建议，确认后仅回填空字段，且不会自动保存。

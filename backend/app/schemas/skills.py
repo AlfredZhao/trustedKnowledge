@@ -25,6 +25,8 @@ class SkillSummary(BaseModel):
     can_use: bool
     created_at: datetime
     updated_at: datetime
+    is_default: bool = False
+    is_personal_binding: bool = False
 
 
 class SkillDetail(SkillSummary):

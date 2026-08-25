@@ -40,9 +40,10 @@ async def get_skills(
     q: Annotated[str | None, Query(min_length=1, max_length=200)] = None,
     enabled: Annotated[bool | None, Query()] = None,
     scope: Annotated[str, Query(pattern="^(owned|callable)$")] = "callable",
+    agent_code: Annotated[str | None, Query(max_length=80)] = None,
     auth_context: AuthContext = Depends(require_current_user),
 ) -> SkillListResponse:
-    items, total = list_skills(auth_context, q=q, enabled=enabled, scope=scope)
+    items, total = list_skills(auth_context, q=q, enabled=enabled, scope=scope, agent_code=agent_code)
     return SkillListResponse(items=items, total=total)
 
 

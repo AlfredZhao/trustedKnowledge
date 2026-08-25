@@ -55,7 +55,7 @@ before 必须是文章中可精确找到且只出现一次的原文片段；afte
 
 
 async def review_blog_factory_content(payload: BlogFactoryReviewRequest, auth_context: AuthContext) -> BlogFactoryReviewResult:
-    selected_skills = get_prompt_skills(payload.skill_ids, auth_context)
+    selected_skills = get_prompt_skills(payload.skill_ids, auth_context, agent_code="blog-review")
     system, prompt = _build_review_prompt(payload, selected_skills)
     if payload.execution_provider == "codex":
         if not settings.allow_web_codex:
