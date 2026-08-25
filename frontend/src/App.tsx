@@ -566,6 +566,18 @@ const englishMaterialFlagStyles: Record<EnglishMaterialDraft["flag"], string> = 
 
 const FACTORY_CUSTOM_MODEL = "__factory_custom_model__";
 const HISTORY_ASK_CONFIGURED_MODEL = "__history_ask_configured_model__";
+const KNOWLEDGE_TOPIC_TAG_PATTERN = /^[a-zA-Z0-9_,\s]*$/;
+const KNOWLEDGE_TOPIC_TAG_HINT = "多个标签请使用英文逗号（,）分隔，例如：Oracle,APEX；仅支持英文字母、数字、下划线和空格。";
+
+function getKnowledgeTopicTagValidationError(topicTag: string): string | null {
+  if (!topicTag.trim() || KNOWLEDGE_TOPIC_TAG_PATTERN.test(topicTag)) return null;
+  return KNOWLEDGE_TOPIC_TAG_HINT;
+}
+
+function getKnowledgeSaveError(error: unknown): string {
+  const message = error instanceof Error ? error.message : "提交失败，请稍后重试。";
+  return message.includes("CK_TOPIC_TAG") ? KNOWLEDGE_TOPIC_TAG_HINT : message;
+}
 
 function App() {
   // Restored UI state and long-lived workspace state.
@@ -2774,6 +2786,14 @@ function App() {
     event.preventDefault();
     if (!draft.question.trim() || !draft.answer.trim()) return;
 
+    if (!isTodoEntry) {
+      const topicTagError = getKnowledgeTopicTagValidationError(draft.topic_tag);
+      if (topicTagError) {
+        setSaveError(topicTagError);
+        return;
+      }
+    }
+
     setIsSaving(true);
     setSaveError(null);
 
@@ -2829,7 +2849,7 @@ function App() {
       setLastCreatedId(updated.id);
       restoreMobileViewportScale();
     } catch (error) {
-      setSaveError(error instanceof Error ? error.message : "提交失败，请稍后重试。");
+      setSaveError(getKnowledgeSaveError(error));
     } finally {
       setIsSaving(false);
     }

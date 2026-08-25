@@ -29,6 +29,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Fixed / 修复
 
+- Fixed Knowledge Entry tag validation so invalid tags are blocked before save with readable English-comma guidance; legacy `CK_TOPIC_TAG` Oracle errors are also shown as the same guidance.
+- 修复信息录入的可信知识标签校验：非法标签会在保存前被拦截并显示英文逗号分隔规则；遗留的 `CK_TOPIC_TAG` Oracle 错误也会转换为相同的可读提示。
+
 - Fixed AI 问数 result concept chips such as `概念：我` being unreadable in the light theme by applying a darker fuchsia foreground.
 - 修复 AI 问数结果中“概念：我”等概念标签在浅色主题下前景色过浅、文字不可见的问题。
 
