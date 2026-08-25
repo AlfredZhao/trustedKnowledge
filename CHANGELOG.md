@@ -7,7 +7,9 @@ The format follows the common GitHub changelog convention inspired by
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 格式遵循 GitHub 常见变更日志规范，并参考 Keep a Changelog。
 
-### [Unreleased]
+## 本次版本更新
+
+### [0.4.3] - 2026-08-25
 
 #### Added / 新增
 
