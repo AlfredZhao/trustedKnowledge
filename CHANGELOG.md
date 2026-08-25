@@ -9,6 +9,35 @@ The format follows the common GitHub changelog convention inspired by
 
 ## 本次版本更新
 
+### [Unreleased]
+
+#### Added / 新增
+
+- Added Arrow Up/Down keyboard navigation for the Agent sidebar, without intercepting keys while editing form controls.
+- 为 Agent 左侧导航新增上下方向键切换，并在输入控件编辑时不拦截按键。
+
+- Added compact Skill sidebar navigation with Arrow Up/Down selection and synchronized detail loading.
+- 为 Skill 左侧栏新增紧凑导航及上下方向键选择，并同步加载右侧详情。
+
+#### Changed / 变更
+
+- Streamlined the Agent mode sidebar into a compact selectable list and show Skill creation/upload actions only in Skill mode; the right-side Agent tabs remain available.
+- 精简 Agent 模式左侧栏为紧凑可选列表，并仅在 Skill 模式展示新建与上传操作；右侧 Agent 标签栏保持不变。
+
+- Changed Skill management scope tabs to separate `我的 Skill` from non-owned shared and system Skills, eliminating duplicate entries between the two lists.
+- 调整 Skill 管理范围标签：`我的 Skill` 与非本人所有的共享/系统 Skill 分开展示，避免两个列表重复。
+
+#### Fixed / 修复
+
+- Fixed rapid Skill Arrow Up/Down navigation leaving the detail pane on an older selection; only the latest detail request may now update the pane.
+- 修复快速使用 Skill 上下方向键时右侧详情可能停留在旧选项的问题；现仅最后一次详情请求可以更新右侧面板。
+
+- Fixed Agent and Skill Arrow Up/Down navigation leaving a browser-blue focus outline on the previously mouse-selected item; focus now moves with the selection and uses the theme focus ring.
+- 修复 Agent 和 Skill 使用上下方向键后此前鼠标选中项残留浏览器蓝色焦点框的问题；焦点现会随选择移动并使用主题焦点样式。
+
+- Fixed Agent Skill selectors so configured shared Skills are visible and selectable by other permitted users, including the Agent default Skill.
+- 修复 Agent Skill 选择器仅显示当前用户自有 Skill 的问题；现已分享且被当前 Agent 关联的 Skill（包括默认 Skill）会对有调用权限的其他用户显示并可选。
+
 ### [0.4.3] - 2026-08-25
 
 #### Added / 新增

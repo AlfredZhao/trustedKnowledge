@@ -778,4 +778,48 @@ Verify that selecting `文本\n` and toggling `加粗` produces `**文本**\n`, 
 
 ## 守护测试
 
-为每个模块验证仅显示当前 Agent 的系统/个人 Skill、默认 Skill 自动选中、个人 Skill 不被其他用户看到；再以 API 提交越权 Skill ID，确认它不会进入提示词或执行结果。
+为每个模块验证仅显示当前 Agent 已关联的 Skill、默认 Skill 自动选中；以普通用户登录时，已分享且由管理员关联的其他用户 Skill 必须可见并可选，未分享的其他用户 Skill 必须不可见。再以 API 提交越权 Skill ID，确认它不会进入提示词或执行结果。
+
+# Agent 选择器必须加载可调用而非仅自有的 Skill
+
+## 症状
+
+管理员已经为 Agent 关联并设置默认的已分享 Skill，但普通用户在业务模块看到“当前 Agent 暂无可调用 Skill”，或只能看到自己创建的 Skill。
+
+## 触发条件
+
+Skill 由 Alfred、管理员或另一位用户创建并开启分享；超级管理员将其关联到某个 Agent，普通用户随后打开该 Agent 对应的 Skill 选择器。
+
+## 根因
+
+`frontend/src/App.tsx:SkillSelector` 虽然传递了 `agentCode`，却以 `scope=owned` 请求列表。后端会先正确按 Agent 关联范围过滤，但 `owned` 会再次排除非当前用户所有的已分享 Skill。
+
+## 安全模式
+
+业务 Agent 的 `SkillSelector` 必须以 `enabled=true`、`scope=callable` 和 `agentCode` 请求列表。后端仍必须保留 `allowed_skill_ids()` 与 `get_prompt_skills(..., agent_code=...)` 的关联白名单校验；不得通过前端范围扩大可调用集合。
+
+## 守护测试
+
+配置一个已分享的外部 Skill 为 Agent 默认项后，以普通用户打开对应业务模块，确认该 Skill 显示、自动选中且可正常调用；确认同一用户不会看到未关联的已分享 Skill 或未分享的外部 Skill。再确认管理员撤销关联后，已选项会被清除。检查桌面/移动端和深浅主题，并运行 `cd frontend && npm run build`。
+
+# Skill 连续键盘切换必须以最后一次选择为准
+
+## 症状
+
+在 Skill 管理左栏连续按上下方向键时，左侧高亮已移动，但右侧详情有时停留在先前的 Skill。
+
+## 触发条件
+
+选择一个 Skill 后，在详情请求尚未返回时连续按 `↑` 或 `↓` 切换到其它 Skill。
+
+## 根因
+
+`handleSelectSkill()` 曾在 `isSkillDetailLoading` 为真时直接跳过后续选择请求，造成左栏本地选中态与右侧详情状态不同步。
+
+## 安全模式
+
+Skill 详情加载不得因已有请求而丢弃新的用户选择。使用递增请求编号；只有编号仍等于最新请求的响应、错误和 loading 收尾操作可以写入状态，旧请求返回必须被忽略。
+
+## 守护测试
+
+在“我的 Skill”及“共享与系统 Skill”分别连续按 3 次 `↓`、再按 2 次 `↑`，确认每次最终高亮项与右侧元信息、文件列表一致；在网络节流下重复验证，旧响应不能覆盖最后选择。鼠标点击、输入控件内方向键、桌面/移动端与深浅主题均保持原有行为，并运行 `cd frontend && npm run build`。

@@ -31,7 +31,7 @@ TEXT_SUFFIXES = {
     ".html",
     ".sql",
 }
-LIST_SCOPES = {"owned", "callable"}
+LIST_SCOPES = {"owned", "callable", "shared"}
 
 
 class SkillNotFoundError(Exception):
@@ -272,9 +272,11 @@ def list_skills(
             continue
         if not _can_view(summary, auth_context):
             continue
-        if scope == "owned" and not summary["can_edit"]:
+        if scope == "owned" and not _is_owner(summary, auth_context):
             continue
-        if scope == "callable" and not summary["can_use"]:
+        if scope in {"callable", "shared"} and not summary["can_use"]:
+            continue
+        if scope == "shared" and _is_owner(summary, auth_context):
             continue
         if enabled is not None and summary["enabled"] != enabled:
             continue

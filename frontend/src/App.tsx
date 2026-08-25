@@ -940,7 +940,7 @@ function App() {
   const [skillTotal, setSkillTotal] = useState(0);
   const [skillQuery, setSkillQuery] = useState("");
   const debouncedSkillQuery = useDebouncedValue(skillQuery.trim());
-  const [skillListScope, setSkillListScope] = useState<"owned" | "callable">("owned");
+  const [skillListScope, setSkillListScope] = useState<"owned" | "shared">("owned");
   const [selectedSkill, setSelectedSkill] = useState<SkillDetail | null>(null);
   const [skillDeleteTarget, setSkillDeleteTarget] = useState<SkillDetail | null>(null);
   const [newSkillDraft, setNewSkillDraft] = useState<SkillDraft>(emptySkillDraft);
@@ -949,6 +949,7 @@ function App() {
   const [skillFileContent, setSkillFileContent] = useState("");
   const [isSkillLoading, setIsSkillLoading] = useState(false);
   const [isSkillDetailLoading, setIsSkillDetailLoading] = useState(false);
+  const skillDetailRequestIdRef = useRef(0);
   const [isSkillSaving, setIsSkillSaving] = useState(false);
   const [isSkillFileSaving, setIsSkillFileSaving] = useState(false);
   const [isSkillUploading, setIsSkillUploading] = useState(false);
@@ -4551,21 +4552,23 @@ function App() {
   }
 
   async function handleSelectSkill(skillId: string) {
-    if (isSkillDetailLoading) return;
-
+    const requestId = skillDetailRequestIdRef.current + 1;
+    skillDetailRequestIdRef.current = requestId;
     setIsSkillDetailLoading(true);
     setSkillSaveError(null);
     try {
       const detail = await fetchSkill(skillId);
+      if (requestId !== skillDetailRequestIdRef.current) return;
       setSelectedSkill(detail);
       setSkillDraft({ name: detail.name, description: detail.description, content: "", enabled: detail.enabled, published: detail.published });
       const preferredFile = getPreferredSkillFile(detail.files);
       setSelectedSkillFile(preferredFile);
       setSkillFileContent(preferredFile?.path.endsWith("SKILL.md") ? detail.skill_markdown : "");
     } catch (error) {
+      if (requestId !== skillDetailRequestIdRef.current) return;
       setSkillSaveError(error instanceof Error ? error.message : "Skill 详情加载失败。");
     } finally {
-      setIsSkillDetailLoading(false);
+      if (requestId === skillDetailRequestIdRef.current) setIsSkillDetailLoading(false);
     }
   }
 
@@ -13346,8 +13349,31 @@ function EnglishMaterialCreateDialog({
 
 function AgentNavigation() {
   const [agents, setAgents] = useState<CapabilityAgent[]>([]);
-  useEffect(() => { fetchCapabilityAgents().then((response) => setAgents(response.items)).catch(() => setAgents([])); }, []);
-  return <div className="space-y-2">{agents.map((agent) => <button key={agent.code} className="block w-full rounded-lg border border-white/10 bg-white/[0.028] p-3 text-left transition hover:border-mint-300/25" type="button" onClick={() => window.dispatchEvent(new CustomEvent("capability-agent-selected", { detail: agent.code }))}><div className="text-sm font-medium text-slate-100">{agent.name}</div><div className="mt-1 text-xs text-slate-500">{agent.module_label}</div></button>)}</div>;
+  const [selectedCode, setSelectedCode] = useState<string | null>(null);
+  const agentButtonRefs = useRef(new Map<string, HTMLButtonElement>());
+  useEffect(() => { fetchCapabilityAgents().then((response) => { setAgents(response.items); setSelectedCode((current) => current ?? response.items[0]?.code ?? null); }).catch(() => setAgents([])); }, []);
+  function selectAgent(code: string, focus = false) {
+    setSelectedCode(code);
+    window.dispatchEvent(new CustomEvent("capability-agent-selected", { detail: code }));
+    if (focus) agentButtonRefs.current.get(code)?.focus();
+  }
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if ((event.key !== "ArrowUp" && event.key !== "ArrowDown") || event.altKey || event.ctrlKey || event.metaKey || agents.length === 0) return;
+      const target = event.target;
+      if (target instanceof HTMLElement && (target.matches("input, textarea, select, [contenteditable='true']") || target.isContentEditable)) return;
+      event.preventDefault();
+      const currentIndex = Math.max(0, agents.findIndex((agent) => agent.code === selectedCode));
+      const nextIndex = event.key === "ArrowDown" ? Math.min(currentIndex + 1, agents.length - 1) : Math.max(currentIndex - 1, 0);
+      selectAgent(agents[nextIndex].code, true);
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [agents, selectedCode]);
+  return <nav aria-label="Agent 列表" className="space-y-1">{agents.map((agent) => {
+    const selected = agent.code === selectedCode;
+    return <button key={agent.code} ref={(element) => { if (element) agentButtonRefs.current.set(agent.code, element); else agentButtonRefs.current.delete(agent.code); }} className={`flex w-full items-center gap-2 rounded-md border px-2.5 py-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mint-300/55 ${selected ? "border-mint-300/30 bg-mint-300/10 text-mint-100" : "border-transparent text-slate-300 hover:border-white/10 hover:bg-white/[0.035] hover:text-slate-100"}`} type="button" onClick={() => selectAgent(agent.code)}><Bot className={`shrink-0 ${selected ? "text-mint-300" : "text-slate-500"}`} size={15} /><span className="min-w-0 flex-1 truncate text-sm font-medium">{agent.name}</span><span className={`shrink-0 text-[11px] ${selected ? "text-mint-200/75" : "text-slate-600"}`}>{agent.module_label}</span></button>;
+  })}</nav>;
 }
 
 function CapabilityManager() {
@@ -13421,7 +13447,7 @@ function SkillSelector({
     setIsLoading(true);
     setError(null);
 
-    fetchSkills({ enabled: true, scope: "owned", agentCode })
+    fetchSkills({ enabled: true, scope: "callable", agentCode })
       .then((response) => {
         if (cancelled) return;
         setSkills(response.items);
@@ -15083,7 +15109,7 @@ function SkillManager({
   isUploading: boolean;
   items: SkillSummary[];
   newDraft: SkillDraft;
-  scope: "owned" | "callable";
+  scope: "owned" | "shared";
   saveError: string | null;
   savedLabel: string | null;
   selectedFile: SkillFile | null;
@@ -15094,7 +15120,7 @@ function SkillManager({
   onFileChange: (content: string) => void;
   onFileSelect: (file: SkillFile) => void;
   onNewDraftChange: (draft: SkillDraft) => void;
-  onScopeChange: (scope: "owned" | "callable") => void;
+  onScopeChange: (scope: "owned" | "shared") => void;
   onSave: (event: React.FormEvent<HTMLFormElement>) => void;
   onSaveFile: () => void;
   onSelect: (skillId: string) => void;
@@ -15111,6 +15137,8 @@ function SkillManager({
   const [isUploadSkillZipExpanded, setIsUploadSkillZipExpanded] = useState(false);
   const [isSkillSidebarCollapsed, setIsSkillSidebarCollapsed] = useState(false);
   const [abilityMode, setAbilityMode] = useState<"agents" | "skills">("agents");
+  const [activeSkillId, setActiveSkillId] = useState<string | null>(null);
+  const skillButtonRefs = useRef(new Map<string, HTMLButtonElement>());
   const [expandedSkillDirectories, setExpandedSkillDirectories] = useState<Set<string>>(() => new Set());
   const skillFileGroups = useMemo(() => {
     const rootFiles: SkillFile[] = [];
@@ -15138,6 +15166,34 @@ function SkillManager({
   useEffect(() => {
     setExpandedSkillDirectories(new Set());
   }, [detail?.id]);
+
+  useEffect(() => {
+    if (detail?.id) setActiveSkillId(detail.id);
+  }, [detail?.id]);
+
+  useEffect(() => {
+    if (activeSkillId && !items.some((skill) => skill.id === activeSkillId)) setActiveSkillId(null);
+  }, [activeSkillId, items]);
+
+  function selectSkill(skillId: string, focus = false) {
+    setActiveSkillId(skillId);
+    onSelect(skillId);
+    if (focus) skillButtonRefs.current.get(skillId)?.focus();
+  }
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (abilityMode !== "skills" || (event.key !== "ArrowUp" && event.key !== "ArrowDown") || event.altKey || event.ctrlKey || event.metaKey || items.length === 0) return;
+      const target = event.target;
+      if (target instanceof HTMLElement && (target.matches("input, textarea, select, [contenteditable='true']") || target.isContentEditable)) return;
+      event.preventDefault();
+      const currentIndex = items.findIndex((skill) => skill.id === activeSkillId);
+      const nextIndex = currentIndex === -1 ? (event.key === "ArrowDown" ? 0 : items.length - 1) : event.key === "ArrowDown" ? Math.min(currentIndex + 1, items.length - 1) : Math.max(currentIndex - 1, 0);
+      selectSkill(items[nextIndex].id, true);
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [abilityMode, activeSkillId, items]);
 
   function handleToggleSkillDirectory(directoryName: string) {
     setExpandedSkillDirectories((current) => {
@@ -15211,14 +15267,14 @@ function SkillManager({
             </button>
             <button
               className={`rounded-lg border px-3 py-2 text-xs transition ${
-                scope === "callable"
+                scope === "shared"
                   ? "border-mint-300/30 bg-mint-300/12 text-mint-200"
                   : "border-white/10 bg-white/[0.03] text-slate-400 hover:border-mint-300/25 hover:text-slate-200"
               }`}
               type="button"
-              onClick={() => onScopeChange("callable")}
+              onClick={() => onScopeChange("shared")}
             >
-              可调用 Skill
+              共享与系统 Skill
             </button>
           </div>
 
@@ -15227,43 +15283,29 @@ function SkillManager({
           ) : error ? (
             <div className="rounded-lg border border-red-400/25 bg-red-400/10 p-3 text-sm text-red-100">{error}</div>
           ) : items.length > 0 ? (
-            <div className="space-y-2">
+            <nav aria-label="Skill 列表" className="space-y-1">
               {items.map((skill) => {
-                const selected = detail?.id === skill.id;
+                const selected = activeSkillId === skill.id;
                 return (
                   <button
                     key={skill.id}
-                    className={`block w-full rounded-lg border p-3 text-left transition ${
+                    ref={(element) => { if (element) skillButtonRefs.current.set(skill.id, element); else skillButtonRefs.current.delete(skill.id); }}
+                    className={`flex w-full items-center gap-2 rounded-md border px-2.5 py-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mint-300/55 ${
                       selected
-                        ? "border-mint-300/30 bg-mint-300/10"
-                        : "border-white/10 bg-white/[0.028] hover:border-mint-300/25 hover:bg-white/[0.045]"
+                        ? "border-mint-300/30 bg-mint-300/10 text-mint-100"
+                        : "border-transparent text-slate-300 hover:border-white/10 hover:bg-white/[0.035] hover:text-slate-100"
                     }`}
                     type="button"
-                    onClick={() => onSelect(skill.id)}
+                    title={skill.description || skill.name}
+                    onClick={() => selectSkill(skill.id)}
                   >
-                    <div className="mb-2 flex items-center justify-between gap-2">
-                      <span className="truncate text-sm font-medium text-slate-100">{skill.name}</span>
-                      <span
-                        className={`shrink-0 rounded-md border px-2 py-0.5 text-[11px] ${
-                          skill.enabled
-                            ? "border-mint-300/25 bg-mint-300/10 text-mint-200"
-                            : "border-white/10 bg-white/[0.035] text-slate-500"
-                        }`}
-                      >
-                        {skill.enabled ? "启用" : "停用"}
-                      </span>
-                    </div>
-                    <p className="line-clamp-2 text-xs leading-5 text-slate-500">{skill.description || "无描述"}</p>
-                    <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-600">
-                      <span>{skill.skill_type === "system" ? "系统自带" : "用户自建"}</span>
-                      <span>{skill.published ? "已分享" : "仅自己可见"}</span>
-                      <span>{skill.owner_username ? `Owner: ${skill.owner_username}` : "Owner: 系统"}</span>
-                      <span>{formatAmount(skill.file_count)} files</span>
-                    </div>
+                    <Layers3 className={`shrink-0 ${selected ? "text-mint-300" : "text-slate-500"}`} size={15} />
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium">{skill.name}</span>
+                    <span className={`shrink-0 text-[11px] ${selected ? "text-mint-200/75" : "text-slate-600"}`}>{skill.skill_type === "system" ? "系统" : skill.published ? "已分享" : "自建"}</span>
                   </button>
                 );
               })}
-            </div>
+            </nav>
           ) : (
             <div className="rounded-lg border border-white/10 bg-white/[0.025] p-4 text-sm leading-6 text-slate-500">
               暂无 skill。可以新建自定义 skill，或上传标准 skill zip 包。
@@ -15272,6 +15314,7 @@ function SkillManager({
           </> : <AgentNavigation />}
         </section>
 
+        {abilityMode === "skills" ? <>
         <section className="rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
           <button
             aria-expanded={isCreateSkillFormExpanded}
@@ -15367,6 +15410,7 @@ function SkillManager({
             </div>
           ) : null}
         </section>
+        </> : null}
         </div>
         <WorkspaceSidebarCollapseToggle isCollapsed={isSkillSidebarCollapsed} label="Skill 列表与操作面板" onToggle={() => setIsSkillSidebarCollapsed((collapsed) => !collapsed)} />
       </aside>

@@ -39,7 +39,7 @@ def _forbidden(exc: Exception) -> HTTPException:
 async def get_skills(
     q: Annotated[str | None, Query(min_length=1, max_length=200)] = None,
     enabled: Annotated[bool | None, Query()] = None,
-    scope: Annotated[str, Query(pattern="^(owned|callable)$")] = "callable",
+    scope: Annotated[str, Query(pattern="^(owned|callable|shared)$")] = "callable",
     agent_code: Annotated[str | None, Query(max_length=80)] = None,
     auth_context: AuthContext = Depends(require_current_user),
 ) -> SkillListResponse:
