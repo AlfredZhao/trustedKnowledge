@@ -13,6 +13,12 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Added / 新增
 
+- Added PWA session recovery for cached dashboard and list views: when iOS reclaims a background WebView, reopening restores the prior view and saved scroll position without an automatic online refresh; explicit refresh and local write actions still load current data.
+- 为已缓存的总览和列表视图新增 PWA 会话恢复：iOS 回收后台 WebView 后重新打开会恢复原视图和已保存的滚动位置，不自动在线刷新；用户主动刷新及本机写入操作仍会读取最新数据。
+
+- Added safe Personal Secrets recovery: restores the selected record, mobile detail sheet, and scroll position, while never persisting plaintext returned by the reveal API; the masked list-summary cache expires after 15 minutes.
+- 为个人机密新增安全恢复：恢复选中记录、移动端详情弹窗与滚动位置，但绝不持久化 reveal 接口返回的明文；仅含脱敏摘要的列表缓存 15 分钟后过期。
+
 - Added a per-block copy control to shared Markdown previews. It copies only the selected fenced code block and provides success or failure feedback.
 - 为共用 Markdown 预览新增逐代码块复制控件：仅复制所选围栏代码块，并提供成功或失败反馈。
 

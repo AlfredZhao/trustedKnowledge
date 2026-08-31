@@ -320,6 +320,7 @@ export interface StoredUiState {
     query: string;
     page: number;
     selectedId: number | null;
+    mobileDetailOpen: boolean;
   };
   todos: {
     query: string;
@@ -1342,6 +1343,7 @@ export function readStoredUiState(): StoredUiState {
         query: readString(personalSecrets.query),
         page: readPositiveInteger(personalSecrets.page, defaults.personalSecrets.page),
         selectedId: readNullablePositiveInteger(personalSecrets.selectedId),
+        mobileDetailOpen: typeof personalSecrets.mobileDetailOpen === "boolean" ? personalSecrets.mobileDetailOpen : false,
       },
       todos: {
         query: readString(todos.query),
@@ -1471,6 +1473,7 @@ function buildDefaultUiState(): StoredUiState {
       query: "",
       page: 1,
       selectedId: null,
+      mobileDetailOpen: false,
     },
     todos: {
       query: "",

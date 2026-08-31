@@ -401,6 +401,38 @@ const emptyPersonalSecretDraft: PersonalSecretDraft = {
   tags: "",
 };
 
+const PWA_SCROLL_STATE_STORAGE_KEY = "trustedKnowledge.scrollState.v1";
+
+type StoredScrollState = {
+  windowY: number;
+  containers: Record<string, number>;
+};
+
+function readStoredScrollState(): StoredScrollState | null {
+  try {
+    const value = window.localStorage.getItem(PWA_SCROLL_STATE_STORAGE_KEY);
+    if (!value) return null;
+    const state = JSON.parse(value) as Partial<StoredScrollState>;
+    if (typeof state.windowY !== "number" || !state.containers || typeof state.containers !== "object") return null;
+    return { windowY: Math.max(0, state.windowY), containers: state.containers };
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredScrollState() {
+  try {
+    const containers: Record<string, number> = {};
+    document.querySelectorAll<HTMLElement>("[data-session-scroll]").forEach((element) => {
+      const key = element.dataset.sessionScroll;
+      if (key) containers[key] = element.scrollTop;
+    });
+    window.localStorage.setItem(PWA_SCROLL_STATE_STORAGE_KEY, JSON.stringify({ windowY: window.scrollY, containers }));
+  } catch {
+    // Scroll restoration is a progressive enhancement and must not block the app.
+  }
+}
+
 const emptyEnglishMaterialDraft: EnglishMaterialDraft = {
   sequence_no: "",
   category: DEFAULT_ENGLISH_MATERIAL_CATEGORY,
@@ -783,7 +815,9 @@ function App() {
   const [selectedPersonalSecretId, setSelectedPersonalSecretId] = useState<number | null>(restoredUiState.personalSecrets.selectedId);
   const [personalSecretDraft, setPersonalSecretDraft] = useState<PersonalSecretDraft>(emptyPersonalSecretDraft);
   const [isPersonalSecretEditorOpen, setIsPersonalSecretEditorOpen] = useState(false);
-  const [isMobilePersonalSecretDetailOpen, setIsMobilePersonalSecretDetailOpen] = useState(false);
+  const [isMobilePersonalSecretDetailOpen, setIsMobilePersonalSecretDetailOpen] = useState(
+    restoredUiState.personalSecrets.mobileDetailOpen,
+  );
   const [isPersonalSecretLoading, setIsPersonalSecretLoading] = useState(false);
   const [isPersonalSecretDetailLoading, setIsPersonalSecretDetailLoading] = useState(false);
   const [isPersonalSecretSaving, setIsPersonalSecretSaving] = useState(false);
@@ -1320,6 +1354,30 @@ function App() {
   }, [themeMode]);
 
   useEffect(() => {
+    const savedScrollState = readStoredScrollState();
+    if (savedScrollState) {
+      window.requestAnimationFrame(() => {
+        window.scrollTo({ top: savedScrollState.windowY });
+        Object.entries(savedScrollState.containers).forEach(([key, scrollTop]) => {
+          const element = document.querySelector<HTMLElement>(`[data-session-scroll="${key}"]`);
+          if (element) element.scrollTop = scrollTop;
+        });
+      });
+    }
+
+    const persistScrollState = () => writeStoredScrollState();
+    const persistWhenHidden = () => {
+      if (document.visibilityState === "hidden") persistScrollState();
+    };
+    window.addEventListener("pagehide", persistScrollState);
+    document.addEventListener("visibilitychange", persistWhenHidden);
+    return () => {
+      window.removeEventListener("pagehide", persistScrollState);
+      document.removeEventListener("visibilitychange", persistWhenHidden);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!apiKey) return;
 
     writeStoredUiState({
@@ -1368,6 +1426,7 @@ function App() {
         query: personalSecretQuery,
         page: personalSecretPage,
         selectedId: selectedPersonalSecretId,
+        mobileDetailOpen: isMobilePersonalSecretDetailOpen,
       },
       todos: {
         query: todoQuery,
@@ -1492,6 +1551,7 @@ function App() {
     historyUsername,
     historyVectorStatus,
     historyWeek,
+    isMobilePersonalSecretDetailOpen,
     isMobileNavVisible,
     isSidebarExpanded,
     page,
@@ -1856,6 +1916,11 @@ function App() {
         setSelectedId(navigatedItem?.id ?? null);
         setDraft(navigatedItem ? itemToDraft(navigatedItem) : emptyDraft);
       }
+
+      if (refreshToken === 0) {
+        setIsLoading(false);
+        return;
+      }
     }
 
     setIsLoading(!cached);
@@ -1908,6 +1973,11 @@ function App() {
       setFactoryItems(cached.items);
       setFactoryTotalItems(cached.total);
       setFactoryError(null);
+
+      if (factoryRefreshToken === 0) {
+        setIsFactoryLoading(false);
+        return;
+      }
     }
 
     setIsFactoryLoading(!cached);
@@ -1982,6 +2052,11 @@ function App() {
       setBlogFactoryItems(cached.items);
       setBlogFactoryTotal(cached.total);
       setBlogFactoryError(null);
+
+      if (blogFactoryRefreshToken === 0) {
+        setIsBlogFactoryLoading(false);
+        return;
+      }
     }
 
     setIsBlogFactoryLoading(!cached);
@@ -2174,6 +2249,11 @@ function App() {
         selectedTodoSavedDraftRef.current = navigatedItem ? todoItemToDraft(navigatedItem) : emptyTodoDraft;
         setTodoDraft(resolveTodoEditorDraft(navigatedItem ?? null, todoDraftsByIdRef.current));
       }
+
+      if (todoRefreshToken === 0) {
+        setIsTodoLoading(false);
+        return;
+      }
     }
 
     setIsTodoLoading(!cached);
@@ -2244,6 +2324,11 @@ function App() {
         if (currentSelectedId && cached.items.some((item) => item.id === currentSelectedId)) return currentSelectedId;
         return cached.items[0]?.id ?? null;
       });
+
+      if (personalSecretRefreshToken === 0) {
+        setIsPersonalSecretLoading(false);
+        return;
+      }
     }
 
     setIsPersonalSecretLoading(!cached);
@@ -2285,6 +2370,11 @@ function App() {
         days: cached.days.length > 0 ? cached.days : buildDayOptions(),
         learn_levels: cached.learn_levels.length > 0 ? cached.learn_levels : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
       });
+
+      if (currentRecordRefreshToken === 0) {
+        setIsCurrentRecordOptionsLoading(false);
+        return;
+      }
     }
 
     setIsCurrentRecordOptionsLoading(!cached);
@@ -2352,6 +2442,11 @@ function App() {
       setCurrentRecordItems(cached.items);
       setCurrentRecordTotal(cached.total);
       setCurrentRecordError(null);
+
+      if (currentRecordRefreshToken === 0) {
+        setIsCurrentRecordLoading(false);
+        return;
+      }
     }
 
     setIsCurrentRecordLoading(!cached);
@@ -2410,6 +2505,11 @@ function App() {
       setEnglishMaterialItems(cached.items);
       setEnglishMaterialTotal(cached.total);
       setEnglishMaterialError(null);
+
+      if (englishMaterialRefreshToken === 0) {
+        setIsEnglishMaterialLoading(false);
+        return;
+      }
     }
 
     setIsEnglishMaterialLoading(!cached);
@@ -2504,6 +2604,11 @@ function App() {
       setHistoryTotal(cached.total);
       setHistorySummary({ ...cached.summary, user_types: cached.summary.user_types ?? {} });
       setHistoryError(null);
+
+      if (historyRefreshToken === 0) {
+        setIsHistoryLoading(false);
+        return;
+      }
     }
 
     setIsHistoryLoading(!cached);
@@ -2610,6 +2715,12 @@ function App() {
       setOverviewError(null);
     }
 
+    if (hasCompleteCache && !isManualRefresh) {
+      return () => {
+        mounted = false;
+      };
+    }
+
     Promise.allSettled([
       canAccessUsage ? fetchLlmUsage(usageLimit, false) : Promise.resolve({ items: [], total: 0 }),
       fetchTodos(todoQueryConfig),
@@ -2710,6 +2821,12 @@ function App() {
       setIsUsageLoading(false);
     } else {
       setIsUsageLoading(true);
+    }
+
+    if (cached && !refreshOnly) {
+      return () => {
+        mounted = false;
+      };
     }
 
     fetchLlmUsage(USAGE_SAMPLE_LIMIT)
@@ -5607,6 +5724,7 @@ function App() {
                 setIsPersonalSecretEditorOpen(true);
               }}
               onPageChange={setPersonalSecretPage}
+              onRefresh={() => setPersonalSecretRefreshToken((current) => current + 1)}
               onSelect={handleSelectPersonalSecret}
               onCloseMobileDetail={() => setIsMobilePersonalSecretDetailOpen(false)}
               onLoadForEdit={handleLoadPersonalSecretForEdit}
@@ -11256,6 +11374,7 @@ function PersonalSecretsWorkspace({
   onClearSearch,
   onNew,
   onPageChange,
+  onRefresh,
   onSelect,
   onCloseMobileDetail,
   onLoadForEdit,
@@ -11275,6 +11394,7 @@ function PersonalSecretsWorkspace({
   onClearSearch: () => void;
   onNew: () => void;
   onPageChange: (page: number) => void;
+  onRefresh: () => void;
   onSelect: (item: PersonalSecretItem) => void;
   onCloseMobileDetail: () => void;
   onLoadForEdit: (secretId: number) => void;
@@ -11382,14 +11502,25 @@ function PersonalSecretsWorkspace({
             <h2 className="text-lg font-semibold text-slate-50">个人机密</h2>
             <p className="mt-1 text-sm leading-6 text-slate-500">仅展示当前账号记录；密码不会在列表中显示。</p>
           </div>
-          <button
-            className="flex h-10 items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-3 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20"
-            type="button"
-            onClick={onNew}
-          >
-            <Plus size={16} />
-            新增
-          </button>
+          <div className="flex shrink-0 gap-2">
+            <button
+              className="grid h-10 w-10 place-items-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600"
+              disabled={isLoading}
+              title="刷新列表"
+              type="button"
+              onClick={onRefresh}
+            >
+              <RefreshCw className={isLoading ? "animate-spin" : ""} size={16} />
+            </button>
+            <button
+              className="flex h-10 items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-3 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20"
+              type="button"
+              onClick={onNew}
+            >
+              <Plus size={16} />
+              新增
+            </button>
+          </div>
         </div>
 
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
@@ -11534,7 +11665,7 @@ function PersonalSecretDetailDialog({
             </button>
           </div>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto p-3">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-3" data-session-scroll="personal-secret-detail">{children}</div>
       </section>
     </div>
   );

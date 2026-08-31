@@ -26,7 +26,7 @@ export async function fetchPersonalSecrets(query: PersonalSecretQuery): Promise<
 }
 
 export function readCachedPersonalSecrets(query: PersonalSecretQuery): PersonalSecretListResponse | null {
-  return readCachedGet<PersonalSecretListResponse>(buildPersonalSecretsPath(query));
+  return readCachedGet<PersonalSecretListResponse>(buildPersonalSecretsPath(query), 15 * 60 * 1000);
 }
 
 export async function getPersonalSecret(id: number): Promise<PersonalSecretItem> {
