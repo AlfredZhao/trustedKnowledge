@@ -30,6 +30,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Changed / 变更
 
+- Changed PWA HTML loading to use the cached app shell after 450ms while continuing the network refresh in the background, reducing startup delays when the network is slow but available.
+- 调整 PWA 的 HTML 加载策略：网络响应超过 450ms 时先使用已缓存应用壳，网络仍在后台更新，减少网络可用但响应慢时的启动等待。
+
 - Streamlined the Agent mode sidebar into a compact selectable list and show Skill creation/upload actions only in Skill mode; the right-side Agent tabs remain available.
 - 精简 Agent 模式左侧栏为紧凑可选列表，并仅在 Skill 模式展示新建与上传操作；右侧 Agent 标签栏保持不变。
 
@@ -37,6 +40,9 @@ The format follows the common GitHub changelog convention inspired by
 - 调整 Skill 管理范围标签：`我的 Skill` 与非本人所有的共享/系统 Skill 分开展示，避免两个列表重复。
 
 #### Fixed / 修复
+
+- Fixed English Material detail recovery in the mobile PWA: after a background WebView is reclaimed, reopening restores the same detail dialog and its copy actions from the cached item while refreshing the latest detail in the background.
+- 修复手机 PWA 后台 WebView 被回收后英语素材详情丢失的问题：重新打开会从缓存恢复同一条详情弹窗及复制操作，并在后台刷新最新详情。
 
 - Fixed Blog Factory AI Review rejecting DeepSeek responses that use equivalent English labels or wrap the review object. DeepSeek now requests JSON mode, and safe compatible labels are normalized before validation without relaxing the unique-source replacement requirement.
 - 修复博客工厂 AI Review 将使用等价英文标签或包装审阅对象的 DeepSeek 响应一律判为格式错误的问题。现对 DeepSeek 请求 JSON 模式，并在校验前兼容转换安全的等价值，且不放宽原文唯一替换约束。

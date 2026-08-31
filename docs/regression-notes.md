@@ -19,6 +19,50 @@ Keep entries concrete. Prefer file paths, function names, SQL placeholders, and 
 
 All Oracle executions must receive only bind names present in that statement's SQL text. In multi-step repository flows, keep row-lock/read, update, count, and vector-query parameter dictionaries and `setinputsizes()` calls separate; do not let business-field binds or CLOB declarations leak into a preceding `SELECT ... FOR UPDATE` or summary query. Add or retain a regression test whenever dynamic SQL bindings change. Module-specific `DPY-4008` incidents below document concrete triggers and guardrails.
 
+## 英语素材详情必须在 PWA 回收后恢复到可复制状态
+
+### Symptom
+
+手机 PWA 从英语素材详情复制标题、切换到其它应用粘贴后，若系统回收后台 WebView，返回应用只显示英语素材列表，用户必须再次打开同一条详情才能复制翻译或脚本。
+
+### Trigger
+
+英语素材详情弹窗打开时，iOS 或 Android 回收后台 PWA 进程，随后通过应用图标或系统任务恢复。
+
+### Root Cause
+
+React state 会随 WebView 回收而丢失。原先 `trustedKnowledge.uiState.v2` 仅保存英语素材的 `selectedId`，没有保存详情打开状态；列表恢复后也不会主动读取该条详情。Service Worker 只能缓存应用壳和静态资源，不能保留 React 内存状态。
+
+### Safe Pattern
+
+`StoredUiState.englishMaterials` 必须同时保存 `selectedId` 和 `detailOpen`。`handleSelectEnglishMaterial()` 要在 state 更新前同步写入详情会话和 `english_material_id` URL 参数；启动时优先用 `readCachedEnglishMaterial()` 显示缓存详情，并在后台调用 `getEnglishMaterial()` 刷新。关闭详情或离开英语素材模块时必须清除 URL 参数。
+
+### Guardrail
+
+在手机宽度打开任一英语素材详情，依次点击“复制标题”、切到其它应用、模拟刷新或关闭后重新打开 PWA。应直接回到同一详情，缓存存在时“复制翻译”和“复制脚本”无需等待即可操作；断网时仍可显示缓存详情，联网后内容会后台更新。关闭详情后刷新应只停留在列表。检查深浅主题，并运行 `cd frontend && npm run build`。
+
+## PWA 应用壳不能因慢网络无限阻塞启动
+
+### Symptom
+
+已安装的 PWA 从后台恢复或重新打开时，静态“加载中...”页面在网络可用但响应较慢的情况下停留超过一秒。
+
+### Trigger
+
+Service Worker 的 HTML `networkFirst()` 请求没有失败、但首字节迟迟未返回；设备已经具有可用的应用壳缓存。
+
+### Root Cause
+
+纯网络优先策略只会在请求失败后读取 Cache Storage，慢网络不会触发失败分支，因此错过了本可立即使用的缓存壳。
+
+### Safe Pattern
+
+`frontend/public/sw.js:networkFirst()` 必须在 `HTML_NETWORK_TIMEOUT_MS`（当前 450ms）后优先返回已缓存的同请求或 `/index.html` 回退壳，同时让未完成的网络请求继续写入缓存。缓存不存在时仍必须等待网络结果，不能把首次访问误判为离线。
+
+### Guardrail
+
+在已加载过一次 PWA 的移动设备上使用网络限速，重新打开应用应在约 450ms 后进入缓存壳；恢复正常网络后再次打开应获取新壳并更新缓存。清除站点缓存后首次访问仍须正常等待并完整加载。运行 `cd frontend && npm run build`。
+
 ## DeepSeek AI 审阅必须保持 JSON 契约与安全替换约束
 
 ### Symptom

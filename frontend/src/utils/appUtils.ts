@@ -351,6 +351,7 @@ export interface StoredUiState {
     sortBy: EnglishMaterialSortBy;
     sortDir: SortDirection;
     selectedId: number | null;
+    detailOpen: boolean;
     draft: EnglishMaterialDraft;
   };
   history: {
@@ -809,6 +810,21 @@ export function readWeChatErrorFromHash() {
 
 export function clearLocationHash() {
   window.history.replaceState(null, document.title, `${window.location.pathname}${window.location.search}`);
+}
+
+export function readEnglishMaterialIdFromLocation(): number | null {
+  const value = new URLSearchParams(window.location.search).get("english_material_id");
+  return readNullablePositiveInteger(value);
+}
+
+export function writeEnglishMaterialIdToLocation(id: number | null) {
+  const url = new URL(window.location.href);
+  if (id) {
+    url.searchParams.set("english_material_id", String(id));
+  } else {
+    url.searchParams.delete("english_material_id");
+  }
+  window.history.replaceState(null, document.title, url.pathname + url.search + url.hash);
 }
 
 export async function copyText(value: string) {
@@ -1378,6 +1394,7 @@ export function readStoredUiState(): StoredUiState {
         sortBy: readStringUnion(englishMaterials.sortBy, ENGLISH_MATERIAL_SORT_FIELDS, defaults.englishMaterials.sortBy),
         sortDir: readStringUnion(englishMaterials.sortDir, SORT_DIRECTIONS, defaults.englishMaterials.sortDir),
         selectedId: readNullablePositiveInteger(englishMaterials.selectedId),
+        detailOpen: typeof englishMaterials.detailOpen === "boolean" ? englishMaterials.detailOpen : false,
         draft: englishMaterialDraft,
       },
       history: {
@@ -1419,6 +1436,24 @@ export function writeStoredUiState(state: StoredUiState) {
     window.localStorage.setItem(UI_STATE_STORAGE_KEY, JSON.stringify(state));
   } catch {
     // Storage can be unavailable in private mode or under quota pressure.
+  }
+}
+
+export function writeStoredEnglishMaterialDetailState(selectedId: number | null, detailOpen: boolean) {
+  try {
+    const raw = window.localStorage.getItem(UI_STATE_STORAGE_KEY);
+    const stored = raw ? JSON.parse(raw) : {};
+    const state = isPlainRecord(stored) ? stored : {};
+    const englishMaterials = readRecord(state.englishMaterials);
+    window.localStorage.setItem(
+      UI_STATE_STORAGE_KEY,
+      JSON.stringify({
+        ...state,
+        englishMaterials: { ...englishMaterials, selectedId, detailOpen },
+      }),
+    );
+  } catch {
+    // This immediate snapshot is best effort; the normal UI-state effect will retry after render.
   }
 }
 
@@ -1504,6 +1539,7 @@ function buildDefaultUiState(): StoredUiState {
       sortBy: "id",
       sortDir: "desc",
       selectedId: null,
+      detailOpen: false,
       draft: emptyEnglishMaterialDraft,
     },
     history: {

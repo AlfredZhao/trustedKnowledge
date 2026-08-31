@@ -151,6 +151,7 @@ import {
   fetchNextEnglishMaterialSequence,
   generateEnglishMaterial,
   getEnglishMaterial,
+  readCachedEnglishMaterial,
   readCachedEnglishMaterials,
   refreshEnglishMaterialVectors,
   updateEnglishMaterial,
@@ -276,6 +277,7 @@ import {
   normalizeCurrentRecordOptions,
   normalizeFactoryTaskResult,
   parseUtcDate,
+  readEnglishMaterialIdFromLocation,
   readHistoryAskVectorStatus,
   readOverviewRefreshError,
   readStoredNewDraft,
@@ -294,6 +296,8 @@ import {
   upsertBlogPublishConfig,
   upsertCodexJobMessage,
   waitForBackendRecovery,
+  writeEnglishMaterialIdToLocation,
+  writeStoredEnglishMaterialDetailState,
   writeStoredNewDraft,
   writeStoredUiState,
   type AiCodingMessage,
@@ -615,6 +619,16 @@ function getKnowledgeSaveError(error: unknown): string {
 function App() {
   // Restored UI state and long-lived workspace state.
   const [restoredUiState] = useState<StoredUiState>(() => readStoredUiState());
+  const [initialEnglishMaterialRestore] = useState(() => {
+    const idFromLocation = readEnglishMaterialIdFromLocation();
+    const selectedId = idFromLocation ?? restoredUiState.englishMaterials.selectedId;
+    const detailOpen = idFromLocation !== null || (restoredUiState.englishMaterials.detailOpen && selectedId !== null);
+    return {
+      selectedId,
+      detailOpen,
+      cachedItem: selectedId ? readCachedEnglishMaterial(selectedId) : null,
+    };
+  });
   const restoredBlogFactoryArticleDraftRef = useRef(Boolean(restoredUiState.blogFactory.articleDraft));
   const restoredBlogFactorySelectionRef = useRef(restoredUiState.blogFactory.selectedItemId);
   const hasRestoredLatestCodexJobRef = useRef(false);
@@ -629,7 +643,9 @@ function App() {
     return readStoredApiKey();
   });
   const [authUser, setAuthUser] = useState<AuthUser | null>(() => readStoredAuthUser());
-  const [activeView, setActiveView] = useState<AppView>(restoredUiState.activeView);
+  const [activeView, setActiveView] = useState<AppView>(
+    initialEnglishMaterialRestore.detailOpen ? "englishMaterials" : restoredUiState.activeView,
+  );
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(restoredUiState.sidebarExpanded);
   const [isKnowledgeEntryCollapsed, setIsKnowledgeEntryCollapsed] = useState(false);
   const [isMobileKnowledgeEntryCollapsed, setIsMobileKnowledgeEntryCollapsed] = useState(false);
@@ -898,12 +914,14 @@ function App() {
   const [englishMaterialVectorStatus, setEnglishMaterialVectorStatus] = useState<"all" | "0" | "1">("all");
   const [englishMaterialSortBy, setEnglishMaterialSortBy] = useState<EnglishMaterialSortBy>(restoredUiState.englishMaterials.sortBy);
   const [englishMaterialSortDir, setEnglishMaterialSortDir] = useState<SortDirection>(restoredUiState.englishMaterials.sortDir);
-  const [selectedEnglishMaterial, setSelectedEnglishMaterial] = useState<EnglishMaterialItem | null>(null);
+  const [selectedEnglishMaterial, setSelectedEnglishMaterial] = useState<EnglishMaterialItem | null>(initialEnglishMaterialRestore.cachedItem);
   todoCurrentAppendTargetRef.current = todoCurrentAppendTarget;
-  const [isEnglishMaterialDetailOpen, setIsEnglishMaterialDetailOpen] = useState(false);
+  const [isEnglishMaterialDetailOpen, setIsEnglishMaterialDetailOpen] = useState(initialEnglishMaterialRestore.detailOpen);
   const [isEnglishMaterialCreateOpen, setIsEnglishMaterialCreateOpen] = useState(false);
   const [englishMaterialDraft, setEnglishMaterialDraft] = useState<EnglishMaterialDraft>(restoredUiState.englishMaterials.draft);
-  const [englishMaterialDetailDraft, setEnglishMaterialDetailDraft] = useState<EnglishMaterialDraft>(emptyEnglishMaterialDraft);
+  const [englishMaterialDetailDraft, setEnglishMaterialDetailDraft] = useState<EnglishMaterialDraft>(
+    initialEnglishMaterialRestore.cachedItem ? englishMaterialItemToDraft(initialEnglishMaterialRestore.cachedItem) : emptyEnglishMaterialDraft,
+  );
   const [isEnglishMaterialLoading, setIsEnglishMaterialLoading] = useState(false);
   const [isEnglishMaterialDetailLoading, setIsEnglishMaterialDetailLoading] = useState(false);
   const [isEnglishMaterialSaving, setIsEnglishMaterialSaving] = useState(false);
@@ -917,6 +935,7 @@ function App() {
     Boolean(restoredUiState.englishMaterials.draft.sequence_no) &&
       !isBlankEnglishMaterialDraftExceptSequence(restoredUiState.englishMaterials.draft),
   );
+  const hasRestoredEnglishMaterialDetailRef = useRef(false);
   const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
   const [historyTotal, setHistoryTotal] = useState(0);
   const [historySummary, setHistorySummary] = useState<HistorySummary>({
@@ -1457,6 +1476,7 @@ function App() {
         sortBy: englishMaterialSortBy,
         sortDir: englishMaterialSortDir,
         selectedId: selectedEnglishMaterial?.id ?? null,
+        detailOpen: isEnglishMaterialDetailOpen,
         draft: englishMaterialDraft,
       },
       history: {
@@ -1551,6 +1571,7 @@ function App() {
     historyUsername,
     historyVectorStatus,
     historyWeek,
+    isEnglishMaterialDetailOpen,
     isMobilePersonalSecretDetailOpen,
     isMobileNavVisible,
     isSidebarExpanded,
@@ -2551,6 +2572,57 @@ function App() {
     englishMaterialUsername,
     debouncedEnglishMaterialSemanticQuery,
   ]);
+
+  useEffect(() => {
+    if (
+      !apiKey ||
+      activeView !== "englishMaterials" ||
+      !isEnglishMaterialDetailOpen ||
+      hasRestoredEnglishMaterialDetailRef.current
+    ) {
+      return;
+    }
+
+    const materialId = initialEnglishMaterialRestore.selectedId;
+    if (!materialId) return;
+
+    hasRestoredEnglishMaterialDetailRef.current = true;
+    let mounted = true;
+    const hasCachedDetail = initialEnglishMaterialRestore.cachedItem?.id === materialId;
+    if (!hasCachedDetail) setIsEnglishMaterialDetailLoading(true);
+
+    getEnglishMaterial(materialId)
+      .then((detail) => {
+        if (!mounted) return;
+        setSelectedEnglishMaterial(detail);
+        setEnglishMaterialDetailDraft(englishMaterialItemToDraft(detail));
+        setEnglishMaterialItems((current) => current.map((entry) => (entry.id === detail.id ? detail : entry)));
+        setEnglishMaterialError(null);
+      })
+      .catch((error) => {
+        if (!mounted || hasCachedDetail) return;
+        setEnglishMaterialError(error instanceof Error ? error.message : "读取英语素材详情失败，请稍后重试。");
+      })
+      .finally(() => {
+        if (mounted) setIsEnglishMaterialDetailLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [
+    activeView,
+    apiKey,
+    initialEnglishMaterialRestore.cachedItem?.id,
+    initialEnglishMaterialRestore.selectedId,
+    isEnglishMaterialDetailOpen,
+  ]);
+
+  useEffect(() => {
+    if (activeView !== "englishMaterials" && readEnglishMaterialIdFromLocation() !== null) {
+      writeEnglishMaterialIdToLocation(null);
+    }
+  }, [activeView]);
 
   useEffect(() => {
     if (!apiKey || activeView !== "englishMaterials") return;
@@ -4477,6 +4549,10 @@ function App() {
   }
 
   async function handleSelectEnglishMaterial(item: EnglishMaterialItem, { openDetail = true }: { openDetail?: boolean } = {}) {
+    if (openDetail) {
+      writeEnglishMaterialIdToLocation(item.id);
+      writeStoredEnglishMaterialDetailState(item.id, true);
+    }
     setSelectedEnglishMaterial(item);
     setEnglishMaterialDetailDraft(englishMaterialItemToDraft(item));
     setEnglishMaterialCopiedLabel(null);
@@ -4563,10 +4639,8 @@ function App() {
   }
 
   function handleOpenOverviewEnglishMaterial(item: EnglishMaterialItem) {
-    setSelectedEnglishMaterial(item);
-    setEnglishMaterialDetailDraft(englishMaterialItemToDraft(item));
-    setIsEnglishMaterialDetailOpen(true);
     setActiveView("englishMaterials");
+    void handleSelectEnglishMaterial(item);
   }
 
   async function handleAskHistory(event: React.FormEvent<HTMLFormElement>) {
@@ -5843,7 +5917,11 @@ function App() {
                   .finally(() => setIsEnglishMaterialVectorRefreshing(false));
               }}
               onCloseDetail={() => {
-                if (!isEnglishMaterialDetailLoading) setIsEnglishMaterialDetailOpen(false);
+                if (!isEnglishMaterialDetailLoading) {
+                  writeEnglishMaterialIdToLocation(null);
+                  writeStoredEnglishMaterialDetailState(selectedEnglishMaterial?.id ?? null, false);
+                  setIsEnglishMaterialDetailOpen(false);
+                }
               }}
               onCloseCreate={() => {
                 if (!isEnglishMaterialSaving) setIsEnglishMaterialCreateOpen(false);

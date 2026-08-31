@@ -66,6 +66,10 @@ export async function getEnglishMaterial(id: number): Promise<EnglishMaterialIte
   return request<EnglishMaterialItem>(`/api/english-materials/${id}`);
 }
 
+export function readCachedEnglishMaterial(id: number): EnglishMaterialItem | null {
+  return readCachedGet<EnglishMaterialItem>(`/api/english-materials/${id}`);
+}
+
 export async function refreshEnglishMaterialVectors(): Promise<void> {
   return request<void>("/api/english-materials/refresh-vectors", {
     method: "POST",

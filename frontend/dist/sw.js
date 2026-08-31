@@ -1,6 +1,7 @@
 const SHELL_CACHE_NAME = "trusted-knowledge-shell-v3";
 const RUNTIME_CACHE_NAME = "trusted-knowledge-runtime-v3";
 const APP_SHELL_URLS = ["/", "/index.html", "/manifest.webmanifest"];
+const HTML_NETWORK_TIMEOUT_MS = 450;
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -47,21 +48,32 @@ self.addEventListener("fetch", (event) => {
 async function networkFirst(request, fallbackUrl) {
   const cache = await caches.open(SHELL_CACHE_NAME);
 
-  try {
-    const response = await fetch(request);
+  const networkResponse = fetch(request)
+    .then((response) => {
     if (response.ok) {
       cache.put(request, response.clone());
     }
     return response;
-  } catch {
-    const cached = await caches.match(request);
-    if (cached) return cached;
-    if (fallbackUrl) {
-      const fallback = await caches.match(fallbackUrl);
-      if (fallback) return fallback;
-    }
-    throw new Error("Network request failed");
+    })
+    .catch(() => null);
+  const response = await Promise.race([
+    networkResponse,
+    new Promise((resolve) => {
+      setTimeout(() => resolve(null), HTML_NETWORK_TIMEOUT_MS);
+    }),
+  ]);
+  if (response) return response;
+
+  const cached = await caches.match(request);
+  if (cached) return cached;
+  if (fallbackUrl) {
+    const fallback = await caches.match(fallbackUrl);
+    if (fallback) return fallback;
   }
+
+  const eventualResponse = await networkResponse;
+  if (eventualResponse) return eventualResponse;
+  throw new Error("Network request failed");
 }
 
 async function staleWhileRevalidate(request, cacheName) {
