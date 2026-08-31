@@ -1,9 +1,15 @@
+import { highlightCode } from "./codeHighlight";
+
 interface EnhancedCopyOptions {
   downloadFileName?: string | null;
   documentTitle?: string | null;
 }
 
-export function markdownToHtml(markdown: string) {
+interface MarkdownRenderOptions {
+  syntaxHighlight?: boolean;
+}
+
+export function markdownToHtml(markdown: string, options: MarkdownRenderOptions = {}) {
   const lines = removeLeakedMarkdownCodePlaceholders(markdown).replace(/\r\n/g, "\n").split("\n");
   const html: string[] = [];
   let paragraph: string[] = [];
@@ -30,10 +36,19 @@ export function markdownToHtml(markdown: string) {
   };
 
   const flushCodeBlock = () => {
+    const code = codeLines.join("\n");
     const languageClass = codeLanguage ? ` class="language-${escapeAttribute(codeLanguage)}"` : "";
     const codeBlockId = `code-block-${codeBlockIndex++}`;
+    if (codeLanguage.trim().toLowerCase() === "mermaid") {
+      html.push(renderMermaidBlock(code, codeBlockId));
+      inCodeBlock = false;
+      codeLanguage = "";
+      codeLines = [];
+      return;
+    }
+    const highlighted = options.syntaxHighlight === false ? null : highlightCode(code, codeLanguage);
     html.push(
-      `<div class="markdown-code-block" data-code-block="${codeBlockId}"><button type="button" class="markdown-code-copy-button" data-copy-code-block="${codeBlockId}" aria-label="复制代码">复制</button><pre><code${languageClass}>${escapeHtml(codeLines.join("\n"))}</code></pre></div>`,
+      `<div class="markdown-code-block" data-code-block="${codeBlockId}"><button type="button" class="markdown-code-copy-button" data-copy-code-block="${codeBlockId}" aria-label="复制代码">复制</button><pre><code${languageClass}>${highlighted ?? escapeHtml(code)}</code></pre></div>`,
     );
     inCodeBlock = false;
     codeLanguage = "";
@@ -175,7 +190,7 @@ export function markdownToHtml(markdown: string) {
 }
 
 export async function copyMarkdownAsRichText(markdown: string) {
-  const html = buildRichClipboardHtml(markdownToHtml(markdown));
+  const html = buildRichClipboardHtml(await buildPortableClipboardHtml(markdown));
   if (copyRichHtmlViaCopyEvent(html, markdown)) {
     return;
   }
@@ -198,8 +213,11 @@ export async function copyMarkdownAsRichText(markdown: string) {
 }
 
 export async function copyMarkdownAsEnhancedRichText(markdown: string, options?: EnhancedCopyOptions) {
-  const html = await inlineClipboardImages(buildEnhancedRichClipboardHtml(markdownToHtml(markdown)));
-  const fullDocument = buildStandaloneClipboardDocument(html, options?.documentTitle);
+  const portableHtml = await buildPortableClipboardHtml(markdown);
+  const clipboardHtml = buildEnhancedRichClipboardHtml(portableHtml);
+  const downloadHtml = buildEnhancedRichClipboardHtml(portableHtml);
+  const html = await inlineClipboardImages(clipboardHtml);
+  const fullDocument = buildStandaloneClipboardDocument(await inlineClipboardImages(downloadHtml), options?.documentTitle);
 
   try {
     if (copyRichHtmlViaCopyEvent(html, markdown)) {
@@ -293,6 +311,90 @@ function buildStandaloneClipboardDocument(bodyHtml: string, title: string | null
     `<body style="margin:0; padding:32px 20px; background:#f7f1ee;">${buildStandaloneCopyToolbar()}${bodyHtml}${buildStandaloneCopyScript()}</body>`,
     "</html>",
   ].join("");
+}
+
+function renderMermaidBlock(source: string, codeBlockId: string) {
+  return `<div class="markdown-mermaid-block" data-code-block="${codeBlockId}" data-mermaid-block><button type="button" class="markdown-code-copy-button" data-copy-code-block="${codeBlockId}" aria-label="复制 Mermaid 源码">复制</button><div class="markdown-mermaid-render" data-mermaid-render></div><details class="markdown-mermaid-source"><summary>查看 Mermaid 源码</summary><pre><code class="language-mermaid" data-mermaid-source>${escapeHtml(source)}</code></pre></details></div>`;
+}
+
+async function buildPortableClipboardHtml(markdown: string) {
+  return renderMermaidBlocksAsPng(markdownToHtml(markdown, { syntaxHighlight: false }));
+}
+
+async function renderMermaidBlocksAsPng(html: string) {
+  if (!html.includes("data-mermaid-block")) return html;
+  const container = document.createElement("div");
+  container.innerHTML = html;
+  const blocks = Array.from(container.querySelectorAll<HTMLElement>("[data-mermaid-block]"));
+  const { default: mermaid } = await import("mermaid");
+  mermaid.initialize({
+    startOnLoad: false,
+    securityLevel: "strict",
+    htmlLabels: false,
+    theme: "base",
+    themeVariables: { primaryColor: "#f8ebe6", primaryTextColor: "#5f1d1d", primaryBorderColor: "#c08475", lineColor: "#7c4a43", secondaryColor: "#fff9f6", tertiaryColor: "#fffdfb" },
+  });
+
+  for (const [index, block] of blocks.entries()) {
+    const source = block.querySelector<HTMLElement>("[data-mermaid-source]")?.textContent ?? "";
+    const fallback = document.createElement("pre");
+    fallback.textContent = source;
+    if (source.length > 20_000) {
+      block.replaceWith(fallback);
+      continue;
+    }
+    try {
+      const rendered = await mermaid.render(`tk-mermaid-clipboard-${Date.now()}-${index}`, source);
+      const image = document.createElement("img");
+      const png = await svgToPngDataUrl(rendered.svg);
+      image.src = png.dataUrl;
+      image.width = png.displayWidth;
+      image.height = png.displayHeight;
+      image.alt = "Mermaid 图表";
+      image.style.cssText = `display:block;width:${png.displayWidth}px;max-width:100%;height:auto;margin:14px auto;`;
+      block.replaceWith(image);
+    } catch {
+      block.replaceWith(fallback);
+    }
+  }
+  return container.innerHTML;
+}
+
+function svgToPngDataUrl(svg: string) {
+  return new Promise<{ dataUrl: string; displayWidth: number; displayHeight: number }>((resolve, reject) => {
+    const image = new Image();
+    const objectUrl = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml;charset=utf-8" }));
+    image.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      const maxRasterDimension = 4096;
+      const requestedRasterScale = 3;
+      const intrinsicWidth = Math.max(1, image.naturalWidth);
+      const intrinsicHeight = Math.max(1, image.naturalHeight);
+      const preferredDisplayWidth = 960;
+      const preferredDisplayHeight = 720;
+      const displayScale = Math.min(preferredDisplayWidth / intrinsicWidth, preferredDisplayHeight / intrinsicHeight);
+      const displayWidth = Math.max(1, Math.round(intrinsicWidth * displayScale));
+      const displayHeight = Math.max(1, Math.round(intrinsicHeight * displayScale));
+      const rasterScale = Math.min(requestedRasterScale, maxRasterDimension / displayWidth, maxRasterDimension / displayHeight);
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(displayWidth * rasterScale));
+      canvas.height = Math.max(1, Math.round(displayHeight * rasterScale));
+      const context = canvas.getContext("2d");
+      if (!context) {
+        reject(new Error("Canvas is unavailable."));
+        return;
+      }
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = "high";
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      resolve({ dataUrl: canvas.toDataURL("image/png"), displayWidth, displayHeight });
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error("Mermaid SVG could not be converted to PNG."));
+    };
+    image.src = objectUrl;
+  });
 }
 
 function buildStandaloneCopyToolbar() {
@@ -516,6 +618,11 @@ function inlineEnhancedClipboardStyles(html: string) {
       /<pre([^>]*)><code([^>]*) style="([^"]*)">/g,
       '<pre$1><code$2 style="display: block; min-width: max-content; font-family: Consolas, Menlo, Monaco, monospace; white-space: inherit; background: transparent; color: #fdf4f1; padding: 0;">',
     )
+    .replace(/<span class="hljs-comment">/g, '<span style="color:#b6c2cf;">')
+    .replace(/<span class="hljs-keyword">/g, '<span style="color:#f0abfc;">')
+    .replace(/<span class="hljs-string">/g, '<span style="color:#bbf7d0;">')
+    .replace(/<span class="hljs-number">/g, '<span style="color:#fde68a;">')
+    .replace(/<span class="hljs-title function_">/g, '<span style="color:#93c5fd;">')
     .replace(/<strong>/g, '<strong style="color: #5f1d1d; font-weight: 700;">')
     .replace(/<em>/g, '<em style="color: #7c4a43;">')
     .replace(/<img /g, '<img style="display: block; max-width: 100%; height: auto; margin: 18px auto; border-radius: 14px; box-shadow: 0 8px 24px rgba(95, 29, 29, 0.08);" ')

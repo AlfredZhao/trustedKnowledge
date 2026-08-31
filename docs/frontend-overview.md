@@ -15,9 +15,12 @@
 - 展示配置：分页数量、导航项、排序字段和状态选项集中在 `frontend/src/uiConfig.ts`。
 - Markdown 渲染：`frontend/src/components/MarkdownPreview.tsx` 和 `frontend/src/utils/markdown.ts`。
 - Markdown 围栏代码块会保留原始换行与每行前导空格；清理泄漏的内部代码占位符不能压缩其它 Markdown 空白，确保 Python、YAML 等嵌套代码在预览中保持缩进。
+- 共用 Markdown 预览会将 ` ```mermaid ` 围栏渲染为 Mermaid SVG 图表；图表下方保留可展开的原始源码，右上角“复制”仍复制源码。单图源码超过 20,000 字符或解析失败时不执行图表渲染，并显示原因与源码回退。图表渲染使用 Mermaid 严格安全模式，深浅主题均有适配。
+- 带语言标识的代码围栏会按 Bash/Shell、Python、SQL/PLSQL、JavaScript/TypeScript、JSON、HTML/XML、CSS、YAML、Markdown 展示关键字、字符串、注释和数字高亮；未知语言继续按普通代码显示，绝不对未标识代码自动猜测语言。
 - 所有共用 Markdown 预览中的围栏代码块右上角均提供独立“复制”按钮；它只复制该代码块的纯文本，不包含围栏标记或语言标识，并会显示短暂的成功或失败反馈，方便将命令、SQL 或代码送至受控环境校验。
 - 单下划线斜体仅在独立 Markdown 标记中生效；变量名、路径和文件名中的词内下划线（如 `v_needs_update`、`my_file_name.md`）按普通文本显示，避免预览、富文本复制和增强 HTML 导出出现误斜体。
 - 博客工厂的增强美化 HTML 离线导出脚本为 `scripts/export-enhanced-html.mjs`；它与应用内增强美化渲染同步支持 H1-H4、代码块缩进、表格、图片内联和 `$$...$$` LaTex 公式块，修改该渲染能力时须在同一次变更中同步脚本。
+- 博客工厂“增强美化”在浏览器中生成的下载 HTML 与富文本复制，会将 Mermaid 图表转为内嵌 3 倍像素密度 PNG，并默认按比例尽量填充 960×720 的逻辑显示区域、在窄屏自动缩小，方便离线打开和粘贴到第三方编辑器且保持文字清晰；代码块在剪贴板 HTML 中不携带高亮 span，以保留空格和缩进。命令行 `scripts/export-enhanced-html.mjs` 仍以内嵌 Mermaid runtime 的方式生成独立 HTML。后端博客发布仍保留 Mermaid 源码代码块，不在该链路执行浏览器图表渲染。
 - Markdown 图片：可信知识和 Todo 正文仍保存为文本 Markdown，图片由后端媒体 API 上传到本地媒体仓库，正文中插入 `/api/media/{public_id}/content` 形式的图片链接。
 - Markdown 工具栏在应用标题、列表、代码、表格、注释或图片插入后会恢复选区，并保留当前编辑区的横向和纵向滚动位置；长文编辑不会因格式化跳回首行。
 - 可信知识编辑和待办任务内容的 Markdown 编辑 / 预览模式可用快捷键切换：macOS 为 `⌘ + \\`，Windows/Linux 为 `Ctrl + \\`；仅在对应内容编辑器打开时生效，按钮悬停提示会显示该快捷键。

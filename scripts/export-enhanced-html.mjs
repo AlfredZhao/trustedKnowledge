@@ -3,6 +3,10 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
+
+const SCRIPT_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
+const MERMAID_RUNTIME_PATH = path.resolve(SCRIPT_DIRECTORY, "../frontend/node_modules/mermaid/dist/mermaid.min.js");
 
 async function main() {
   const args = process.argv.slice(2);
@@ -29,7 +33,8 @@ async function main() {
     : path.join(inputDir, `${sanitizeFileBaseName(articleTitle)}.html`);
 
   const htmlBody = await markdownToHtml(markdown, inputDir);
-  const documentHtml = buildStandaloneHtml(buildEnhancedRichHtml(htmlBody), articleTitle);
+  const mermaidRuntime = htmlBody.includes("data-mermaid-render") ? await fs.readFile(MERMAID_RUNTIME_PATH, "utf8") : "";
+  const documentHtml = buildStandaloneHtml(buildEnhancedRichHtml(htmlBody), articleTitle, mermaidRuntime);
 
   try {
     await fs.writeFile(outputPath, documentHtml, "utf8");
@@ -66,6 +71,7 @@ async function markdownToHtml(markdown, inputDir) {
   let inCodeBlock = false;
   let codeLanguage = "";
   let codeLines = [];
+  let codeBlockIndex = 0;
   let inMathBlock = false;
   let mathLines = [];
 
@@ -87,8 +93,13 @@ async function markdownToHtml(markdown, inputDir) {
   };
 
   const flushCodeBlock = () => {
+    const code = codeLines.join("\n");
     const languageClass = codeLanguage ? ` class="language-${escapeAttribute(codeLanguage)}"` : "";
-    html.push(`<pre><code${languageClass}>${escapeHtml(codeLines.join("\n"))}</code></pre>`);
+    if (codeLanguage.trim().toLowerCase() === "mermaid") {
+      html.push(renderMermaidBlock(code, `mermaid-${codeBlockIndex++}`));
+    } else {
+      html.push(`<pre><code${languageClass}>${escapeHtml(code)}</code></pre>`);
+    }
     inCodeBlock = false;
     codeLanguage = "";
     codeLines = [];
@@ -323,7 +334,7 @@ function buildEnhancedRichHtml(innerHtml) {
   ].join("");
 }
 
-function buildStandaloneHtml(bodyHtml, title) {
+function buildStandaloneHtml(bodyHtml, title, mermaidRuntime = "") {
   const safeTitle = escapeHtml(title || "trustedKnowledge export");
   return [
     "<!DOCTYPE html>",
@@ -333,9 +344,30 @@ function buildStandaloneHtml(bodyHtml, title) {
     '<meta name="viewport" content="width=device-width, initial-scale=1" />',
     `<title>${safeTitle}</title>`,
     "</head>",
-    `<body style="margin:0; padding:32px 20px; background:#f7f1ee;">${buildStandaloneCopyToolbar()}${bodyHtml}${buildStandaloneCopyScript()}</body>`,
+    `<body style="margin:0; padding:32px 20px; background:#f7f1ee;">${buildStandaloneCopyToolbar()}${bodyHtml}${buildStandaloneCopyScript()}${mermaidRuntime ? `<script>${mermaidRuntime}</script>${buildStandaloneMermaidScript()}` : ""}</body>`,
     "</html>",
   ].join("");
+}
+
+function buildStandaloneMermaidScript() {
+  return [
+    "<script>",
+    "(() => {",
+    "  const mermaidApi = window.mermaid;",
+    "  if (!mermaidApi) return;",
+    "  mermaidApi.initialize({ startOnLoad: false, securityLevel: 'strict', htmlLabels: false, theme: 'base', themeVariables: { primaryColor: '#f8ebe6', primaryTextColor: '#5f1d1d', primaryBorderColor: '#c08475', lineColor: '#7c4a43', secondaryColor: '#fff9f6', tertiaryColor: '#fffdfb' } });",
+    "  document.querySelectorAll('[data-mermaid-render]').forEach(async (target, index) => {",
+    "    const source = target.closest('[data-mermaid-block]')?.querySelector('[data-mermaid-source]')?.textContent || '';",
+    "    try { const rendered = await mermaidApi.render(`tk-mermaid-export-${index}`, source); target.innerHTML = rendered.svg; rendered.bindFunctions?.(target); }",
+    "    catch { target.textContent = 'Mermaid 图表渲染失败，请查看下方源码。'; }",
+    "  });",
+    "})();",
+    "</script>",
+  ].join("\n");
+}
+
+function renderMermaidBlock(source, id) {
+  return `<div data-mermaid-block style="position:relative;margin:0 0 18px;overflow-x:auto;border:1px solid #ead9d3;border-radius:12px;background:#fff9f6;padding:18px 20px;"><div data-mermaid-render style="min-width:max-content;text-align:center;"></div><details style="margin-top:14px;color:#7c4a43;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,Arial,sans-serif;font-size:13px;"><summary style="cursor:pointer;">查看 Mermaid 源码</summary><pre style="margin:10px 0 0;padding:14px 16px;border-radius:10px;background:#2a1f1d;color:#fdf4f1;white-space:pre;overflow-x:auto;"><code class="language-mermaid" data-mermaid-source data-mermaid-id="${id}">${escapeHtml(source)}</code></pre></details></div>`;
 }
 
 function buildStandaloneCopyToolbar() {

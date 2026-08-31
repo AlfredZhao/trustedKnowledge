@@ -13,12 +13,30 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Added / 新增
 
+- Added Mermaid rendering for fenced `mermaid` blocks in shared Markdown previews, with source copy/fallback, dark/light styling, and a 20,000-character per-diagram safety limit.
+- 为共用 Markdown 预览新增围栏 `mermaid` 图表渲染，包含源码复制与失败回退、深浅主题样式，以及单图 20,000 字符安全上限。
+
+- Added language-aware syntax highlighting for Bash, Python, SQL/PLSQL, JavaScript/TypeScript, JSON, HTML/XML, CSS, YAML and Markdown code fences.
+- 为 Bash、Python、SQL/PLSQL、JavaScript/TypeScript、JSON、HTML/XML、CSS、YAML 与 Markdown 代码围栏新增按语言关键字高亮。
+
 - Added knowledge-processing task protection: the workspace now shows elapsed/latest activity, offers cancellation, limits selected Skill prompt content to a shared budget, and stops content-processing jobs after a dedicated configurable timeout.
 - 为知识加工新增任务保护：工作区现展示已等待时间和最近活动、提供取消操作、对所选 Skill 注入内容设置总预算，并在独立的可配置时限后停止内容加工任务。
 
 #### Changed / 变更
 
+- Changed copied and browser-exported Mermaid images to fill a proportional 960×720 logical display area by default, while remaining responsive on narrow screens.
+- 调整复制及浏览器导出的 Mermaid 图片：默认按比例尽量填充 960×720 的逻辑显示区域，并在窄屏保持响应式缩小。
+
+- Changed copied and browser-exported Mermaid PNGs to use 3x raster density with preserved logical dimensions and proportional maximum-dimension limiting, improving text clarity without stretching diagrams.
+- 调整复制及浏览器导出的 Mermaid PNG：现使用 3 倍栅格密度、保留逻辑显示尺寸并按比例限制最大边长，提升文字清晰度且不拉伸图表。
+
+- Changed rich-text copy and browser-generated enhanced HTML exports to embed Mermaid diagrams as PNG images, rather than inert source/runtime markup, improving paste compatibility across editors.
+- 调整富文本复制和浏览器生成的增强 HTML 导出：Mermaid 图表现以内嵌 PNG 图片输出，而非不可执行的源码/runtime 标记，提升跨编辑器粘贴兼容性。
+
 #### Fixed / 修复
+
+- Fixed syntax-highlighted code losing indentation or spaces after rich-text paste. Clipboard HTML now uses a source-preserving, unhighlighted code representation while previews retain highlighting.
+- 修复语法高亮代码富文本粘贴后缩进或空格丢失的问题。剪贴板 HTML 现使用保留源码的无高亮代码表示，应用内预览仍保留高亮。
 
 - Fixed knowledge-processing tasks remaining visually indistinguishable from normal work while stalled. Codex and configured external-model jobs now use the same short processing deadline and return an actionable timeout result instead of continuing the generic spinner.
 - 修复知识加工任务卡住时仍与正常加工无差别地持续转圈的问题。Codex 与已配置的外部模型现共用较短的加工时限，并在超时时返回可操作提示。

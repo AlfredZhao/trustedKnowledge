@@ -345,6 +345,63 @@ button:disabled {
     white-space: pre;
   }
 
+  .markdown-preview .hljs-comment,
+  .markdown-preview .hljs-quote {
+    color: #64748b;
+  }
+
+  .markdown-preview .hljs-keyword,
+  .markdown-preview .hljs-selector-tag,
+  .markdown-preview .hljs-literal {
+    color: #c084fc;
+  }
+
+  .markdown-preview .hljs-string,
+  .markdown-preview .hljs-attr,
+  .markdown-preview .hljs-template-variable {
+    color: #86efac;
+  }
+
+  .markdown-preview .hljs-number,
+  .markdown-preview .hljs-built_in,
+  .markdown-preview .hljs-title.function_ {
+    color: #fcd34d;
+  }
+
+  .markdown-preview .markdown-mermaid-block {
+    position: relative;
+    margin: 0 0 1rem;
+    overflow-x: auto;
+    border: 1px solid var(--border-soft);
+    border-radius: 0.5rem;
+    background: var(--markdown-pre-bg);
+    padding: 2.8rem 1rem 1rem;
+  }
+
+  .markdown-preview .markdown-mermaid-render {
+    min-width: max-content;
+    text-align: center;
+  }
+
+  .markdown-preview .markdown-mermaid-render svg {
+    max-width: 100%;
+    height: auto;
+  }
+
+  .markdown-preview .markdown-mermaid-source {
+    margin-top: 0.85rem;
+    color: var(--text-soft);
+  }
+
+  .markdown-preview .markdown-mermaid-source summary {
+    cursor: pointer;
+    font-size: 0.78rem;
+  }
+
+  .markdown-preview .markdown-mermaid-source pre {
+    margin-top: 0.65rem;
+  }
+
   .markdown-preview strong {
     color: var(--text-strong);
     font-weight: 650;

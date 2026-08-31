@@ -14,7 +14,10 @@ export default defineConfig({
                     if (id.indexOf("/lucide-react/") !== -1) {
                         return "icon-vendor";
                     }
-                    return "vendor";
+                    // Leave remaining dependencies to Rollup. Mermaid is loaded only by
+                    // Markdown previews that contain a Mermaid block and must not become
+                    // an eagerly preloaded application vendor chunk.
+                    return;
                 },
             },
         },

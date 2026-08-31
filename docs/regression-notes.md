@@ -371,6 +371,28 @@ Markdown 预览、富文本复制或增强 HTML 导出会将变量名、路径�
 
 生成含两个围栏代码块的增强美化下载 HTML。确认两个 `复制` 均位于各自代码块右上角，点击后仅得到对应源代码（保留换行和缩进），并确认“复制正文”的纯文本和富文本都不含 `复制` 按钮文字；运行 `cd frontend && npm run build`。
 
+## Mermaid 图表与语法高亮必须保持源码回退和离线导出
+
+### Symptom
+
+` ```mermaid ` 在应用内预览或下载的增强 HTML 中仅显示为普通代码，或图表解析失败后吞掉原始内容；带 `bash`、`python`、`sql` 等语言标识的代码块无法区分关键字、字符串和注释。
+
+### Trigger
+
+用户在可信知识、知识加工、博客工厂、Todo、AI 问数或 AI 编程的 Markdown 预览中输入 Mermaid/带语言的代码围栏，或从博客工厂执行“增强美化”导出。
+
+### Root Cause
+
+手写 Markdown 解析器只把围栏语言写为 `language-*` CSS class，并未调用图表渲染器或语法高亮器；独立 HTML 不加载应用的 JavaScript bundle。
+
+### Safe Pattern
+
+`markdownToHtml()` 必须将 `mermaid` 围栏输出为带 `data-mermaid-render` 和可展开 `data-mermaid-source` 的独立块，源码始终经过 HTML 转义。`MarkdownPreview` 仅在实际存在 Mermaid 块时动态加载 Mermaid，并以 `securityLevel: "strict"`、`htmlLabels: false` 渲染；任何错误或超过 20,000 字符都回退显示源码。普通代码仅依据显式语言标识调用已注册的 Highlight.js 语言，不自动猜测。富文本复制必须使用未插入 Highlight.js span 的代码 HTML，并将 Mermaid 块异步渲染为内嵌 3 倍密度 PNG、移除复制按钮和源码折叠；PNG 必须默认按比例尽量填充 960×720 的逻辑显示区域、保留该显示宽高，并按比例应用 4,096 像素的最大边长，浏览器生成的增强 HTML 使用同一 PNG。命令行 `scripts/export-enhanced-html.mjs` 仍仅在含 Mermaid 时内嵌 runtime。
+
+### Guardrail
+
+运行 `node --check scripts/export-enhanced-html.mjs` 和 `cd frontend && npm run build`。手工确认深浅主题与手机宽度下：有效 Mermaid 显示 SVG、无效 Mermaid 显示错误和“查看 Mermaid 源码”、复制源码正确；Bash/Python/SQL 关键字可见高亮。将高亮代码粘贴至第三方编辑器，空格和缩进必须与源码一致。复制含 Mermaid 的富文本、或打开浏览器生成的增强 HTML 后，第三方编辑器应得到 PNG 图，而不包含复制按钮、折叠源码或 Mermaid runtime。
+
 ## Markdown 代码块不得在占位符清理时丢失缩进
 
 ### Symptom
