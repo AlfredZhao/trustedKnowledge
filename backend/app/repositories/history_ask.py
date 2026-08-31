@@ -448,6 +448,7 @@ def _call_openai_compatible_llm_sync(
     prompt: str,
     system: str,
     max_tokens: int = 1200,
+    response_format: dict[str, str] | None = None,
 ) -> str:
     payload = {
         "model": model_name,
@@ -458,6 +459,8 @@ def _call_openai_compatible_llm_sync(
         "temperature": 0.2,
         "max_tokens": max_tokens,
     }
+    if response_format:
+        payload["response_format"] = response_format
     request = Request(
         _normalize_chat_completions_url(base_url),
         data=json.dumps(payload).encode("utf-8"),
@@ -494,6 +497,7 @@ async def _call_history_ask_llm(
     prompt: str,
     system: str,
     max_tokens: int = 1200,
+    response_format: dict[str, str] | None = None,
 ) -> str:
     base_url = str(config.get("base_url") or "").strip()
     api_key = settings.history_ask_llm_api_key.strip()
@@ -509,6 +513,7 @@ async def _call_history_ask_llm(
         prompt=prompt,
         system=system,
         max_tokens=max_tokens,
+        response_format=response_format,
     )
 
 

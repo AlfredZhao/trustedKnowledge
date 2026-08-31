@@ -38,6 +38,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Fixed / 修复
 
+- Fixed Blog Factory AI Review rejecting DeepSeek responses that use equivalent English labels or wrap the review object. DeepSeek now requests JSON mode, and safe compatible labels are normalized before validation without relaxing the unique-source replacement requirement.
+- 修复博客工厂 AI Review 将使用等价英文标签或包装审阅对象的 DeepSeek 响应一律判为格式错误的问题。现对 DeepSeek 请求 JSON 模式，并在校验前兼容转换安全的等价值，且不放宽原文唯一替换约束。
+
 - Fixed rapid Skill Arrow Up/Down navigation leaving the detail pane on an older selection; only the latest detail request may now update the pane.
 - 修复快速使用 Skill 上下方向键时右侧详情可能停留在旧选项的问题；现仅最后一次详情请求可以更新右侧面板。
 

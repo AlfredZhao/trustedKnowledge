@@ -19,6 +19,28 @@ Keep entries concrete. Prefer file paths, function names, SQL placeholders, and 
 
 All Oracle executions must receive only bind names present in that statement's SQL text. In multi-step repository flows, keep row-lock/read, update, count, and vector-query parameter dictionaries and `setinputsizes()` calls separate; do not let business-field binds or CLOB declarations leak into a preceding `SELECT ... FOR UPDATE` or summary query. Add or retain a regression test whenever dynamic SQL bindings change. Module-specific `DPY-4008` incidents below document concrete triggers and guardrails.
 
+## DeepSeek AI 审阅必须保持 JSON 契约与安全替换约束
+
+### Symptom
+
+博客工厂以 DeepSeek 审阅 `database security` 等内容时，无论是否选择 Skill，均提示“AI 审阅内容不符合预期格式，请重试”。
+
+### Trigger
+
+DeepSeek 返回可解析 JSON，但使用 `major`、`logic` 等英文枚举值，或将响应包在 `result` / `review` 对象内。
+
+### Root Cause
+
+`backend/app/repositories/blog_review.py` 将模型 JSON 直接交给使用中文 Literal 枚举的 `BlogFactoryReviewResult` 校验；任何等价但未逐字匹配的标签都会被统一包装为格式错误。Skill 只改变审阅侧重点，无法改变此校验链路。
+
+### Safe Pattern
+
+对 DeepSeek 调用 `response_format={"type": "json_object"}`，并仅在 `blog_review._normalize_review_result()` 中将已知等价标签及单层包装转换为契约值。只有 `before` 在原文中恰好出现一次且 `after` 非空的建议才能保留；不得为满足格式而编造替换建议或放宽唯一定位要求。
+
+### Guardrail
+
+运行 `cd backend && python -m unittest tests.test_blog_review`。`test_normalizes_deepseek_style_english_labels_and_issue_wrapper` 必须通过，且 `test_drops_non_unique_replacements_and_returns_a_valid_no_issue_result` 必须继续拒绝不安全替换。
+
 ## Web Codex 任务不能等待终端审批
 
 ### Symptom

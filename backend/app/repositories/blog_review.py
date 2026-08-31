@@ -31,6 +31,107 @@ def _extract_json(content: str) -> dict[str, Any]:
     return value
 
 
+def _normalize_review_result(value: dict[str, Any], article: str) -> dict[str, Any]:
+    """Accept equivalent LLM labels while retaining the safe replacement contract."""
+    if isinstance(value.get("review"), dict):
+        value = value["review"]
+    elif isinstance(value.get("result"), dict):
+        value = value["result"]
+
+    raw_suggestions = value.get("suggestions")
+    if not isinstance(raw_suggestions, list):
+        raw_suggestions = value.get("issues") if isinstance(value.get("issues"), list) else []
+
+    severity_map = {
+        "需要修改": "需要修改",
+        "required": "需要修改",
+        "needs_change": "需要修改",
+        "needs_changes": "需要修改",
+        "major": "需要修改",
+        "high": "需要修改",
+        "critical": "需要修改",
+        "建议优化": "建议优化",
+        "suggestion": "建议优化",
+        "optional": "建议优化",
+        "minor": "建议优化",
+        "medium": "建议优化",
+        "low": "建议优化",
+    }
+    category_map = {
+        "结构": "结构",
+        "structure": "结构",
+        "structural": "结构",
+        "逻辑": "逻辑",
+        "logic": "逻辑",
+        "表达": "表达",
+        "expression": "表达",
+        "writing": "表达",
+        "style": "表达",
+        "一致性": "一致性",
+        "consistency": "一致性",
+        "markdown": "Markdown",
+        "format": "Markdown",
+        "格式": "Markdown",
+    }
+    suggestions: list[dict[str, str]] = []
+    for index, item in enumerate(raw_suggestions, start=1):
+        if not isinstance(item, dict):
+            continue
+        before = _read_review_text(item, "before", "original", "text_to_replace", "quote")
+        after = _read_review_text(item, "after", "replacement", "revised_text")
+        # A suggestion without an exact, unique source excerpt cannot be safely applied.
+        if not before or not after or article.count(before) != 1:
+            continue
+        severity = severity_map.get(_normalize_label(item.get("severity")), "建议优化")
+        category = category_map.get(_normalize_label(item.get("category")), "表达")
+        suggestions.append(
+            {
+                "id": _read_review_id(item, index),
+                "severity": severity,
+                "category": category,
+                "quote": _read_review_text(item, "quote") or before,
+                "problem": _read_review_text(item, "problem", "issue", "description") or "此处可进一步优化。",
+                "suggestion": _read_review_text(item, "suggestion", "recommendation") or after,
+                "before": before,
+                "after": after,
+            }
+        )
+
+    summary = _read_review_text(value, "summary", "overview", "conclusion")
+    if not summary:
+        summary = "已完成审阅，并保留可安全应用的修改建议。" if suggestions else "按本次审阅范围未发现可安全应用的修改建议。"
+    return {
+        "status": "issues_found" if suggestions else "no_issues",
+        "summary": summary,
+        "suggestions": suggestions,
+    }
+
+
+def _read_review_text(item: dict[str, Any], *keys: str) -> str:
+    for key in keys:
+        value = item.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
+def _read_review_id(item: dict[str, Any], index: int) -> str:
+    value = item.get("id")
+    if isinstance(value, (str, int)) and str(value).strip():
+        return str(value).strip()
+    return f"review-{index}"
+
+
+def _normalize_label(value: Any) -> str:
+    return value.strip().lower().replace("-", "_").replace(" ", "_") if isinstance(value, str) else ""
+
+
+def _supports_json_mode(config: dict[str, Any]) -> bool:
+    base_url = str(config.get("base_url") or "").lower()
+    model_name = str(config.get("model_name") or "").lower()
+    return "deepseek" in base_url or model_name.startswith("deepseek")
+
+
 def _build_review_prompt(payload: BlogFactoryReviewRequest, selected_skills: list[dict[str, str]]) -> tuple[str, str]:
     skill_instructions = _format_selected_skills_for_prompt(selected_skills)
     system = """你是严谨的中文技术博客审阅助手。审阅范围仅包括结构、逻辑、表达、与提供上下文的一致性及 Markdown；不联网核验事实。
@@ -69,8 +170,14 @@ async def review_blog_factory_content(payload: BlogFactoryReviewRequest, auth_co
     else:
         async with acquire_connection() as connection:
             config = await get_history_ask_llm_config(connection)
-        content = await _call_history_ask_llm(config=config, prompt=prompt, system=system, max_tokens=2200)
+        content = await _call_history_ask_llm(
+            config=config,
+            prompt=prompt,
+            system=system,
+            max_tokens=2200,
+            response_format={"type": "json_object"} if _supports_json_mode(config) else None,
+        )
     try:
-        return BlogFactoryReviewResult.model_validate(_extract_json(content))
+        return BlogFactoryReviewResult.model_validate(_normalize_review_result(_extract_json(content), payload.task_content))
     except Exception as exc:
         raise RuntimeError("AI 审阅内容不符合预期格式，请重试。") from exc
