@@ -103,6 +103,28 @@ DeepSeek 返回可解析 JSON，但使用 `major`、`logic` 等英文枚举值�
 
 `backend/app/api/codex.py:_build_prompt()` 必须明确禁止 Web Codex 直接执行 SQLcl/数据库、服务控制、Git 发布推送和需要确认的命令，并要求报告命令与前置条件。`CodexJobState.last_activity_at` 与 `last_event` 必须随 stdout/stderr 事件更新，前端在 60 秒无活动时显示可终止的风险提示。不要为消除卡住而使用绕过审批和沙箱的参数。
 
+## 知识加工不能继承 AI 编程的超长等待
+
+### Symptom
+
+知识加工页长期只显示“模型正在按所选 Skill 加工”，用户不能取消，也无法区分正常生成、外部等待和卡住；配置其他模型时，任务级等待还可能超过网络请求的单次 socket 超时。
+
+### Trigger
+
+Codex 子进程或 OpenAI 兼容模型迟迟不返回最终结果，或 Skill 指令过长使首次响应明显延迟。
+
+### Root Cause
+
+异步任务复用了 AI 编程的 900 秒预算，前端忽略了任务快照已有的活动字段；其他模型调用通过线程包装阻塞 HTTP，原先没有以任务总时限包裹。
+
+### Safe Pattern
+
+`output_mode="final"` 的知识加工任务必须使用 `TRUSTED_KNOWLEDGE_KNOWLEDGE_PROCESSING_TIMEOUT_SECONDS`（默认 180 秒），前端应显示已等待时间、最近活动和 60 秒无活动警示，并始终提供 `cancelCodexJob()` 取消入口。所选 Skill 注入必须传入 `knowledge_processing_skill_char_budget` 总预算；其他模型调用要由 `asyncio.wait_for()` 使用同一任务时限包裹。
+
+### Guardrail
+
+运行 `cd backend && python -m unittest tests.test_codex_jobs`，其中 `test_final_output_jobs_use_the_short_knowledge_processing_timeout` 与 `test_other_model_processing_job_stops_at_the_job_timeout` 必须通过；运行 `cd frontend && npm run build`，在桌面和手机宽度分别确认生成、60 秒无活动提示、取消、超时/失败和完成状态均可达且不被裁切。
+
 ### Guardrail
 
 运行 `python -m unittest tests.test_codex_jobs`，确认审批事件会呈现“Web 任务无法响应交互确认”的提示；检查 AI 编程页面在无新活动 60 秒后显示警告和“终止当前任务”按钮。验证桌面/移动与深浅主题，并运行 `cd frontend && npm run build`。
@@ -326,6 +348,28 @@ Markdown 预览、富文本复制或增强 HTML 导出会将变量名、路径�
 ### Guardrail
 
 运行 `node --check scripts/export-enhanced-html.mjs`，并使用包含围栏代码块、`$$\\frac{a}{b}=x^2$$` 和 H4 的 Markdown 调用脚本。导出 HTML 必须保留代码前导空格、包含公式卡片样式和 `<sup>2</sup>`；前端改动后同时运行 `cd frontend && npm run build`。
+
+## 下载的增强美化 HTML 代码块复制控件必须独立工作
+
+### Symptom
+
+博客工厂“增强美化”下载的独立 HTML 中，代码块复制按钮显示在代码块外，或点击后未只复制该代码块；使用“复制正文”时，功能按钮文字也被复制进正文。
+
+### Trigger
+
+共用 Markdown 渲染器为围栏代码块输出复制按钮，但独立 HTML 未同步注入该按钮的样式、点击处理，或正文复制未清理按钮。
+
+### Root Cause
+
+应用内 Markdown 预览由 React 点击委托和 `.markdown-preview` 范围 CSS 驱动；下载的 HTML 不加载应用样式或 React 事件处理器，却复用了相同的代码块标记。
+
+### Safe Pattern
+
+独立 HTML 必须为 `[data-copy-code-block]` 注入内联定位样式，并在用户点击时仅读取同一 `[data-code-block]` 下的 `code.textContent` 后执行纯文本复制及降级处理。复制正文前，应从文章克隆中移除所有 `[data-copy-code-block]`。
+
+### Guardrail
+
+生成含两个围栏代码块的增强美化下载 HTML。确认两个 `复制` 均位于各自代码块右上角，点击后仅得到对应源代码（保留换行和缩进），并确认“复制正文”的纯文本和富文本都不含 `复制` 按钮文字；运行 `cd frontend && npm run build`。
 
 ## Markdown 代码块不得在占位符清理时丢失缩进
 
@@ -645,7 +689,31 @@ Manually verify on desktop and mobile:
 
 ## Oracle CLOB Input Sizes Must Match the SQL Being Executed
 
-### Symptom
+### Trusted Knowledge Long-Answer Save and Concurrent Edit
+
+#### Symptom
+
+Editing a long trusted-knowledge answer could remain in the saving state for an extended period and eventually show the browser-only `Failed to fetch` error.
+
+#### Trigger
+
+Save a long `AI_QA_LIB.ANSWER` value, or attempt to save a record while another transaction holds a row lock on it.
+
+#### Root Cause
+
+`knowledge.py` left the CLOB bind type to driver inference and issued `UPDATE AI_QA_LIB` without a bounded row-lock wait. The latter permits an unbounded wait and can outlive the browser/proxy connection.
+
+#### Safe Pattern
+
+Call `_set_knowledge_lob_input_sizes()` immediately before each insert/update SQL that includes `:answer`. For updates, execute `SELECT ... FOR UPDATE WAIT 5` first with only the lock query binds, then bind the CLOB and issue the update. Convert `ORA-30006` to a 409 conflict. Do not automatically retry a timed-out browser write because its commit result is unknown.
+
+#### Guardrail
+
+Run `PYTHONPATH=backend conda run -n alfred python -m unittest backend.tests.test_knowledge`. The tests prove that CLOB input sizing appears only on an SQL statement with `:answer`, and that a visible knowledge row is locked with `WAIT 5` before its update.
+
+### Todo CLOB Bind Isolation
+
+#### Symptom
 
 Todo edits failed with:
 
@@ -653,7 +721,7 @@ Todo edits failed with:
 Oracle rejected the todo update: DPY-4008: no bind placeholder named ":title" was found in the SQL text
 ```
 
-### Trigger
+#### Trigger
 
 Saving an existing Todo through `PATCH /todos/{todo_id}` after the backend introduced explicit Oracle CLOB binding for Todo `title` and `content`.
 
@@ -668,7 +736,7 @@ for update wait 5
 
 That lock SQL does not contain `:title` or `:content`.
 
-### Root Cause
+#### Root Cause
 
 `backend/app/repositories/todos.py:update_todo()` called `cursor.setinputsizes(title=..., content=...)` before executing the lock query.
 
@@ -676,7 +744,7 @@ With python-oracledb, input sizes configured on the cursor apply to the next exe
 
 A partial earlier fix only reduced the declared fields to the payload fields. That still failed whenever the next SQL statement was the lock query and the payload included `title` or `content`.
 
-### Safe Pattern
+#### Safe Pattern
 
 For dynamic SQL, call `setinputsizes()` only immediately before the SQL statement that contains those placeholders.
 
@@ -689,14 +757,14 @@ For Todo updates, preserve this order:
 
 Do not move `_set_todo_lob_input_sizes()` above the lock query.
 
-### Guardrail
+#### Guardrail
 
 `backend/tests/test_todos.py` uses `FakeCursor.execute()` to raise an Oracle-like error when declared input sizes do not match the next SQL statement's placeholders.
 
 Relevant test:
 
 ```text
-python -m pytest backend/tests/test_todos.py
+PYTHONPATH=backend conda run -n alfred python -m unittest backend.tests.test_todos
 ```
 
 The test `test_update_todo_binds_only_lobs_present_in_sql` must continue to prove that Todo updates bind only CLOB fields present in the generated update SQL and do not leak those declarations into the lock query.

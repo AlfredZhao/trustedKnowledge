@@ -1,3 +1,4 @@
+from collections.abc import Iterable
 from typing import Any
 
 import oracledb
@@ -21,6 +22,10 @@ LIST_COLUMNS = """
     knowledge_record.created_date,
     knowledge_record.blog_status
 """
+
+
+class KnowledgeUpdateLocked(RuntimeError):
+    pass
 
 
 def _row_to_dict(row: Any) -> dict[str, Any]:
@@ -160,6 +165,7 @@ async def create_knowledge(payload: KnowledgeCreate, auth_context: AuthContext) 
     async with acquire_connection() as connection:
         cursor = connection.cursor()
         new_id = cursor.var(oracledb.NUMBER)
+        _set_knowledge_lob_input_sizes(cursor, ("answer",))
         await cursor.execute(
             sql,
             {
@@ -230,6 +236,7 @@ async def merge_knowledge(payload: KnowledgeMergeRequest, auth_context: AuthCont
         merged_user_id = next(iter(source_user_ids)) if len(source_user_ids) == 1 else user_id_for_write(auth_context)
 
         new_id = cursor.var(oracledb.NUMBER)
+        _set_knowledge_lob_input_sizes(cursor, ("answer",))
         await cursor.execute(
             insert_sql,
             {
@@ -244,8 +251,9 @@ async def merge_knowledge(payload: KnowledgeMergeRequest, auth_context: AuthCont
         )
         knowledge_id = int(new_id.getvalue()[0])
 
-        await cursor.execute(delete_sql, id_params)
-        if cursor.rowcount != len(payload.knowledge_ids):
+        delete_cursor = connection.cursor()
+        await delete_cursor.execute(delete_sql, id_params)
+        if delete_cursor.rowcount != len(payload.knowledge_ids):
             await connection.rollback()
             return None
 
@@ -264,16 +272,37 @@ async def update_knowledge(knowledge_id: int, payload: KnowledgeUpdate, auth_con
 
     assignments = [f"{column} = :{column}" for column in values]
     params = {**values, "knowledge_id": knowledge_id}
-    clauses = ["id = :knowledge_id"]
-    append_user_visibility_clause(clauses, params, auth_context, "user_id")
+    lock_params: dict[str, Any] = {"knowledge_id": knowledge_id}
+    lock_clauses = ["id = :knowledge_id"]
+    append_user_visibility_clause(lock_clauses, lock_params, auth_context, "user_id")
+    update_clauses = ["id = :knowledge_id"]
+    append_user_visibility_clause(update_clauses, params, auth_context, "user_id")
+    lock_sql = f"""
+        select id
+        from ai_qa_lib
+        where {" and ".join(lock_clauses)}
+        for update wait 5
+    """
     sql = f"""
         update ai_qa_lib
         set {", ".join(assignments)}
-        where {" and ".join(clauses)}
+        where {" and ".join(update_clauses)}
     """
 
     async with acquire_connection() as connection:
         cursor = connection.cursor()
+        try:
+            await cursor.execute(lock_sql, lock_params)
+        except oracledb.Error as exc:
+            if _is_lock_timeout_error(exc):
+                await connection.rollback()
+                raise KnowledgeUpdateLocked("可信知识正在被另一个保存请求占用，请稍后重试。") from exc
+            raise
+        locked_row = await cursor.fetchone()
+        if locked_row is None:
+            await connection.rollback()
+            return None
+        _set_knowledge_lob_input_sizes(cursor, values.keys())
         await cursor.execute(sql, params)
         if cursor.rowcount == 0:
             await connection.rollback()
@@ -281,6 +310,18 @@ async def update_knowledge(knowledge_id: int, payload: KnowledgeUpdate, auth_con
         await connection.commit()
 
     return await get_knowledge_by_id(knowledge_id, auth_context)
+
+
+def _is_lock_timeout_error(exc: oracledb.Error) -> bool:
+    error = exc.args[0] if exc.args else exc
+    code = getattr(error, "code", None)
+    message = getattr(error, "message", str(exc))
+    return code == 30006 or "ORA-30006" in message
+
+
+def _set_knowledge_lob_input_sizes(cursor: Any, fields: Iterable[str]) -> None:
+    if "answer" in set(fields):
+        cursor.setinputsizes(answer=oracledb.DB_TYPE_CLOB)
 
 
 async def delete_knowledge(knowledge_id: int, auth_context: AuthContext) -> bool:

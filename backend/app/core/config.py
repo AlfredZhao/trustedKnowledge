@@ -40,6 +40,18 @@ class Settings(BaseSettings):
         validation_alias="TRUSTED_KNOWLEDGE_WEB_CODEX_USER_CONCURRENCY",
         ge=1,
     )
+    knowledge_processing_timeout_seconds: int = Field(
+        180,
+        validation_alias="TRUSTED_KNOWLEDGE_KNOWLEDGE_PROCESSING_TIMEOUT_SECONDS",
+        ge=30,
+        le=600,
+    )
+    knowledge_processing_skill_char_budget: int = Field(
+        12000,
+        validation_alias="TRUSTED_KNOWLEDGE_KNOWLEDGE_PROCESSING_SKILL_CHAR_BUDGET",
+        ge=1000,
+        le=48000,
+    )
     history_ask_llm_api_key: str = Field("", validation_alias="TRUSTED_KNOWLEDGE_HISTORY_ASK_LLM_API_KEY")
     skill_storage_dir: str = Field("data/skills", validation_alias="TRUSTED_KNOWLEDGE_SKILL_STORAGE_DIR")
     skill_max_zip_mb: int = Field(20, validation_alias="TRUSTED_KNOWLEDGE_SKILL_MAX_ZIP_MB", ge=1)

@@ -616,6 +616,18 @@ function getKnowledgeSaveError(error: unknown): string {
   return message.includes("CK_TOPIC_TAG") ? KNOWLEDGE_TOPIC_TAG_HINT : message;
 }
 
+function getFactoryJobProgressText(job: CodexJobSnapshot): string {
+  const elapsedSeconds = Math.max(0, Math.floor((Date.now() - new Date(job.started_at).getTime()) / 1000));
+  const elapsedText = elapsedSeconds >= 60 ? `${Math.floor(elapsedSeconds / 60)} 分 ${elapsedSeconds % 60} 秒` : `${elapsedSeconds} 秒`;
+  const lastActivitySeconds = job.last_activity_at
+    ? Math.max(0, Math.floor((Date.now() - new Date(job.last_activity_at).getTime()) / 1000))
+    : elapsedSeconds;
+  if (lastActivitySeconds >= 60) {
+    return `已等待 ${elapsedText}，连续 ${lastActivitySeconds} 秒没有新活动，可能在等待外部步骤。可取消后缩短 Skill 或重试。`;
+  }
+  return `模型正在按所选 Skill 加工（已等待 ${elapsedText}）。${job.last_event ?? "正在等待模型结果。"}`;
+}
+
 function App() {
   // Restored UI state and long-lived workspace state.
   const [restoredUiState] = useState<StoredUiState>(() => readStoredUiState());
@@ -1644,7 +1656,7 @@ function App() {
 
         if (job.status === "running") {
           setIsFactoryGenerating(true);
-          setFactoryCodexStatus("模型正在按所选 Skill 加工...");
+          setFactoryCodexStatus(getFactoryJobProgressText(job));
           timer = window.setTimeout(pollFactoryCodexJob, 1500);
           return;
         }
@@ -1655,6 +1667,15 @@ function App() {
           setFactoryCodexKnowledgeId(null);
           setFactoryCodexStatus("模型加工失败。");
           setFactoryCopyError(job.error_message ?? "模型加工失败，请稍后重试。");
+          return;
+        }
+
+        if (job.status === "cancelled") {
+          setIsFactoryGenerating(false);
+          setFactoryCodexJobId(null);
+          setFactoryCodexKnowledgeId(null);
+          setFactoryCodexStatus("模型加工已取消。");
+          setFactoryCopyError(job.error_message ?? "模型加工已取消。");
           return;
         }
 
@@ -3374,6 +3395,25 @@ function App() {
       setFactoryCodexKnowledgeId(null);
       setFactoryCodexStatus(usesHistoryAskModel ? "其他模型加工失败。" : "Codex 加工失败。");
       setFactoryCopyError(error instanceof Error ? error.message : usesHistoryAskModel ? "其他模型加工失败，请稍后重试。" : "Codex 加工失败，请稍后重试。");
+    }
+  }
+
+  async function handleCancelFactoryTask() {
+    if (!factoryCodexJobId || !isFactoryGenerating) return;
+
+    setFactoryCodexStatus("正在取消模型加工...");
+    try {
+      const job = await cancelCodexJob(factoryCodexJobId);
+      setFactoryTask(job.output);
+      setIsFactoryGenerating(false);
+      setIsFactoryAutoSaving(false);
+      setFactoryCodexJobId(null);
+      setFactoryCodexKnowledgeId(null);
+      setFactoryCodexStatus("模型加工已取消。");
+      setFactoryCopyError(job.error_message ?? "模型加工已取消。");
+    } catch (error) {
+      setFactoryCodexStatus("取消失败，模型任务可能仍在运行。");
+      setFactoryCopyError(error instanceof Error ? error.message : "取消模型加工失败，请稍后重试。");
     }
   }
 
@@ -6133,6 +6173,7 @@ function App() {
               }}
               onCopyTask={handleCopyFactoryTask}
               onGenerateTask={handleGenerateFactoryTask}
+              onCancelTask={handleCancelFactoryTask}
               onMergeKnowledge={handleMergeFactoryKnowledge}
               onModelNameChange={setFactoryModelName}
               onPageChange={setFactoryPage}
@@ -9123,6 +9164,7 @@ function KnowledgeFactory({
   onClearSearch,
   onCopyTask,
   onGenerateTask,
+  onCancelTask,
   onMergeKnowledge,
   onModelNameChange,
   onPageChange,
@@ -9157,6 +9199,7 @@ function KnowledgeFactory({
   onClearSearch: () => void;
   onCopyTask: (view: MarkdownContentView) => void;
   onGenerateTask: (item: KnowledgeItem) => void;
+  onCancelTask: () => void;
   onMergeKnowledge: (knowledgeIds: number[], mergeDraft: KnowledgeDraft) => Promise<KnowledgeItem>;
   onModelNameChange: (modelName: string) => void;
   onPageChange: (page: number) => void;
@@ -9444,16 +9487,28 @@ function KnowledgeFactory({
               </p>
             ) : null}
             {selectedItem ? (
-              <button
-                className="flex h-10 items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-3 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
-                disabled={isGenerating || selectedSkillIds.length === 0}
-                title={selectedSkillIds.length === 0 ? "请先选择 Skill" : "使用所选 Skill 直接生成结果"}
-                type="button"
-                onClick={() => onGenerateTask(selectedItem)}
-              >
-                {isGenerating ? <Loader2 className="animate-spin" size={17} /> : <Sparkles size={17} />}
-                {isGenerating ? "生成中" : "生成结果"}
-              </button>
+              isGenerating ? (
+                <button
+                  className="flex h-10 items-center justify-center gap-2 rounded-lg border border-amberline/30 bg-amberline/10 px-3 text-sm font-medium text-amberline transition hover:bg-amberline/20"
+                  title="停止当前模型加工任务"
+                  type="button"
+                  onClick={onCancelTask}
+                >
+                  <X size={17} />
+                  取消加工
+                </button>
+              ) : (
+                <button
+                  className="flex h-10 items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-3 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
+                  disabled={selectedSkillIds.length === 0}
+                  title={selectedSkillIds.length === 0 ? "请先选择 Skill" : "使用所选 Skill 直接生成结果"}
+                  type="button"
+                  onClick={() => onGenerateTask(selectedItem)}
+                >
+                  <Sparkles size={17} />
+                  生成结果
+                </button>
+              )
             ) : null}
           </div>
           <SkillSelector

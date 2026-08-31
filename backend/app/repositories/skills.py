@@ -441,12 +441,19 @@ def update_skill_file(skill_id: str, file_path: str, content: str, auth_context:
     return read_skill_file(skill_id, file_path, auth_context)
 
 
-def get_prompt_skills(skill_ids: list[str], auth_context: AuthContext, *, agent_code: str | None = None) -> list[dict[str, str]]:
+def get_prompt_skills(
+    skill_ids: list[str],
+    auth_context: AuthContext,
+    *,
+    agent_code: str | None = None,
+    total_content_char_budget: int | None = None,
+) -> list[dict[str, str]]:
     allowed_ids: set[str] | None = None
     if agent_code:
         from app.repositories.agents import allowed_skill_ids
         allowed_ids, _ = allowed_skill_ids(agent_code, auth_context)
     selected = []
+    remaining_budget = total_content_char_budget
     for skill_id in skill_ids[:8]:
         if allowed_ids is not None and skill_id not in allowed_ids:
             continue
@@ -457,13 +464,19 @@ def get_prompt_skills(skill_ids: list[str], auth_context: AuthContext, *, agent_
             continue
         if not detail["can_use"]:
             continue
+        content = detail["skill_markdown"][:6000]
+        if remaining_budget is not None:
+            if remaining_budget <= 0:
+                break
+            content = content[:remaining_budget]
+            remaining_budget -= len(content)
         selected.append(
             {
                 "id": detail["id"],
                 "name": detail["name"],
                 "description": detail["description"],
                 "path": str(skill_dir),
-                "content": detail["skill_markdown"][:6000],
+                "content": content,
             }
         )
     return selected

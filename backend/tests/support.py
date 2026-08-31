@@ -38,6 +38,8 @@ def prepare_backend_imports() -> None:
                 db_pool_max_lifetime_session=3600,
                 history_ask_llm_api_key="",
                 metaweblog_timeout_seconds=60,
+                knowledge_processing_timeout_seconds=180,
+                knowledge_processing_skill_char_budget=12000,
             )
         )
 

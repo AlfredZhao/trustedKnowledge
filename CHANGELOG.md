@@ -9,6 +9,26 @@ The format follows the common GitHub changelog convention inspired by
 
 ## 本次版本更新
 
+### [Unreleased]
+
+#### Added / 新增
+
+- Added knowledge-processing task protection: the workspace now shows elapsed/latest activity, offers cancellation, limits selected Skill prompt content to a shared budget, and stops content-processing jobs after a dedicated configurable timeout.
+- 为知识加工新增任务保护：工作区现展示已等待时间和最近活动、提供取消操作、对所选 Skill 注入内容设置总预算，并在独立的可配置时限后停止内容加工任务。
+
+#### Changed / 变更
+
+#### Fixed / 修复
+
+- Fixed knowledge-processing tasks remaining visually indistinguishable from normal work while stalled. Codex and configured external-model jobs now use the same short processing deadline and return an actionable timeout result instead of continuing the generic spinner.
+- 修复知识加工任务卡住时仍与正常加工无差别地持续转圈的问题。Codex 与已配置的外部模型现共用较短的加工时限，并在超时时返回可操作提示。
+
+- Fixed downloaded enhanced HTML code-block copy controls so each button stays in the code block, copies only that block's plain text, and is excluded from `复制正文` output.
+- 修复下载的增强美化 HTML 代码块复制控件：按钮现固定在对应代码块内、仅复制该块纯文本，且不会被带入“复制正文”的结果。
+
+- Fixed long trusted-knowledge saves by binding the answer explicitly as an Oracle CLOB and limiting concurrent-edit row-lock waits to five seconds; timeouts and lock conflicts now show actionable Chinese messages instead of an indefinite spinner or `Failed to fetch`.
+- 修复长篇可信知识保存异常：答案字段现显式按 Oracle CLOB 绑定，并将并发编辑的行锁等待限制为 5 秒；超时和锁冲突会显示可执行的中文提示，不再无限转圈或仅显示 `Failed to fetch`。
+
 ### [0.4.4] - 2026-08-31
 
 #### Added / 新增

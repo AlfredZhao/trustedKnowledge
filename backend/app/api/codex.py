@@ -294,7 +294,16 @@ def _build_prompt(
     auth_context: AuthContext | None = None,
     output_mode: str = "full",
 ) -> str:
-    selected_skills = get_prompt_skills(skill_ids or [], auth_context, agent_code="knowledge-processing") if auth_context else []
+    selected_skills = (
+        get_prompt_skills(
+            skill_ids or [],
+            auth_context,
+            agent_code="knowledge-processing",
+            total_content_char_budget=settings.knowledge_processing_skill_char_budget if output_mode == "final" else None,
+        )
+        if auth_context
+        else []
+    )
     if output_mode == "final":
         lines = [
             "You are running from the trustedKnowledge Knowledge Processing interface.",
@@ -393,7 +402,7 @@ async def _run_codex_job(job: CodexJobState, auth_context: AuthContext) -> None:
         stdout_task = asyncio.create_task(_read_process_lines("stdout", process.stdout, None, job.output_parts, job))
         stderr_task = asyncio.create_task(_read_process_lines("stderr", process.stderr, None, job.error_parts, job))
         wait_task = asyncio.create_task(process.wait())
-        deadline = time.monotonic() + CODEX_TIMEOUT_SECONDS
+        deadline = time.monotonic() + _job_timeout_seconds(job)
 
         try:
             while True:
@@ -401,7 +410,7 @@ async def _run_codex_job(job: CodexJobState, auth_context: AuthContext) -> None:
                     process.kill()
                     await process.wait()
                     _cleanup_codex_output_file(output_path)
-                    _mark_codex_job_failed(job, "Codex task timed out before finishing.")
+                    _mark_codex_job_failed(job, _job_timeout_message(job))
                     break
 
                 if wait_task.done() and stdout_task.done() and stderr_task.done():
@@ -467,7 +476,12 @@ async def _get_enabled_history_ask_llm_config() -> dict[str, object]:
 
 
 def _build_history_ask_llm_prompt(job: CodexJobState, auth_context: AuthContext) -> tuple[str, str]:
-    selected_skills = get_prompt_skills(job.skill_ids, auth_context, agent_code="knowledge-processing")
+    selected_skills = get_prompt_skills(
+        job.skill_ids,
+        auth_context,
+        agent_code="knowledge-processing",
+        total_content_char_budget=settings.knowledge_processing_skill_char_budget,
+    )
     skill_instructions = _format_selected_skills_for_prompt(selected_skills)
     prompt_parts = [
         "这是知识加工任务。请仅输出最终加工结果，不要输出过程、计划、说明或代码修改建议。",
@@ -486,12 +500,20 @@ async def _run_history_ask_llm_job(job: CodexJobState, auth_context: AuthContext
     try:
         config = await _get_enabled_history_ask_llm_config()
         prompt, system = _build_history_ask_llm_prompt(job, auth_context)
-        output = await _call_history_ask_llm(
-            config=config,
-            prompt=prompt,
-            system=system,
-            max_tokens=4000,
+        job.last_activity_at = datetime.now(UTC)
+        job.last_event = "其他模型请求已发送，正在等待生成结果。"
+        output = await asyncio.wait_for(
+            _call_history_ask_llm(
+                config=config,
+                prompt=prompt,
+                system=system,
+                max_tokens=4000,
+            ),
+            timeout=_job_timeout_seconds(job),
         )
+    except TimeoutError:
+        _mark_codex_job_failed(job, _job_timeout_message(job))
+        return
     except HTTPException as exc:
         _mark_codex_job_failed(job, str(exc.detail))
         return
@@ -756,6 +778,17 @@ def _mark_codex_job_cancelled(job: CodexJobState, message: str) -> None:
         job.completed_at = datetime.now(UTC)
 
 
+def _job_timeout_seconds(job: CodexJobState) -> int:
+    """Keep short content transformations from inheriting the coding-task budget."""
+    return settings.knowledge_processing_timeout_seconds if job.output_mode == "final" else CODEX_TIMEOUT_SECONDS
+
+
+def _job_timeout_message(job: CodexJobState) -> str:
+    if job.output_mode == "final":
+        return f"知识加工超过 {_job_timeout_seconds(job)} 秒仍未完成，任务已停止。请缩短 Skill 或稍后重试。"
+    return "Codex task timed out before finishing."
+
+
 async def _reconcile_codex_jobs(username: str) -> None:
     running_jobs = [job for job in _codex_jobs.values() if job.owner_username == username and job.status == "running"]
     if not running_jobs:
@@ -783,7 +816,7 @@ async def _reconcile_codex_jobs(username: str) -> None:
             continue
 
         runtime_seconds = (datetime.now(UTC) - job.started_at).total_seconds()
-        if runtime_seconds <= CODEX_TIMEOUT_SECONDS + 5:
+        if runtime_seconds <= _job_timeout_seconds(job) + 5:
             continue
 
         task.cancel()
@@ -794,7 +827,7 @@ async def _reconcile_codex_jobs(username: str) -> None:
                 process.kill()
             with suppress(Exception):
                 await process.wait()
-        _mark_codex_job_failed(job, "Codex task timed out before finishing.")
+        _mark_codex_job_failed(job, _job_timeout_message(job))
         await _release_job_slot(job)
 
 

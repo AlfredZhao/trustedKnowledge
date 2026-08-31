@@ -116,6 +116,8 @@ export async function createKnowledge(draft: KnowledgeDraft): Promise<KnowledgeI
   return request<KnowledgeItem>("/api/knowledge", {
     method: "POST",
     invalidatePrefixes: ["/api/knowledge"],
+    timeoutMs: 15000,
+    timeoutErrorMessage: "可信知识保存超过 15 秒未响应，保存结果可能未知。请刷新确认后再重试。",
     body: JSON.stringify({
       question: draft.question,
       answer: draft.answer,
@@ -134,6 +136,8 @@ export async function updateKnowledge(id: number, draft: KnowledgeDraft): Promis
   return request<KnowledgeItem>(`/api/knowledge/${id}`, {
     method: "PATCH",
     invalidatePrefixes: ["/api/knowledge"],
+    timeoutMs: 15000,
+    timeoutErrorMessage: "可信知识保存超过 15 秒未响应，保存结果可能未知。请刷新确认后再重试。",
     body: JSON.stringify({
       question: draft.question,
       answer: draft.answer,

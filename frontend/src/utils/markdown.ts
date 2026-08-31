@@ -380,8 +380,16 @@ function buildStandaloneCopyScript() {
     "    if (!article) return;",
     "    const clone = article.cloneNode(true);",
     "    if (clone.firstElementChild?.tagName?.toLowerCase() === 'h1') clone.firstElementChild.remove();",
+    "    clone.querySelectorAll('[data-copy-code-block]').forEach((button) => button.remove());",
     "    if (!(clone.textContent || '').trim()) return;",
     "    try { await copyElementRichText(clone); setButtonState(bodyButton, '已复制正文'); } catch { setButtonState(bodyButton, '复制失败'); }",
+    "  });",
+    "  document.querySelectorAll('[data-copy-code-block]').forEach((button) => {",
+    "    button.addEventListener('click', async () => {",
+    "      const code = button.closest('[data-code-block]')?.querySelector('code')?.textContent;",
+    "      if (code === undefined || code === null) return;",
+    "      try { await copyPlainText(code); setButtonState(button, '已复制'); } catch { setButtonState(button, '复制失败'); }",
+    "    });",
     "  });",
     "})();",
     "</script>",
@@ -468,8 +476,16 @@ function inlineEnhancedClipboardStyles(html: string) {
       '<blockquote style="margin: 0 0 14px; padding: 12px 14px; border-left: 3px solid #c08475; border-radius: 0 10px 10px 0; background: #fbf4f1; color: #6b3a32;">',
     )
     .replace(
+      /<div class="markdown-code-block" data-code-block="([^"]+)">/g,
+      '<div class="markdown-code-block" data-code-block="$1" style="position:relative; margin:0 0 14px;">',
+    )
+    .replace(
+      /<button type="button" class="markdown-code-copy-button" data-copy-code-block="([^"]+)" aria-label="复制代码">复制<\/button>/g,
+      '<button type="button" class="markdown-code-copy-button" data-copy-code-block="$1" aria-label="复制代码" style="position:absolute; z-index:1; top:10px; right:10px; border:1px solid rgba(253,244,241,0.35); border-radius:6px; background:rgba(42,31,29,0.72); color:#fdf4f1; cursor:pointer; font-size:12px; line-height:1.25; padding:4px 8px;">复制</button>',
+    )
+    .replace(
       /<pre>/g,
-      '<pre style="margin: 0 0 14px; padding: 14px 16px; border-radius: 12px; background: #2a1f1d; color: #fdf4f1; white-space: pre; overflow-x: auto; overflow-y: hidden;">',
+      '<pre style="margin: 0; padding: 46px 16px 14px; border-radius: 12px; background: #2a1f1d; color: #fdf4f1; white-space: pre; overflow-x: auto; overflow-y: hidden;">',
     )
     .replace(
       /<code([^>]*)>/g,

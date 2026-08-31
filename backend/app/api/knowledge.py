@@ -13,6 +13,7 @@ from app.repositories.knowledge import (
     list_knowledge,
     merge_knowledge,
     update_knowledge,
+    KnowledgeUpdateLocked,
 )
 from app.repositories.users import AuthContext
 from app.schemas.knowledge import (
@@ -124,6 +125,8 @@ async def patch_knowledge(
 ) -> KnowledgeItem:
     try:
         updated = await update_knowledge(knowledge_id, payload, auth_context)
+    except KnowledgeUpdateLocked as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except oracledb.Error as exc:
         raise oracle_http_exception(exc, "Oracle rejected the knowledge update") from exc
 
