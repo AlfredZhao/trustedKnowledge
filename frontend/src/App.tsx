@@ -10044,8 +10044,9 @@ function BlogFactoryRecords({
   const publishTitle = selectedItem ? extractMarkdownHeading(publishMarkdown) || selectedItem.article_title || "" : "";
   const assistSource = editDraft.taskContent;
   const assistSummaryCandidates = useMemo(() => buildBlogFactoryTaskSummaryCandidates(assistSource), [assistSource]);
-  const coverPromptSource = coverPromptTextDraft.trim() || assistSource;
-  const coverPromptSummary = useMemo(() => buildBlogFactoryTaskSummary(coverPromptSource), [coverPromptSource]);
+  const coverPromptSource = coverPromptTextDraft.trim() || selectedItem?.article_markdown?.trim() || assistSource;
+  const coverPromptSummary = editDraft.assistSummary.trim() || buildBlogFactoryTaskSummary(coverPromptSource);
+  const coverPromptTitle = publishTitle || editDraft.questionSnapshot || selectedItem?.question_snapshot || "";
   const coverImageMarkdown = editDraft.coverImageMarkdown;
   const resolvedCoverPromptConfig = useMemo(() => normalizeBlogFactoryCoverPromptConfig(coverPromptConfig), [coverPromptConfig]);
   const coverImagePrompt = useMemo(
@@ -10053,11 +10054,11 @@ function BlogFactoryRecords({
       buildBlogFactoryCoverImagePrompt(
         coverPromptSource,
         coverPromptSummary,
-        editDraft.questionSnapshot || selectedItem?.question_snapshot || "",
+        coverPromptTitle,
         coverPromptTemplate,
         resolvedCoverPromptConfig,
       ),
-    [coverPromptSource, coverPromptSummary, coverPromptTemplate, resolvedCoverPromptConfig, editDraft.questionSnapshot, selectedItem?.question_snapshot],
+    [coverPromptSource, coverPromptSummary, coverPromptTemplate, resolvedCoverPromptConfig, coverPromptTitle],
   );
   const canPublish = publishMarkdown.trim().length > 0 && publishConfigs.length > 0 && !isPublishing;
   const selectedMaskRule = maskRules.find((item) => item.id === selectedMaskRuleId) ?? null;
@@ -10898,7 +10899,9 @@ function BlogFactoryRecords({
                       </div>
                     )}
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="min-h-5 text-xs leading-5 text-slate-500">默认仅输出标题、文章核心和想要的感觉。</div>
+                      <div className="min-h-5 text-xs leading-5 text-slate-500">
+                        标题取当前文章标题，核心内容优先取当前摘要；修改后会即时更新预览，仍需点击保存提示词才会更新导出版本。
+                      </div>
                       <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
                         <button
                           className="flex h-9 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-xs text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300"

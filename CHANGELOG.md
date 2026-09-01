@@ -61,6 +61,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Fixed / 修复
 
+- Fixed Blog Factory cover-prompt previews using the question snapshot and a separately re-derived summary. They now use the current article title, the current summary when present, and the saved article body before falling back to task content.
+- 修复博客工厂生图提示词预览错误使用问题快照及独立重新提炼摘要的问题。现优先使用当前文章标题、当前摘要和已保存文章正文，再回退到任务内容。
+
 - Fixed Blog Factory content assistance requiring a manual first summary extraction and returning the same sentence repeatedly. Empty summaries now receive a local default candidate on task selection, while `换一条摘要` rotates to a different candidate without overwriting saved or manually entered text.
 - 修复博客工厂内容辅助必须手动首次提取摘要且反复得到同一句的问题。任务无摘要时现会本地生成默认候选；`换一条摘要` 会轮换到不同候选，且不会自动覆盖已保存或手工输入的内容。
 

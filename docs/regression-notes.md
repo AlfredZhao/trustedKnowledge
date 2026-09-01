@@ -41,6 +41,28 @@ All Oracle executions must receive only bind names present in that statement's S
 
 在 PWA 先以“Alfred + 已处理”等组合得到并缓存 0 条，再在另一设备创建或更新为匹配记录。重新进入该 PWA 页面应先显示缓存、随后自动更新为服务端结果；断网时仍显示缓存。检查知识库、知识加工、博客工厂、待办、个人机密、当前记录、英语素材、历史查询和 AI 用量，并在博客工厂打开编辑/发布弹窗后触发后台同步，确认弹窗、复制内容和未保存草稿均保持。运行 `cd frontend && npm run build`。
 
+## 生图提示词预览必须跟随当前文章与摘要
+
+### Symptom
+
+任务详情更新文章标题或保存摘要后，生图提示词中的“标题”与“文章核心讲什么”仍显示旧问题快照或旧的自动提炼内容。
+
+### Trigger
+
+保存带一级标题的文章、更新文章标题或摘要，然后打开内容辅助的生图提示词预览。
+
+### Root Cause
+
+提示词函数调用把问题快照作为标题，并基于提示词输入/任务内容重新生成摘要，没有引用当前文章标题、当前摘要及已保存文章正文。
+
+### Safe Pattern
+
+`BlogFactoryRecords` 必须以 `publishTitle` 作为提示词标题、以 `editDraft.assistSummary` 作为优先核心内容、以 `selectedItem.article_markdown` 作为优先分析正文；临时输入框只覆盖正文来源。来源变化可以重算预览，但不可自动覆盖 `cover_prompt_snapshot`。
+
+### Guardrail
+
+保存一篇有 H1 的文章并保存摘要，确认预览中的标题和核心内容分别同步更新；修改临时输入正文后，标题和摘要仍保持当前文章/摘要。未点击保存提示词时导出仍保留旧快照。运行 `cd frontend && npm run build`。
+
 ## 博客工厂增强 HTML 必须只展示已保存生图提示词
 
 ### Symptom
