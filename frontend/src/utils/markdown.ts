@@ -1,10 +1,15 @@
 import { highlightCode } from "./codeHighlight";
 
-interface EnhancedCopyOptions {
+export type HtmlExportStyle = "classic" | "learning-card" | "minimal";
+export interface HtmlExportSection { id: string; label: string; value: string; }
+
+export interface EnhancedCopyOptions {
   downloadFileName?: string | null;
   documentTitle?: string | null;
   summary?: string | null;
   coverPrompt?: string | null;
+  exportStyle?: HtmlExportStyle;
+  sections?: HtmlExportSection[];
 }
 
 interface MarkdownRenderOptions {
@@ -224,6 +229,8 @@ export async function copyMarkdownAsEnhancedRichText(markdown: string, options?:
     options?.documentTitle,
     options?.summary,
     options?.coverPrompt,
+    options?.sections,
+    options?.exportStyle,
   );
 
   try {
@@ -305,10 +312,12 @@ function buildEnhancedRichClipboardHtml(innerHtml: string) {
   ].join("");
 }
 
-function buildStandaloneClipboardDocument(bodyHtml: string, title: string | null | undefined, summary: string | null | undefined, coverPrompt: string | null | undefined) {
+function buildStandaloneClipboardDocument(bodyHtml: string, title: string | null | undefined, summary: string | null | undefined, coverPrompt: string | null | undefined, sections: HtmlExportSection[] | undefined, exportStyle: HtmlExportStyle = "classic") {
   const safeTitle = escapeHtml(title?.trim() || "trustedKnowledge export");
   const summaryHtml = buildStandaloneSummaryHtml(summary);
   const coverPromptHtml = buildStandaloneCoverPromptHtml(coverPrompt);
+  const sectionsHtml = buildStandaloneSectionsHtml(sections);
+  const theme = getStandaloneTheme(exportStyle);
   return [
     "<!DOCTYPE html>",
     '<html lang="zh-CN">',
@@ -316,11 +325,14 @@ function buildStandaloneClipboardDocument(bodyHtml: string, title: string | null
     '<meta charset="utf-8" />',
     '<meta name="viewport" content="width=device-width, initial-scale=1" />',
     `<title>${safeTitle}</title>`,
-    "</head>",
-    `<body style="margin:0; padding:32px 20px; background:#f7f1ee;">${buildStandaloneCopyToolbar(Boolean(summaryHtml), Boolean(coverPromptHtml))}${insertStandaloneSummary(bodyHtml, `${summaryHtml}${coverPromptHtml}`)}${buildStandaloneCopyScript()}</body>`,
+    `<style>${theme.css}</style></head>`,
+    `<body style="margin:0; padding:32px 20px; background:${theme.background};">${buildStandaloneCopyToolbar(Boolean(summaryHtml), Boolean(coverPromptHtml), sections ?? [])}${insertStandaloneSummary(bodyHtml, `${summaryHtml}${coverPromptHtml}${sectionsHtml}`)}${buildStandaloneCopyScript()}</body>`,
     "</html>",
   ].join("");
 }
+
+function getStandaloneTheme(style: HtmlExportStyle) { if (style === "learning-card") return { background: "#eef6ff", css: "article{font-family:-apple-system,BlinkMacSystemFont,'Microsoft YaHei',sans-serif!important} article h1{color:#1d4ed8!important;border-color:#bfdbfe!important} [data-tk-export-section]{border-color:#bfdbfe!important;background:#f8fbff!important}" }; if (style === "minimal") return { background: "#f5f5f5", css: "article{font-family:Arial,'Microsoft YaHei',sans-serif!important;color:#222!important} article h1{color:#111!important;border-color:#ddd!important}" }; return { background: "#f7f1ee", css: "" }; }
+function buildStandaloneSectionsHtml(sections: HtmlExportSection[] | undefined) { return (sections ?? []).filter((section) => section.value.trim()).map((section) => `<section data-tk-export-section data-tk-export-section-id="${escapeAttribute(section.id)}" style="margin:0 0 18px;padding:16px 18px;border:1px solid #ead9d3;border-radius:12px;background:#fff9f6;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,Arial,sans-serif;"><div style="margin-bottom:6px;color:#9a3412;font-size:12px;font-weight:700;letter-spacing:.08em;">${escapeHtml(section.label)}</div><div data-tk-export-section-text style="white-space:pre-wrap;color:#4a2825;font-size:15px;line-height:1.75;">${escapeHtml(section.value.trim())}</div></section>`).join(""); }
 
 function buildStandaloneCoverPromptHtml(coverPrompt: string | null | undefined) {
   const value = coverPrompt?.trim();
@@ -425,7 +437,7 @@ function svgToPngDataUrl(svg: string) {
   });
 }
 
-function buildStandaloneCopyToolbar(hasSummary: boolean, hasCoverPrompt: boolean) {
+function buildStandaloneCopyToolbar(hasSummary: boolean, hasCoverPrompt: boolean, sections: HtmlExportSection[]) {
   const buttonStyle =
     "display:inline-flex;align-items:center;justify-content:center;min-height:36px;border:1px solid #d8b8ae;border-radius:8px;background:#fffdfb;color:#7f1d1d;padding:0 14px;font-size:14px;font-weight:600;cursor:pointer;box-shadow:0 6px 18px rgba(95,29,29,0.08);";
 
@@ -434,6 +446,7 @@ function buildStandaloneCopyToolbar(hasSummary: boolean, hasCoverPrompt: boolean
     `<button type="button" data-copy-title style="${buttonStyle}">复制标题</button>`,
     hasSummary ? `<button type="button" data-copy-summary style="${buttonStyle}">复制摘要</button>` : "",
     hasCoverPrompt ? `<button type="button" data-copy-cover-prompt style="${buttonStyle}">复制生图提示词</button>` : "",
+    ...sections.filter((section) => section.value.trim()).map((section) => `<button type="button" data-copy-section="${escapeAttribute(section.id)}" style="${buttonStyle}">复制${escapeHtml(section.label)}</button>`),
     `<button type="button" data-copy-body style="${buttonStyle}">复制正文</button>`,
     "</div>",
   ].join("");
@@ -450,6 +463,7 @@ function buildStandaloneCopyScript() {
     "  const summary = document.querySelector('[data-tk-export-summary]');",
     "  const coverPrompt = document.querySelector('[data-tk-export-cover-prompt-text]');",
     "  const article = document.querySelector('article');",
+    "  document.querySelectorAll('[data-copy-section]').forEach((button) => button.addEventListener('click', async () => { const text = button.dataset.copySection && document.querySelector(`[data-tk-export-section-id=\"${button.dataset.copySection}\"] [data-tk-export-section-text]`)?.textContent?.trim(); if (!text) return; try { await copyPlainText(text); setButtonState(button, '已复制'); } catch { setButtonState(button, '复制失败'); } }));",
     "  const buttonDefaults = new WeakMap();",
     "  const setButtonState = (button, text) => {",
     "    if (!button) return;",
@@ -524,6 +538,7 @@ function buildStandaloneCopyScript() {
     "    if (clone.firstElementChild?.tagName?.toLowerCase() === 'h1') clone.firstElementChild.remove();",
     "    clone.querySelectorAll('[data-tk-export-summary]').forEach((section) => section.remove());",
     "    clone.querySelectorAll('[data-tk-export-cover-prompt]').forEach((section) => section.remove());",
+    "    clone.querySelectorAll('[data-tk-export-section]').forEach((section) => section.remove());",
     "    clone.querySelectorAll('[data-copy-code-block]').forEach((button) => button.remove());",
     "    if (!(clone.textContent || '').trim()) return;",
     "    try { await copyElementRichText(clone); setButtonState(bodyButton, '已复制正文'); } catch { setButtonState(bodyButton, '复制失败'); }",

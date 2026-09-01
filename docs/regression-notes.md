@@ -15,6 +15,28 @@ When fixing a bug with meaningful regression risk, add a short entry with:
 
 Keep entries concrete. Prefer file paths, function names, SQL placeholders, and test names over broad advice.
 
+## 博客工厂 AI 审阅不得无限停留在“审阅中”
+
+### Symptom
+
+博客工厂“审阅任务内容”在网络连接、代理或模型请求异常时持续显示“审阅中”，取消和关闭不可用，用户只能刷新浏览器再试。
+
+### Trigger
+
+同步审阅 POST 未返回，或浏览器刷新发生在模型仍执行期间。
+
+### Root Cause
+
+界面将请求 Promise 的结束作为唯一状态收敛信号，未设置前端超时、未保留可查询的任务 ID，也没有取消通道。
+
+### Safe Pattern
+
+审阅必须先创建后台任务并返回 job ID，随后轮询 `running/completed/failed/cancelled`。创建、轮询、取消均须有前端超时；运行中状态必须提供取消动作。任务 ID 与原始任务内容仅可保存到 `sessionStorage` 用于同标签页刷新恢复；结果仍需显式应用且不得自动保存。后端需对每个任务设置总时限、记录不含正文的诊断信息，并在取消时终止 Codex 子进程。
+
+### Guardrail
+
+运行 `cd backend && python -m unittest tests.test_blog_review tests.test_blog_review_jobs`，并执行 `cd frontend && npm run build`。手工验证：启动审阅后刷新并重新打开相同任务可恢复；点击取消后可立即重新审阅；模拟任务失败或超时后显示错误且“开始审阅”可点击；深浅主题和移动端的取消、重试、应用建议按钮均可达。
+
 ## Shared Baseline: Oracle Bind Isolation
 
 All Oracle executions must receive only bind names present in that statement's SQL text. In multi-step repository flows, keep row-lock/read, update, count, and vector-query parameter dictionaries and `setinputsizes()` calls separate; do not let business-field binds or CLOB declarations leak into a preceding `SELECT ... FOR UPDATE` or summary query. Add or retain a regression test whenever dynamic SQL bindings change. Module-specific `DPY-4008` incidents below document concrete triggers and guardrails.
@@ -1089,3 +1111,24 @@ Skill 详情加载不得因已有请求而丢弃新的用户选择。使用递�
 ## 守护测试
 
 在“我的 Skill”及“共享与系统 Skill”分别连续按 3 次 `↓`、再按 2 次 `↑`，确认每次最终高亮项与右侧元信息、文件列表一致；在网络节流下重复验证，旧响应不能覆盖最后选择。鼠标点击、输入控件内方向键、桌面/移动端与深浅主题均保持原有行为，并运行 `cd frontend && npm run build`。
+# 英语素材 AI 补全请求悬挂后不能永久转圈
+
+## 症状
+
+英语素材选择 CLI 默认模型执行 `AI补全` 时，CLI 请求偶发长时间无响应，弹窗一直停在“补全中”，用户无法取消或得到失败结果。
+
+## 触发条件
+
+在英语素材新增或详情编辑的 `AI补全` 弹窗中，使用 CLI 默认模型发起补全，而 Codex CLI 在限定时间内没有返回。
+
+## 根因
+
+补全直接等待同步 HTTP 请求完成；浏览器、代理或 CLI 任何一层悬挂都会使前端 loading 状态无法收尾。
+
+## 安全模式
+
+补全须创建按当前用户和请求指纹去重的后台任务，前端以短超时轮询状态，并提供取消入口。服务端须在 100 秒总时限内终止任务并返回明确失败状态；同标签页刷新后可按相同完整口播稿恢复轮询。完成结果仍仅供用户确认回填，不能自动保存或改写完整口播稿。
+
+## 守护测试
+
+模拟一个未完成的补全任务，确认重复创建会返回同一任务；取消后状态为 `cancelled` 并显示“AI 补全已取消”。手工验证 CLI 默认模型下的正常完成、超时、取消和刷新后重开弹窗恢复轮询，确认桌面/移动端与深浅主题中取消和状态提示均可达；运行 `cd frontend && npm run build`。

@@ -87,6 +87,17 @@ class EnglishMaterialCompletionResult(BaseModel):
     chinese_translation: str = Field(..., min_length=1, max_length=255)
 
 
+class EnglishMaterialCompletionJobSnapshot(BaseModel):
+    job_id: str
+    status: Literal["running", "completed", "failed", "cancelled"]
+    execution_provider: Literal["codex", "history_ask_llm"]
+    model_name: str
+    result: EnglishMaterialCompletionResult | None = None
+    error_message: str | None = None
+    started_at: str
+    completed_at: str | None = None
+
+
 class EnglishMaterialUpdate(BaseModel):
     sequence_no: int | None = Field(default=None, ge=1)
     category: str | None = Field(default=None, max_length=50)

@@ -198,6 +198,20 @@ class BlogFactoryReviewResult(BaseModel):
         return self
 
 
+BlogFactoryReviewJobStatus = Literal["running", "completed", "failed", "cancelled"]
+
+
+class BlogFactoryReviewJobSnapshot(BaseModel):
+    job_id: str
+    status: BlogFactoryReviewJobStatus
+    execution_provider: Literal["codex", "history_ask_llm"]
+    model_name: str = ""
+    result: BlogFactoryReviewResult | None = None
+    error_message: str | None = None
+    started_at: str
+    completed_at: str | None = None
+
+
 class BlogFactoryArticleUpdate(BaseModel):
     article_markdown: str = Field(..., min_length=1)
     article_file_path: str | None = Field(default=None, max_length=500)

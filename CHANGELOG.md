@@ -26,6 +26,12 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Fixed / 修复
 
+- Fixed English Material `AI补全` becoming permanently stuck at `补全中` when the CLI default model hangs. Completion now runs as a cancellable background job with polling, a bounded execution deadline, same-tab refresh recovery, and actionable failure messages.
+- 修复英语素材 `AI补全` 使用 CLI 默认模型请求悬挂后可能永久停留在“补全中”的问题。补全现以可取消后台任务运行，具备轮询、受限执行时限、同标签页刷新恢复和可执行的失败提示。
+
+- Fixed Blog Factory AI review becoming permanently stuck at `审阅中` after a hung request. Review now runs as a cancellable background job with polling, bounded request timeouts, same-tab refresh recovery, and actionable failure messages.
+- 修复博客工厂 AI 审阅在请求悬挂后可能永久停留在“审阅中”的问题。审阅现以可取消后台任务运行，具备轮询、受限请求超时、同标签页刷新恢复和可执行的失败提示。
+
 - Fixed the Overview LLM battery remaining percentage becoming stale while the AI Usage view refreshed. Overview cache now renders immediately and continues its silent live usage refresh.
 - 修复总览 LLM 电池剩余百分比可能停留在旧缓存、与 AI 用量页不一致的问题。总览现即时展示缓存后继续静默读取最新用量。
 

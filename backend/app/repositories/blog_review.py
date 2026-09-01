@@ -13,6 +13,10 @@ from app.schemas.blog_factory import BlogFactoryReviewRequest, BlogFactoryReview
 from app.services.codex_cli import run_codex_final
 
 
+class BlogReviewTimeoutError(RuntimeError):
+    """The review provider did not finish within its bounded execution time."""
+
+
 def _extract_json(content: str) -> dict[str, Any]:
     candidate = content.strip()
     fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", candidate, re.DOTALL | re.IGNORECASE)
@@ -161,22 +165,32 @@ async def review_blog_factory_content(payload: BlogFactoryReviewRequest, auth_co
     if payload.execution_provider == "codex":
         if not settings.allow_web_codex:
             raise RuntimeError("Codex CLI 未启用，请联系管理员开启 Web Codex 后再试。")
-        content = await run_codex_final(
-            prompt=f"{system}\n\n{prompt}",
-            model_name=payload.model_name,
-            project_root=Path(__file__).resolve().parents[3],
-            timeout_seconds=90,
-        )
+        try:
+            content = await run_codex_final(
+                prompt=f"{system}\n\n{prompt}",
+                model_name=payload.model_name,
+                project_root=Path(__file__).resolve().parents[3],
+                timeout_seconds=90,
+            )
+        except RuntimeError as exc:
+            if "超时" in str(exc) or "timed out" in str(exc).lower():
+                raise BlogReviewTimeoutError("AI 审阅在 90 秒内未完成，请稍后重试。") from exc
+            raise
     else:
         async with acquire_connection() as connection:
             config = await get_history_ask_llm_config(connection)
-        content = await _call_history_ask_llm(
-            config=config,
-            prompt=prompt,
-            system=system,
-            max_tokens=2200,
-            response_format={"type": "json_object"} if _supports_json_mode(config) else None,
-        )
+        try:
+            content = await _call_history_ask_llm(
+                config=config,
+                prompt=prompt,
+                system=system,
+                max_tokens=2200,
+                response_format={"type": "json_object"} if _supports_json_mode(config) else None,
+            )
+        except RuntimeError as exc:
+            if "timed out" in str(exc).lower() or "超时" in str(exc):
+                raise BlogReviewTimeoutError("AI 审阅在 45 秒内未完成，请稍后重试。") from exc
+            raise
     try:
         return BlogFactoryReviewResult.model_validate(_normalize_review_result(_extract_json(content), payload.task_content))
     except Exception as exc:

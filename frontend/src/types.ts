@@ -115,6 +115,17 @@ export interface BlogFactoryReviewResult {
   suggestions: BlogFactoryReviewSuggestion[];
 }
 
+export interface BlogFactoryReviewJobSnapshot {
+  job_id: string;
+  status: "running" | "completed" | "failed" | "cancelled";
+  execution_provider: "codex" | "history_ask_llm";
+  model_name: string;
+  result: BlogFactoryReviewResult | null;
+  error_message: string | null;
+  started_at: string;
+  completed_at: string | null;
+}
+
 export type BlogPublishType = "METAWEBLOG_API";
 export type BlogPublishSubmissionOption = "CNBLOGS_HOME" | "PERSONAL_ONLY";
 
@@ -344,6 +355,17 @@ export interface EnglishMaterialCompletionResult {
   base_expression: string;
   professional_sentence: string;
   chinese_translation: string;
+}
+
+export interface EnglishMaterialCompletionJobSnapshot {
+  job_id: string;
+  status: "running" | "completed" | "failed" | "cancelled";
+  execution_provider: "codex" | "history_ask_llm";
+  model_name: string;
+  result: EnglishMaterialCompletionResult | null;
+  error_message: string | null;
+  started_at: string;
+  completed_at: string | null;
 }
 
 export interface LlmUsageSample {

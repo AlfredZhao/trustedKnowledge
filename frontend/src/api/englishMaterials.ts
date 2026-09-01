@@ -1,4 +1,4 @@
-import type { EnglishMaterialCompletionResult, EnglishMaterialDraft, EnglishMaterialGenerationResult, EnglishMaterialItem } from "../types";
+import type { EnglishMaterialCompletionJobSnapshot, EnglishMaterialCompletionResult, EnglishMaterialDraft, EnglishMaterialGenerationResult, EnglishMaterialItem } from "../types";
 import { buildQuery, readCachedGet, request } from "./client";
 
 export interface EnglishMaterialListResponse {
@@ -138,6 +138,45 @@ export async function completeEnglishMaterial({
       execution_provider: executionProvider,
       model_name: modelName,
     }),
+  });
+}
+
+export async function startEnglishMaterialCompletionJob({
+  fullScript,
+  skillIds,
+  executionProvider,
+  modelName,
+}: {
+  fullScript: string;
+  skillIds: string[];
+  executionProvider: "codex" | "history_ask_llm";
+  modelName: string;
+}): Promise<EnglishMaterialCompletionJobSnapshot> {
+  return request<EnglishMaterialCompletionJobSnapshot>("/api/english-materials/complete/jobs", {
+    method: "POST",
+    timeoutMs: 10000,
+    timeoutErrorMessage: "创建 AI 补全任务超时，请稍后重试。",
+    body: JSON.stringify({
+      full_script: fullScript,
+      skill_ids: skillIds,
+      execution_provider: executionProvider,
+      model_name: modelName,
+    }),
+  });
+}
+
+export async function getEnglishMaterialCompletionJob(jobId: string): Promise<EnglishMaterialCompletionJobSnapshot> {
+  return request<EnglishMaterialCompletionJobSnapshot>(`/api/english-materials/complete/jobs/${encodeURIComponent(jobId)}`, {
+    timeoutMs: 10000,
+    timeoutErrorMessage: "读取 AI 补全任务状态超时，请稍后重试。",
+  });
+}
+
+export async function cancelEnglishMaterialCompletionJob(jobId: string): Promise<EnglishMaterialCompletionJobSnapshot> {
+  return request<EnglishMaterialCompletionJobSnapshot>(`/api/english-materials/complete/jobs/${encodeURIComponent(jobId)}`, {
+    method: "DELETE",
+    timeoutMs: 10000,
+    timeoutErrorMessage: "取消 AI 补全超时；任务可能仍在运行，请重新打开补全窗口确认。",
   });
 }
 

@@ -98,7 +98,9 @@ import {
   readCachedBlogPublishCategories,
   readCachedKnowledge,
   readCachedTodos,
-  reviewBlogFactoryContent,
+  cancelBlogFactoryReviewJob,
+  getBlogFactoryReviewJob,
+  startBlogFactoryReviewJob,
   sendBlogFactoryItemToProcessing,
   updateBlogFactoryArticle,
   updateBlogFactoryAssistMetadata,
@@ -146,15 +148,17 @@ import {
 } from "./api/currentRecords";
 import { releaseCodeToGithub, restartServices, syncCodeToGithub } from "./api/system";
 import {
-  completeEnglishMaterial,
+  cancelEnglishMaterialCompletionJob,
   createEnglishMaterial,
   fetchEnglishMaterials,
   fetchNextEnglishMaterialSequence,
   generateEnglishMaterial,
+  getEnglishMaterialCompletionJob,
   getEnglishMaterial,
   readCachedEnglishMaterial,
   readCachedEnglishMaterials,
   refreshEnglishMaterialVectors,
+  startEnglishMaterialCompletionJob,
   updateEnglishMaterial,
 } from "./api/englishMaterials";
 import {
@@ -6541,6 +6545,7 @@ function WorkspaceSidebarCollapseToggle({
   label: string;
   onToggle: () => void;
 }) {
+  const [learningCardStyle, setLearningCardStyle] = useState<"classic" | "learning-card" | "minimal">("learning-card");
   if (isCollapsed) {
     return (
       <button
@@ -11552,10 +11557,79 @@ function BlogFactoryAiReview({
   const [isReviewing, setIsReviewing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<BlogFactoryReviewResult | null>(null);
+  const [reviewJobId, setReviewJobId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [modelName, setModelName] = useState(AI_CODING_DEFAULT_MODEL);
   const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
   const canReview = !disabled && !isReviewing && taskContent.trim().length > 0;
+
+  function clearStoredReviewJob() {
+    try {
+      window.sessionStorage.removeItem("trustedKnowledge.blogFactoryReviewJob.v1");
+    } catch {
+      // Session storage is optional; an active task can still finish in this tab.
+    }
+  }
+
+  function storeReviewJob(jobId: string) {
+    try {
+      window.sessionStorage.setItem("trustedKnowledge.blogFactoryReviewJob.v1", JSON.stringify({ jobId, taskContent }));
+    } catch {
+      // Do not make review availability depend on browser storage.
+    }
+  }
+
+  useEffect(() => {
+    if (!isOpen || !reviewJobId) return;
+    const jobId = reviewJobId;
+    let cancelled = false;
+    let timer: number | undefined;
+
+    async function pollReviewJob() {
+      try {
+        const job = await getBlogFactoryReviewJob(jobId);
+        if (cancelled) return;
+        if (job.status === "running") {
+          timer = window.setTimeout(pollReviewJob, 1500);
+          return;
+        }
+        setIsReviewing(false);
+        setReviewJobId(null);
+        clearStoredReviewJob();
+        if (job.status === "completed" && job.result) {
+          setResult(job.result);
+          setSelectedIds(job.result.suggestions.map((suggestion) => suggestion.id));
+          return;
+        }
+        setError(job.error_message ?? (job.status === "cancelled" ? "审阅已取消。" : "AI 审阅失败，请稍后重试。"));
+      } catch (reviewError) {
+        if (cancelled) return;
+        setIsReviewing(false);
+        setReviewJobId(null);
+        clearStoredReviewJob();
+        setError(reviewError instanceof Error ? reviewError.message : "读取审阅任务状态失败，请稍后重试。");
+      }
+    }
+
+    void pollReviewJob();
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [isOpen, reviewJobId]);
+
+  useEffect(() => {
+    if (!isOpen || reviewJobId || result) return;
+    try {
+      const raw = window.sessionStorage.getItem("trustedKnowledge.blogFactoryReviewJob.v1");
+      const stored = raw ? JSON.parse(raw) as { jobId?: unknown; taskContent?: unknown } : null;
+      if (typeof stored?.jobId !== "string" || stored.taskContent !== taskContent) return;
+      setIsReviewing(true);
+      setReviewJobId(stored.jobId);
+    } catch {
+      clearStoredReviewJob();
+    }
+  }, [isOpen, reviewJobId, result, taskContent]);
 
   function closeDialog() {
     if (isReviewing) return;
@@ -11563,6 +11637,7 @@ function BlogFactoryAiReview({
     setError(null);
     setResult(null);
     setSelectedIds([]);
+    setReviewJobId(null);
   }
 
   async function handleReview() {
@@ -11571,7 +11646,7 @@ function BlogFactoryAiReview({
     setError(null);
     try {
       const usesConfiguredModel = modelName === HISTORY_ASK_CONFIGURED_MODEL;
-      const next = await reviewBlogFactoryContent({
+      const job = await startBlogFactoryReviewJob({
         taskContent,
         questionSnapshot,
         answerSnapshot,
@@ -11579,12 +11654,24 @@ function BlogFactoryAiReview({
         executionProvider: usesConfiguredModel ? "history_ask_llm" : "codex",
         modelName: modelName === AI_CODING_DEFAULT_MODEL ? "" : modelName,
       });
-      setResult(next);
-      setSelectedIds(next.suggestions.map((suggestion) => suggestion.id));
+      storeReviewJob(job.job_id);
+      setReviewJobId(job.job_id);
     } catch (reviewError) {
       setError(reviewError instanceof Error ? reviewError.message : "AI 审阅失败，请稍后重试。");
-    } finally {
       setIsReviewing(false);
+    }
+  }
+
+  async function cancelReview() {
+    if (!reviewJobId) return;
+    try {
+      await cancelBlogFactoryReviewJob(reviewJobId);
+      clearStoredReviewJob();
+      setReviewJobId(null);
+      setIsReviewing(false);
+      setIsOpen(false);
+    } catch (cancelError) {
+      setError(cancelError instanceof Error ? cancelError.message : "取消审阅失败，请稍后重试。");
     }
   }
 
@@ -11618,10 +11705,10 @@ function BlogFactoryAiReview({
       <section aria-modal="true" className="flex max-h-[100dvh] w-full max-w-3xl flex-col overflow-hidden rounded-t-lg border border-mint-300/20 bg-ink-900 shadow-soft-glow sm:max-h-[calc(100dvh-3rem)] sm:rounded-lg" role="dialog" aria-label="AI 审阅任务内容">
         <div className="flex shrink-0 items-start justify-between gap-4 border-b border-white/10 p-4 sm:p-5"><div><div className="mb-2 flex items-center gap-2 text-sm text-mint-300"><WandSparkles size={17} />AI 审阅</div><h2 className="text-xl font-semibold text-slate-50">审阅任务内容</h2><p className="mt-1 text-xs leading-5 text-slate-500">审阅结果不会自动保存。可勾选部分建议，应用后会进入编辑模式，由你确认保存。</p></div><button className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-300 transition hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600" disabled={isReviewing} title="关闭" type="button" onClick={closeDialog}><X size={17} /></button></div>
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 sm:p-5">
-          {!result ? <><div className="rounded-lg border border-white/10 bg-white/[0.025] p-4 text-sm leading-7 text-slate-400">将审阅结构、逻辑、表达、与问题/答案快照的一致性及 Markdown。不会联网核验事实；Skill 只能调整审阅侧重点，不能改变安全替换和不自动保存规则。</div><Field label="执行模型" icon={<Settings2 size={16} />}><select className="control" disabled={isReviewing} value={modelName} onChange={(event) => setModelName(event.target.value)}>{modelOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field><SkillSelector agentCode="blog-review" disabled={isReviewing} selectedSkillIds={selectedSkillIds} onSelectedSkillIdsChange={setSelectedSkillIds} /></> : result.status === "no_issues" ? <div className="rounded-lg border border-mint-300/25 bg-mint-300/10 p-4 text-sm leading-7 text-mint-100"><div className="mb-1 flex items-center gap-2 font-medium text-mint-200"><CheckCircle2 size={17} />未发现需要修改的问题</div>{result.summary}</div> : <div className="space-y-3"><div className="rounded-lg border border-white/10 bg-white/[0.025] p-3 text-sm leading-6 text-slate-300">{result.summary}</div>{result.suggestions.map((suggestion) => <label key={suggestion.id} className="block cursor-pointer rounded-lg border border-white/10 bg-white/[0.025] p-4 transition hover:border-mint-300/25"><div className="flex items-start gap-3"><input checked={selectedIds.includes(suggestion.id)} className="mt-1" type="checkbox" onChange={() => toggleSuggestion(suggestion.id)} /><div className="min-w-0 flex-1 space-y-2"><div className="flex flex-wrap gap-2 text-xs"><span className="rounded-md border border-red-300/25 bg-red-300/10 px-2 py-1 text-red-100">{suggestion.severity}</span><span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-slate-300">{suggestion.category}</span></div><p className="text-sm text-slate-200">{suggestion.problem}</p><p className="text-sm leading-6 text-slate-400">建议：{suggestion.suggestion}</p><div className="rounded bg-black/20 p-2 font-mono text-xs leading-5 text-slate-400">定位：{suggestion.quote}</div><div className="grid gap-2 lg:grid-cols-2"><div className="rounded bg-red-400/5 p-2 text-xs leading-5 text-red-100"><span className="mb-1 block text-red-200">替换前</span>{suggestion.before}</div><div className="rounded bg-mint-300/5 p-2 text-xs leading-5 text-mint-100"><span className="mb-1 block text-mint-200">替换后</span>{suggestion.after}</div></div></div></div></label>)}</div>}
+          {!result ? <><div className="rounded-lg border border-white/10 bg-white/[0.025] p-4 text-sm leading-7 text-slate-400">将审阅结构、逻辑、表达、与问题/答案快照的一致性及 Markdown。不会联网核验事实；Skill 只能调整审阅侧重点，不能改变安全替换和不自动保存规则。</div>{isReviewing ? <div className="flex items-center gap-2 rounded-lg border border-mint-300/25 bg-mint-300/10 p-3 text-sm text-mint-100"><Loader2 className="animate-spin" size={17} />审阅任务正在后台执行；刷新此页面后重新打开此窗口可继续查看结果。</div> : <><Field label="执行模型" icon={<Settings2 size={16} />}><select className="control" value={modelName} onChange={(event) => setModelName(event.target.value)}>{modelOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field><SkillSelector agentCode="blog-review" selectedSkillIds={selectedSkillIds} onSelectedSkillIdsChange={setSelectedSkillIds} /></>}</> : result.status === "no_issues" ? <div className="rounded-lg border border-mint-300/25 bg-mint-300/10 p-4 text-sm leading-7 text-mint-100"><div className="mb-1 flex items-center gap-2 font-medium text-mint-200"><CheckCircle2 size={17} />未发现需要修改的问题</div>{result.summary}</div> : <div className="space-y-3"><div className="rounded-lg border border-white/10 bg-white/[0.025] p-3 text-sm leading-6 text-slate-300">{result.summary}</div>{result.suggestions.map((suggestion) => <label key={suggestion.id} className="block cursor-pointer rounded-lg border border-white/10 bg-white/[0.025] p-4 transition hover:border-mint-300/25"><div className="flex items-start gap-3"><input checked={selectedIds.includes(suggestion.id)} className="mt-1" type="checkbox" onChange={() => toggleSuggestion(suggestion.id)} /><div className="min-w-0 flex-1 space-y-2"><div className="flex flex-wrap gap-2 text-xs"><span className="rounded-md border border-red-300/25 bg-red-300/10 px-2 py-1 text-red-100">{suggestion.severity}</span><span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-slate-300">{suggestion.category}</span></div><p className="text-sm text-slate-200">{suggestion.problem}</p><p className="text-sm leading-6 text-slate-400">建议：{suggestion.suggestion}</p><div className="rounded bg-black/20 p-2 font-mono text-xs leading-5 text-slate-400">定位：{suggestion.quote}</div><div className="grid gap-2 lg:grid-cols-2"><div className="rounded bg-red-400/5 p-2 text-xs leading-5 text-red-100"><span className="mb-1 block text-red-200">替换前</span>{suggestion.before}</div><div className="rounded bg-mint-300/5 p-2 text-xs leading-5 text-mint-100"><span className="mb-1 block text-mint-200">替换后</span>{suggestion.after}</div></div></div></div></label>)}</div>}
           {error ? <div className="flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100"><TriangleAlert className="mt-0.5 shrink-0 text-red-300" size={17} /><span>{error}</span></div> : null}
         </div>
-        <div className="flex shrink-0 justify-end gap-3 border-t border-white/10 p-4"><button className="h-11 rounded-lg border border-white/10 bg-white/[0.035] px-4 text-sm text-slate-300 disabled:cursor-not-allowed disabled:text-slate-600" disabled={isReviewing} type="button" onClick={closeDialog}>取消</button>{result?.status === "issues_found" ? <button className="flex h-11 items-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500" disabled={selectedIds.length === 0} type="button" onClick={applySuggestions}><Pencil size={17} />应用所选建议</button> : <button className="flex h-11 items-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500" disabled={!canReview} type="button" onClick={() => void handleReview()}>{isReviewing ? <Loader2 className="animate-spin" size={17} /> : <WandSparkles size={17} />}{isReviewing ? "审阅中" : "开始审阅"}</button>}</div>
+        <div className="flex shrink-0 justify-end gap-3 border-t border-white/10 p-4">{isReviewing ? <button className="h-11 rounded-lg border border-red-300/30 bg-red-300/10 px-4 text-sm text-red-100" type="button" onClick={() => void cancelReview()}>取消审阅</button> : <button className="h-11 rounded-lg border border-white/10 bg-white/[0.035] px-4 text-sm text-slate-300" type="button" onClick={closeDialog}>取消</button>}{result?.status === "issues_found" ? <button className="flex h-11 items-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500" disabled={selectedIds.length === 0} type="button" onClick={applySuggestions}><Pencil size={17} />应用所选建议</button> : !isReviewing ? <button className="flex h-11 items-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500" disabled={!canReview} type="button" onClick={() => void handleReview()}><WandSparkles size={17} />开始审阅</button> : null}</div>
       </section>
     </div> : null}
   </>;
@@ -14140,6 +14227,7 @@ function EnglishMaterialDetailDialog({
   onSave: () => void;
   previousItem: EnglishMaterialItem | null;
 }) {
+  const [learningCardStyle, setLearningCardStyle] = useState<"classic" | "learning-card" | "minimal">("learning-card");
   useEffect(() => {
     if (!item) return;
 
@@ -14348,6 +14436,12 @@ function EnglishMaterialDetailDialog({
               {copiedLabel === "完整口播内容" ? <CheckCircle2 size={16} /> : <ClipboardList size={16} />}
               {copiedLabel === "完整口播内容" ? "已复制" : "复制脚本"}
             </button>
+            <select className="control h-11" value={learningCardStyle} onChange={(event) => setLearningCardStyle(event.target.value as typeof learningCardStyle)}>
+              <option value="learning-card">学习卡</option><option value="classic">经典文章</option><option value="minimal">极简笔记</option>
+            </select>
+            <button className="flex h-11 items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-3 text-sm font-medium text-mint-300 disabled:opacity-50" disabled={isLoading || !draft.title} type="button" onClick={() => void copyMarkdownAsEnhancedRichText(`# ${draft.title}\n\n${draft.full_script}`, { downloadFileName: `英语学习卡-${item?.id ?? "draft"}.html`, documentTitle: draft.title, exportStyle: learningCardStyle, sections: [{ id: "expression", label: "核心表达", value: draft.base_expression }, { id: "sentence", label: "职业完整句式", value: draft.professional_sentence }, { id: "translation", label: "中文翻译", value: draft.chinese_translation }] })}>
+              <FileText size={16} />下载学习卡
+            </button>
             <button
               className="flex h-11 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-sm font-medium text-slate-300 transition hover:border-mint-300/30 hover:text-mint-200 disabled:cursor-not-allowed disabled:text-slate-600"
               disabled={isLoading || !previousItem || !onPrevious}
@@ -14399,15 +14493,84 @@ function EnglishMaterialAiCompletion({
   const [isCompleting, setIsCompleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<EnglishMaterialCompletionResult | null>(null);
+  const [completionJobId, setCompletionJobId] = useState<string | null>(null);
   const [modelName, setModelName] = useState(AI_CODING_DEFAULT_MODEL);
   const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
   const canComplete = !disabled && !isCompleting && draft.full_script.trim().length > 0;
+
+  function clearStoredCompletionJob() {
+    try {
+      window.sessionStorage.removeItem("trustedKnowledge.englishMaterialCompletionJob.v1");
+    } catch {
+      // Session storage is optional; an active task can still finish in this tab.
+    }
+  }
+
+  function storeCompletionJob(jobId: string) {
+    try {
+      window.sessionStorage.setItem("trustedKnowledge.englishMaterialCompletionJob.v1", JSON.stringify({ jobId, fullScript: draft.full_script }));
+    } catch {
+      // Do not make completion availability depend on browser storage.
+    }
+  }
+
+  useEffect(() => {
+    if (!isOpen || !completionJobId) return;
+    const jobId = completionJobId;
+    let cancelled = false;
+    let timer: number | undefined;
+
+    async function pollCompletionJob() {
+      try {
+        const job = await getEnglishMaterialCompletionJob(jobId);
+        if (cancelled) return;
+        if (job.status === "running") {
+          timer = window.setTimeout(pollCompletionJob, 1500);
+          return;
+        }
+        setIsCompleting(false);
+        setCompletionJobId(null);
+        clearStoredCompletionJob();
+        if (job.status === "completed" && job.result) {
+          setResult(job.result);
+          return;
+        }
+        setError(job.error_message ?? (job.status === "cancelled" ? "AI 补全已取消。" : "AI 补全失败，请稍后重试。"));
+      } catch (completionError) {
+        if (cancelled) return;
+        setIsCompleting(false);
+        setCompletionJobId(null);
+        clearStoredCompletionJob();
+        setError(completionError instanceof Error ? completionError.message : "读取 AI 补全任务状态失败，请稍后重试。");
+      }
+    }
+
+    void pollCompletionJob();
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [isOpen, completionJobId]);
+
+  useEffect(() => {
+    if (!isOpen || completionJobId || result) return;
+    try {
+      const raw = window.sessionStorage.getItem("trustedKnowledge.englishMaterialCompletionJob.v1");
+      const stored = raw ? JSON.parse(raw) as { jobId?: unknown; fullScript?: unknown } : null;
+      if (typeof stored?.jobId !== "string" || stored.fullScript !== draft.full_script) return;
+      setIsCompleting(true);
+      setCompletionJobId(stored.jobId);
+    } catch {
+      clearStoredCompletionJob();
+    }
+  }, [isOpen, completionJobId, result, draft.full_script]);
 
   function closeDialog() {
     if (isCompleting) return;
     setIsOpen(false);
     setError(null);
     setResult(null);
+    setCompletionJobId(null);
   }
 
   async function handleComplete() {
@@ -14416,17 +14579,31 @@ function EnglishMaterialAiCompletion({
     setError(null);
     try {
       const usesConfiguredModel = modelName === HISTORY_ASK_CONFIGURED_MODEL;
-      const next = await completeEnglishMaterial({
+      const job = await startEnglishMaterialCompletionJob({
         fullScript: draft.full_script,
         skillIds: selectedSkillIds,
         executionProvider: usesConfiguredModel ? "history_ask_llm" : "codex",
         modelName: modelName === AI_CODING_DEFAULT_MODEL ? "" : modelName,
       });
-      setResult(next);
+      storeCompletionJob(job.job_id);
+      setCompletionJobId(job.job_id);
     } catch (completionError) {
       setError(completionError instanceof Error ? completionError.message : "AI 补全失败，请稍后重试。");
     } finally {
       setIsCompleting(false);
+    }
+  }
+
+  async function cancelCompletion() {
+    if (!completionJobId) return;
+    try {
+      await cancelEnglishMaterialCompletionJob(completionJobId);
+      clearStoredCompletionJob();
+      setCompletionJobId(null);
+      setIsCompleting(false);
+      setIsOpen(false);
+    } catch (cancelError) {
+      setError(cancelError instanceof Error ? cancelError.message : "取消 AI 补全失败，请稍后重试。");
     }
   }
 
@@ -14448,10 +14625,10 @@ function EnglishMaterialAiCompletion({
       <section aria-modal="true" className="flex max-h-[100dvh] w-full max-w-2xl flex-col overflow-hidden rounded-t-lg border border-mint-300/20 bg-ink-900 shadow-soft-glow sm:max-h-[88vh] sm:rounded-lg" role="dialog" aria-label="AI 补全英语素材">
         <div className="flex shrink-0 items-start justify-between gap-4 border-b border-white/10 p-4 sm:p-5"><div><div className="mb-2 flex items-center gap-2 text-sm text-mint-300"><WandSparkles size={17} />AI Material</div><h2 className="text-xl font-semibold text-slate-50">AI补全英语素材</h2><p className="mt-1 text-xs leading-5 text-slate-500">只根据当前完整口播内容提炼字段。确认回填时仅填充空字段，不会自动保存。</p></div><button className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-300 transition hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600" disabled={isCompleting} type="button" title="关闭" onClick={closeDialog}><X size={17} /></button></div>
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 sm:p-5">
-          {!result ? <><div className="grid gap-3 sm:grid-cols-2"><Field label="执行模型" icon={<Settings2 size={16} />}><select className="control" disabled={isCompleting} value={modelName} onChange={(event) => setModelName(event.target.value)}>{modelOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field></div><SkillSelector agentCode="english-extraction" disabled={isCompleting} selectedSkillIds={selectedSkillIds} onSelectedSkillIdsChange={setSelectedSkillIds} /></> : <div className="space-y-3"><p className="text-sm leading-6 text-slate-300">以下结果将只填入当前为空的字段：</p><EnglishMaterialDetailBlock label="标题" value={result.title} /><EnglishMaterialDetailBlock label="基础表达" value={result.base_expression} /><EnglishMaterialDetailBlock label="职业完整句式" value={result.professional_sentence} /><EnglishMaterialDetailBlock label="地道中文翻译" value={result.chinese_translation} /></div>}
+          {!result ? isCompleting ? <div className="flex items-center gap-2 rounded-lg border border-mint-300/25 bg-mint-300/10 p-3 text-sm text-mint-100"><Loader2 className="animate-spin" size={17} />AI 补全正在后台执行；刷新此页面后重新打开此窗口可继续查看结果。</div> : <><div className="grid gap-3 sm:grid-cols-2"><Field label="执行模型" icon={<Settings2 size={16} />}><select className="control" value={modelName} onChange={(event) => setModelName(event.target.value)}>{modelOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field></div><SkillSelector agentCode="english-extraction" selectedSkillIds={selectedSkillIds} onSelectedSkillIdsChange={setSelectedSkillIds} /></> : <div className="space-y-3"><p className="text-sm leading-6 text-slate-300">以下结果将只填入当前为空的字段：</p><EnglishMaterialDetailBlock label="标题" value={result.title} /><EnglishMaterialDetailBlock label="基础表达" value={result.base_expression} /><EnglishMaterialDetailBlock label="职业完整句式" value={result.professional_sentence} /><EnglishMaterialDetailBlock label="地道中文翻译" value={result.chinese_translation} /></div>}
           {error ? <div className="flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100"><TriangleAlert className="mt-0.5 shrink-0 text-red-300" size={17} /><span>{error}</span></div> : null}
         </div>
-        <div className="flex shrink-0 justify-end gap-3 border-t border-white/10 p-4"><button className="h-11 rounded-lg border border-white/10 bg-white/[0.035] px-4 text-sm text-slate-300 disabled:cursor-not-allowed disabled:text-slate-600" disabled={isCompleting} type="button" onClick={closeDialog}>取消</button>{result ? <button className="flex h-11 items-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20" type="button" onClick={applyResult}><ClipboardCheck size={17} />确认回填</button> : <button className="flex h-11 items-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 text-sm font-medium text-mint-300 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500" disabled={!canComplete} type="button" onClick={() => void handleComplete()}>{isCompleting ? <Loader2 className="animate-spin" size={17} /> : <WandSparkles size={17} />}{isCompleting ? "补全中" : "生成补全建议"}</button>}</div>
+        <div className="flex shrink-0 justify-end gap-3 border-t border-white/10 p-4">{isCompleting ? <button className="h-11 rounded-lg border border-red-300/30 bg-red-300/10 px-4 text-sm text-red-100" type="button" onClick={() => void cancelCompletion()}>取消补全</button> : <button className="h-11 rounded-lg border border-white/10 bg-white/[0.035] px-4 text-sm text-slate-300" type="button" onClick={closeDialog}>取消</button>}{result ? <button className="flex h-11 items-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20" type="button" onClick={applyResult}><ClipboardCheck size={17} />确认回填</button> : !isCompleting ? <button className="flex h-11 items-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 text-sm font-medium text-mint-300 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500" disabled={!canComplete} type="button" onClick={() => void handleComplete()}><WandSparkles size={17} />生成补全建议</button> : null}</div>
       </section>
     </div> : null}
   </>;

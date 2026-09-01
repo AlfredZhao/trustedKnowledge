@@ -64,6 +64,11 @@ async def run_codex_final(*, prompt: str, model_name: str | None, project_root: 
             process.kill()
             await process.wait()
         raise RuntimeError("Codex 问数任务超时。") from exc
+    except asyncio.CancelledError:
+        if process is not None and process.returncode is None:
+            process.kill()
+            await process.wait()
+        raise
     except OSError as exc:
         raise RuntimeError(f"无法启动 Codex：{exc}") from exc
     finally:
