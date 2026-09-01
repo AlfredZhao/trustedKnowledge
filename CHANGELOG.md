@@ -26,6 +26,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Fixed / 修复
 
+- Fixed the Overview LLM battery remaining percentage becoming stale while the AI Usage view refreshed. Overview cache now renders immediately and continues its silent live usage refresh.
+- 修复总览 LLM 电池剩余百分比可能停留在旧缓存、与 AI 用量页不一致的问题。总览现即时展示缓存后继续静默读取最新用量。
+
 ### [0.4.5] - 2026-09-01
 
 #### Added / 新增

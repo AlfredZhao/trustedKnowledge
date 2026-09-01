@@ -2778,12 +2778,6 @@ function App() {
       setOverviewError(null);
     }
 
-    if (hasCompleteCache && !isManualRefresh) {
-      return () => {
-        mounted = false;
-      };
-    }
-
     Promise.allSettled([
       canAccessUsage ? fetchLlmUsage(usageLimit, false) : Promise.resolve({ items: [], total: 0 }),
       fetchTodos(todoQueryConfig),
