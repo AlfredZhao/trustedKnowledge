@@ -85,6 +85,7 @@ import {
   deleteBlogFactoryItem,
   deleteKnowledge,
   fetchBlogFactoryItems,
+  enhanceBlogFactoryContent,
   fetchBlogPublishCategories,
   fetchBlogPublishConfigs,
   fetchKnowledge,
@@ -162,6 +163,7 @@ import {
   fetchSkill,
   fetchSkillFile,
   fetchSkills,
+  generateSkillDraft,
   updateSkill,
   updateSkillFile,
   uploadSkillZip,
@@ -5535,6 +5537,7 @@ function App() {
               isSaving={isSkillSaving}
               isUploading={isSkillUploading}
               items={skillItems}
+              modelOptions={historyAskModelOptions}
               newDraft={newSkillDraft}
               scope={skillListScope}
               saveError={skillSaveError}
@@ -10508,6 +10511,18 @@ function BlogFactoryRecords({
                       setIsMaskToolsExpanded(false);
                     }}
                   />
+                  <BlogFactoryAiEnhancement
+                    answerSnapshot={editDraft.answerSnapshot}
+                    disabled={isRecordSaving || isDeleting}
+                    modelOptions={modelOptions}
+                    questionSnapshot={editDraft.questionSnapshot}
+                    taskContent={editDraft.taskContent}
+                    onApply={(taskContent) => {
+                      onEditDraftChange({ ...editDraft, taskContent });
+                      setIsTaskContentEditing(true);
+                      setIsMaskToolsExpanded(false);
+                    }}
+                  />
                   {isTaskContentEditing ? (
                     <button
                       aria-expanded={isMaskToolsExpanded}
@@ -11398,6 +11413,73 @@ function DetailBlock({
   );
 }
 
+function BlogFactoryAiEnhancement({
+  answerSnapshot,
+  disabled,
+  modelOptions,
+  questionSnapshot,
+  taskContent,
+  onApply,
+}: {
+  answerSnapshot: string;
+  disabled: boolean;
+  modelOptions: { value: string; label: string }[];
+  questionSnapshot: string;
+  taskContent: string;
+  onApply: (taskContent: string) => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [isEnhancing, setIsEnhancing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<string | null>(null);
+  const [modelName, setModelName] = useState(AI_CODING_DEFAULT_MODEL);
+  const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
+  const canEnhance = !disabled && !isEnhancing && taskContent.trim().length > 0;
+
+  function closeDialog() {
+    if (isEnhancing) return;
+    setIsOpen(false);
+    setError(null);
+    setResult(null);
+  }
+
+  async function handleEnhance() {
+    if (!canEnhance) return;
+    setIsEnhancing(true);
+    setError(null);
+    try {
+      const usesConfiguredModel = modelName === HISTORY_ASK_CONFIGURED_MODEL;
+      const next = await enhanceBlogFactoryContent({
+        taskContent,
+        questionSnapshot,
+        answerSnapshot,
+        skillIds: selectedSkillIds,
+        executionProvider: usesConfiguredModel ? "history_ask_llm" : "codex",
+        modelName: modelName === AI_CODING_DEFAULT_MODEL ? "" : modelName,
+      });
+      setResult(next.content);
+    } catch (enhancementError) {
+      setError(enhancementError instanceof Error ? enhancementError.message : "AI 增强失败，请稍后重试。");
+    } finally {
+      setIsEnhancing(false);
+    }
+  }
+
+  return <>
+    <button className="flex h-9 items-center gap-2 rounded-lg border border-fuchsia-300/30 bg-fuchsia-300/10 px-3 text-xs font-medium text-fuchsia-100 transition hover:bg-fuchsia-300/16 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500" disabled={!taskContent.trim() || disabled} title={taskContent.trim() ? "增强当前任务内容，不会自动保存" : "当前任务内容为空"} type="button" onClick={() => { setError(null); setResult(null); setIsOpen(true); }}><WandSparkles size={15} />AI 增强</button>
+    {isOpen ? <div className="fixed inset-0 z-[60] flex items-end bg-black/62 px-0 backdrop-blur-sm sm:items-start sm:justify-center sm:px-4 sm:py-6" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeDialog(); }}>
+      <section aria-modal="true" className="flex max-h-[100dvh] w-full max-w-4xl flex-col overflow-hidden rounded-t-lg border border-fuchsia-300/20 bg-ink-900 shadow-soft-glow sm:max-h-[calc(100dvh-3rem)] sm:rounded-lg" role="dialog" aria-label="AI 增强任务内容">
+        <div className="flex shrink-0 items-start justify-between gap-4 border-b border-white/10 p-4 sm:p-5"><div><div className="mb-2 flex items-center gap-2 text-sm text-fuchsia-200"><WandSparkles size={17} />AI Enhancement</div><h2 className="text-xl font-semibold text-slate-50">增强任务内容</h2><p className="mt-1 text-xs leading-5 text-slate-500">生成完整的增强版文章。确认回填后会进入编辑模式，仍须由你点击保存才会更新任务内容。</p></div><button className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-300 transition hover:text-fuchsia-200 disabled:cursor-not-allowed disabled:text-slate-600" disabled={isEnhancing} title="关闭" type="button" onClick={closeDialog}><X size={17} /></button></div>
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 sm:p-5">
+          {!result ? <><div className="rounded-lg border border-white/10 bg-white/[0.025] p-4 text-sm leading-7 text-slate-400">将生成完整 Markdown，并遵循所选增强 Skill。在适合的位置可插入 Mermaid 图表；不会编造事实、删除图片链接或自动保存。</div><Field label="执行模型" icon={<Settings2 size={16} />}><select className="control" disabled={isEnhancing} value={modelName} onChange={(event) => setModelName(event.target.value)}>{modelOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field><SkillSelector agentCode="blog-enhancement" disabled={isEnhancing} selectedSkillIds={selectedSkillIds} onSelectedSkillIdsChange={setSelectedSkillIds} /></> : <div className="space-y-2"><p className="text-sm leading-6 text-slate-300">以下完整内容将回填到任务编辑区：</p><textarea className="control min-h-96 resize-y font-mono text-xs leading-6" readOnly value={result} /></div>}
+          {error ? <div className="flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100"><TriangleAlert className="mt-0.5 shrink-0 text-red-300" size={17} /><span>{error}</span></div> : null}
+        </div>
+        <div className="flex shrink-0 justify-end gap-3 border-t border-white/10 p-4"><button className="h-11 rounded-lg border border-white/10 bg-white/[0.035] px-4 text-sm text-slate-300 disabled:cursor-not-allowed disabled:text-slate-600" disabled={isEnhancing} type="button" onClick={closeDialog}>取消</button>{result ? <button className="flex h-11 items-center gap-2 rounded-lg border border-fuchsia-300/30 bg-fuchsia-300/14 px-4 text-sm font-medium text-fuchsia-100 transition hover:bg-fuchsia-300/20" type="button" onClick={() => { onApply(result); closeDialog(); }}><ClipboardCheck size={17} />确认回填</button> : <button className="flex h-11 items-center gap-2 rounded-lg border border-fuchsia-300/30 bg-fuchsia-300/14 px-4 text-sm font-medium text-fuchsia-100 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500" disabled={!canEnhance} type="button" onClick={() => void handleEnhance()}>{isEnhancing ? <Loader2 className="animate-spin" size={17} /> : <WandSparkles size={17} />}{isEnhancing ? "增强中" : "生成增强内容"}</button>}</div>
+      </section>
+    </div> : null}
+  </>;
+}
+
 function BlogFactoryAiReview({
   answerSnapshot,
   disabled,
@@ -11478,10 +11560,10 @@ function BlogFactoryAiReview({
   }
 
   return <>
-    <button className="flex h-9 items-center gap-2 rounded-lg border border-sky-300/30 bg-sky-300/10 px-3 text-xs font-medium text-sky-200 transition hover:bg-sky-300/16 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500" disabled={!taskContent.trim() || disabled} title={taskContent.trim() ? "审阅当前任务内容，不会自动保存" : "当前任务内容为空"} type="button" onClick={() => { setError(null); setResult(null); setSelectedIds([]); setIsOpen(true); }}><WandSparkles size={15} />AI Review</button>
+    <button className="flex h-9 items-center gap-2 rounded-lg border border-sky-300/30 bg-sky-300/10 px-3 text-xs font-medium text-sky-200 transition hover:bg-sky-300/16 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500" disabled={!taskContent.trim() || disabled} title={taskContent.trim() ? "审阅当前任务内容，不会自动保存" : "当前任务内容为空"} type="button" onClick={() => { setError(null); setResult(null); setSelectedIds([]); setIsOpen(true); }}><WandSparkles size={15} />AI 审阅</button>
     {isOpen ? <div className="fixed inset-0 z-[60] flex items-end bg-black/62 px-0 backdrop-blur-sm sm:items-start sm:justify-center sm:px-4 sm:py-6" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeDialog(); }}>
       <section aria-modal="true" className="flex max-h-[100dvh] w-full max-w-3xl flex-col overflow-hidden rounded-t-lg border border-mint-300/20 bg-ink-900 shadow-soft-glow sm:max-h-[calc(100dvh-3rem)] sm:rounded-lg" role="dialog" aria-label="AI 审阅任务内容">
-        <div className="flex shrink-0 items-start justify-between gap-4 border-b border-white/10 p-4 sm:p-5"><div><div className="mb-2 flex items-center gap-2 text-sm text-mint-300"><WandSparkles size={17} />AI Review</div><h2 className="text-xl font-semibold text-slate-50">审阅任务内容</h2><p className="mt-1 text-xs leading-5 text-slate-500">审阅结果不会自动保存。可勾选部分建议，应用后会进入编辑模式，由你确认保存。</p></div><button className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-300 transition hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600" disabled={isReviewing} title="关闭" type="button" onClick={closeDialog}><X size={17} /></button></div>
+        <div className="flex shrink-0 items-start justify-between gap-4 border-b border-white/10 p-4 sm:p-5"><div><div className="mb-2 flex items-center gap-2 text-sm text-mint-300"><WandSparkles size={17} />AI 审阅</div><h2 className="text-xl font-semibold text-slate-50">审阅任务内容</h2><p className="mt-1 text-xs leading-5 text-slate-500">审阅结果不会自动保存。可勾选部分建议，应用后会进入编辑模式，由你确认保存。</p></div><button className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-300 transition hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600" disabled={isReviewing} title="关闭" type="button" onClick={closeDialog}><X size={17} /></button></div>
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 sm:p-5">
           {!result ? <><div className="rounded-lg border border-white/10 bg-white/[0.025] p-4 text-sm leading-7 text-slate-400">将审阅结构、逻辑、表达、与问题/答案快照的一致性及 Markdown。不会联网核验事实；Skill 只能调整审阅侧重点，不能改变安全替换和不自动保存规则。</div><Field label="执行模型" icon={<Settings2 size={16} />}><select className="control" disabled={isReviewing} value={modelName} onChange={(event) => setModelName(event.target.value)}>{modelOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field><SkillSelector agentCode="blog-review" disabled={isReviewing} selectedSkillIds={selectedSkillIds} onSelectedSkillIdsChange={setSelectedSkillIds} /></> : result.status === "no_issues" ? <div className="rounded-lg border border-mint-300/25 bg-mint-300/10 p-4 text-sm leading-7 text-mint-100"><div className="mb-1 flex items-center gap-2 font-medium text-mint-200"><CheckCircle2 size={17} />未发现需要修改的问题</div>{result.summary}</div> : <div className="space-y-3"><div className="rounded-lg border border-white/10 bg-white/[0.025] p-3 text-sm leading-6 text-slate-300">{result.summary}</div>{result.suggestions.map((suggestion) => <label key={suggestion.id} className="block cursor-pointer rounded-lg border border-white/10 bg-white/[0.025] p-4 transition hover:border-mint-300/25"><div className="flex items-start gap-3"><input checked={selectedIds.includes(suggestion.id)} className="mt-1" type="checkbox" onChange={() => toggleSuggestion(suggestion.id)} /><div className="min-w-0 flex-1 space-y-2"><div className="flex flex-wrap gap-2 text-xs"><span className="rounded-md border border-red-300/25 bg-red-300/10 px-2 py-1 text-red-100">{suggestion.severity}</span><span className="rounded-md border border-white/10 bg-white/[0.035] px-2 py-1 text-slate-300">{suggestion.category}</span></div><p className="text-sm text-slate-200">{suggestion.problem}</p><p className="text-sm leading-6 text-slate-400">建议：{suggestion.suggestion}</p><div className="rounded bg-black/20 p-2 font-mono text-xs leading-5 text-slate-400">定位：{suggestion.quote}</div><div className="grid gap-2 lg:grid-cols-2"><div className="rounded bg-red-400/5 p-2 text-xs leading-5 text-red-100"><span className="mb-1 block text-red-200">替换前</span>{suggestion.before}</div><div className="rounded bg-mint-300/5 p-2 text-xs leading-5 text-mint-100"><span className="mb-1 block text-mint-200">替换后</span>{suggestion.after}</div></div></div></div></label>)}</div>}
           {error ? <div className="flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100"><TriangleAlert className="mt-0.5 shrink-0 text-red-300" size={17} /><span>{error}</span></div> : null}
@@ -13803,6 +13885,68 @@ function SkillSelector({
   );
 }
 
+function SkillAiCreation({
+  draft,
+  disabled,
+  modelOptions,
+  onApply,
+}: {
+  draft: SkillDraft;
+  disabled: boolean;
+  modelOptions: { value: string; label: string }[];
+  onApply: (content: string) => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<string | null>(null);
+  const [modelName, setModelName] = useState(AI_CODING_DEFAULT_MODEL);
+  const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
+  const canGenerate = !disabled && !isGenerating && draft.name.trim().length > 0 && draft.description.trim().length > 0;
+
+  function closeDialog() {
+    if (isGenerating) return;
+    setIsOpen(false);
+    setError(null);
+    setResult(null);
+  }
+
+  async function handleGenerate() {
+    if (!canGenerate) return;
+    setIsGenerating(true);
+    setError(null);
+    try {
+      const usesConfiguredModel = modelName === HISTORY_ASK_CONFIGURED_MODEL;
+      const next = await generateSkillDraft({
+        name: draft.name,
+        description: draft.description,
+        skillIds: selectedSkillIds,
+        executionProvider: usesConfiguredModel ? "history_ask_llm" : "codex",
+        modelName: modelName === AI_CODING_DEFAULT_MODEL ? "" : modelName,
+      });
+      setResult(next.content);
+    } catch (generationError) {
+      setError(generationError instanceof Error ? generationError.message : "AI 创建失败，请稍后重试。");
+    } finally {
+      setIsGenerating(false);
+    }
+  }
+
+  return <>
+    <button className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-sky-300/30 bg-sky-300/10 px-3 text-sm font-medium text-sky-200 transition hover:bg-sky-300/16 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500" disabled={disabled || !draft.name.trim() || !draft.description.trim()} title={draft.name.trim() && draft.description.trim() ? "选择模型和创建规范，生成 SKILL.md 草稿" : "请先填写 Skill 名称和描述"} type="button" onClick={() => { setError(null); setResult(null); setIsOpen(true); }}><WandSparkles size={16} />AI 创建</button>
+    {isOpen ? <div className="fixed inset-0 z-[60] flex items-end bg-black/62 px-0 backdrop-blur-sm sm:items-center sm:justify-center sm:px-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeDialog(); }}>
+      <section aria-modal="true" className="flex max-h-[100dvh] w-full max-w-2xl flex-col overflow-hidden rounded-t-lg border border-mint-300/20 bg-ink-900 shadow-soft-glow sm:max-h-[88vh] sm:rounded-lg" role="dialog" aria-label="AI 创建自定义 Skill">
+        <div className="flex shrink-0 items-start justify-between gap-4 border-b border-white/10 p-4 sm:p-5"><div><div className="mb-2 flex items-center gap-2 text-sm text-mint-300"><WandSparkles size={17} />AI Skill</div><h2 className="text-xl font-semibold text-slate-50">AI 创建自定义 Skill</h2><p className="mt-1 text-xs leading-5 text-slate-500">选择模型和创建规范，生成标准 SKILL.md。确认回填后仍可编辑，且不会自动新建或保存。</p></div><button className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-300 transition hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600" disabled={isGenerating} type="button" title="关闭" onClick={closeDialog}><X size={17} /></button></div>
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 sm:p-5">
+          {!result ? <><div className="grid gap-3 sm:grid-cols-2"><Field label="执行模型" icon={<Settings2 size={16} />}><select className="control" disabled={isGenerating} value={modelName} onChange={(event) => setModelName(event.target.value)}>{modelOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field></div><SkillSelector agentCode="skill-generation" disabled={isGenerating} maxSelections={1} selectedSkillIds={selectedSkillIds} onSelectedSkillIdsChange={setSelectedSkillIds} /></> : <div className="space-y-2"><p className="text-sm leading-6 text-slate-300">以下内容将回填到 SKILL.md 编辑框：</p><textarea className="control min-h-80 resize-y font-mono text-xs leading-6" readOnly value={result} /></div>}
+          {error ? <div className="flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100"><TriangleAlert className="mt-0.5 shrink-0 text-red-300" size={17} /><span>{error}</span></div> : null}
+        </div>
+        <div className="flex shrink-0 justify-end gap-3 border-t border-white/10 p-4"><button className="h-11 rounded-lg border border-white/10 bg-white/[0.035] px-4 text-sm text-slate-300 disabled:cursor-not-allowed disabled:text-slate-600" disabled={isGenerating} type="button" onClick={closeDialog}>取消</button>{result ? <button className="flex h-11 items-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20" type="button" onClick={() => { onApply(result); closeDialog(); }}><ClipboardCheck size={17} />确认回填</button> : <button className="flex h-11 items-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 text-sm font-medium text-mint-300 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500" disabled={!canGenerate} type="button" onClick={() => void handleGenerate()}>{isGenerating ? <Loader2 className="animate-spin" size={17} /> : <WandSparkles size={17} />}{isGenerating ? "创建中" : "生成创建建议"}</button>}</div>
+      </section>
+    </div> : null}
+  </>;
+}
+
 function EnglishMaterialAiGeneration({
   draft,
   modelOptions,
@@ -15344,6 +15488,7 @@ function SkillManager({
   isSaving,
   isUploading,
   items,
+  modelOptions,
   newDraft,
   scope,
   saveError,
@@ -15372,6 +15517,7 @@ function SkillManager({
   isSaving: boolean;
   isUploading: boolean;
   items: SkillSummary[];
+  modelOptions: { value: string; label: string }[];
   newDraft: SkillDraft;
   scope: "owned" | "shared";
   saveError: string | null;
@@ -15397,8 +15543,8 @@ function SkillManager({
   const newSkillContentCharacterCount = Array.from(newDraft.content).length;
   const isSelectedSkillMarkdown = selectedFile?.path.endsWith("SKILL.md") ?? false;
   const selectedSkillMarkdownCharacterCount = Array.from(fileContent).length;
-  const [isCreateSkillFormExpanded, setIsCreateSkillFormExpanded] = useState(false);
-  const [isUploadSkillZipExpanded, setIsUploadSkillZipExpanded] = useState(false);
+  const [isCreateSkillDialogOpen, setIsCreateSkillDialogOpen] = useState(false);
+  const [isUploadSkillZipDialogOpen, setIsUploadSkillZipDialogOpen] = useState(false);
   const [isSkillSidebarCollapsed, setIsSkillSidebarCollapsed] = useState(false);
   const [abilityMode, setAbilityMode] = useState<"agents" | "skills">("agents");
   const [activeSkillId, setActiveSkillId] = useState<string | null>(null);
@@ -15578,103 +15724,6 @@ function SkillManager({
           </> : <AgentNavigation />}
         </section>
 
-        {abilityMode === "skills" ? <>
-        <section className="rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
-          <button
-            aria-expanded={isCreateSkillFormExpanded}
-            className="flex w-full items-center justify-between gap-3 text-left"
-            type="button"
-            onClick={() => setIsCreateSkillFormExpanded((current) => !current)}
-          >
-            <span className="flex items-center gap-2 text-sm font-medium text-slate-200">
-              <FilePlus2 className="text-mint-300" size={17} />
-              新建自定义 Skill
-            </span>
-            <span className="flex items-center gap-1 text-xs text-slate-500">
-              {isCreateSkillFormExpanded ? "收起" : "展开"}
-              {isCreateSkillFormExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
-            </span>
-          </button>
-          {isCreateSkillFormExpanded ? (
-            <form className="mt-4 space-y-3" onSubmit={onCreate}>
-              <input
-                className="control h-10"
-                value={newDraft.name}
-                onChange={(event) => onNewDraftChange({ ...newDraft, name: event.target.value })}
-                placeholder="Skill 名称"
-              />
-              <textarea
-                className="control min-h-20 resize-none"
-                value={newDraft.description}
-                onChange={(event) => onNewDraftChange({ ...newDraft, description: event.target.value })}
-                placeholder="描述这个 skill 会如何影响输出结构、语气或排版。"
-              />
-              <textarea
-                className="control min-h-32 resize-y font-mono text-xs leading-6"
-                value={newDraft.content}
-                onChange={(event) => onNewDraftChange({ ...newDraft, content: event.target.value })}
-                placeholder={"# Skill 名称\n\n描述：...\n\n## 使用规则\n- ..."}
-              />
-              <SkillPromptCharacterNotice characterCount={newSkillContentCharacterCount} limit={skillPromptCharacterLimit} />
-              <label className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.028] px-3 py-2 text-sm text-slate-300">
-                <span>与其他用户分享</span>
-                <input
-                  checked={newDraft.published}
-                  className="h-4 w-4 accent-mint-300"
-                  type="checkbox"
-                  onChange={(event) => onNewDraftChange({ ...newDraft, published: event.target.checked })}
-                />
-              </label>
-              <button
-                className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-3 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
-                disabled={!canCreate}
-                type="submit"
-              >
-                {isSaving ? <Loader2 className="animate-spin" size={16} /> : <Plus size={16} />}
-                新建 Skill
-              </button>
-            </form>
-          ) : null}
-        </section>
-
-        <section className="rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
-          <button
-            aria-expanded={isUploadSkillZipExpanded}
-            className="flex w-full items-center justify-between gap-3 text-left"
-            type="button"
-            onClick={() => setIsUploadSkillZipExpanded((current) => !current)}
-          >
-            <span className="flex items-center gap-2 text-sm font-medium text-slate-200">
-              <Archive className="text-mint-300" size={17} />
-              上传标准 Skill Zip
-            </span>
-            <span className="flex items-center gap-1 text-xs text-slate-500">
-              {isUploadSkillZipExpanded ? "收起" : "展开"}
-              {isUploadSkillZipExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
-            </span>
-          </button>
-          {isUploadSkillZipExpanded ? (
-            <div className="mt-4">
-              <input
-                className="control h-10 cursor-pointer leading-10 file:mr-3 file:h-full file:border-0 file:bg-white/[0.07] file:px-3 file:text-sm file:font-medium file:text-slate-200 hover:file:bg-white/[0.1]"
-                accept=".zip,application/zip"
-                disabled={isUploading}
-                type="file"
-                onChange={(event) => {
-                  onUpload(event.target.files?.[0] ?? null);
-                  event.target.value = "";
-                }}
-              />
-              {isUploading ? (
-                <div className="mt-3 flex items-center gap-2 text-sm text-slate-500">
-                  <Loader2 className="animate-spin" size={15} />
-                  正在上传并解析...
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-        </section>
-        </> : null}
         </div>
         <WorkspaceSidebarCollapseToggle isCollapsed={isSkillSidebarCollapsed} label="Skill 列表与操作面板" onToggle={() => setIsSkillSidebarCollapsed((collapsed) => !collapsed)} />
       </aside>
@@ -15698,6 +15747,22 @@ function SkillManager({
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
+                  <button
+                    className="flex h-9 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-xs font-medium text-slate-200 transition hover:border-mint-300/30 hover:text-mint-300"
+                    type="button"
+                    onClick={() => setIsUploadSkillZipDialogOpen(true)}
+                  >
+                    <Archive size={15} />
+                    导入 Zip
+                  </button>
+                  <button
+                    className="flex h-9 items-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-3 text-xs font-medium text-mint-300 transition hover:bg-mint-300/20"
+                    type="button"
+                    onClick={() => setIsCreateSkillDialogOpen(true)}
+                  >
+                    <FilePlus2 size={15} />
+                    新建 Skill
+                  </button>
                   <button
                     className="flex h-9 items-center gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 text-xs font-medium text-red-100 transition hover:bg-red-400/15 disabled:cursor-not-allowed disabled:opacity-50"
                     disabled={isSaving || !detail.can_delete}
@@ -15852,6 +15917,10 @@ function SkillManager({
               <Layers3 className="mx-auto mb-3 text-slate-600" size={40} />
               <div className="mb-1 font-medium text-slate-300">选择或创建 Skill</div>
               <p className="text-sm text-slate-500">Skill 的描述和 SKILL.md 内容可被 AI 问数等模块调用，用于影响输出结构和排版。</p>
+              <div className="mt-4 flex flex-wrap justify-center gap-2">
+                <button className="flex h-10 items-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-3 text-sm font-medium text-mint-300" type="button" onClick={() => setIsCreateSkillDialogOpen(true)}><FilePlus2 size={16} />新建 Skill</button>
+                <button className="flex h-10 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-sm text-slate-300" type="button" onClick={() => setIsUploadSkillZipDialogOpen(true)}><Archive size={16} />导入 Zip</button>
+              </div>
             </div>
           </div>
         )}
@@ -15863,6 +15932,23 @@ function SkillManager({
           </div>
         ) : null}
       </section>
+      {isCreateSkillDialogOpen ? <div className="fixed inset-0 z-[60] flex items-end bg-black/62 px-0 backdrop-blur-sm sm:items-center sm:justify-center sm:px-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !isSaving) setIsCreateSkillDialogOpen(false); }}>
+        <section aria-modal="true" className="flex max-h-[100dvh] w-full max-w-3xl flex-col overflow-hidden rounded-t-lg border border-mint-300/20 bg-ink-900 shadow-soft-glow sm:max-h-[88vh] sm:rounded-lg" role="dialog" aria-label="新建自定义 Skill">
+          <div className="flex shrink-0 items-start justify-between gap-4 border-b border-white/10 p-4 sm:p-5"><div><div className="mb-2 flex items-center gap-2 text-sm text-mint-300"><FilePlus2 size={17} />New Skill</div><h2 className="text-xl font-semibold text-slate-50">新建自定义 Skill</h2><p className="mt-1 text-xs leading-5 text-slate-500">填写内容或使用 AI 创建生成草稿；点击新建才会保存。</p></div><button className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-300" disabled={isSaving} title="关闭" type="button" onClick={() => setIsCreateSkillDialogOpen(false)}><X size={17} /></button></div>
+          <form className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4 sm:p-5" onSubmit={onCreate}>
+            <input className="control h-10" value={newDraft.name} onChange={(event) => onNewDraftChange({ ...newDraft, name: event.target.value })} placeholder="Skill 名称" />
+            <textarea className="control min-h-20 resize-none" value={newDraft.description} onChange={(event) => onNewDraftChange({ ...newDraft, description: event.target.value })} placeholder="描述这个 skill 会如何影响输出结构、语气或排版。" />
+            <SkillAiCreation draft={newDraft} disabled={isSaving} modelOptions={modelOptions} onApply={(content) => onNewDraftChange({ ...newDraft, content })} />
+            <textarea className="control min-h-52 resize-y font-mono text-xs leading-6" value={newDraft.content} onChange={(event) => onNewDraftChange({ ...newDraft, content: event.target.value })} placeholder={"# Skill 名称\n\n描述：...\n\n## 使用规则\n- ..."} />
+            <SkillPromptCharacterNotice characterCount={newSkillContentCharacterCount} limit={skillPromptCharacterLimit} />
+            <label className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.028] px-3 py-2 text-sm text-slate-300"><span>与其他用户分享</span><input checked={newDraft.published} className="h-4 w-4 accent-mint-300" type="checkbox" onChange={(event) => onNewDraftChange({ ...newDraft, published: event.target.checked })} /></label>
+            <div className="flex shrink-0 justify-end gap-3 border-t border-white/10 pt-4"><button className="h-10 rounded-lg border border-white/10 bg-white/[0.035] px-4 text-sm text-slate-300" disabled={isSaving} type="button" onClick={() => setIsCreateSkillDialogOpen(false)}>取消</button><button className="flex h-10 items-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 text-sm font-medium text-mint-300 disabled:cursor-not-allowed disabled:opacity-50" disabled={!canCreate} type="submit">{isSaving ? <Loader2 className="animate-spin" size={16} /> : <Plus size={16} />}新建 Skill</button></div>
+          </form>
+        </section>
+      </div> : null}
+      {isUploadSkillZipDialogOpen ? <div className="fixed inset-0 z-[60] flex items-end bg-black/62 px-0 backdrop-blur-sm sm:items-center sm:justify-center sm:px-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !isUploading) setIsUploadSkillZipDialogOpen(false); }}>
+        <section aria-modal="true" className="w-full max-w-lg rounded-t-lg border border-mint-300/20 bg-ink-900 p-4 shadow-soft-glow sm:rounded-lg sm:p-5" role="dialog" aria-label="导入标准 Skill Zip"><div className="flex items-start justify-between gap-4"><div><div className="mb-2 flex items-center gap-2 text-sm text-mint-300"><Archive size={17} />Import Skill</div><h2 className="text-xl font-semibold text-slate-50">导入标准 Skill Zip</h2></div><button className="grid h-10 w-10 place-items-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-300" disabled={isUploading} title="关闭" type="button" onClick={() => setIsUploadSkillZipDialogOpen(false)}><X size={17} /></button></div><input className="control mt-5 h-10 cursor-pointer leading-10 file:mr-3 file:h-full file:border-0 file:bg-white/[0.07] file:px-3 file:text-sm file:font-medium file:text-slate-200" accept=".zip,application/zip" disabled={isUploading} type="file" onChange={(event) => { onUpload(event.target.files?.[0] ?? null); event.target.value = ""; }} />{isUploading ? <div className="mt-3 flex items-center gap-2 text-sm text-slate-500"><Loader2 className="animate-spin" size={15} />正在上传并解析...</div> : null}</section>
+      </div> : null}
     </div>
   );
 }

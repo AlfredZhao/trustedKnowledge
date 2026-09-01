@@ -13,6 +13,12 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Added / 新增
 
+- Added an independent Blog Factory `AI 增强` flow. It generates and previews a complete enhanced Markdown article using configurable enhancement Skills, then only fills the editor after confirmation; the existing save action remains required.
+- 博客工厂新增独立的 `AI 增强` 流程：它使用可配置的增强 Skill 生成并预览完整 Markdown 文章，确认后仅回填编辑区，仍需使用原有保存操作才会落库。
+
+- Added AI-assisted custom Skill creation: users select a model and one configurable Skill-creation guideline, preview the generated standard `SKILL.md`, then explicitly confirm filling the draft before creating the Skill.
+- 新增 AI 创建自定义 Skill：用户可选择模型及一项可配置的创建规范 Skill，预览标准 `SKILL.md` 生成结果，并在明确确认回填后再自行新建 Skill。
+
 - Added Mermaid rendering for fenced `mermaid` blocks in shared Markdown previews, with source copy/fallback, dark/light styling, and a 20,000-character per-diagram safety limit.
 - 为共用 Markdown 预览新增围栏 `mermaid` 图表渲染，包含源码复制与失败回退、深浅主题样式，以及单图 20,000 字符安全上限。
 
@@ -23,6 +29,9 @@ The format follows the common GitHub changelog convention inspired by
 - 为知识加工新增任务保护：工作区现展示已等待时间和最近活动、提供取消操作、对所选 Skill 注入内容设置总预算，并在独立的可配置时限后停止内容加工任务。
 
 #### Changed / 变更
+
+- Changed Skill management layout: the left pane now focuses on navigation and lists, while creation and Zip import actions move to the right-side detail header and open responsive dialogs.
+- 调整 Skill 管理布局：左侧现专注导航和列表，新建与 Zip 导入移至右侧详情标题栏，并使用响应式弹窗承载操作。
 
 - Changed copied and browser-exported Mermaid images to fill a proportional 960×720 logical display area by default, while remaining responsive on narrow screens.
 - 调整复制及浏览器导出的 Mermaid 图片：默认按比例尽量填充 960×720 的逻辑显示区域，并在窄屏保持响应式缩小。

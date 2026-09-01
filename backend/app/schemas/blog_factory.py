@@ -163,6 +163,14 @@ class BlogFactoryReviewRequest(BaseModel):
         return stripped or None
 
 
+class BlogFactoryEnhancementRequest(BlogFactoryReviewRequest):
+    skill_ids: list[str] = Field(default_factory=list, max_length=8)
+
+
+class BlogFactoryEnhancementResult(BaseModel):
+    content: str = Field(..., min_length=1, max_length=30000)
+
+
 class BlogFactoryReviewSuggestion(BaseModel):
     id: str = Field(..., min_length=1, max_length=80)
     severity: Literal["需要修改", "建议优化"]

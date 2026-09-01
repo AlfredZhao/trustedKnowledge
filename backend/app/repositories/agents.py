@@ -24,6 +24,8 @@ DEFAULT_AGENTS = [
     ("blog-review", "博客审阅", "博客审阅"),
     ("english-generation", "英语生成", "英语素材生成"),
     ("english-extraction", "英语提炼", "英语素材补全"),
+    ("skill-generation", "Skill 创建", "自定义 Skill 创建"),
+    ("blog-enhancement", "博客增强", "博客工厂内容增强"),
 ]
 
 

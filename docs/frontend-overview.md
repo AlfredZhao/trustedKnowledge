@@ -72,6 +72,20 @@
 | `aiCoding` | AI 编程 | 默认仅 super admin 可见；可由 super admin 授权给 admin 角色用户访问 Codex 编程任务。 |
 | `usage` | AI 用量 | 默认仅 super admin 可见；可由 super admin 授权给 admin 角色用户查看 LLM 用量采样和重置状态。 |
 
+### Skill 管理 / `skills`
+
+- 左侧面板仅保留 Agent / Skill 切换、范围筛选和列表；选择 Skill 后，右侧详情标题栏提供“新建 Skill”和“导入 Zip”，避免创建与上传操作挤占列表空间。
+- 新建和导入均使用独立响应式弹窗：窄屏以底部 Sheet 展示，长 `SKILL.md` 编辑区在弹窗内滚动，提交与取消操作保持可达。
+- “新建自定义 Skill”在已填写名称与描述后提供“AI 创建”按钮；弹窗沿用 AI 补全交互，可选择执行模型和最多一项 `skill-generation` Agent 允许调用的创建规范 Skill。
+- 生成结果先在弹窗中预览，点击“确认回填”才会填入 `SKILL.md` 编辑框；它不会自动创建或保存，用户仍可编辑并通过“新建 Skill”完成最终确认。
+- 管理员可在“Agent 与 Skill”为 `skill-generation` 配置或更新创建规范 Skill；下一次生成会使用其当前保存内容。
+
+### 博客工厂 AI 增强
+
+- 在“编辑任务内容”旁提供独立的 `AI 增强`，与仅产生局部替换建议的 `AI 审阅` 分开；它可选择执行模型及 `blog-enhancement` Agent 所允许的增强 Skill。
+- AI 增强预览完整的增强版 Markdown，适合在 `mermaid生成@Aflred` 等 Skill 指引下于合适位置插入 Mermaid 图表。确认回填后只进入编辑状态，用户必须点击“保存任务内容”才会更新数据。
+- 管理员可在“Agent 与 Skill”更新 `blog-enhancement` 关联的 Skill；后续增强请求会立即采用其保存内容。
+
 桌面侧栏：
 
 - Visible at `lg` and above.

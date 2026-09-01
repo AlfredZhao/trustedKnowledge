@@ -17,6 +17,31 @@ export async function createSkill(draft: SkillDraft): Promise<SkillDetail> {
   });
 }
 
+export async function generateSkillDraft({
+  name,
+  description,
+  skillIds,
+  executionProvider,
+  modelName,
+}: {
+  name: string;
+  description: string;
+  skillIds: string[];
+  executionProvider: "codex" | "history_ask_llm";
+  modelName: string;
+}): Promise<{ content: string }> {
+  return request<{ content: string }>("/api/skills/generate-draft", {
+    method: "POST",
+    body: JSON.stringify({
+      name: name.trim(),
+      description: description.trim(),
+      skill_ids: skillIds,
+      execution_provider: executionProvider,
+      model_name: modelName,
+    }),
+  });
+}
+
 export async function updateSkill(skillId: string, draft: Omit<SkillDraft, "content">): Promise<SkillDetail> {
   return request<SkillDetail>(`/api/skills/${encodeURIComponent(skillId)}`, {
     method: "PATCH",

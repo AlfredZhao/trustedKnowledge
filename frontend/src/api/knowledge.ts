@@ -540,6 +540,34 @@ export async function reviewBlogFactoryContent({
   });
 }
 
+export async function enhanceBlogFactoryContent({
+  taskContent,
+  questionSnapshot,
+  answerSnapshot,
+  skillIds,
+  executionProvider,
+  modelName,
+}: {
+  taskContent: string;
+  questionSnapshot?: string;
+  answerSnapshot?: string;
+  skillIds: string[];
+  executionProvider: "codex" | "history_ask_llm";
+  modelName: string;
+}): Promise<{ content: string }> {
+  return request<{ content: string }>("/api/blog-factory/enhance", {
+    method: "POST",
+    body: JSON.stringify({
+      task_content: taskContent,
+      question_snapshot: questionSnapshot || null,
+      answer_snapshot: answerSnapshot || null,
+      skill_ids: skillIds,
+      execution_provider: executionProvider,
+      model_name: modelName,
+    }),
+  });
+}
+
 export async function updateBlogFactoryAssistMetadata({
   id,
   assistSummary,

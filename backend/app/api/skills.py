@@ -16,8 +16,9 @@ from app.repositories.skills import (
     update_skill,
     update_skill_file,
 )
+from app.repositories.skill_generation import generate_skill_draft
 from app.repositories.users import AuthContext
-from app.schemas.skills import SkillCreate, SkillDetail, SkillFileUpdate, SkillListResponse, SkillUpdate
+from app.schemas.skills import SkillCreate, SkillDetail, SkillDraftGenerationRequest, SkillDraftGenerationResult, SkillFileUpdate, SkillListResponse, SkillUpdate
 
 
 router = APIRouter(prefix="/skills", tags=["skills"], dependencies=[Depends(require_api_key)])
@@ -52,6 +53,17 @@ async def post_skill(payload: SkillCreate, auth_context: AuthContext = Depends(r
     try:
         return SkillDetail.model_validate(create_skill(payload, auth_context))
     except SkillValidationError as exc:
+        raise _bad_request(exc) from exc
+
+
+@router.post("/generate-draft", response_model=SkillDraftGenerationResult)
+async def post_skill_draft_generation(
+    payload: SkillDraftGenerationRequest,
+    auth_context: AuthContext = Depends(require_current_user),
+) -> SkillDraftGenerationResult:
+    try:
+        return SkillDraftGenerationResult.model_validate(await generate_skill_draft(payload, auth_context))
+    except RuntimeError as exc:
         raise _bad_request(exc) from exc
 
 
