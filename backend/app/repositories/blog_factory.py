@@ -43,6 +43,7 @@ COMMON_COLUMNS = """
     factory_item.remote_last_synced_at,
     factory_item.assist_summary,
     factory_item.cover_image_markdown,
+    factory_item.cover_prompt_snapshot,
     case when factory_item.article_markdown is null then 0 else 1 end,
     factory_item.v_needs_update
 """
@@ -94,11 +95,12 @@ def _row_to_dict(row: Any, *, has_similarity: bool = False) -> dict[str, Any]:
         "remote_last_synced_at": row[21],
         "assist_summary": row[22],
         "cover_image_markdown": row[23],
-        "has_article": bool(row[24]),
-        "v_needs_update": row[25],
-        "article_markdown": row[26] if len(row) > 26 and not has_similarity else None,
+        "cover_prompt_snapshot": row[24],
+        "has_article": bool(row[25]),
+        "v_needs_update": row[26],
+        "article_markdown": row[27] if len(row) > 27 and not has_similarity else None,
     }
-    item["similarity"] = row[26] if has_similarity else None
+    item["similarity"] = row[27] if has_similarity else None
     return item
 
 
@@ -190,6 +192,7 @@ async def _ensure_blog_factory_table(connection: oracledb.AsyncConnection) -> No
     await _add_column_if_missing(cursor, "assist_summary varchar2(100 char)")
     await _ensure_assist_summary_character_capacity(cursor)
     await _add_column_if_missing(cursor, "cover_image_markdown varchar2(2000)")
+    await _add_column_if_missing(cursor, "cover_prompt_snapshot clob")
     _table_ready = True
 
 

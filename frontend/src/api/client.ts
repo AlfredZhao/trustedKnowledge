@@ -79,7 +79,11 @@ export async function request<T>(path: string, options?: ApiRequestOptions): Pro
     let response: Response;
 
     try {
-      response = await authFetch(path, controller ? { ...fetchOptions, signal: controller.signal } : fetchOptions);
+      response = await authFetch(path, {
+        ...fetchOptions,
+        ...(method === "GET" ? { cache: "no-store" } : {}),
+        ...(controller ? { signal: controller.signal } : {}),
+      });
     } catch (error) {
       if (isRequestAbortError(error) && timeoutErrorMessage) {
         throw new Error(timeoutErrorMessage);

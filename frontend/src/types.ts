@@ -76,6 +76,7 @@ export interface BlogFactoryItem {
   topic_tag_snapshot: string | null;
   assist_summary: string | null;
   cover_image_markdown: string | null;
+  cover_prompt_snapshot: string | null;
   blog_status_snapshot: KnowledgeStatus | null;
   copied_at: string | null;
   factory_status: BlogFactoryStatus;

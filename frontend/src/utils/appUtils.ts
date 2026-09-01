@@ -420,6 +420,7 @@ export type BlogFactoryEditDraft = {
   topicTagSnapshot: string;
   assistSummary: string;
   coverImageMarkdown: string;
+  coverPromptSnapshot: string;
 };
 
 export type BlogPublishConfigDraft = {
@@ -1027,6 +1028,7 @@ export function blogFactoryItemToEditDraft(item: BlogFactoryItem | null): BlogFa
     topicTagSnapshot: item?.topic_tag_snapshot ?? "",
     assistSummary: item?.assist_summary ?? "",
     coverImageMarkdown: item?.cover_image_markdown ?? "",
+    coverPromptSnapshot: item?.cover_prompt_snapshot ?? "",
   };
 }
 
@@ -1132,12 +1134,19 @@ export function resolveBlogFactoryPublishMarkdown(
 }
 
 export function buildBlogFactoryTaskSummary(taskContent: string, maxLength = 100) {
+  return buildBlogFactoryTaskSummaryCandidates(taskContent, maxLength)[0] ?? "";
+}
+
+export function buildBlogFactoryTaskSummaryCandidates(taskContent: string, maxLength = 100) {
   const normalized = normalizeBlogFactoryAssistContent(taskContent);
-  if (!normalized) return "";
+  if (!normalized) return [];
 
   const sentences = splitBlogFactoryAssistSentences(normalized);
   const preferred = pickBlogFactorySummarySentence(sentences);
-  return fitBlogFactorySummary(cleanBlogFactoryAssistPhrase(preferred || normalized), maxLength);
+  const candidates = [preferred, ...sentences, normalized]
+    .map((candidate) => fitBlogFactorySummary(cleanBlogFactoryAssistPhrase(candidate), maxLength))
+    .filter(Boolean);
+  return Array.from(new Set(candidates));
 }
 
 export function buildBlogFactoryCoverImagePrompt(

@@ -3,6 +3,8 @@ import { highlightCode } from "./codeHighlight";
 interface EnhancedCopyOptions {
   downloadFileName?: string | null;
   documentTitle?: string | null;
+  summary?: string | null;
+  coverPrompt?: string | null;
 }
 
 interface MarkdownRenderOptions {
@@ -217,7 +219,12 @@ export async function copyMarkdownAsEnhancedRichText(markdown: string, options?:
   const clipboardHtml = buildEnhancedRichClipboardHtml(portableHtml);
   const downloadHtml = buildEnhancedRichClipboardHtml(portableHtml);
   const html = await inlineClipboardImages(clipboardHtml);
-  const fullDocument = buildStandaloneClipboardDocument(await inlineClipboardImages(downloadHtml), options?.documentTitle);
+  const fullDocument = buildStandaloneClipboardDocument(
+    await inlineClipboardImages(downloadHtml),
+    options?.documentTitle,
+    options?.summary,
+    options?.coverPrompt,
+  );
 
   try {
     if (copyRichHtmlViaCopyEvent(html, markdown)) {
@@ -298,8 +305,10 @@ function buildEnhancedRichClipboardHtml(innerHtml: string) {
   ].join("");
 }
 
-function buildStandaloneClipboardDocument(bodyHtml: string, title: string | null | undefined) {
+function buildStandaloneClipboardDocument(bodyHtml: string, title: string | null | undefined, summary: string | null | undefined, coverPrompt: string | null | undefined) {
   const safeTitle = escapeHtml(title?.trim() || "trustedKnowledge export");
+  const summaryHtml = buildStandaloneSummaryHtml(summary);
+  const coverPromptHtml = buildStandaloneCoverPromptHtml(coverPrompt);
   return [
     "<!DOCTYPE html>",
     '<html lang="zh-CN">',
@@ -308,9 +317,28 @@ function buildStandaloneClipboardDocument(bodyHtml: string, title: string | null
     '<meta name="viewport" content="width=device-width, initial-scale=1" />',
     `<title>${safeTitle}</title>`,
     "</head>",
-    `<body style="margin:0; padding:32px 20px; background:#f7f1ee;">${buildStandaloneCopyToolbar()}${bodyHtml}${buildStandaloneCopyScript()}</body>`,
+    `<body style="margin:0; padding:32px 20px; background:#f7f1ee;">${buildStandaloneCopyToolbar(Boolean(summaryHtml), Boolean(coverPromptHtml))}${insertStandaloneSummary(bodyHtml, `${summaryHtml}${coverPromptHtml}`)}${buildStandaloneCopyScript()}</body>`,
     "</html>",
   ].join("");
+}
+
+function buildStandaloneCoverPromptHtml(coverPrompt: string | null | undefined) {
+  const value = coverPrompt?.trim();
+  if (!value) return "";
+  return `<section data-tk-export-cover-prompt style="margin:0 0 24px;padding:16px 18px;border:1px solid #d8d0ea;border-radius:12px;background:#faf8ff;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,Arial,sans-serif;"><div style="margin-bottom:6px;color:#6d28d9;font-size:12px;font-weight:700;letter-spacing:.08em;">生图提示词</div><pre data-tk-export-cover-prompt-text style="margin:0;color:#33285a;font:13px/1.75 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre-wrap;overflow-wrap:anywhere;">${escapeHtml(value)}</pre></section>`;
+}
+
+function buildStandaloneSummaryHtml(summary: string | null | undefined) {
+  const value = summary?.trim();
+  if (!value) return "";
+  return `<section data-tk-export-summary style="margin:0 0 24px;padding:16px 18px;border:1px solid #ead9d3;border-radius:12px;background:#fff9f6;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,Arial,sans-serif;"><div style="margin-bottom:6px;color:#9a3412;font-size:12px;font-weight:700;letter-spacing:.08em;">摘要</div><div style="color:#4a2825;font-size:15px;line-height:1.75;">${escapeHtml(value)}</div></section>`;
+}
+
+function insertStandaloneSummary(bodyHtml: string, summaryHtml: string) {
+  if (!summaryHtml) return bodyHtml;
+  const withSummaryAfterTitle = bodyHtml.replace(/(<h1\b[^>]*>[\s\S]*?<\/h1>)/i, `$1${summaryHtml}`);
+  if (withSummaryAfterTitle !== bodyHtml) return withSummaryAfterTitle;
+  return bodyHtml.replace(/(<article\b[^>]*>)/i, `$1${summaryHtml}`);
 }
 
 function renderMermaidBlock(source: string, codeBlockId: string) {
@@ -397,13 +425,15 @@ function svgToPngDataUrl(svg: string) {
   });
 }
 
-function buildStandaloneCopyToolbar() {
+function buildStandaloneCopyToolbar(hasSummary: boolean, hasCoverPrompt: boolean) {
   const buttonStyle =
     "display:inline-flex;align-items:center;justify-content:center;min-height:36px;border:1px solid #d8b8ae;border-radius:8px;background:#fffdfb;color:#7f1d1d;padding:0 14px;font-size:14px;font-weight:600;cursor:pointer;box-shadow:0 6px 18px rgba(95,29,29,0.08);";
 
   return [
     '<div data-tk-export-toolbar style="max-width:760px;margin:0 auto 16px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:flex-end;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,Arial,sans-serif;">',
     `<button type="button" data-copy-title style="${buttonStyle}">复制标题</button>`,
+    hasSummary ? `<button type="button" data-copy-summary style="${buttonStyle}">复制摘要</button>` : "",
+    hasCoverPrompt ? `<button type="button" data-copy-cover-prompt style="${buttonStyle}">复制生图提示词</button>` : "",
     `<button type="button" data-copy-body style="${buttonStyle}">复制正文</button>`,
     "</div>",
   ].join("");
@@ -414,7 +444,11 @@ function buildStandaloneCopyScript() {
     "<script>",
     "(() => {",
     "  const titleButton = document.querySelector('[data-copy-title]');",
+    "  const summaryButton = document.querySelector('[data-copy-summary]');",
+    "  const coverPromptButton = document.querySelector('[data-copy-cover-prompt]');",
     "  const bodyButton = document.querySelector('[data-copy-body]');",
+    "  const summary = document.querySelector('[data-tk-export-summary]');",
+    "  const coverPrompt = document.querySelector('[data-tk-export-cover-prompt-text]');",
     "  const article = document.querySelector('article');",
     "  const buttonDefaults = new WeakMap();",
     "  const setButtonState = (button, text) => {",
@@ -478,10 +512,18 @@ function buildStandaloneCopyScript() {
     "    if (!title) return;",
     "    try { await copyPlainText(title); setButtonState(titleButton, '已复制标题'); } catch { setButtonState(titleButton, '复制失败'); }",
     "  });",
+    "  coverPromptButton?.addEventListener('click', async () => { const text = (coverPrompt?.textContent || '').trim(); if (!text) return; try { await copyPlainText(text); setButtonState(coverPromptButton, '已复制提示词'); } catch { setButtonState(coverPromptButton, '复制失败'); } });",
+    "  summaryButton?.addEventListener('click', async () => {",
+    "    const text = (summary?.textContent || '').replace(/^摘要\\s*/, '').trim();",
+    "    if (!text) return;",
+    "    try { await copyPlainText(text); setButtonState(summaryButton, '已复制摘要'); } catch { setButtonState(summaryButton, '复制失败'); }",
+    "  });",
     "  bodyButton?.addEventListener('click', async () => {",
     "    if (!article) return;",
     "    const clone = article.cloneNode(true);",
     "    if (clone.firstElementChild?.tagName?.toLowerCase() === 'h1') clone.firstElementChild.remove();",
+    "    clone.querySelectorAll('[data-tk-export-summary]').forEach((section) => section.remove());",
+    "    clone.querySelectorAll('[data-tk-export-cover-prompt]').forEach((section) => section.remove());",
     "    clone.querySelectorAll('[data-copy-code-block]').forEach((button) => button.remove());",
     "    if (!(clone.textContent || '').trim()) return;",
     "    try { await copyElementRichText(clone); setButtonState(bodyButton, '已复制正文'); } catch { setButtonState(bodyButton, '复制失败'); }",

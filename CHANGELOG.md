@@ -13,6 +13,15 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Added / 新增
 
+- Added task-level saved cover-prompt snapshots in Blog Factory. Confirmed prompts now appear in enhanced HTML exports with a dedicated `复制生图提示词` action.
+- 博客工厂新增任务级已保存生图提示词快照。确认保存后，增强美化 HTML 会展示提示词并提供独立的 `复制生图提示词`。
+
+- Added a saved-summary card and `复制摘要` control to Blog Factory enhanced HTML exports. The control appears only when the current article has a user-saved summary, and `复制正文` continues to exclude that summary.
+- 博客工厂增强美化 HTML 导出新增已保存摘要卡片与 `复制摘要` 按钮。仅当前文章存在用户已保存摘要时展示，`复制正文` 仍不包含摘要。
+
+- Added a `刷新列表` action to Blog Factory filters. It keeps the active filters and page while explicitly fetching the latest server results.
+- 博客工厂筛选区新增 `刷新列表` 操作：保留当前筛选条件和页码，并显式读取服务端最新结果。
+
 #### Changed / 变更
 
 #### Fixed / 修复
@@ -51,6 +60,15 @@ The format follows the common GitHub changelog convention inspired by
 - 调整富文本复制和浏览器生成的增强 HTML 导出：Mermaid 图表现以内嵌 PNG 图片输出，而非不可执行的源码/runtime 标记，提升跨编辑器粘贴兼容性。
 
 #### Fixed / 修复
+
+- Fixed Blog Factory content assistance requiring a manual first summary extraction and returning the same sentence repeatedly. Empty summaries now receive a local default candidate on task selection, while `换一条摘要` rotates to a different candidate without overwriting saved or manually entered text.
+- 修复博客工厂内容辅助必须手动首次提取摘要且反复得到同一句的问题。任务无摘要时现会本地生成默认候选；`换一条摘要` 会轮换到不同候选，且不会自动覆盖已保存或手工输入的内容。
+
+- Fixed Blog Factory task-detail enhanced exports omitting saved summaries. Both task-detail and saved-article enhanced exports now pass the saved summary into the standalone HTML.
+- 修复博客工厂任务详情的增强美化导出遗漏已保存摘要的问题。任务详情与已保存文章的增强美化导出现都会把已保存摘要传入独立 HTML。
+
+- Fixed PWA and desktop list inconsistencies caused by a cached list result being treated as final. Cached results now render immediately while knowledge, factory, Blog Factory, Todo, Personal Secrets, Current Records, English Materials, history, usage, and Current Record options refresh silently in the background.
+- 修复 PWA 与桌面端可能因把列表缓存当作最终结果而显示不一致的问题。知识库、知识加工、博客工厂、待办、个人机密、当前记录、英语素材、历史查询、AI 用量及当前记录筛选选项现均先即时展示缓存、再后台静默同步。
 
 - Fixed syntax-highlighted code losing indentation or spaces after rich-text paste. Clipboard HTML now uses a source-preserving, unhighlighted code representation while previews retain highlighting.
 - 修复语法高亮代码富文本粘贴后缩进或空格丢失的问题。剪贴板 HTML 现使用保留源码的无高亮代码表示，应用内预览仍保留高亮。

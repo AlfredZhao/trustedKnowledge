@@ -487,6 +487,7 @@ export async function updateBlogFactoryItem({
   topicTagSnapshot,
   assistSummary,
   coverImageMarkdown,
+  coverPromptSnapshot,
 }: {
   id: number;
   taskContent: string;
@@ -496,6 +497,7 @@ export async function updateBlogFactoryItem({
   topicTagSnapshot: string;
   assistSummary: string;
   coverImageMarkdown: string;
+  coverPromptSnapshot: string;
 }): Promise<BlogFactoryItem> {
   return request<BlogFactoryItem>(`/api/blog-factory/${id}`, {
     method: "PATCH",
@@ -508,6 +510,7 @@ export async function updateBlogFactoryItem({
       topic_tag_snapshot: topicTagSnapshot || null,
       assist_summary: assistSummary || null,
       cover_image_markdown: coverImageMarkdown || null,
+      cover_prompt_snapshot: coverPromptSnapshot || null,
     }),
   });
 }
@@ -572,14 +575,17 @@ export async function updateBlogFactoryAssistMetadata({
   id,
   assistSummary,
   coverImageMarkdown,
+  coverPromptSnapshot,
 }: {
   id: number;
   assistSummary?: string;
   coverImageMarkdown?: string;
+  coverPromptSnapshot?: string;
 }): Promise<BlogFactoryItem> {
   const body: Record<string, string | null> = {};
   if (assistSummary !== undefined) body.assist_summary = assistSummary || null;
   if (coverImageMarkdown !== undefined) body.cover_image_markdown = coverImageMarkdown || null;
+  if (coverPromptSnapshot !== undefined) body.cover_prompt_snapshot = coverPromptSnapshot || null;
 
   return request<BlogFactoryItem>(`/api/blog-factory/${id}`, {
     method: "PATCH",

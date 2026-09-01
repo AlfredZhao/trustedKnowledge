@@ -19,6 +19,94 @@ Keep entries concrete. Prefer file paths, function names, SQL placeholders, and 
 
 All Oracle executions must receive only bind names present in that statement's SQL text. In multi-step repository flows, keep row-lock/read, update, count, and vector-query parameter dictionaries and `setinputsizes()` calls separate; do not let business-field binds or CLOB declarations leak into a preceding `SELECT ... FOR UPDATE` or summary query. Add or retain a regression test whenever dynamic SQL bindings change. Module-specific `DPY-4008` incidents below document concrete triggers and guardrails.
 
+## 列表缓存不能阻止后台读取最新服务端结果
+
+### Symptom
+
+同一账号在桌面端和 PWA 使用相同筛选条件时，桌面端显示最新匹配记录，PWA 却显示此前缓存的 0 条或旧数量；重新打开 PWA 仍不更新。
+
+### Trigger
+
+某设备在 `localStorage` 中保存了某个列表查询路径的 GET 缓存，随后另一设备新增、更新或处理了匹配记录。
+
+### Root Cause
+
+列表加载 effect 将缓存命中视为最终结果并提前 `return`，从而跳过网络请求。缓存按设备和 API key 保存，本机写入时的失效不会传播到另一台设备。
+
+### Safe Pattern
+
+对会跨设备变动的列表，始终先渲染 `readCached*()` 返回的数据以缩短首屏时间，再继续执行对应 `fetch*()` 并在成功后用最新结果更新 UI 和缓存。缓存存在时不得显示阻塞加载态；请求失败时保留缓存。后台同步不得关闭详情/弹窗或覆写未保存草稿。博客工厂另保留不改变当前筛选和页码的 `刷新列表` 手工兜底。
+
+### Guardrail
+
+在 PWA 先以“Alfred + 已处理”等组合得到并缓存 0 条，再在另一设备创建或更新为匹配记录。重新进入该 PWA 页面应先显示缓存、随后自动更新为服务端结果；断网时仍显示缓存。检查知识库、知识加工、博客工厂、待办、个人机密、当前记录、英语素材、历史查询和 AI 用量，并在博客工厂打开编辑/发布弹窗后触发后台同步，确认弹窗、复制内容和未保存草稿均保持。运行 `cd frontend && npm run build`。
+
+## 博客工厂增强 HTML 必须只展示已保存生图提示词
+
+### Symptom
+
+增强美化导出无法携带确认过的生图提示词，或误把当前设备尚未保存的临时提示词、模板配置带入 HTML。
+
+### Trigger
+
+用户在内容辅助生成生图提示词、保存后导出，或在未保存提示词时导出同一任务。
+
+### Root Cause
+
+原生图提示词仅是浏览器基于本地配置即时计算的值，没有任务级持久化字段，导出无法区分临时预览和用户确认版本。
+
+### Safe Pattern
+
+`AI_BLOG_FACTORY.cover_prompt_snapshot` 使用 CLOB 保存已确认提示词；`BlogFactoryUpdate`、行映射、前端类型及增强导出均须传递该字段。只有点击 `保存提示词` 成功后的快照才可传入导出，HTML 使用独立 `data-tk-export-cover-prompt` 标记和复制按钮，正文复制必须移除该区块。
+
+### Guardrail
+
+生成后不保存即导出，不应出现提示词；点击保存后重新导出，应显示提示词与 `复制生图提示词`，且该按钮只复制提示词。修改本地模板或临时输入但不保存后再次导出，仍应保留原已保存快照。运行 `cd backend && python -m unittest tests.test_blog_factory_bindings` 与 `cd frontend && npm run build`。
+
+## 博客工厂增强 HTML 必须只展示已保存摘要
+
+### Symptom
+
+“复制增强美化”下载的 HTML 没有摘要，或将尚未保存的摘要草稿带入导出；加入摘要后，“复制正文”又意外包含摘要文本。
+
+### Trigger
+
+对带有或不带有已保存 `assist_summary` 的博客工厂文章执行增强美化复制，并在下载后的 HTML 中点击复制按钮。
+
+### Root Cause
+
+增强 HTML 生成器原先只接收 Markdown 和标题，没有摘要输入或独立的摘要 DOM 标记，导致无法提供精准复制，也无法将正文复制范围与摘要分离。
+
+### Safe Pattern
+
+任务详情与已保存文章两条增强美化导出链路都必须把 `selectedBlogFactoryItem.assist_summary` 作为 `copyMarkdownAsEnhancedRichText()` 的 `summary` 选项传入。独立 HTML 在标题后、无标题时正文前插入带 `data-tk-export-summary` 的摘要卡片，并只在该内容存在时显示 `复制摘要`。`复制正文` 克隆文章时必须移除摘要卡片和代码块复制按钮。
+
+### Guardrail
+
+分别导出带已保存摘要、只有未保存摘要草稿、无摘要的文章。第一种应显示摘要及三个按钮，`复制摘要` 只复制摘要，`复制正文` 不含标题、摘要或代码按钮；后两种不得显示摘要或 `复制摘要`。运行 `cd frontend && npm run build`，并执行 `node scripts/export-enhanced-html.mjs --help`。
+
+## 博客工厂摘要默认生成与换一条候选
+
+### Symptom
+
+博客工厂任务的内容辅助初始为空，用户必须先点击提取；再次点击仍得到同一句摘要，无法快速选择另一种表述。
+
+### Trigger
+
+打开没有已保存 `assist_summary` 的任务详情，或在当前摘要存在时点击摘要生成操作。
+
+### Root Cause
+
+`buildBlogFactoryTaskSummary()` 为确定性单结果函数，界面未在选择任务后填入默认候选，按钮每次只回填同一结果。
+
+### Safe Pattern
+
+使用 `buildBlogFactoryTaskSummaryCandidates()` 生成去重候选。任务切换后，仅在服务端摘要为空且摘要输入框尚为空时填入首个候选，绝不自动保存或覆盖用户已有输入；`换一条摘要` 必须选择与当前文本不同的下一个候选。没有第二个有效候选时禁用替换操作。
+
+### Guardrail
+
+打开包含至少两句有效内容的任务，摘要框应立即显示默认候选；连续点击 `换一条摘要` 应在不同候选间轮换。手工编辑、保存摘要、切换 PWA 前后台及后台列表同步后，现有摘要均不得被自动覆盖。对单句短内容，替换按钮应不可用。运行 `cd frontend && npm run build`。
+
 ## 英语素材详情必须在 PWA 回收后恢复到可复制状态
 
 ### Symptom

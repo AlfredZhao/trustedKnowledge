@@ -52,7 +52,11 @@ class BlogFactoryBindingTests(unittest.IsolatedAsyncioTestCase):
     async def test_update_with_task_content_uses_only_lock_query_bind_parameters(self) -> None:
         cursor = FakeCursor()
         auth = AuthContext(user_id=10, username="alice", is_admin=False, is_admin_role=False, visible_user_ids=(10,))
-        payload = BlogFactoryUpdate(task_content="updated task", question_snapshot="updated question")
+        payload = BlogFactoryUpdate(
+            task_content="updated task",
+            question_snapshot="updated question",
+            cover_prompt_snapshot="已确认保存的生图提示词",
+        )
 
         with (
             patch("app.repositories.blog_factory.acquire_connection", return_value=FakeAcquire(FakeConnection(cursor))),
@@ -67,8 +71,10 @@ class BlogFactoryBindingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(lock_params, {"item_id": 5, "visible_user_id_0": 10})
         self.assertIn("task_content = :task_content", update_sql.lower())
         self.assertIn("question_snapshot = :question_snapshot", update_sql.lower())
+        self.assertIn("cover_prompt_snapshot = :cover_prompt_snapshot", update_sql.lower())
         self.assertEqual(update_params["task_content"], "updated task")
         self.assertEqual(update_params["question_snapshot"], "updated question")
+        self.assertEqual(update_params["cover_prompt_snapshot"], "已确认保存的生图提示词")
 
 
 if __name__ == "__main__":

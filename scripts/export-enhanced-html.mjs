@@ -15,8 +15,14 @@ async function main() {
     process.exit(args.length === 0 ? 1 : 0);
   }
 
-  const inputArg = args[0];
-  const outputArg = args[1];
+  const summaryOptionIndex = args.indexOf("--summary");
+  const summary = summaryOptionIndex >= 0 ? args[summaryOptionIndex + 1]?.trim() ?? "" : "";
+  const positionalArgs = args.filter((_, index) => index !== summaryOptionIndex && index !== summaryOptionIndex + 1);
+  const inputArg = positionalArgs[0];
+  const outputArg = positionalArgs[1];
+  if (!inputArg || (summaryOptionIndex >= 0 && !summary)) {
+    fail("请提供 Markdown 文件路径；--summary 后必须提供已保存的摘要文本。");
+  }
   const inputPath = path.resolve(process.cwd(), inputArg);
 
   let markdown;
@@ -34,7 +40,7 @@ async function main() {
 
   const htmlBody = await markdownToHtml(markdown, inputDir);
   const mermaidRuntime = htmlBody.includes("data-mermaid-render") ? await fs.readFile(MERMAID_RUNTIME_PATH, "utf8") : "";
-  const documentHtml = buildStandaloneHtml(buildEnhancedRichHtml(htmlBody), articleTitle, mermaidRuntime);
+  const documentHtml = buildStandaloneHtml(buildEnhancedRichHtml(htmlBody), articleTitle, mermaidRuntime, summary);
 
   try {
     await fs.writeFile(outputPath, documentHtml, "utf8");
@@ -49,11 +55,11 @@ function printUsage() {
   process.stdout.write(
     [
       "用法:",
-      "  node scripts/export-enhanced-html.mjs <input.md> [output.html]",
+      "  node scripts/export-enhanced-html.mjs <input.md> [output.html] [--summary <已保存摘要>]",
       "",
       "示例:",
       "  node scripts/export-enhanced-html.mjs ~/Documents/post.md",
-      "  node scripts/export-enhanced-html.mjs ./article.md ./article-export.html",
+      "  node scripts/export-enhanced-html.mjs ./article.md ./article-export.html --summary \"文章摘要\"",
       "",
       "说明:",
       "  - 相对图片路径会按 Markdown 文件所在目录解析。",
@@ -334,8 +340,9 @@ function buildEnhancedRichHtml(innerHtml) {
   ].join("");
 }
 
-function buildStandaloneHtml(bodyHtml, title, mermaidRuntime = "") {
+function buildStandaloneHtml(bodyHtml, title, mermaidRuntime = "", summary = "") {
   const safeTitle = escapeHtml(title || "trustedKnowledge export");
+  const summaryHtml = buildStandaloneSummaryHtml(summary);
   return [
     "<!DOCTYPE html>",
     '<html lang="zh-CN">',
@@ -344,9 +351,21 @@ function buildStandaloneHtml(bodyHtml, title, mermaidRuntime = "") {
     '<meta name="viewport" content="width=device-width, initial-scale=1" />',
     `<title>${safeTitle}</title>`,
     "</head>",
-    `<body style="margin:0; padding:32px 20px; background:#f7f1ee;">${buildStandaloneCopyToolbar()}${bodyHtml}${buildStandaloneCopyScript()}${mermaidRuntime ? `<script>${mermaidRuntime}</script>${buildStandaloneMermaidScript()}` : ""}</body>`,
+    `<body style="margin:0; padding:32px 20px; background:#f7f1ee;">${buildStandaloneCopyToolbar(Boolean(summaryHtml))}${insertStandaloneSummary(bodyHtml, summaryHtml)}${buildStandaloneCopyScript()}${mermaidRuntime ? `<script>${mermaidRuntime}</script>${buildStandaloneMermaidScript()}` : ""}</body>`,
     "</html>",
   ].join("");
+}
+
+function buildStandaloneSummaryHtml(summary) {
+  if (!summary) return "";
+  return `<section data-tk-export-summary style="margin:0 0 24px;padding:16px 18px;border:1px solid #ead9d3;border-radius:12px;background:#fff9f6;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,Arial,sans-serif;"><div style="margin-bottom:6px;color:#9a3412;font-size:12px;font-weight:700;letter-spacing:.08em;">摘要</div><div style="color:#4a2825;font-size:15px;line-height:1.75;">${escapeHtml(summary)}</div></section>`;
+}
+
+function insertStandaloneSummary(bodyHtml, summaryHtml) {
+  if (!summaryHtml) return bodyHtml;
+  const withSummaryAfterTitle = bodyHtml.replace(/(<h1\b[^>]*>[\s\S]*?<\/h1>)/i, `$1${summaryHtml}`);
+  if (withSummaryAfterTitle !== bodyHtml) return withSummaryAfterTitle;
+  return bodyHtml.replace(/(<article\b[^>]*>)/i, `$1${summaryHtml}`);
 }
 
 function buildStandaloneMermaidScript() {
@@ -370,13 +389,14 @@ function renderMermaidBlock(source, id) {
   return `<div data-mermaid-block style="position:relative;margin:0 0 18px;overflow-x:auto;border:1px solid #ead9d3;border-radius:12px;background:#fff9f6;padding:18px 20px;"><div data-mermaid-render style="min-width:max-content;text-align:center;"></div><details style="margin-top:14px;color:#7c4a43;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,Arial,sans-serif;font-size:13px;"><summary style="cursor:pointer;">查看 Mermaid 源码</summary><pre style="margin:10px 0 0;padding:14px 16px;border-radius:10px;background:#2a1f1d;color:#fdf4f1;white-space:pre;overflow-x:auto;"><code class="language-mermaid" data-mermaid-source data-mermaid-id="${id}">${escapeHtml(source)}</code></pre></details></div>`;
 }
 
-function buildStandaloneCopyToolbar() {
+function buildStandaloneCopyToolbar(hasSummary) {
   const buttonStyle =
     "display:inline-flex;align-items:center;justify-content:center;min-height:36px;border:1px solid #d8b8ae;border-radius:8px;background:#fffdfb;color:#7f1d1d;padding:0 14px;font-size:14px;font-weight:600;cursor:pointer;box-shadow:0 6px 18px rgba(95,29,29,0.08);";
 
   return [
     '<div data-tk-export-toolbar style="max-width:760px;margin:0 auto 16px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:flex-end;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,Arial,sans-serif;">',
     `<button type="button" data-copy-title style="${buttonStyle}">复制标题</button>`,
+    hasSummary ? `<button type="button" data-copy-summary style="${buttonStyle}">复制摘要</button>` : "",
     `<button type="button" data-copy-body style="${buttonStyle}">复制正文</button>`,
     "</div>",
   ].join("");
@@ -387,7 +407,9 @@ function buildStandaloneCopyScript() {
     "<script>",
     "(() => {",
     "  const titleButton = document.querySelector('[data-copy-title]');",
+    "  const summaryButton = document.querySelector('[data-copy-summary]');",
     "  const bodyButton = document.querySelector('[data-copy-body]');",
+    "  const summary = document.querySelector('[data-tk-export-summary]');",
     "  const article = document.querySelector('article');",
     "  const buttonDefaults = new WeakMap();",
     "  const setButtonState = (button, text) => {",
@@ -451,10 +473,16 @@ function buildStandaloneCopyScript() {
     "    if (!title) return;",
     "    try { await copyPlainText(title); setButtonState(titleButton, '已复制标题'); } catch { setButtonState(titleButton, '复制失败'); }",
     "  });",
+    "  summaryButton?.addEventListener('click', async () => {",
+    "    const text = (summary?.textContent || '').replace(/^摘要\\s*/, '').trim();",
+    "    if (!text) return;",
+    "    try { await copyPlainText(text); setButtonState(summaryButton, '已复制摘要'); } catch { setButtonState(summaryButton, '复制失败'); }",
+    "  });",
     "  bodyButton?.addEventListener('click', async () => {",
     "    if (!article) return;",
     "    const clone = article.cloneNode(true);",
     "    if (clone.firstElementChild?.tagName?.toLowerCase() === 'h1') clone.firstElementChild.remove();",
+    "    clone.querySelectorAll('[data-tk-export-summary]').forEach((section) => section.remove());",
     "    if (!(clone.textContent || '').trim()) return;",
     "    try { await copyElementRichText(clone); setButtonState(bodyButton, '已复制正文'); } catch { setButtonState(bodyButton, '复制失败'); }",
     "  });",

@@ -228,6 +228,7 @@ import {
   blogPublishConfigToDraft,
   buildBlogFactoryCoverImagePrompt,
   buildBlogFactoryArticleExportFileName,
+  buildBlogFactoryTaskSummaryCandidates,
   buildBlogFactoryTaskSummary,
   buildBlogFactoryTaskDocumentTitle,
   buildBlogFactoryTaskExportFileName,
@@ -742,8 +743,8 @@ function App() {
   const [isBlogFactoryDetailLoading, setIsBlogFactoryDetailLoading] = useState(false);
   const [isBlogFactoryStatusSaving, setIsBlogFactoryStatusSaving] = useState(false);
   const [isBlogFactoryItemSaving, setIsBlogFactoryItemSaving] = useState(false);
-  const blogFactoryAssistSavingTargetsRef = useRef<Set<"summary" | "cover">>(new Set());
-  const [blogFactoryAssistSavingTargets, setBlogFactoryAssistSavingTargets] = useState<Array<"summary" | "cover">>([]);
+  const blogFactoryAssistSavingTargetsRef = useRef<Set<"summary" | "cover" | "prompt">>(new Set());
+  const [blogFactoryAssistSavingTargets, setBlogFactoryAssistSavingTargets] = useState<Array<"summary" | "cover" | "prompt">>([]);
   const [isBlogFactorySendingToProcessing, setIsBlogFactorySendingToProcessing] = useState(false);
   const [isBlogFactoryArticleSaving, setIsBlogFactoryArticleSaving] = useState(false);
   const [isBlogFactoryDeleting, setIsBlogFactoryDeleting] = useState(false);
@@ -756,6 +757,7 @@ function App() {
     topicTagSnapshot: "",
     assistSummary: "",
     coverImageMarkdown: "",
+    coverPromptSnapshot: "",
   });
   const [blogFactoryMaskRules, setBlogFactoryMaskRules] = useState<BlogFactoryMaskRule[]>(() => restoredUiState.blogFactory.maskRules);
   const [selectedBlogFactoryMaskRuleId, setSelectedBlogFactoryMaskRuleId] = useState<string | null>(() =>
@@ -788,6 +790,7 @@ function App() {
   const [blogFactorySendBackNotice, setBlogFactorySendBackNotice] = useState<string | null>(null);
   const [blogFactoryDeleteTarget, setBlogFactoryDeleteTarget] = useState<BlogFactoryItem | null>(null);
   const [blogFactoryRefreshToken, setBlogFactoryRefreshToken] = useState(0);
+  const [isBlogFactoryRefreshing, setIsBlogFactoryRefreshing] = useState(false);
   const [isBlogFactoryVectorRefreshing, setIsBlogFactoryVectorRefreshing] = useState(false);
   const [blogPublishConfigs, setBlogPublishConfigs] = useState<BlogPublishConfig[]>([]);
   const [isBlogPublishConfigsLoading, setIsBlogPublishConfigsLoading] = useState(false);
@@ -1961,10 +1964,6 @@ function App() {
         setDraft(navigatedItem ? itemToDraft(navigatedItem) : emptyDraft);
       }
 
-      if (refreshToken === 0) {
-        setIsLoading(false);
-        return;
-      }
     }
 
     setIsLoading(!cached);
@@ -2018,10 +2017,6 @@ function App() {
       setFactoryTotalItems(cached.total);
       setFactoryError(null);
 
-      if (factoryRefreshToken === 0) {
-        setIsFactoryLoading(false);
-        return;
-      }
     }
 
     setIsFactoryLoading(!cached);
@@ -2097,10 +2092,6 @@ function App() {
       setBlogFactoryTotal(cached.total);
       setBlogFactoryError(null);
 
-      if (blogFactoryRefreshToken === 0) {
-        setIsBlogFactoryLoading(false);
-        return;
-      }
     }
 
     setIsBlogFactoryLoading(!cached);
@@ -2134,6 +2125,7 @@ function App() {
         setBlogFactoryError(error.message);
       })
       .finally(() => {
+        setIsBlogFactoryRefreshing(false);
         if (!mounted) return;
         setIsBlogFactoryLoading(false);
       });
@@ -2294,10 +2286,6 @@ function App() {
         setTodoDraft(resolveTodoEditorDraft(navigatedItem ?? null, todoDraftsByIdRef.current));
       }
 
-      if (todoRefreshToken === 0) {
-        setIsTodoLoading(false);
-        return;
-      }
     }
 
     setIsTodoLoading(!cached);
@@ -2369,10 +2357,6 @@ function App() {
         return cached.items[0]?.id ?? null;
       });
 
-      if (personalSecretRefreshToken === 0) {
-        setIsPersonalSecretLoading(false);
-        return;
-      }
     }
 
     setIsPersonalSecretLoading(!cached);
@@ -2415,10 +2399,6 @@ function App() {
         learn_levels: cached.learn_levels.length > 0 ? cached.learn_levels : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
       });
 
-      if (currentRecordRefreshToken === 0) {
-        setIsCurrentRecordOptionsLoading(false);
-        return;
-      }
     }
 
     setIsCurrentRecordOptionsLoading(!cached);
@@ -2487,10 +2467,6 @@ function App() {
       setCurrentRecordTotal(cached.total);
       setCurrentRecordError(null);
 
-      if (currentRecordRefreshToken === 0) {
-        setIsCurrentRecordLoading(false);
-        return;
-      }
     }
 
     setIsCurrentRecordLoading(!cached);
@@ -2550,10 +2526,6 @@ function App() {
       setEnglishMaterialTotal(cached.total);
       setEnglishMaterialError(null);
 
-      if (englishMaterialRefreshToken === 0) {
-        setIsEnglishMaterialLoading(false);
-        return;
-      }
     }
 
     setIsEnglishMaterialLoading(!cached);
@@ -2700,10 +2672,6 @@ function App() {
       setHistorySummary({ ...cached.summary, user_types: cached.summary.user_types ?? {} });
       setHistoryError(null);
 
-      if (historyRefreshToken === 0) {
-        setIsHistoryLoading(false);
-        return;
-      }
     }
 
     setIsHistoryLoading(!cached);
@@ -2916,12 +2884,6 @@ function App() {
       setIsUsageLoading(false);
     } else {
       setIsUsageLoading(true);
-    }
-
-    if (cached && !refreshOnly) {
-      return () => {
-        mounted = false;
-      };
     }
 
     fetchLlmUsage(USAGE_SAMPLE_LIMIT)
@@ -3641,6 +3603,7 @@ function App() {
         topicTagSnapshot: blogFactoryEditDraft.topicTagSnapshot,
         assistSummary: blogFactoryEditDraft.assistSummary,
         coverImageMarkdown: blogFactoryEditDraft.coverImageMarkdown,
+        coverPromptSnapshot: blogFactoryEditDraft.coverPromptSnapshot,
       });
       invalidateApiCache(["/api/blog-factory"]);
       setSelectedBlogFactoryItem(updated);
@@ -3655,7 +3618,7 @@ function App() {
     }
   }
 
-  async function handleSaveBlogFactoryAssistMetadata(target: "summary" | "cover"): Promise<void> {
+  async function handleSaveBlogFactoryAssistMetadata(target: "summary" | "cover" | "prompt", value?: string): Promise<void> {
     if (!selectedBlogFactoryItem || isBlogFactoryItemSaving || blogFactoryAssistSavingTargetsRef.current.has(target)) {
       throw new Error("当前任务暂不可保存，请稍后重试。");
     }
@@ -3667,11 +3630,20 @@ function App() {
     try {
       const updated = await updateBlogFactoryAssistMetadata({
         id: itemId,
-        ...(target === "summary" ? { assistSummary: blogFactoryEditDraft.assistSummary } : { coverImageMarkdown: blogFactoryEditDraft.coverImageMarkdown }),
+        ...(target === "summary"
+          ? { assistSummary: blogFactoryEditDraft.assistSummary }
+          : target === "cover"
+            ? { coverImageMarkdown: blogFactoryEditDraft.coverImageMarkdown }
+            : { coverPromptSnapshot: value ?? blogFactoryEditDraft.coverPromptSnapshot }),
       });
       invalidateApiCache(["/api/blog-factory"]);
       const mergeSavedAssistField = (item: BlogFactoryItem) =>
-        target === "summary" ? { ...item, assist_summary: updated.assist_summary } : { ...item, cover_image_markdown: updated.cover_image_markdown };
+        target === "summary"
+          ? { ...item, assist_summary: updated.assist_summary }
+          : target === "cover"
+            ? { ...item, cover_image_markdown: updated.cover_image_markdown }
+            : { ...item, cover_prompt_snapshot: updated.cover_prompt_snapshot };
+      if (target === "prompt") setBlogFactoryEditDraft((current) => ({ ...current, coverPromptSnapshot: updated.cover_prompt_snapshot ?? "" }));
       setSelectedBlogFactoryItem((current) => (current?.id === itemId ? mergeSavedAssistField(current) : current));
       setBlogFactoryItems((current) => current.map((item) => (item.id === itemId ? mergeSavedAssistField(item) : item)));
       setBlogFactoryRefreshToken((current) => current + 1);
@@ -4440,6 +4412,8 @@ function App() {
         await copyMarkdownAsEnhancedRichText(markdown, {
           downloadFileName: buildBlogFactoryArticleExportFileName(selectedBlogFactoryItem?.id ?? null, selectedBlogFactoryItem?.article_title, markdown),
           documentTitle: selectedBlogFactoryItem?.article_title ?? extractMarkdownHeading(markdown) ?? "博客工厂文章",
+          summary: selectedBlogFactoryItem?.assist_summary,
+          coverPrompt: selectedBlogFactoryItem?.cover_prompt_snapshot,
         });
       } else {
         await copyText(markdown);
@@ -4467,6 +4441,8 @@ function App() {
             selectedBlogFactoryItem?.id ?? null,
             selectedBlogFactoryItem?.knowledge_id ?? null,
           ),
+          summary: selectedBlogFactoryItem?.assist_summary,
+          coverPrompt: selectedBlogFactoryItem?.cover_prompt_snapshot,
         });
       } else if (view === "rendered") {
         await copyMarkdownAsRichText(taskContent);
@@ -5746,6 +5722,11 @@ function App() {
                 if (nextFilters.sortBy !== undefined) setBlogFactorySortBy(nextFilters.sortBy);
                 if (nextFilters.sortDir !== undefined) setBlogFactorySortDir(nextFilters.sortDir);
               }}
+              onRefresh={() => {
+                setIsBlogFactoryRefreshing(true);
+                setBlogFactoryRefreshToken((token) => token + 1);
+              }}
+              isRefreshing={isBlogFactoryRefreshing}
               onRefreshVectors={() => {
                 setIsBlogFactoryVectorRefreshing(true);
                 refreshBlogFactoryVectors()
@@ -9924,10 +9905,12 @@ function BlogFactoryRecords({
   maskError,
   maskNotice,
   hasCopiedTask,
+  isRefreshing,
   isVectorRefreshing,
   modelOptions,
   filters,
   onFilterChange,
+  onRefresh,
   onRefreshVectors,
   onClearFilters,
   onPageChange,
@@ -9985,10 +9968,12 @@ function BlogFactoryRecords({
   maskError: string | null;
   maskNotice: string | null;
   hasCopiedTask: boolean;
+  isRefreshing: boolean;
   isVectorRefreshing: boolean;
   modelOptions: { value: string; label: string }[];
   filters: BlogFactoryFilters;
   onFilterChange: (filters: Partial<BlogFactoryFilters>) => void;
+  onRefresh: () => void;
   onRefreshVectors: () => void;
   onClearFilters: () => void;
   onPageChange: (page: number) => void;
@@ -10004,7 +9989,7 @@ function BlogFactoryRecords({
   onSendToProcessing: () => void;
   onDelete: () => void;
   onCloseMobileDetail: () => void;
-  onSaveAssist: (target: "summary" | "cover") => Promise<void>;
+  onSaveAssist: (target: "summary" | "cover" | "prompt", value?: string) => Promise<void>;
   onSaveItem: () => Promise<boolean>;
   onSelect: (item: BlogFactoryItem) => void;
   onSelectAdjacent: (direction: "previous" | "next") => void;
@@ -10022,8 +10007,8 @@ function BlogFactoryRecords({
   const [assistView, setAssistView] = useState<"summary" | "coverPrompt">("summary");
   const [assistCopiedTarget, setAssistCopiedTarget] = useState<"summary" | "coverPrompt" | null>(null);
   const [assistError, setAssistError] = useState<string | null>(null);
-  const [assistSaveFeedback, setAssistSaveFeedback] = useState<Partial<Record<"summary" | "cover", "saving" | "success" | "error">>>({});
-  const assistSaveFeedbackTimerRefs = useRef<Partial<Record<"summary" | "cover", number>>>({});
+  const [assistSaveFeedback, setAssistSaveFeedback] = useState<Partial<Record<"summary" | "cover" | "prompt", "saving" | "success" | "error">>>({});
+  const assistSaveFeedbackTimerRefs = useRef<Partial<Record<"summary" | "cover" | "prompt", number>>>({});
   const [isCoverPromptTemplateEditing, setIsCoverPromptTemplateEditing] = useState(false);
   const [coverPromptTextDraft, setCoverPromptTextDraft] = useState("");
   const [coverPromptCategory, setCoverPromptCategory] = useState("");
@@ -10037,11 +10022,15 @@ function BlogFactoryRecords({
   } | null>(null);
   const [isCoverImageUploading, setIsCoverImageUploading] = useState(false);
   const [coverImageError, setCoverImageError] = useState<string | null>(null);
+  const defaultedSummaryItemIdRef = useRef<number | null>(null);
+  const summaryCandidateIndexRef = useRef(-1);
   useEffect(() => setSemanticQueryDraft(filters.semanticQuery), [filters.semanticQuery]);
   const summarySaveStatus = assistSaveFeedback.summary;
   const coverSaveStatus = assistSaveFeedback.cover;
+  const promptSaveStatus = assistSaveFeedback.prompt;
   const isSummarySavePending = summarySaveStatus === "saving";
   const isCoverSavePending = coverSaveStatus === "saving";
+  const isPromptSavePending = promptSaveStatus === "saving";
   const isRecordSaving = isItemSaving || isAssistSaving;
   const activeFilterCount = [
     filters.username,
@@ -10054,7 +10043,7 @@ function BlogFactoryRecords({
   const publishMarkdown = selectedItem ? resolveBlogFactoryPublishMarkdown(selectedItem, selectedItem.article_markdown, editDraft.taskContent) : "";
   const publishTitle = selectedItem ? extractMarkdownHeading(publishMarkdown) || selectedItem.article_title || "" : "";
   const assistSource = editDraft.taskContent;
-  const assistSummary = useMemo(() => buildBlogFactoryTaskSummary(assistSource), [assistSource]);
+  const assistSummaryCandidates = useMemo(() => buildBlogFactoryTaskSummaryCandidates(assistSource), [assistSource]);
   const coverPromptSource = coverPromptTextDraft.trim() || assistSource;
   const coverPromptSummary = useMemo(() => buildBlogFactoryTaskSummary(coverPromptSource), [coverPromptSource]);
   const coverImageMarkdown = editDraft.coverImageMarkdown;
@@ -10121,7 +10110,27 @@ function BlogFactoryRecords({
     setIsCoverPromptTemplateEditing(false);
     setCoverPromptTextDraft("");
     setCoverImageError(null);
+    defaultedSummaryItemIdRef.current = null;
+    summaryCandidateIndexRef.current = -1;
   }, [selectedItem?.id]);
+
+  useEffect(() => {
+    if (
+      !selectedItem ||
+      selectedItem.assist_summary?.trim() ||
+      editDraft.assistSummary.trim() ||
+      defaultedSummaryItemIdRef.current === selectedItem.id
+    ) {
+      return;
+    }
+
+    const defaultSummary = assistSummaryCandidates[0];
+    if (!defaultSummary) return;
+
+    defaultedSummaryItemIdRef.current = selectedItem.id;
+    summaryCandidateIndexRef.current = 0;
+    onEditDraftChange({ ...editDraft, assistSummary: defaultSummary });
+  }, [assistSummaryCandidates, editDraft, onEditDraftChange, selectedItem]);
 
   function handleCancelTaskContentEditing() {
     if (selectedItem) onEditDraftChange(blogFactoryItemToEditDraft(selectedItem));
@@ -10200,13 +10209,13 @@ function BlogFactoryRecords({
     }
   }
 
-  async function handleSaveAssist(target: "summary" | "cover") {
+  async function handleSaveAssist(target: "summary" | "cover" | "prompt", value?: string) {
     const previousTimer = assistSaveFeedbackTimerRefs.current[target];
     if (previousTimer !== undefined) window.clearTimeout(previousTimer);
     setAssistSaveFeedback((current) => ({ ...current, [target]: "saving" }));
 
     try {
-      await onSaveAssist(target);
+      await onSaveAssist(target, value);
       setAssistSaveFeedback((current) => ({ ...current, [target]: "success" }));
     } catch {
       setAssistSaveFeedback((current) => ({ ...current, [target]: "error" }));
@@ -10219,6 +10228,25 @@ function BlogFactoryRecords({
       });
       delete assistSaveFeedbackTimerRefs.current[target];
     }, 2600);
+  }
+
+  function handleRegenerateSummary() {
+    if (assistSummaryCandidates.length === 0) return;
+
+    const currentSummary = editDraft.assistSummary.trim();
+    const currentIndex = assistSummaryCandidates.indexOf(currentSummary);
+    const startIndex = currentIndex >= 0 ? currentIndex : summaryCandidateIndexRef.current;
+    const nextIndex = Array.from({ length: assistSummaryCandidates.length }, (_, offset) => (startIndex + offset + 1) % assistSummaryCandidates.length).find(
+      (index) => assistSummaryCandidates[index] !== currentSummary,
+    );
+    if (nextIndex === undefined) {
+      setAssistError("当前文章暂无不同摘要可替换。");
+      return;
+    }
+
+    summaryCandidateIndexRef.current = nextIndex;
+    setAssistError(null);
+    onEditDraftChange({ ...editDraft, assistSummary: assistSummaryCandidates[nextIndex] });
   }
 
   function handleSaveCoverPromptTemplate() {
@@ -10714,7 +10742,7 @@ function BlogFactoryRecords({
                     <textarea
                       className="control min-h-24 resize-y text-sm leading-7"
                       maxLength={100}
-                      placeholder="点击“提取摘要”生成，或直接输入摘要。"
+                      placeholder="已自动提取摘要；也可直接编辑。"
                       value={editDraft.assistSummary}
                       onChange={(event) => onEditDraftChange({ ...editDraft, assistSummary: event.target.value })}
                     />
@@ -10723,12 +10751,12 @@ function BlogFactoryRecords({
                       <div className="flex flex-wrap gap-2">
                         <button
                           className="flex h-9 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-xs text-slate-300 transition hover:border-mint-300/30 hover:text-mint-300"
-                          disabled={!assistSummary}
+                          disabled={assistSummaryCandidates.length < 2}
                           type="button"
-                          onClick={() => onEditDraftChange({ ...editDraft, assistSummary })}
+                          onClick={handleRegenerateSummary}
                         >
                           <RefreshCw size={15} />
-                          提取摘要
+                          换一条摘要
                         </button>
                         <button
                           className={`flex h-9 items-center justify-center gap-2 rounded-lg border px-3 text-xs font-medium transition disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500 ${
@@ -10896,6 +10924,25 @@ function BlogFactoryRecords({
                         >
                           {assistCopiedTarget === "coverPrompt" ? <ClipboardCheck size={15} /> : <Copy size={15} />}
                           {assistCopiedTarget === "coverPrompt" ? "已复制" : "复制提示词"}
+                        </button>
+                        <button
+                          className={`flex h-9 items-center justify-center gap-2 rounded-lg border px-3 text-xs font-medium transition disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500 ${
+                            promptSaveStatus === "error"
+                              ? "border-red-400/30 bg-red-400/10 text-red-100"
+                              : "border-mint-300/30 bg-mint-300/14 text-mint-300 hover:bg-mint-300/20"
+                          }`}
+                          disabled={!coverImagePrompt || !coverPromptSource.trim() || isItemSaving || isPromptSavePending}
+                          type="button"
+                          onClick={() => void handleSaveAssist("prompt", coverImagePrompt)}
+                        >
+                          {isPromptSavePending ? <Loader2 className="animate-spin" size={15} /> : <Save size={15} />}
+                          {promptSaveStatus === "success"
+                            ? "提示词已保存"
+                            : promptSaveStatus === "error"
+                              ? "保存失败"
+                              : isPromptSavePending
+                                ? "保存中"
+                                : "保存提示词"}
                         </button>
                       </div>
                     </div>
@@ -11126,6 +11173,15 @@ function BlogFactoryRecords({
               ) : null}
             </div>
             <div className="flex items-center gap-2">
+              <button
+                className="flex h-8 items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.035] px-2.5 text-xs text-slate-300 transition hover:border-mint-300/30 hover:text-mint-200 disabled:cursor-not-allowed disabled:text-slate-600"
+                disabled={isLoading || isRefreshing}
+                type="button"
+                onClick={onRefresh}
+              >
+                <RefreshCw className={isRefreshing ? "animate-spin" : ""} size={15} />
+                {isRefreshing ? "刷新中" : "刷新列表"}
+              </button>
               {authUser?.is_admin ? <VectorRefreshButton isRefreshing={isVectorRefreshing} onRefresh={onRefreshVectors} /> : null}
               <button
                 className="flex h-8 items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.035] px-2.5 text-xs text-slate-300 transition hover:border-mint-300/30 hover:text-mint-200"
