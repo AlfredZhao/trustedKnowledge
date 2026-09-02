@@ -30,6 +30,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Fixed / 修复
 
+- Fixed English Material `AI补全` briefly leaving its running state after creating a background job, which made the action appear to fail and allowed duplicate clicks. It now remains visibly running until a terminal job state, retries transient polling failures without losing the job, and accepts only one completion Skill.
+- 修复英语素材 `AI补全` 创建后台任务后短暂退出执行状态的问题；该问题会造成看似失败并允许重复点击。现会持续显示执行状态、在轮询瞬态失败时保留任务并重试，且补全仅允许选择一个 Skill。
+
 - Fixed Blog Factory AI enhancement being interrupted by a browser refresh. Enhancements now run as cancellable background jobs and restore their result polling when the same task is reopened in the current browser session.
 - 修复博客工厂 AI 增强会因浏览器刷新而中断的问题：增强现以可取消的后台任务执行，并在当前浏览器会话中重新打开相同任务时恢复结果轮询。
 

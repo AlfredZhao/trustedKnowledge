@@ -14658,11 +14658,14 @@ function EnglishMaterialAiCompletion({
     const jobId = completionJobId;
     let cancelled = false;
     let timer: number | undefined;
+    let pollFailureCount = 0;
 
     async function pollCompletionJob() {
       try {
         const job = await getEnglishMaterialCompletionJob(jobId);
         if (cancelled) return;
+        pollFailureCount = 0;
+        setError(null);
         if (job.status === "running") {
           timer = window.setTimeout(pollCompletionJob, 1500);
           return;
@@ -14677,10 +14680,17 @@ function EnglishMaterialAiCompletion({
         setError(job.error_message ?? (job.status === "cancelled" ? "AI 补全已取消。" : "AI 补全失败，请稍后重试。"));
       } catch (completionError) {
         if (cancelled) return;
-        setIsCompleting(false);
-        setCompletionJobId(null);
-        clearStoredCompletionJob();
-        setError(completionError instanceof Error ? completionError.message : "读取 AI 补全任务状态失败，请稍后重试。");
+        const message = completionError instanceof Error ? completionError.message : "读取 AI 补全任务状态失败，请稍后重试。";
+        if (message.includes("AI 补全任务不存在")) {
+          setIsCompleting(false);
+          setCompletionJobId(null);
+          clearStoredCompletionJob();
+          setError(message);
+          return;
+        }
+        pollFailureCount += 1;
+        setError(`${message}（正在重试，第 ${pollFailureCount} 次）`);
+        timer = window.setTimeout(pollCompletionJob, 1500);
       }
     }
 
@@ -14728,7 +14738,6 @@ function EnglishMaterialAiCompletion({
       setCompletionJobId(job.job_id);
     } catch (completionError) {
       setError(completionError instanceof Error ? completionError.message : "AI 补全失败，请稍后重试。");
-    } finally {
       setIsCompleting(false);
     }
   }
@@ -14765,7 +14774,7 @@ function EnglishMaterialAiCompletion({
       <section aria-modal="true" className="flex max-h-[100dvh] w-full max-w-2xl flex-col overflow-hidden rounded-t-lg border border-mint-300/20 bg-ink-900 shadow-soft-glow sm:max-h-[88vh] sm:rounded-lg" role="dialog" aria-label="AI 补全英语素材">
         <div className="flex shrink-0 items-start justify-between gap-4 border-b border-white/10 p-4 sm:p-5"><div><div className="mb-2 flex items-center gap-2 text-sm text-mint-300"><WandSparkles size={17} />AI Material</div><h2 className="text-xl font-semibold text-slate-50">AI补全英语素材</h2><p className="mt-1 text-xs leading-5 text-slate-500">只根据当前完整口播内容提炼字段。确认回填时仅填充空字段，不会自动保存。</p></div><button className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-300 transition hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600" disabled={isCompleting} type="button" title="关闭" onClick={closeDialog}><X size={17} /></button></div>
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 sm:p-5">
-          {!result ? isCompleting ? <div className="flex items-center gap-2 rounded-lg border border-mint-300/25 bg-mint-300/10 p-3 text-sm text-mint-100"><Loader2 className="animate-spin" size={17} />AI 补全正在后台执行；刷新此页面后重新打开此窗口可继续查看结果。</div> : <><div className="grid gap-3 sm:grid-cols-2"><Field label="执行模型" icon={<Settings2 size={16} />}><select className="control" value={modelName} onChange={(event) => setModelName(event.target.value)}>{modelOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field></div><SkillSelector agentCode="english-extraction" selectedSkillIds={selectedSkillIds} onSelectedSkillIdsChange={setSelectedSkillIds} /></> : <div className="space-y-3"><p className="text-sm leading-6 text-slate-300">以下结果将只填入当前为空的字段：</p><EnglishMaterialDetailBlock label="标题" value={result.title} /><EnglishMaterialDetailBlock label="基础表达" value={result.base_expression} /><EnglishMaterialDetailBlock label="职业完整句式" value={result.professional_sentence} /><EnglishMaterialDetailBlock label="地道中文翻译" value={result.chinese_translation} />{result.card_sections?.sections.filter((section) => section.visible && section.value.trim()).sort((left, right) => left.order - right.order).map((section) => <EnglishMaterialDetailBlock key={section.key} label={section.label} value={section.value} />)}</div>}
+          {!result ? isCompleting ? <div className="flex items-center gap-2 rounded-lg border border-mint-300/25 bg-mint-300/10 p-3 text-sm text-mint-100"><Loader2 className="animate-spin" size={17} />AI 补全正在后台执行；刷新此页面后重新打开此窗口可继续查看结果。</div> : <><div className="grid gap-3 sm:grid-cols-2"><Field label="执行模型" icon={<Settings2 size={16} />}><select className="control" value={modelName} onChange={(event) => setModelName(event.target.value)}>{modelOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field></div><SkillSelector agentCode="english-extraction" mode="single" selectedSkillIds={selectedSkillIds} onSelectedSkillIdsChange={setSelectedSkillIds} /></> : <div className="space-y-3"><p className="text-sm leading-6 text-slate-300">以下结果将只填入当前为空的字段：</p><EnglishMaterialDetailBlock label="标题" value={result.title} /><EnglishMaterialDetailBlock label="基础表达" value={result.base_expression} /><EnglishMaterialDetailBlock label="职业完整句式" value={result.professional_sentence} /><EnglishMaterialDetailBlock label="地道中文翻译" value={result.chinese_translation} />{result.card_sections?.sections.filter((section) => section.visible && section.value.trim()).sort((left, right) => left.order - right.order).map((section) => <EnglishMaterialDetailBlock key={section.key} label={section.label} value={section.value} />)}</div>}
           {error ? <div className="flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100"><TriangleAlert className="mt-0.5 shrink-0 text-red-300" size={17} /><span>{error}</span></div> : null}
         </div>
         <div className="flex shrink-0 justify-end gap-3 border-t border-white/10 p-4">{isCompleting ? <button className="h-11 rounded-lg border border-red-300/30 bg-red-300/10 px-4 text-sm text-red-100" type="button" onClick={() => void cancelCompletion()}>取消补全</button> : <button className="h-11 rounded-lg border border-white/10 bg-white/[0.035] px-4 text-sm text-slate-300" type="button" onClick={closeDialog}>取消</button>}{result ? <button className="flex h-11 items-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20" type="button" onClick={applyResult}><ClipboardCheck size={17} />确认回填</button> : !isCompleting ? <button className="flex h-11 items-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 text-sm font-medium text-mint-300 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500" disabled={!canComplete} type="button" onClick={() => void handleComplete()}><WandSparkles size={17} />生成补全建议</button> : null}</div>

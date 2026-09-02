@@ -2,6 +2,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
+from pydantic import ValidationError
+
 from tests.support import prepare_backend_imports
 
 prepare_backend_imports()
@@ -81,6 +83,13 @@ class FakeAcquire:
 
 
 class EnglishMaterialsRepositoryTests(unittest.IsolatedAsyncioTestCase):
+    def test_completion_accepts_at_most_one_skill(self) -> None:
+        with self.assertRaises(ValidationError):
+            EnglishMaterialCompletionRequest(
+                full_script="We will review the plan in tomorrow's meeting.",
+                skill_ids=["first", "second"],
+            )
+
     def test_card_sections_load_from_a_structured_skill_file(self) -> None:
         skill_dir = Path(__file__).resolve().parents[1] / "data" / "skills" / "alfred-d4cdd9eb"
 

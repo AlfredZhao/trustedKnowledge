@@ -92,7 +92,7 @@ class EnglishMaterialGenerationResult(BaseModel):
 
 class EnglishMaterialCompletionRequest(BaseModel):
     full_script: str = Field(..., min_length=1, max_length=4000)
-    skill_ids: list[str] = Field(default_factory=list, max_length=8)
+    skill_ids: list[str] = Field(default_factory=list, max_length=1)
     execution_provider: Literal["codex", "history_ask_llm"] = "codex"
     model_name: str = Field(default="", max_length=120)
 
