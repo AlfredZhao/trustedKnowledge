@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 
 import type { AppView } from "../types";
+import { FUNCTION_NAV_ITEMS } from "../uiConfig";
 
 type GraphGroup = "hub" | "content" | "ai" | "records" | "governance";
 
@@ -42,7 +43,7 @@ interface GraphEdge {
   tone: "primary" | "content" | "ai" | "records" | "governance";
 }
 
-const graphNodes: GraphNode[] = [
+const graphNodeDefinitions: GraphNode[] = [
   {
     id: "overview",
     label: "总览",
@@ -125,9 +126,9 @@ const graphNodes: GraphNode[] = [
   },
   {
     id: "skills",
-    label: "Skill 管理",
-    subtitle: "Prompt Registry",
-    description: "管理可调用 Skill，向知识加工和 AI 问数提供领域提示词能力。",
+    label: "智能编排",
+    subtitle: "AI Orchestration",
+    description: "编排 Agent 与可调用 Skill，向知识加工、博客工厂增强/审阅和 AI 问数提供受控提示词能力。",
     group: "ai",
     x: 770,
     y: 165,
@@ -195,6 +196,13 @@ const graphNodes: GraphNode[] = [
   },
 ];
 
+// Navigation owns module names and icons. The graph only owns topology metadata,
+// so a navigation rename cannot leave a stale graph node behind.
+const graphNodes: GraphNode[] = graphNodeDefinitions.map((node) => {
+  const navigationItem = FUNCTION_NAV_ITEMS.find((item) => item.view === node.id);
+  return navigationItem ? { ...node, label: navigationItem.label, icon: navigationItem.icon } : node;
+});
+
 const graphEdges: GraphEdge[] = [
   { from: "workbench", to: "factory", label: "未发布知识", tone: "content" },
   { from: "factory", to: "blogFactory", label: "生成稿件", tone: "ai" },
@@ -203,6 +211,7 @@ const graphEdges: GraphEdge[] = [
   { from: "currentRecords", to: "history", label: "沉淀历史", tone: "records" },
   { from: "history", to: "historyAsk", label: "证据检索", tone: "ai" },
   { from: "skills", to: "factory", label: "加工 Skill", tone: "ai" },
+  { from: "skills", to: "blogFactory", label: "增强 / 审阅 Skill", tone: "ai" },
   { from: "skills", to: "historyAsk", label: "问数 Skill", tone: "ai" },
   { from: "aiCoding", to: "workbench", label: "归档经验", tone: "ai" },
   { from: "blogFactory", to: "overview", label: "发布状态", tone: "content" },

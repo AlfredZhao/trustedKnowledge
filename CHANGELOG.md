@@ -35,6 +35,12 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Changed / 变更
 
+- Changed navigation order so `智能编排` appears directly above `AI 图谱`.
+- 调整导航顺序：`智能编排` 现紧邻并位于 `AI 图谱` 上方。
+
+- Changed AI Graph node labels and icons to reuse navigation configuration, preventing stale names after module renames; updated Intelligent Orchestration relationships to include Blog Factory AI enhancement and review Skills.
+- 调整 AI 图谱节点名称和图标复用导航配置，避免模块改名后仍显示旧名称；并补充智能编排与博客工厂 AI 增强、审阅 Skill 的关联关系。
+
 - Changed the Agent and Skill management module's navigation label from `能力管理` to `智能编排`, and its English page heading from `Capability Hub` to `AI Orchestration`.
 - 将 Agent 与 Skill 管理模块的导航名称由 `能力管理` 调整为 `智能编排`，英文页面标题由 `Capability Hub` 调整为 `AI Orchestration`。
 
