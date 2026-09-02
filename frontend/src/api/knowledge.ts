@@ -3,6 +3,7 @@ import type {
   BlogFactoryPublishResult,
   BlogFactoryReviewResult,
   BlogFactoryReviewJobSnapshot,
+  BlogFactoryEnhancementJobSnapshot,
   BlogFactorySendToProcessingResult,
   BlogFactoryItem,
   BlogPublishSubmissionOption,
@@ -614,6 +615,51 @@ export async function enhanceBlogFactoryContent({
       execution_provider: executionProvider,
       model_name: modelName,
     }),
+  });
+}
+
+export async function startBlogFactoryEnhancementJob({
+  taskContent,
+  questionSnapshot,
+  answerSnapshot,
+  skillIds,
+  executionProvider,
+  modelName,
+}: {
+  taskContent: string;
+  questionSnapshot?: string;
+  answerSnapshot?: string;
+  skillIds: string[];
+  executionProvider: "codex" | "history_ask_llm";
+  modelName: string;
+}): Promise<BlogFactoryEnhancementJobSnapshot> {
+  return request<BlogFactoryEnhancementJobSnapshot>("/api/blog-factory/enhance/jobs", {
+    method: "POST",
+    timeoutMs: 10000,
+    timeoutErrorMessage: "创建增强任务超时，请稍后重试。",
+    body: JSON.stringify({
+      task_content: taskContent,
+      question_snapshot: questionSnapshot || null,
+      answer_snapshot: answerSnapshot || null,
+      skill_ids: skillIds,
+      execution_provider: executionProvider,
+      model_name: modelName,
+    }),
+  });
+}
+
+export async function getBlogFactoryEnhancementJob(jobId: string): Promise<BlogFactoryEnhancementJobSnapshot> {
+  return request<BlogFactoryEnhancementJobSnapshot>(`/api/blog-factory/enhance/jobs/${encodeURIComponent(jobId)}`, {
+    timeoutMs: 10000,
+    timeoutErrorMessage: "读取增强任务状态超时，请稍后重试。",
+  });
+}
+
+export async function cancelBlogFactoryEnhancementJob(jobId: string): Promise<BlogFactoryEnhancementJobSnapshot> {
+  return request<BlogFactoryEnhancementJobSnapshot>(`/api/blog-factory/enhance/jobs/${encodeURIComponent(jobId)}`, {
+    method: "DELETE",
+    timeoutMs: 10000,
+    timeoutErrorMessage: "取消增强任务超时；任务可能仍在运行，请重新打开增强窗口确认。",
   });
 }
 

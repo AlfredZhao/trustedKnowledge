@@ -115,6 +115,17 @@ export interface BlogFactoryReviewResult {
   suggestions: BlogFactoryReviewSuggestion[];
 }
 
+export interface BlogFactoryEnhancementJobSnapshot {
+  job_id: string;
+  status: "running" | "completed" | "failed" | "cancelled";
+  execution_provider: "codex" | "history_ask_llm";
+  model_name: string;
+  result: { content: string } | null;
+  error_message: string | null;
+  started_at: string;
+  completed_at: string | null;
+}
+
 export interface BlogFactoryReviewJobSnapshot {
   job_id: string;
   status: "running" | "completed" | "failed" | "cancelled";

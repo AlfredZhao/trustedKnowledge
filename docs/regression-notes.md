@@ -37,6 +37,50 @@ Keep entries concrete. Prefer file paths, function names, SQL placeholders, and 
 
 运行 `cd backend && python -m unittest tests.test_blog_review tests.test_blog_review_jobs`，并执行 `cd frontend && npm run build`。手工验证：启动审阅后刷新并重新打开相同任务可恢复；点击取消后可立即重新审阅；模拟任务失败或超时后显示错误且“开始审阅”可点击；深浅主题和移动端的取消、重试、应用建议按钮均可达。
 
+## 博客工厂 AI 增强刷新后不得丢失执行结果
+
+### Symptom
+
+博客工厂 AI 增强在生成完整 Markdown 时刷新页面，浏览器中断长请求，重新打开增强窗口后无法取得已在服务端继续执行的结果。
+
+### Trigger
+
+点击“生成增强内容”后，在 Codex 或配置模型尚未返回时刷新浏览器，或关闭并重新打开同一份未改动的任务。
+
+### Root Cause
+
+增强使用同步 `/enhance` 请求，并把 Promise 与结果仅保留在 React 组件状态中，缺少可查询任务 ID、终态快照与恢复轮询机制。
+
+### Safe Pattern
+
+增强必须先创建后台任务并返回 job ID，随后轮询 `running/completed/failed/cancelled`；任务 ID 和原始任务内容仅保存于 `sessionStorage`，并且只可在重新打开内容完全相同的任务时恢复。运行中必须提供取消入口，完成结果只允许显式“确认回填”，不得自动保存。后端任务应设置总超时，且任务查询必须按当前用户隔离。
+
+### Guardrail
+
+运行 `cd backend && python -m unittest tests.test_blog_enhancement tests.test_blog_enhancement_jobs` 和 `cd frontend && npm run build`。手工验证：启动增强后刷新并重新打开相同任务可恢复；修改任务内容后不得恢复旧任务；取消后可以立即重新增强；失败或超时后可重试，并确认深浅主题、桌面和移动端的取消、重试与确认回填操作均可达。
+
+## 博客工厂 AI 结果不得跨任务回填
+
+### Symptom
+
+任务 A 的 AI 增强或 AI 审阅仍在后台执行时切换到任务 B，结果完成后在 B 的弹窗中显示，并可能覆盖 B 的未保存任务内容。
+
+### Trigger
+
+对任务 A 发起增强或审阅，在结果返回前切换详情到任务 B；或者对 A 完成后的结果切换任务，再返回/应用结果。
+
+### Root Cause
+
+AI 组件实例、运行中 job ID 和 `sessionStorage` 键未绑定博客工厂任务 ID。任务选择变化后，组件使用新任务的 props 和回填闭包继续处理旧任务结果。
+
+### Safe Pattern
+
+增强和审阅组件必须以当前任务 ID 作为 React key，并以任务 ID 分隔会话恢复键；切换任务只能卸载当前弹窗，不能取消既有后台任务。回填或应用建议时，父级必须同时核验目标任务 ID 与发起时的任务内容快照；任一不符则保留结果但拒绝覆盖。不同任务允许各自存在运行中的后台任务。
+
+### Guardrail
+
+手工验证：对 A 发起增强后切换 B，B 可立即发起另一个增强；回到 A 后只能看到 A 的结果，确认回填仅修改 A。对审阅重复同一流程，应用建议仅修改 A。任务运行期间手动编辑原任务内容后，增强回填和审阅应用均须拒绝。刷新后分别打开 A、B，均只能恢复各自任务。运行 `cd frontend && npm run build`。
+
 ## Shared Baseline: Oracle Bind Isolation
 
 All Oracle executions must receive only bind names present in that statement's SQL text. In multi-step repository flows, keep row-lock/read, update, count, and vector-query parameter dictionaries and `setinputsizes()` calls separate; do not let business-field binds or CLOB declarations leak into a preceding `SELECT ... FOR UPDATE` or summary query. Add or retain a regression test whenever dynamic SQL bindings change. Module-specific `DPY-4008` incidents below document concrete triggers and guardrails.

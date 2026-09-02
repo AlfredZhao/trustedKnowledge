@@ -25,6 +25,14 @@ The format follows the common GitHub changelog convention inspired by
 - Added a `刷新列表` action to Blog Factory filters. It keeps the active filters and page while explicitly fetching the latest server results.
 - 博客工厂筛选区新增 `刷新列表` 操作：保留当前筛选条件和页码，并显式读取服务端最新结果。
 
+#### Fixed / 修复
+
+- Fixed Blog Factory AI enhancement being interrupted by a browser refresh. Enhancements now run as cancellable background jobs and restore their result polling when the same task is reopened in the current browser session.
+- 修复博客工厂 AI 增强会因浏览器刷新而中断的问题：增强现以可取消的后台任务执行，并在当前浏览器会话中重新打开相同任务时恢复结果轮询。
+
+- Fixed Blog Factory AI enhancement and review results being applied to a newly selected task. Background jobs are now isolated per task, and both apply actions reject changed task content.
+- 修复博客工厂 AI 增强和审阅结果会应用到后来选中任务的问题：后台任务现按任务隔离，且两种回填操作都会拒绝已变更的任务内容。
+
 #### Changed / 变更
 
 - Changed the Agent and Skill management module's navigation label from `能力管理` to `智能编排`, and its English page heading from `Capability Hub` to `AI Orchestration`.

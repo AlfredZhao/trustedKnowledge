@@ -45,6 +45,7 @@ from app.schemas.blog_factory import (
     BlogFactoryCreate,
     BlogFactoryEnhancementRequest,
     BlogFactoryEnhancementResult,
+    BlogFactoryEnhancementJobSnapshot,
     BlogFactoryItem,
     BlogFactoryListResponse,
     BlogFactoryReviewRequest,
@@ -73,6 +74,7 @@ from app.services.metaweblog import MetaWeblogError
 router = APIRouter(prefix="/blog-factory", tags=["blog-factory"])
 logger = logging.getLogger(__name__)
 REVIEW_JOB_TIMEOUT_SECONDS = 100
+ENHANCEMENT_JOB_TIMEOUT_SECONDS = 100
 
 
 @dataclass
@@ -92,6 +94,23 @@ _review_jobs: dict[str, BlogFactoryReviewJobState] = {}
 _review_job_tasks: dict[str, asyncio.Task[None]] = {}
 
 
+@dataclass
+class BlogFactoryEnhancementJobState:
+    job_id: str
+    owner_username: str
+    fingerprint: str
+    payload: BlogFactoryEnhancementRequest
+    status: str = "running"
+    result: BlogFactoryEnhancementResult | None = None
+    error_message: str | None = None
+    started_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    completed_at: datetime | None = None
+
+
+_enhancement_jobs: dict[str, BlogFactoryEnhancementJobState] = {}
+_enhancement_job_tasks: dict[str, asyncio.Task[None]] = {}
+
+
 @router.post("/enhance", response_model=BlogFactoryEnhancementResult)
 async def post_enhance_blog_factory_content(
     payload: BlogFactoryEnhancementRequest,
@@ -101,6 +120,115 @@ async def post_enhance_blog_factory_content(
         return await enhance_blog_factory_content(payload, auth_context)
     except RuntimeError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.post("/enhance/jobs", response_model=BlogFactoryEnhancementJobSnapshot, status_code=status.HTTP_202_ACCEPTED)
+async def start_blog_factory_enhancement_job(
+    payload: BlogFactoryEnhancementRequest,
+    auth_context: AuthContext = Depends(require_current_user),
+) -> BlogFactoryEnhancementJobSnapshot:
+    fingerprint = _enhancement_fingerprint(payload)
+    for job in _enhancement_jobs.values():
+        if job.owner_username == auth_context.username and job.fingerprint == fingerprint and job.status == "running":
+            return _snapshot_enhancement_job(job)
+
+    job = BlogFactoryEnhancementJobState(
+        job_id=uuid4().hex,
+        owner_username=auth_context.username,
+        fingerprint=fingerprint,
+        payload=payload,
+    )
+    _enhancement_jobs[job.job_id] = job
+    task = asyncio.create_task(_run_blog_factory_enhancement_job(job, auth_context))
+    _enhancement_job_tasks[job.job_id] = task
+    task.add_done_callback(lambda _: _enhancement_job_tasks.pop(job.job_id, None))
+    logger.info(
+        "Blog enhancement job started id=%s provider=%s model=%s task_chars=%d",
+        job.job_id,
+        payload.execution_provider,
+        payload.model_name or "default",
+        len(payload.task_content),
+    )
+    return _snapshot_enhancement_job(job)
+
+
+@router.get("/enhance/jobs/{job_id}", response_model=BlogFactoryEnhancementJobSnapshot)
+async def get_blog_factory_enhancement_job(job_id: str, auth_context: AuthContext = Depends(require_current_user)) -> BlogFactoryEnhancementJobSnapshot:
+    return _snapshot_enhancement_job(_get_owned_enhancement_job(job_id, auth_context))
+
+
+@router.delete("/enhance/jobs/{job_id}", response_model=BlogFactoryEnhancementJobSnapshot)
+async def cancel_blog_factory_enhancement_job(job_id: str, auth_context: AuthContext = Depends(require_current_user)) -> BlogFactoryEnhancementJobSnapshot:
+    job = _get_owned_enhancement_job(job_id, auth_context)
+    if job.status != "running":
+        return _snapshot_enhancement_job(job)
+
+    job.status = "cancelled"
+    job.error_message = "增强已取消。"
+    job.completed_at = datetime.now(UTC)
+    task = _enhancement_job_tasks.get(job.job_id)
+    if task is not None and not task.done():
+        task.cancel()
+    logger.info("Blog enhancement job cancelled id=%s", job.job_id)
+    return _snapshot_enhancement_job(job)
+
+
+async def _run_blog_factory_enhancement_job(job: BlogFactoryEnhancementJobState, auth_context: AuthContext) -> None:
+    try:
+        result = await asyncio.wait_for(
+            enhance_blog_factory_content(job.payload, auth_context),
+            timeout=ENHANCEMENT_JOB_TIMEOUT_SECONDS,
+        )
+        if job.status == "running":
+            job.status = "completed"
+            job.result = result
+            job.completed_at = datetime.now(UTC)
+            logger.info("Blog enhancement job completed id=%s elapsed_ms=%d", job.job_id, _enhancement_elapsed_ms(job))
+    except asyncio.CancelledError:
+        # The cancellation endpoint has already supplied the user-facing state.
+        raise
+    except asyncio.TimeoutError as exc:
+        _fail_enhancement_job(job, "AI 增强超时，请稍后重试。", exc)
+    except Exception as exc:
+        _fail_enhancement_job(job, str(exc) or "AI 增强失败，请稍后重试。", exc)
+
+
+def _fail_enhancement_job(job: BlogFactoryEnhancementJobState, message: str, exc: Exception) -> None:
+    if job.status != "running":
+        return
+    job.status = "failed"
+    job.error_message = message
+    job.completed_at = datetime.now(UTC)
+    logger.warning("Blog enhancement job failed id=%s elapsed_ms=%d error=%s", job.job_id, _enhancement_elapsed_ms(job), exc)
+
+
+def _get_owned_enhancement_job(job_id: str, auth_context: AuthContext) -> BlogFactoryEnhancementJobState:
+    job = _enhancement_jobs.get(job_id)
+    if job is None or job.owner_username != auth_context.username:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="增强任务不存在或已因服务重启丢失，请重新发起增强。")
+    return job
+
+
+def _snapshot_enhancement_job(job: BlogFactoryEnhancementJobState) -> BlogFactoryEnhancementJobSnapshot:
+    return BlogFactoryEnhancementJobSnapshot(
+        job_id=job.job_id,
+        status=job.status,  # type: ignore[arg-type]
+        execution_provider=job.payload.execution_provider,
+        model_name=job.payload.model_name,
+        result=job.result,
+        error_message=job.error_message,
+        started_at=job.started_at.isoformat(),
+        completed_at=job.completed_at.isoformat() if job.completed_at else None,
+    )
+
+
+def _enhancement_fingerprint(payload: BlogFactoryEnhancementRequest) -> str:
+    value = json.dumps(payload.model_dump(mode="json"), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _enhancement_elapsed_ms(job: BlogFactoryEnhancementJobState) -> int:
+    return round((datetime.now(UTC) - job.started_at).total_seconds() * 1000)
 
 
 @router.post("/review", response_model=BlogFactoryReviewResult)

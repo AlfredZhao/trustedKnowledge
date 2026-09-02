@@ -173,6 +173,20 @@ class BlogFactoryEnhancementResult(BaseModel):
     content: str = Field(..., min_length=1, max_length=30000)
 
 
+BlogFactoryEnhancementJobStatus = Literal["running", "completed", "failed", "cancelled"]
+
+
+class BlogFactoryEnhancementJobSnapshot(BaseModel):
+    job_id: str
+    status: BlogFactoryEnhancementJobStatus
+    execution_provider: Literal["codex", "history_ask_llm"]
+    model_name: str = ""
+    result: BlogFactoryEnhancementResult | None = None
+    error_message: str | None = None
+    started_at: str
+    completed_at: str | None = None
+
+
 class BlogFactoryReviewSuggestion(BaseModel):
     id: str = Field(..., min_length=1, max_length=80)
     severity: Literal["需要修改", "建议优化"]

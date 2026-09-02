@@ -85,7 +85,7 @@ import {
   deleteBlogFactoryItem,
   deleteKnowledge,
   fetchBlogFactoryItems,
-  enhanceBlogFactoryContent,
+  cancelBlogFactoryEnhancementJob,
   fetchBlogPublishCategories,
   fetchBlogPublishConfigs,
   fetchKnowledge,
@@ -99,8 +99,10 @@ import {
   readCachedKnowledge,
   readCachedTodos,
   cancelBlogFactoryReviewJob,
+  getBlogFactoryEnhancementJob,
   getBlogFactoryReviewJob,
   startBlogFactoryReviewJob,
+  startBlogFactoryEnhancementJob,
   sendBlogFactoryItemToProcessing,
   updateBlogFactoryArticle,
   updateBlogFactoryAssistMetadata,
@@ -10528,27 +10530,35 @@ function BlogFactoryRecords({
                     {isTaskContentEditing ? "编辑中" : "编辑任务内容"}
                   </button>
                   <BlogFactoryAiReview
+                    key={`blog-factory-review-${selectedItem.id}`}
                     answerSnapshot={editDraft.answerSnapshot}
                     disabled={isRecordSaving || isDeleting}
                     modelOptions={modelOptions}
                     questionSnapshot={editDraft.questionSnapshot}
+                    taskId={selectedItem.id}
                     taskContent={editDraft.taskContent}
-                    onApply={(taskContent) => {
+                    onApply={(targetItemId, expectedTaskContent, taskContent) => {
+                      if (selectedItem.id !== targetItemId || editDraft.taskContent !== expectedTaskContent) return false;
                       onEditDraftChange({ ...editDraft, taskContent });
                       setIsTaskContentEditing(true);
                       setIsMaskToolsExpanded(false);
+                      return true;
                     }}
                   />
                   <BlogFactoryAiEnhancement
+                    key={`blog-factory-enhancement-${selectedItem.id}`}
                     answerSnapshot={editDraft.answerSnapshot}
                     disabled={isRecordSaving || isDeleting}
                     modelOptions={modelOptions}
                     questionSnapshot={editDraft.questionSnapshot}
+                    taskId={selectedItem.id}
                     taskContent={editDraft.taskContent}
-                    onApply={(taskContent) => {
+                    onApply={(targetItemId, expectedTaskContent, taskContent) => {
+                      if (selectedItem.id !== targetItemId || editDraft.taskContent !== expectedTaskContent) return false;
                       onEditDraftChange({ ...editDraft, taskContent });
                       setIsTaskContentEditing(true);
                       setIsMaskToolsExpanded(false);
+                      return true;
                     }}
                   />
                   {isTaskContentEditing ? (
@@ -11476,6 +11486,7 @@ function BlogFactoryAiEnhancement({
   disabled,
   modelOptions,
   questionSnapshot,
+  taskId,
   taskContent,
   onApply,
 }: {
@@ -11483,31 +11494,105 @@ function BlogFactoryAiEnhancement({
   disabled: boolean;
   modelOptions: { value: string; label: string }[];
   questionSnapshot: string;
+  taskId: number;
   taskContent: string;
-  onApply: (taskContent: string) => void;
+  onApply: (targetItemId: number, expectedTaskContent: string, taskContent: string) => boolean;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [isEnhancing, setIsEnhancing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
+  const [enhancementJobId, setEnhancementJobId] = useState<string | null>(null);
+  const [sourceTaskContent, setSourceTaskContent] = useState<string | null>(null);
   const [modelName, setModelName] = useState(AI_CODING_DEFAULT_MODEL);
   const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
   const canEnhance = !disabled && !isEnhancing && taskContent.trim().length > 0;
+
+  function clearStoredEnhancementJob() {
+    try {
+      window.sessionStorage.removeItem(`trustedKnowledge.blogFactoryEnhancementJob.v2.${taskId}`);
+    } catch {
+      // Do not make enhancement availability depend on browser storage.
+    }
+  }
+
+  function storeEnhancementJob(jobId: string) {
+    try {
+      window.sessionStorage.setItem(`trustedKnowledge.blogFactoryEnhancementJob.v2.${taskId}`, JSON.stringify({ jobId, taskContent }));
+    } catch {
+      // An active task can still finish in this tab.
+    }
+  }
+
+  useEffect(() => {
+    if (!isOpen || !enhancementJobId) return;
+    const jobId = enhancementJobId;
+    let cancelled = false;
+    let timer: number | undefined;
+
+    async function pollEnhancementJob() {
+      try {
+        const job = await getBlogFactoryEnhancementJob(jobId);
+        if (cancelled) return;
+        if (job.status === "running") {
+          timer = window.setTimeout(pollEnhancementJob, 1500);
+          return;
+        }
+        setIsEnhancing(false);
+        setEnhancementJobId(null);
+        if (job.status === "completed" && job.result) {
+          setResult(job.result.content);
+          return;
+        }
+        clearStoredEnhancementJob();
+        setError(job.error_message ?? (job.status === "cancelled" ? "增强已取消。" : "AI 增强失败，请稍后重试。"));
+      } catch (enhancementError) {
+        if (cancelled) return;
+        setIsEnhancing(false);
+        setEnhancementJobId(null);
+        clearStoredEnhancementJob();
+        setError(enhancementError instanceof Error ? enhancementError.message : "读取增强任务状态失败，请稍后重试。");
+      }
+    }
+
+    void pollEnhancementJob();
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [isOpen, enhancementJobId]);
+
+  useEffect(() => {
+    if (!isOpen || enhancementJobId || result) return;
+    try {
+      const raw = window.sessionStorage.getItem(`trustedKnowledge.blogFactoryEnhancementJob.v2.${taskId}`);
+      const stored = raw ? JSON.parse(raw) as { jobId?: unknown; taskContent?: unknown } : null;
+      if (typeof stored?.jobId !== "string" || stored.taskContent !== taskContent) return;
+      setSourceTaskContent(stored.taskContent);
+      setIsEnhancing(true);
+      setEnhancementJobId(stored.jobId);
+    } catch {
+      clearStoredEnhancementJob();
+    }
+  }, [isOpen, enhancementJobId, result, taskContent, taskId]);
 
   function closeDialog() {
     if (isEnhancing) return;
     setIsOpen(false);
     setError(null);
     setResult(null);
+    setEnhancementJobId(null);
+    setSourceTaskContent(null);
   }
 
   async function handleEnhance() {
     if (!canEnhance) return;
     setIsEnhancing(true);
     setError(null);
+    setSourceTaskContent(taskContent);
     try {
       const usesConfiguredModel = modelName === HISTORY_ASK_CONFIGURED_MODEL;
-      const next = await enhanceBlogFactoryContent({
+      const job = await startBlogFactoryEnhancementJob({
         taskContent,
         questionSnapshot,
         answerSnapshot,
@@ -11515,12 +11600,34 @@ function BlogFactoryAiEnhancement({
         executionProvider: usesConfiguredModel ? "history_ask_llm" : "codex",
         modelName: modelName === AI_CODING_DEFAULT_MODEL ? "" : modelName,
       });
-      setResult(next.content);
+      storeEnhancementJob(job.job_id);
+      setEnhancementJobId(job.job_id);
     } catch (enhancementError) {
       setError(enhancementError instanceof Error ? enhancementError.message : "AI 增强失败，请稍后重试。");
-    } finally {
       setIsEnhancing(false);
     }
+  }
+
+  async function cancelEnhancement() {
+    if (!enhancementJobId) return;
+    try {
+      await cancelBlogFactoryEnhancementJob(enhancementJobId);
+      clearStoredEnhancementJob();
+      setEnhancementJobId(null);
+      setIsEnhancing(false);
+      setIsOpen(false);
+    } catch (enhancementError) {
+      setError(enhancementError instanceof Error ? enhancementError.message : "取消增强失败，请稍后重试。");
+    }
+  }
+
+  function applyEnhancement() {
+    if (!result || !sourceTaskContent || !onApply(taskId, sourceTaskContent, result)) {
+      setError("原任务或任务内容已变化，不能覆盖当前编辑内容；请重新发起增强或手动复制结果。");
+      return;
+    }
+    clearStoredEnhancementJob();
+    closeDialog();
   }
 
   return <>
@@ -11529,10 +11636,10 @@ function BlogFactoryAiEnhancement({
       <section aria-modal="true" className="flex max-h-[100dvh] w-full max-w-4xl flex-col overflow-hidden rounded-t-lg border border-fuchsia-300/20 bg-ink-900 shadow-soft-glow sm:max-h-[calc(100dvh-3rem)] sm:rounded-lg" role="dialog" aria-label="AI 增强任务内容">
         <div className="flex shrink-0 items-start justify-between gap-4 border-b border-white/10 p-4 sm:p-5"><div><div className="mb-2 flex items-center gap-2 text-sm text-fuchsia-200"><WandSparkles size={17} />AI Enhancement</div><h2 className="text-xl font-semibold text-slate-50">增强任务内容</h2><p className="mt-1 text-xs leading-5 text-slate-500">生成完整的增强版文章。确认回填后会进入编辑模式，仍须由你点击保存才会更新任务内容。</p></div><button className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-300 transition hover:text-fuchsia-200 disabled:cursor-not-allowed disabled:text-slate-600" disabled={isEnhancing} title="关闭" type="button" onClick={closeDialog}><X size={17} /></button></div>
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 sm:p-5">
-          {!result ? <><div className="rounded-lg border border-white/10 bg-white/[0.025] p-4 text-sm leading-7 text-slate-400">将生成完整 Markdown，并遵循所选增强 Skill。在适合的位置可插入 Mermaid 图表；不会编造事实、删除图片链接或自动保存。</div><Field label="执行模型" icon={<Settings2 size={16} />}><select className="control" disabled={isEnhancing} value={modelName} onChange={(event) => setModelName(event.target.value)}>{modelOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field><SkillSelector agentCode="blog-enhancement" disabled={isEnhancing} selectedSkillIds={selectedSkillIds} onSelectedSkillIdsChange={setSelectedSkillIds} /></> : <div className="space-y-2"><p className="text-sm leading-6 text-slate-300">以下完整内容将回填到任务编辑区：</p><textarea className="control min-h-96 resize-y font-mono text-xs leading-6" readOnly value={result} /></div>}
+          {!result ? <><div className="rounded-lg border border-white/10 bg-white/[0.025] p-4 text-sm leading-7 text-slate-400">将生成完整 Markdown，并遵循所选增强 Skill。在适合的位置可插入 Mermaid 图表；不会编造事实、删除图片链接或自动保存。</div>{isEnhancing ? <div className="flex items-center gap-2 rounded-lg border border-fuchsia-300/25 bg-fuchsia-300/10 p-3 text-sm text-fuchsia-100"><Loader2 className="animate-spin" size={17} />增强任务正在后台执行；刷新此页面后重新打开此窗口可继续查看结果。</div> : <><Field label="执行模型" icon={<Settings2 size={16} />}><select className="control" value={modelName} onChange={(event) => setModelName(event.target.value)}>{modelOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field><SkillSelector agentCode="blog-enhancement" selectedSkillIds={selectedSkillIds} onSelectedSkillIdsChange={setSelectedSkillIds} /></>}</> : <div className="space-y-2"><p className="text-sm leading-6 text-slate-300">以下完整内容将回填到任务编辑区：</p><textarea className="control min-h-96 resize-y font-mono text-xs leading-6" readOnly value={result} /></div>}
           {error ? <div className="flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100"><TriangleAlert className="mt-0.5 shrink-0 text-red-300" size={17} /><span>{error}</span></div> : null}
         </div>
-        <div className="flex shrink-0 justify-end gap-3 border-t border-white/10 p-4"><button className="h-11 rounded-lg border border-white/10 bg-white/[0.035] px-4 text-sm text-slate-300 disabled:cursor-not-allowed disabled:text-slate-600" disabled={isEnhancing} type="button" onClick={closeDialog}>取消</button>{result ? <button className="flex h-11 items-center gap-2 rounded-lg border border-fuchsia-300/30 bg-fuchsia-300/14 px-4 text-sm font-medium text-fuchsia-100 transition hover:bg-fuchsia-300/20" type="button" onClick={() => { onApply(result); closeDialog(); }}><ClipboardCheck size={17} />确认回填</button> : <button className="flex h-11 items-center gap-2 rounded-lg border border-fuchsia-300/30 bg-fuchsia-300/14 px-4 text-sm font-medium text-fuchsia-100 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500" disabled={!canEnhance} type="button" onClick={() => void handleEnhance()}>{isEnhancing ? <Loader2 className="animate-spin" size={17} /> : <WandSparkles size={17} />}{isEnhancing ? "增强中" : "生成增强内容"}</button>}</div>
+        <div className="flex shrink-0 justify-end gap-3 border-t border-white/10 p-4">{isEnhancing ? <button className="h-11 rounded-lg border border-red-300/30 bg-red-300/10 px-4 text-sm text-red-100 transition hover:bg-red-300/16" type="button" onClick={() => void cancelEnhancement()}>取消增强</button> : <button className="h-11 rounded-lg border border-white/10 bg-white/[0.035] px-4 text-sm text-slate-300 disabled:cursor-not-allowed disabled:text-slate-600" type="button" onClick={closeDialog}>取消</button>}{result ? <button className="flex h-11 items-center gap-2 rounded-lg border border-fuchsia-300/30 bg-fuchsia-300/14 px-4 text-sm font-medium text-fuchsia-100 transition hover:bg-fuchsia-300/20" type="button" onClick={applyEnhancement}><ClipboardCheck size={17} />确认回填</button> : !isEnhancing ? <button className="flex h-11 items-center gap-2 rounded-lg border border-fuchsia-300/30 bg-fuchsia-300/14 px-4 text-sm font-medium text-fuchsia-100 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500" disabled={!canEnhance} type="button" onClick={() => void handleEnhance()}><WandSparkles size={17} />生成增强内容</button> : null}</div>
       </section>
     </div> : null}
   </>;
@@ -11543,6 +11650,7 @@ function BlogFactoryAiReview({
   disabled,
   modelOptions,
   questionSnapshot,
+  taskId,
   taskContent,
   onApply,
 }: {
@@ -11550,14 +11658,16 @@ function BlogFactoryAiReview({
   disabled: boolean;
   modelOptions: { value: string; label: string }[];
   questionSnapshot: string;
+  taskId: number;
   taskContent: string;
-  onApply: (taskContent: string) => void;
+  onApply: (targetItemId: number, expectedTaskContent: string, taskContent: string) => boolean;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [isReviewing, setIsReviewing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<BlogFactoryReviewResult | null>(null);
   const [reviewJobId, setReviewJobId] = useState<string | null>(null);
+  const [sourceTaskContent, setSourceTaskContent] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [modelName, setModelName] = useState(AI_CODING_DEFAULT_MODEL);
   const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
@@ -11565,7 +11675,7 @@ function BlogFactoryAiReview({
 
   function clearStoredReviewJob() {
     try {
-      window.sessionStorage.removeItem("trustedKnowledge.blogFactoryReviewJob.v1");
+      window.sessionStorage.removeItem(`trustedKnowledge.blogFactoryReviewJob.v2.${taskId}`);
     } catch {
       // Session storage is optional; an active task can still finish in this tab.
     }
@@ -11573,7 +11683,7 @@ function BlogFactoryAiReview({
 
   function storeReviewJob(jobId: string) {
     try {
-      window.sessionStorage.setItem("trustedKnowledge.blogFactoryReviewJob.v1", JSON.stringify({ jobId, taskContent }));
+      window.sessionStorage.setItem(`trustedKnowledge.blogFactoryReviewJob.v2.${taskId}`, JSON.stringify({ jobId, taskContent }));
     } catch {
       // Do not make review availability depend on browser storage.
     }
@@ -11595,12 +11705,12 @@ function BlogFactoryAiReview({
         }
         setIsReviewing(false);
         setReviewJobId(null);
-        clearStoredReviewJob();
         if (job.status === "completed" && job.result) {
           setResult(job.result);
           setSelectedIds(job.result.suggestions.map((suggestion) => suggestion.id));
           return;
         }
+        clearStoredReviewJob();
         setError(job.error_message ?? (job.status === "cancelled" ? "审阅已取消。" : "AI 审阅失败，请稍后重试。"));
       } catch (reviewError) {
         if (cancelled) return;
@@ -11621,15 +11731,16 @@ function BlogFactoryAiReview({
   useEffect(() => {
     if (!isOpen || reviewJobId || result) return;
     try {
-      const raw = window.sessionStorage.getItem("trustedKnowledge.blogFactoryReviewJob.v1");
+      const raw = window.sessionStorage.getItem(`trustedKnowledge.blogFactoryReviewJob.v2.${taskId}`);
       const stored = raw ? JSON.parse(raw) as { jobId?: unknown; taskContent?: unknown } : null;
       if (typeof stored?.jobId !== "string" || stored.taskContent !== taskContent) return;
+      setSourceTaskContent(stored.taskContent);
       setIsReviewing(true);
       setReviewJobId(stored.jobId);
     } catch {
       clearStoredReviewJob();
     }
-  }, [isOpen, reviewJobId, result, taskContent]);
+  }, [isOpen, reviewJobId, result, taskContent, taskId]);
 
   function closeDialog() {
     if (isReviewing) return;
@@ -11638,12 +11749,14 @@ function BlogFactoryAiReview({
     setResult(null);
     setSelectedIds([]);
     setReviewJobId(null);
+    setSourceTaskContent(null);
   }
 
   async function handleReview() {
     if (!canReview) return;
     setIsReviewing(true);
     setError(null);
+    setSourceTaskContent(taskContent);
     try {
       const usesConfiguredModel = modelName === HISTORY_ASK_CONFIGURED_MODEL;
       const job = await startBlogFactoryReviewJob({
@@ -11680,8 +11793,11 @@ function BlogFactoryAiReview({
   }
 
   function applySuggestions() {
-    if (!result) return;
-    let nextContent = taskContent;
+    if (!result || !sourceTaskContent || taskContent !== sourceTaskContent) {
+      setError("原任务或任务内容已变化，不能应用审阅建议；请重新发起审阅或手动修改。");
+      return;
+    }
+    let nextContent = sourceTaskContent;
     const failures: string[] = [];
     for (const suggestion of result.suggestions.filter((item) => selectedIds.includes(item.id))) {
       const firstIndex = nextContent.indexOf(suggestion.before);
@@ -11695,7 +11811,11 @@ function BlogFactoryAiReview({
       setError(`有 ${failures.length} 条建议无法安全定位原文；请刷新审阅结果或手动修改。其余建议已保留在当前选择中。`);
       return;
     }
-    onApply(nextContent);
+    if (!onApply(taskId, sourceTaskContent, nextContent)) {
+      setError("原任务或任务内容已变化，不能应用审阅建议；请重新发起审阅或手动修改。");
+      return;
+    }
+    clearStoredReviewJob();
     closeDialog();
   }
 
