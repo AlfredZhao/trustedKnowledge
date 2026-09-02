@@ -5337,7 +5337,7 @@ function App() {
               : activeView === "users"
                 ? "User Management"
               : activeView === "skills"
-                ? "Capability Hub"
+                ? "AI Orchestration"
               : activeView === "historyAsk"
                 ? "Ask Data"
                 : activeView === "aiCoding"
@@ -15879,7 +15879,7 @@ function SkillManager({
             <div>
               <div className="mb-2 flex items-center gap-2 text-sm text-mint-300">
                 <Layers3 size={17} />
-                Capability Hub
+                AI Orchestration
               </div>
               <h2 className="text-lg font-semibold text-slate-50">Agent 与 Skill</h2>
             </div>

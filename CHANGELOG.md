@@ -13,6 +13,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Added / 新增
 
+- Added `通用内容智能补全@Alfred`, a personal Skill that preserves a user's original structure and language while completing context-supported fields, paragraphs, and bilingual counterparts; unknown business facts are marked for follow-up instead of being invented.
+- 新增 `通用内容智能补全@Alfred`：该个人 Skill 会保留用户原有结构和语言，补全有上下文依据的字段、段落与双语对应内容；无法确认的业务事实会明确标记为待补充，不会凭空编造。
+
 - Added task-level saved cover-prompt snapshots in Blog Factory. Confirmed prompts now appear in enhanced HTML exports with a dedicated `复制生图提示词` action.
 - 博客工厂新增任务级已保存生图提示词快照。确认保存后，增强美化 HTML 会展示提示词并提供独立的 `复制生图提示词`。
 
@@ -23,6 +26,9 @@ The format follows the common GitHub changelog convention inspired by
 - 博客工厂筛选区新增 `刷新列表` 操作：保留当前筛选条件和页码，并显式读取服务端最新结果。
 
 #### Changed / 变更
+
+- Changed the Agent and Skill management module's navigation label from `能力管理` to `智能编排`, and its English page heading from `Capability Hub` to `AI Orchestration`.
+- 将 Agent 与 Skill 管理模块的导航名称由 `能力管理` 调整为 `智能编排`，英文页面标题由 `Capability Hub` 调整为 `AI Orchestration`。
 
 #### Fixed / 修复
 
