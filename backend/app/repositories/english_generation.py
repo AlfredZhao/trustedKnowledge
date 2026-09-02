@@ -1,3 +1,4 @@
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -10,6 +11,7 @@ from app.repositories.llm_config import get_history_ask_llm_config
 from app.repositories.skills import get_prompt_skills
 from app.repositories.users import AuthContext
 from app.schemas.english_materials import (
+    EnglishMaterialCardSections,
     EnglishMaterialCompletionRequest,
     EnglishMaterialCompletionResult,
     EnglishMaterialGenerationRequest,
@@ -105,8 +107,54 @@ professional_sentence 是忠实摘自或忠实整理自原稿的一句完整英�
     return system, prompt
 
 
+def _load_card_sections(selected_skills: list[dict[str, str]]) -> EnglishMaterialCardSections | None:
+    """Load one trusted, structured card template without exposing it to the LLM."""
+    templates: list[EnglishMaterialCardSections] = []
+    for skill in selected_skills:
+        path = Path(skill["path"]) / "learning-card.json"
+        if not path.is_file():
+            continue
+        try:
+            raw = path.read_text(encoding="utf-8")
+            if len(raw) > 20_000:
+                raise ValueError("文件超过 20,000 字符限制")
+            config = json.loads(raw)
+            sections = config.get("sections") if isinstance(config, dict) else None
+            if not isinstance(sections, list):
+                raise ValueError("必须包含 sections 数组")
+            normalized = []
+            for section in sections:
+                if not isinstance(section, dict):
+                    raise ValueError("sections 中每项必须是对象")
+                key = section.get("key")
+                if not isinstance(key, str) or not re.fullmatch(r"[a-z][a-z0-9_-]{0,63}", key):
+                    raise ValueError("key 必须是小写字母开头的 1-64 位标识")
+                normalized.append({
+                    "key": key,
+                    "label": section.get("label"),
+                    "value": section.get("default", ""),
+                    "visible": section.get("visible", True),
+                    "copyable": section.get("copyable", True),
+                    "order": section.get("order", 0),
+                })
+            templates.append(EnglishMaterialCardSections.model_validate({
+                "schema_version": 1,
+                "template": {
+                    "skill_id": skill["id"],
+                    "revision": hashlib.sha256(raw.encode("utf-8")).hexdigest()[:12],
+                },
+                "sections": normalized,
+            }))
+        except (OSError, ValueError, TypeError) as exc:
+            raise RuntimeError(f"学习卡 Skill 配置无效（{skill['name']}）：{exc}") from exc
+    if len(templates) > 1:
+        raise RuntimeError("一次 AI 补全只能选择一个包含 learning-card.json 的学习卡模板 Skill。")
+    return templates[0] if templates else None
+
+
 async def complete_english_material(payload: EnglishMaterialCompletionRequest, auth_context: AuthContext) -> EnglishMaterialCompletionResult:
     selected_skills = get_prompt_skills(payload.skill_ids, auth_context, agent_code="english-extraction")
+    card_sections = _load_card_sections(selected_skills)
     system, prompt = _build_completion_prompt(payload, selected_skills)
     if payload.execution_provider == "codex":
         if not settings.allow_web_codex:
@@ -123,6 +171,7 @@ async def complete_english_material(payload: EnglishMaterialCompletionRequest, a
         content = await _call_history_ask_llm(config=config, prompt=prompt, system=system, max_tokens=900)
 
     try:
-        return EnglishMaterialCompletionResult.model_validate(_extract_json(content))
+        result = EnglishMaterialCompletionResult.model_validate(_extract_json(content))
+        return result.model_copy(update={"card_sections": card_sections})
     except Exception as exc:
         raise RuntimeError("AI 补全内容不符合素材字段要求，请重试。") from exc

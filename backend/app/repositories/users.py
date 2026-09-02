@@ -205,6 +205,7 @@ async def ensure_user_schema_for_connection(connection: oracledb.AsyncConnection
             full_script varchar2(4000),
             is_flagged number(1) default 0 not null,
             title varchar2(200),
+            card_sections json,
             user_id number,
             created_at timestamp default systimestamp not null,
             updated_at timestamp default systimestamp not null,
@@ -212,6 +213,7 @@ async def ensure_user_schema_for_connection(connection: oracledb.AsyncConnection
         )
         """,
     )
+    await _add_column_if_missing(cursor, "t_english", "card_sections json")
     await _execute_ddl(cursor, "create index ai_qa_lib_user_status_id_idx on ai_qa_lib (user_id, blog_status, id desc)")
     await _execute_ddl(cursor, "create index t_english_user_flag_id_idx on t_english (user_id, is_flagged, english_id desc)")
     await _execute_ddl(cursor, "create index t_english_user_sequence_idx on t_english (user_id, sequence_no desc, english_id desc)")

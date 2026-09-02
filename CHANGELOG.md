@@ -13,6 +13,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Added / 新增
 
+- Added Skill-defined learning-card sections for English Material AI completion. The selected `learning-card.json` is validated server-side, saved as an Oracle native JSON snapshot, displayed in exports, and exposed through per-section copy controls.
+- 英语素材 AI 补全新增由 Skill 定义的学习卡区块：后端校验所选 `learning-card.json`，将其保存为 Oracle 原生 JSON 快照，在下载学习卡中展示，并提供按区块独立复制。
+
 - Added `通用内容智能补全@Alfred`, a personal Skill that preserves a user's original structure and language while completing context-supported fields, paragraphs, and bilingual counterparts; unknown business facts are marked for follow-up instead of being invented.
 - 新增 `通用内容智能补全@Alfred`：该个人 Skill 会保留用户原有结构和语言，补全有上下文依据的字段、段落与双语对应内容；无法确认的业务事实会明确标记为待补充，不会凭空编造。
 

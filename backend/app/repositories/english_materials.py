@@ -1,3 +1,4 @@
+import json
 from typing import Any
 
 import oracledb
@@ -23,7 +24,8 @@ LIST_COLUMNS = """
     material.is_flagged,
     material.title,
     material.v_needs_update,
-    cast(null as binary_double) as similarity
+    cast(null as binary_double) as similarity,
+    material.card_sections
 """
 
 SORT_COLUMNS = {
@@ -44,10 +46,16 @@ UPDATE_COLUMNS = {
     "full_script": "full_script",
     "flag": "is_flagged",
     "title": "title",
+    "card_sections": "card_sections",
 }
 
 
 def _row_to_dict(row: Any) -> dict[str, Any]:
+    card_sections = row[11]
+    if hasattr(card_sections, "read"):
+        card_sections = card_sections.read()
+    if isinstance(card_sections, str):
+        card_sections = json.loads(card_sections)
     return {
         "id": row[0],
         "sequence_no": row[1],
@@ -60,6 +68,7 @@ def _row_to_dict(row: Any) -> dict[str, Any]:
         "title": row[8],
         "v_needs_update": row[9],
         "similarity": row[10],
+        "card_sections": card_sections,
     }
 
 
@@ -147,8 +156,7 @@ async def list_english_materials(
             else f"{sort_column} {sort_direction} nulls last, material.english_id desc"
         )
         list_sql = f"""
-            select {LIST_COLUMNS.rsplit(',', 1)[0]},
-                   {similarity_sql} as similarity
+            select {LIST_COLUMNS.replace("cast(null as binary_double)", similarity_sql)}
             from t_english material
             {where_sql}
             order by {list_order_sql}
@@ -208,6 +216,7 @@ async def create_english_material(payload: EnglishMaterialCreate, auth_context: 
             full_script,
             is_flagged,
             title,
+            card_sections,
             user_id,
             v_needs_update
         ) values (
@@ -219,6 +228,7 @@ async def create_english_material(payload: EnglishMaterialCreate, auth_context: 
             :full_script,
             :flag,
             :title,
+            case when :card_sections is null then null else json(:card_sections) end,
             :user_id,
             case when :full_script is null then 0 else 1 end
         )
@@ -239,6 +249,7 @@ async def create_english_material(payload: EnglishMaterialCreate, auth_context: 
                 "full_script": payload.full_script,
                 "flag": payload.flag,
                 "title": payload.title,
+                "card_sections": json.dumps(payload.card_sections.model_dump(mode="json"), ensure_ascii=False) if payload.card_sections else None,
                 "user_id": user_id_for_write(auth_context),
                 "new_id": new_id,
             },
@@ -261,9 +272,19 @@ async def update_english_material(
     if not values:
         return await get_english_material(material_id, auth_context)
 
-    assignments = [f"{UPDATE_COLUMNS[key]} = :{key}" for key in values]
+    assignments = [
+        "card_sections = case when :card_sections is null then null else json(:card_sections) end"
+        if key == "card_sections"
+        else f"{UPDATE_COLUMNS[key]} = :{key}"
+        for key in values
+    ]
     assignments.append("updated_at = systimestamp")
-    params = {**values, "material_id": material_id}
+    params = {
+        **values,
+        "material_id": material_id,
+    }
+    if "card_sections" in values and values["card_sections"] is not None:
+        params["card_sections"] = json.dumps(values["card_sections"], ensure_ascii=False)
     lock_params: dict[str, Any] = {"material_id": material_id}
     clauses = ["english_id = :material_id"]
     append_user_visibility_clause(clauses, lock_params, auth_context, "user_id")

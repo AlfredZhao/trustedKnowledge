@@ -26,6 +26,7 @@ import type {
   CurrentDay,
   CurrentRecordOptions,
   CurrentWeek,
+  EnglishMaterialCardSections,
   EnglishMaterialDraft,
   EnglishMaterialItem,
   GithubSyncResponse,
@@ -451,6 +452,7 @@ const emptyEnglishMaterialDraft: EnglishMaterialDraft = {
   full_script: "",
   title: "",
   flag: "0",
+  card_sections: null,
 };
 
 function buildLocalDraftId(prefix: string) {
@@ -1654,6 +1656,7 @@ export function readEnglishMaterialDraft(value: unknown): EnglishMaterialDraft {
     full_script: readString(draft.full_script),
     title: readString(draft.title),
     flag: readStringUnion(draft.flag, ["0", "1"] as const, "0"),
+    card_sections: readEnglishMaterialCardSections(draft.card_sections),
   };
 }
 
@@ -1679,6 +1682,32 @@ export function englishMaterialItemToDraft(item: EnglishMaterialItem): EnglishMa
     full_script: item.full_script ?? "",
     title: item.title ?? "",
     flag: item.flag === 1 ? "1" : "0",
+    card_sections: item.card_sections,
+  };
+}
+
+function readEnglishMaterialCardSections(value: unknown): EnglishMaterialCardSections | null {
+  const card = readRecord(value);
+  if (card.schema_version !== 1 || !Array.isArray(card.sections)) return null;
+  const sections = card.sections.flatMap((value) => {
+    const section = readRecord(value);
+    if (!readString(section.key) || !readString(section.label)) return [];
+    return [{
+      key: readString(section.key),
+      label: readString(section.label),
+      value: readString(section.value),
+      visible: typeof section.visible === "boolean" ? section.visible : true,
+      copyable: typeof section.copyable === "boolean" ? section.copyable : true,
+      order: typeof section.order === "number" && Number.isFinite(section.order) ? section.order : 0,
+    }];
+  });
+  const template = readRecord(card.template);
+  return {
+    schema_version: 1,
+    template: readString(template.skill_id) && readString(template.revision)
+      ? { skill_id: readString(template.skill_id), revision: readString(template.revision) }
+      : null,
+    sections,
   };
 }
 

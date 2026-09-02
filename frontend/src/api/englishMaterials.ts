@@ -90,6 +90,7 @@ export async function createEnglishMaterial(draft: EnglishMaterialDraft): Promis
       full_script: draft.full_script || null,
       title: draft.title || null,
       flag: Number(draft.flag),
+      card_sections: draft.card_sections,
     }),
   });
 }
@@ -193,6 +194,7 @@ export async function updateEnglishMaterial(id: number, draft: EnglishMaterialDr
       full_script: draft.full_script || null,
       title: draft.title || null,
       flag: Number(draft.flag),
+      card_sections: draft.card_sections,
     }),
   });
 }

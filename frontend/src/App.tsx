@@ -455,6 +455,7 @@ const emptyEnglishMaterialDraft: EnglishMaterialDraft = {
   full_script: "",
   title: "",
   flag: "0",
+  card_sections: null,
 };
 
 const emptyLlmConfigDraft: LlmConfigDraft = {
@@ -14511,6 +14512,10 @@ function EnglishMaterialDetailDialog({
                   placeholder="用于短视频口播的完整内容。"
                 />
               </Field>
+              {draft.card_sections?.sections
+                .filter((section) => section.visible && section.value.trim())
+                .sort((left, right) => left.order - right.order)
+                .map((section) => <EnglishMaterialDetailBlock key={section.key} label={section.label} value={section.value} />)}
               <div className="flex justify-end">
                 <EnglishMaterialAiCompletion draft={draft} disabled={isLoading || isSaving} modelOptions={modelOptions} onCompleted={onDraftChange} />
               </div>
@@ -14556,10 +14561,24 @@ function EnglishMaterialDetailDialog({
               {copiedLabel === "完整口播内容" ? <CheckCircle2 size={16} /> : <ClipboardList size={16} />}
               {copiedLabel === "完整口播内容" ? "已复制" : "复制脚本"}
             </button>
+            {draft.card_sections?.sections
+              .filter((section) => section.copyable && section.value.trim())
+              .sort((left, right) => left.order - right.order)
+              .map((section) => (
+                <button
+                  key={section.key}
+                  className="flex h-11 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] px-3 text-sm text-slate-300 transition hover:border-mint-300/30 hover:text-mint-200"
+                  type="button"
+                  onClick={() => onCopyText(section.value, section.label)}
+                >
+                  {copiedLabel === section.label ? <CheckCircle2 size={16} /> : <Copy size={16} />}
+                  {copiedLabel === section.label ? "已复制" : `复制${section.label}`}
+                </button>
+              ))}
             <select className="control h-11" value={learningCardStyle} onChange={(event) => setLearningCardStyle(event.target.value as typeof learningCardStyle)}>
               <option value="learning-card">学习卡</option><option value="classic">经典文章</option><option value="minimal">极简笔记</option>
             </select>
-            <button className="flex h-11 items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-3 text-sm font-medium text-mint-300 disabled:opacity-50" disabled={isLoading || !draft.title} type="button" onClick={() => void copyMarkdownAsEnhancedRichText(`# ${draft.title}\n\n${draft.full_script}`, { downloadFileName: `英语学习卡-${item?.id ?? "draft"}.html`, documentTitle: draft.title, exportStyle: learningCardStyle, sections: [{ id: "expression", label: "核心表达", value: draft.base_expression }, { id: "sentence", label: "职业完整句式", value: draft.professional_sentence }, { id: "translation", label: "中文翻译", value: draft.chinese_translation }] })}>
+            <button className="flex h-11 items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-3 text-sm font-medium text-mint-300 disabled:opacity-50" disabled={isLoading || !draft.title} type="button" onClick={() => void copyMarkdownAsEnhancedRichText(`# ${draft.title}\n\n${draft.full_script}`, { downloadFileName: `英语学习卡-${item?.id ?? "draft"}.html`, documentTitle: draft.title, exportStyle: learningCardStyle, sections: [{ id: "expression", label: "核心表达", value: draft.base_expression }, { id: "sentence", label: "职业完整句式", value: draft.professional_sentence }, { id: "translation", label: "中文翻译", value: draft.chinese_translation }, ...(draft.card_sections?.sections.filter((section) => section.visible && section.value.trim()).sort((left, right) => left.order - right.order).map((section) => ({ id: section.key, label: section.label, value: section.value })) ?? [])] })}>
               <FileText size={16} />下载学习卡
             </button>
             <button
@@ -14735,6 +14754,7 @@ function EnglishMaterialAiCompletion({
       base_expression: draft.base_expression.trim() ? draft.base_expression : result.base_expression,
       professional_sentence: draft.professional_sentence.trim() ? draft.professional_sentence : result.professional_sentence,
       chinese_translation: draft.chinese_translation.trim() ? draft.chinese_translation : result.chinese_translation,
+      card_sections: draft.card_sections ?? result.card_sections,
     });
     closeDialog();
   }
@@ -14745,7 +14765,7 @@ function EnglishMaterialAiCompletion({
       <section aria-modal="true" className="flex max-h-[100dvh] w-full max-w-2xl flex-col overflow-hidden rounded-t-lg border border-mint-300/20 bg-ink-900 shadow-soft-glow sm:max-h-[88vh] sm:rounded-lg" role="dialog" aria-label="AI 补全英语素材">
         <div className="flex shrink-0 items-start justify-between gap-4 border-b border-white/10 p-4 sm:p-5"><div><div className="mb-2 flex items-center gap-2 text-sm text-mint-300"><WandSparkles size={17} />AI Material</div><h2 className="text-xl font-semibold text-slate-50">AI补全英语素材</h2><p className="mt-1 text-xs leading-5 text-slate-500">只根据当前完整口播内容提炼字段。确认回填时仅填充空字段，不会自动保存。</p></div><button className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-300 transition hover:text-mint-300 disabled:cursor-not-allowed disabled:text-slate-600" disabled={isCompleting} type="button" title="关闭" onClick={closeDialog}><X size={17} /></button></div>
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 sm:p-5">
-          {!result ? isCompleting ? <div className="flex items-center gap-2 rounded-lg border border-mint-300/25 bg-mint-300/10 p-3 text-sm text-mint-100"><Loader2 className="animate-spin" size={17} />AI 补全正在后台执行；刷新此页面后重新打开此窗口可继续查看结果。</div> : <><div className="grid gap-3 sm:grid-cols-2"><Field label="执行模型" icon={<Settings2 size={16} />}><select className="control" value={modelName} onChange={(event) => setModelName(event.target.value)}>{modelOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field></div><SkillSelector agentCode="english-extraction" selectedSkillIds={selectedSkillIds} onSelectedSkillIdsChange={setSelectedSkillIds} /></> : <div className="space-y-3"><p className="text-sm leading-6 text-slate-300">以下结果将只填入当前为空的字段：</p><EnglishMaterialDetailBlock label="标题" value={result.title} /><EnglishMaterialDetailBlock label="基础表达" value={result.base_expression} /><EnglishMaterialDetailBlock label="职业完整句式" value={result.professional_sentence} /><EnglishMaterialDetailBlock label="地道中文翻译" value={result.chinese_translation} /></div>}
+          {!result ? isCompleting ? <div className="flex items-center gap-2 rounded-lg border border-mint-300/25 bg-mint-300/10 p-3 text-sm text-mint-100"><Loader2 className="animate-spin" size={17} />AI 补全正在后台执行；刷新此页面后重新打开此窗口可继续查看结果。</div> : <><div className="grid gap-3 sm:grid-cols-2"><Field label="执行模型" icon={<Settings2 size={16} />}><select className="control" value={modelName} onChange={(event) => setModelName(event.target.value)}>{modelOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field></div><SkillSelector agentCode="english-extraction" selectedSkillIds={selectedSkillIds} onSelectedSkillIdsChange={setSelectedSkillIds} /></> : <div className="space-y-3"><p className="text-sm leading-6 text-slate-300">以下结果将只填入当前为空的字段：</p><EnglishMaterialDetailBlock label="标题" value={result.title} /><EnglishMaterialDetailBlock label="基础表达" value={result.base_expression} /><EnglishMaterialDetailBlock label="职业完整句式" value={result.professional_sentence} /><EnglishMaterialDetailBlock label="地道中文翻译" value={result.chinese_translation} />{result.card_sections?.sections.filter((section) => section.visible && section.value.trim()).sort((left, right) => left.order - right.order).map((section) => <EnglishMaterialDetailBlock key={section.key} label={section.label} value={section.value} />)}</div>}
           {error ? <div className="flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100"><TriangleAlert className="mt-0.5 shrink-0 text-red-300" size={17} /><span>{error}</span></div> : null}
         </div>
         <div className="flex shrink-0 justify-end gap-3 border-t border-white/10 p-4">{isCompleting ? <button className="h-11 rounded-lg border border-red-300/30 bg-red-300/10 px-4 text-sm text-red-100" type="button" onClick={() => void cancelCompletion()}>取消补全</button> : <button className="h-11 rounded-lg border border-white/10 bg-white/[0.035] px-4 text-sm text-slate-300" type="button" onClick={closeDialog}>取消</button>}{result ? <button className="flex h-11 items-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20" type="button" onClick={applyResult}><ClipboardCheck size={17} />确认回填</button> : !isCompleting ? <button className="flex h-11 items-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 text-sm font-medium text-mint-300 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500" disabled={!canComplete} type="button" onClick={() => void handleComplete()}><WandSparkles size={17} />生成补全建议</button> : null}</div>

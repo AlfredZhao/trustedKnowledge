@@ -3,6 +3,27 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
+class EnglishMaterialCardSection(BaseModel):
+    key: str = Field(..., min_length=1, max_length=64)
+    label: str = Field(..., min_length=1, max_length=80)
+    value: str = Field(default="", max_length=2000)
+    visible: bool = True
+    copyable: bool = True
+    order: int = Field(default=0, ge=0, le=10000)
+
+
+class EnglishMaterialCardSections(BaseModel):
+    schema_version: Literal[1] = 1
+    template: dict[str, str] | None = None
+    sections: list[EnglishMaterialCardSection] = Field(default_factory=list, max_length=6)
+
+    @model_validator(mode="after")
+    def require_unique_section_keys(self) -> "EnglishMaterialCardSections":
+        if len({section.key for section in self.sections}) != len(self.sections):
+            raise ValueError("card section keys must be unique")
+        return self
+
+
 class EnglishMaterialCreate(BaseModel):
     sequence_no: int | None = Field(default=None, ge=1)
     category: str | None = Field(default=None, max_length=50)
@@ -12,6 +33,7 @@ class EnglishMaterialCreate(BaseModel):
     full_script: str | None = Field(default=None, max_length=4000)
     title: str | None = Field(default=None, max_length=200)
     flag: int = Field(default=0, ge=0, le=1)
+    card_sections: EnglishMaterialCardSections | None = None
 
     @field_validator(
         "category",
@@ -85,6 +107,7 @@ class EnglishMaterialCompletionResult(BaseModel):
     base_expression: str = Field(..., min_length=1, max_length=50)
     professional_sentence: str = Field(..., min_length=1, max_length=255)
     chinese_translation: str = Field(..., min_length=1, max_length=255)
+    card_sections: EnglishMaterialCardSections | None = None
 
 
 class EnglishMaterialCompletionJobSnapshot(BaseModel):
@@ -107,6 +130,7 @@ class EnglishMaterialUpdate(BaseModel):
     full_script: str | None = Field(default=None, max_length=4000)
     title: str | None = Field(default=None, max_length=200)
     flag: int | None = Field(default=None, ge=0, le=1)
+    card_sections: EnglishMaterialCardSections | None = None
 
     @field_validator(
         "category",
@@ -144,6 +168,7 @@ class EnglishMaterialItem(BaseModel):
     title: str | None = None
     v_needs_update: int | None = None
     similarity: float | None = None
+    card_sections: EnglishMaterialCardSections | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -339,6 +339,22 @@ export interface EnglishMaterialItem {
   title: string | null;
   v_needs_update: number | null;
   similarity: number | null;
+  card_sections: EnglishMaterialCardSections | null;
+}
+
+export interface EnglishMaterialCardSection {
+  key: string;
+  label: string;
+  value: string;
+  visible: boolean;
+  copyable: boolean;
+  order: number;
+}
+
+export interface EnglishMaterialCardSections {
+  schema_version: 1;
+  template: { skill_id: string; revision: string } | null;
+  sections: EnglishMaterialCardSection[];
 }
 
 export interface EnglishMaterialDraft {
@@ -350,6 +366,7 @@ export interface EnglishMaterialDraft {
   full_script: string;
   title: string;
   flag: "0" | "1";
+  card_sections: EnglishMaterialCardSections | null;
 }
 
 export interface EnglishMaterialGenerationResult {
@@ -366,6 +383,7 @@ export interface EnglishMaterialCompletionResult {
   base_expression: string;
   professional_sentence: string;
   chinese_translation: string;
+  card_sections: EnglishMaterialCardSections | null;
 }
 
 export interface EnglishMaterialCompletionJobSnapshot {

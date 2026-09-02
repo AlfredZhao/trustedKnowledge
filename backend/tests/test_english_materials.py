@@ -7,7 +7,7 @@ from tests.support import prepare_backend_imports
 prepare_backend_imports()
 
 from app.repositories import english_materials
-from app.repositories.english_generation import _build_completion_prompt
+from app.repositories.english_generation import _build_completion_prompt, _load_card_sections
 from app.repositories.users import (
     AuthContext,
     _make_column_nullable_if_needed,
@@ -81,6 +81,25 @@ class FakeAcquire:
 
 
 class EnglishMaterialsRepositoryTests(unittest.IsolatedAsyncioTestCase):
+    def test_card_sections_load_from_a_structured_skill_file(self) -> None:
+        skill_dir = Path(__file__).resolve().parents[1] / "data" / "skills" / "alfred-d4cdd9eb"
+
+        card_sections = _load_card_sections([{"id": "alfred-d4cdd9eb", "name": "补全学习卡@Alfred", "path": str(skill_dir)}])
+
+        self.assertIsNotNone(card_sections)
+        self.assertEqual(card_sections.template["skill_id"], "alfred-d4cdd9eb")  # type: ignore[index]
+        self.assertEqual(card_sections.sections[0].label, "素材类型")
+        self.assertEqual(card_sections.sections[0].value, "影视双语字幕")
+
+    def test_card_sections_reject_multiple_templates(self) -> None:
+        skill_dir = Path(__file__).resolve().parents[1] / "data" / "skills" / "alfred-d4cdd9eb"
+
+        with self.assertRaisesRegex(RuntimeError, "只能选择一个"):
+            _load_card_sections([
+                {"id": "one", "name": "一", "path": str(skill_dir)},
+                {"id": "two", "name": "二", "path": str(skill_dir)},
+            ])
+
     def test_completion_prompt_treats_script_as_read_only_source(self) -> None:
         payload = EnglishMaterialCompletionRequest(full_script="We will review the plan in tomorrow's meeting.")
 
@@ -102,6 +121,7 @@ class EnglishMaterialsRepositoryTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("from t_english material", sql)
         self.assertIn("material.base_expression", sql)
         self.assertIn("material.is_flagged", sql)
+        self.assertIn("material.card_sections", sql)
         self.assertNotIn("t_douyin_details", sql)
         self.assertNotIn('material."基础表达"', sql)
 
