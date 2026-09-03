@@ -18,6 +18,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Changed / 变更
 
+- Changed downloaded learning-card HTML copy controls to be centered. Skill-defined `learning-card.json` section copy controls now use their own centered row.
+- 调整下载学习卡 HTML 的复制操作为居中布局；由 Skill 的 `learning-card.json` 定义的区块复制按钮单独使用一行并居中显示。
+
 - Changed the English Material detail dialog's PWA action grid to show two controls per row on narrow screens; `sm` and wider layouts continue to show three per row.
 - 调整英语素材详情弹窗的 PWA 操作区：窄屏每行显示两个按钮；`sm` 及以上仍保持每行三个按钮。
 

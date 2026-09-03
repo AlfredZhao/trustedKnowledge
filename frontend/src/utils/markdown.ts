@@ -440,14 +440,20 @@ function svgToPngDataUrl(svg: string) {
 function buildStandaloneCopyToolbar(hasSummary: boolean, hasCoverPrompt: boolean, sections: HtmlExportSection[]) {
   const buttonStyle =
     "display:inline-flex;align-items:center;justify-content:center;min-height:36px;border:1px solid #d8b8ae;border-radius:8px;background:#fffdfb;color:#7f1d1d;padding:0 14px;font-size:14px;font-weight:600;cursor:pointer;box-shadow:0 6px 18px rgba(95,29,29,0.08);";
+  const customButtons = sections
+    .filter((section) => section.value.trim())
+    .map((section) => `<button type="button" data-copy-section="${escapeAttribute(section.id)}" style="${buttonStyle}">复制${escapeHtml(section.label)}</button>`)
+    .join("");
 
   return [
-    '<div data-tk-export-toolbar style="max-width:760px;margin:0 auto 16px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:flex-end;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,Arial,sans-serif;">',
+    '<div data-tk-export-toolbar style="max-width:760px;margin:0 auto 16px;display:flex;flex-direction:column;gap:10px;align-items:center;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Microsoft YaHei,Arial,sans-serif;">',
+    '<div data-tk-export-toolbar-primary style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:center;">',
     `<button type="button" data-copy-title style="${buttonStyle}">复制标题</button>`,
     hasSummary ? `<button type="button" data-copy-summary style="${buttonStyle}">复制摘要</button>` : "",
     hasCoverPrompt ? `<button type="button" data-copy-cover-prompt style="${buttonStyle}">复制生图提示词</button>` : "",
-    ...sections.filter((section) => section.value.trim()).map((section) => `<button type="button" data-copy-section="${escapeAttribute(section.id)}" style="${buttonStyle}">复制${escapeHtml(section.label)}</button>`),
     `<button type="button" data-copy-body style="${buttonStyle}">复制正文</button>`,
+    "</div>",
+    customButtons ? `<div data-tk-export-toolbar-custom style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:center;">${customButtons}</div>` : "",
     "</div>",
   ].join("");
 }
