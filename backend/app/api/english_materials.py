@@ -182,7 +182,7 @@ async def cancel_english_material_completion_job(
 async def _run_english_material_completion_job(job: EnglishMaterialCompletionJobState, auth_context: AuthContext) -> None:
     try:
         result = await asyncio.wait_for(
-            complete_english_material(job.payload, auth_context),
+            complete_english_material(job.payload, auth_context, audit_job_id=job.job_id),
             timeout=COMPLETION_JOB_TIMEOUT_SECONDS,
         )
         if job.status == "running":

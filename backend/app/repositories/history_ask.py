@@ -1,6 +1,7 @@
 import asyncio
 import json
 import re
+import time
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -17,6 +18,7 @@ from app.repositories.skills import get_prompt_skills
 from app.repositories.todos import _ensure_todo_table
 from app.repositories.users import AuthContext, append_requested_username_clause, append_user_visibility_clause
 from app.services.codex_cli import run_codex_final
+from app.services.ai_audit import extract_usage, log_ai_call
 
 
 COMMON_WORDS = {
@@ -401,7 +403,7 @@ def _build_fallback_answer(
     stats: dict[str, Any],
     evidence: list[dict[str, Any]],
     selected_skills: list[dict[str, str]] | None = None,
-) -> str:
+) -> tuple[str, dict[str, int | None] | None]:
     keyword = filters.get("keyword")
     username = filters.get("username")
     subject = keyword or "该主题"
@@ -488,7 +490,7 @@ def _call_openai_compatible_llm_sync(
     content = message.get("content") if isinstance(message, dict) else None
     if not isinstance(content, str) or not content.strip():
         raise RuntimeError("LLM 响应缺少回答内容")
-    return content.strip()
+    return content.strip(), extract_usage(response_payload.get("usage"))
 
 
 async def _call_history_ask_llm(
@@ -498,6 +500,9 @@ async def _call_history_ask_llm(
     system: str,
     max_tokens: int = 1200,
     response_format: dict[str, str] | None = None,
+    audit_source: str = "unspecified",
+    audit_username: str | None = None,
+    audit_job_id: str | None = None,
 ) -> str:
     base_url = str(config.get("base_url") or "").strip()
     api_key = settings.history_ask_llm_api_key.strip()
@@ -505,16 +510,27 @@ async def _call_history_ask_llm(
     if not base_url or not api_key or not model_name:
         raise RuntimeError("LLM 配置未完整填写，需要 Base URL、模型名和后端环境变量 TRUSTED_KNOWLEDGE_HISTORY_ASK_LLM_API_KEY。")
 
-    return await asyncio.to_thread(
-        _call_openai_compatible_llm_sync,
-        base_url=base_url,
-        api_key=api_key,
-        model_name=model_name,
-        prompt=prompt,
-        system=system,
-        max_tokens=max_tokens,
-        response_format=response_format,
-    )
+    started_at = time.monotonic()
+    log_ai_call("started", provider="openai-compatible", source=audit_source, username=audit_username, job_id=audit_job_id, model_name=model_name)
+    try:
+        output, usage = await asyncio.to_thread(
+            _call_openai_compatible_llm_sync,
+            base_url=base_url,
+            api_key=api_key,
+            model_name=model_name,
+            prompt=prompt,
+            system=system,
+            max_tokens=max_tokens,
+            response_format=response_format,
+        )
+    except asyncio.CancelledError:
+        log_ai_call("cancelled", provider="openai-compatible", source=audit_source, username=audit_username, job_id=audit_job_id, model_name=model_name, duration_ms=round((time.monotonic() - started_at) * 1000), error_type="CancelledError")
+        raise
+    except Exception as exc:
+        log_ai_call("failed", provider="openai-compatible", source=audit_source, username=audit_username, job_id=audit_job_id, model_name=model_name, duration_ms=round((time.monotonic() - started_at) * 1000), error_type=type(exc).__name__)
+        raise
+    log_ai_call("completed", provider="openai-compatible", source=audit_source, username=audit_username, job_id=audit_job_id, model_name=model_name, duration_ms=round((time.monotonic() - started_at) * 1000), usage=usage)
+    return output
 
 
 def _format_filter_summary(filters: dict[str, Any]) -> str:
@@ -804,6 +820,8 @@ async def ask_history(
                             model_name=model_name,
                             project_root=Path(__file__).resolve().parents[3],
                             timeout_seconds=90,
+                            audit_source="history-ask",
+                            audit_username=auth_context.username,
                         )
                         answer = llm_answer
                         llm_used = True
@@ -812,7 +830,7 @@ async def ask_history(
             elif llm_config.get("enabled"):
                 llm_requested = True
                 try:
-                    llm_answer = await _call_history_ask_llm(config=llm_config, prompt=prompt, system=system)
+                    llm_answer = await _call_history_ask_llm(config=llm_config, prompt=prompt, system=system, audit_source="history-ask", audit_username=auth_context.username)
                     if llm_answer and not llm_answer.startswith(LLM_ERROR_PREFIXES):
                         answer = llm_answer
                         llm_used = True
@@ -973,6 +991,8 @@ async def _ask_todos(
                         model_name=model_name,
                         project_root=Path(__file__).resolve().parents[3],
                         timeout_seconds=90,
+                        audit_source="history-ask",
+                        audit_username=auth_context.username,
                     )
                     llm_used = True
                 except RuntimeError as exc:
@@ -988,6 +1008,8 @@ async def _ask_todos(
                             config=config,
                             prompt=prompt,
                             system=system,
+                            audit_source="history-ask",
+                            audit_username=auth_context.username,
                         )
                         if llm_answer and not llm_answer.startswith(LLM_ERROR_PREFIXES):
                             answer, llm_used = llm_answer, True
@@ -1067,7 +1089,7 @@ async def _finalize_catalog_ask(
             else:
                 llm_requested = True
                 try:
-                    answer = await run_codex_final(prompt=codex_instruction + prompt, model_name=model_name, project_root=Path(__file__).resolve().parents[3], timeout_seconds=90)
+                    answer = await run_codex_final(prompt=codex_instruction + prompt, model_name=model_name, project_root=Path(__file__).resolve().parents[3], timeout_seconds=90, audit_source="history-ask", audit_username=auth_context.username)
                     llm_used = True
                 except RuntimeError as exc:
                     warning = str(exc)[:500]
@@ -1076,7 +1098,7 @@ async def _finalize_catalog_ask(
             if config.get("enabled"):
                 llm_requested = True
                 try:
-                    llm_answer = await _call_history_ask_llm(config=config, prompt=prompt, system=system)
+                    llm_answer = await _call_history_ask_llm(config=config, prompt=prompt, system=system, audit_source="history-ask", audit_username=auth_context.username)
                     if llm_answer and not llm_answer.startswith(LLM_ERROR_PREFIXES):
                         answer, llm_used = llm_answer, True
                     elif llm_answer:

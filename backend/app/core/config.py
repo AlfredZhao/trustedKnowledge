@@ -53,6 +53,7 @@ class Settings(BaseSettings):
         le=48000,
     )
     history_ask_llm_api_key: str = Field("", validation_alias="TRUSTED_KNOWLEDGE_HISTORY_ASK_LLM_API_KEY")
+    ai_pricing_json: str = Field("{}", validation_alias="TRUSTED_KNOWLEDGE_AI_PRICING_JSON")
     skill_storage_dir: str = Field("data/skills", validation_alias="TRUSTED_KNOWLEDGE_SKILL_STORAGE_DIR")
     skill_max_zip_mb: int = Field(20, validation_alias="TRUSTED_KNOWLEDGE_SKILL_MAX_ZIP_MB", ge=1)
     media_storage_dir: str = Field("data/media", validation_alias="TRUSTED_KNOWLEDGE_MEDIA_STORAGE_DIR")

@@ -159,7 +159,7 @@ before 必须是文章中可精确找到且只出现一次的原文片段；afte
     return system, prompt
 
 
-async def review_blog_factory_content(payload: BlogFactoryReviewRequest, auth_context: AuthContext) -> BlogFactoryReviewResult:
+async def review_blog_factory_content(payload: BlogFactoryReviewRequest, auth_context: AuthContext, audit_job_id: str | None = None) -> BlogFactoryReviewResult:
     selected_skills = get_prompt_skills(payload.skill_ids, auth_context, agent_code="blog-review")
     system, prompt = _build_review_prompt(payload, selected_skills)
     if payload.execution_provider == "codex":
@@ -171,6 +171,9 @@ async def review_blog_factory_content(payload: BlogFactoryReviewRequest, auth_co
                 model_name=payload.model_name,
                 project_root=Path(__file__).resolve().parents[3],
                 timeout_seconds=90,
+                audit_source="blog-review",
+                audit_username=auth_context.username,
+                audit_job_id=audit_job_id,
             )
         except RuntimeError as exc:
             if "超时" in str(exc) or "timed out" in str(exc).lower():
@@ -186,6 +189,9 @@ async def review_blog_factory_content(payload: BlogFactoryReviewRequest, auth_co
                 system=system,
                 max_tokens=2200,
                 response_format={"type": "json_object"} if _supports_json_mode(config) else None,
+                audit_source="blog-review",
+                audit_username=auth_context.username,
+                audit_job_id=audit_job_id,
             )
         except RuntimeError as exc:
             if "timed out" in str(exc).lower() or "超时" in str(exc):

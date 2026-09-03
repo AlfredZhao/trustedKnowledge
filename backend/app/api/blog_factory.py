@@ -176,7 +176,7 @@ async def cancel_blog_factory_enhancement_job(job_id: str, auth_context: AuthCon
 async def _run_blog_factory_enhancement_job(job: BlogFactoryEnhancementJobState, auth_context: AuthContext) -> None:
     try:
         result = await asyncio.wait_for(
-            enhance_blog_factory_content(job.payload, auth_context),
+            enhance_blog_factory_content(job.payload, auth_context, audit_job_id=job.job_id),
             timeout=ENHANCEMENT_JOB_TIMEOUT_SECONDS,
         )
         if job.status == "running":
@@ -299,7 +299,7 @@ async def cancel_blog_factory_review_job(job_id: str, auth_context: AuthContext 
 async def _run_blog_factory_review_job(job: BlogFactoryReviewJobState, auth_context: AuthContext) -> None:
     try:
         result = await asyncio.wait_for(
-            review_blog_factory_content(job.payload, auth_context),
+            review_blog_factory_content(job.payload, auth_context, audit_job_id=job.job_id),
             timeout=REVIEW_JOB_TIMEOUT_SECONDS,
         )
         if job.status == "running":

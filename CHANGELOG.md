@@ -9,6 +9,20 @@ The format follows the common GitHub changelog convention inspired by
 
 ## 本次版本更新
 
+### [Unreleased]
+
+#### Added / 新增
+
+- Added append-only AI invocation auditing in `logs/ai-audit.log`. Each actual Codex or OpenAI-compatible call records an Asia/Shanghai timestamp, outcome, provider, source module, user, job ID where available, model, duration, provider-reported token counts, and an optional explicitly labeled USD estimate derived from configured per-model prices; prompts, API keys, and response bodies are excluded. Logs rotate at 5 MiB with 10 backups.
+- 新增 `logs/ai-audit.log` 追加式 AI 调用审计：每次实际 Codex 或 OpenAI 兼容模型调用记录东八区时间、结果、提供方、来源模块、用户、可用的任务 ID、模型、耗时、提供方返回的 Token 数，以及按模型单价配置计算的可选美元估算值；不记录提示词、API Key 或模型响应正文。日志按 5 MiB 轮转并保留 10 个备份。
+
+#### Changed / 变更
+
+- Changed the English Material detail dialog's PWA action grid to show two controls per row on narrow screens; `sm` and wider layouts continue to show three per row.
+- 调整英语素材详情弹窗的 PWA 操作区：窄屏每行显示两个按钮；`sm` 及以上仍保持每行三个按钮。
+
+#### Fixed / 修复
+
 ### [0.4.6] - 2026-09-02
 
 #### Added / 新增

@@ -19,7 +19,8 @@ from app.db.oracle import acquire_connection
 from app.repositories.history_ask import _call_history_ask_llm, _format_selected_skills_for_prompt
 from app.repositories.llm_config import ensure_llm_config_table, get_history_ask_llm_config
 from app.repositories.skills import get_prompt_skills
-from app.services.codex_cli import CODEX_AVAILABLE_MODELS, read_codex_default_model, resolve_codex_model_name
+from app.services.codex_cli import CODEX_AVAILABLE_MODELS, extract_codex_usage, read_codex_default_model, resolve_codex_model_name
+from app.services.ai_audit import log_ai_call
 from app.repositories.users import AuthContext
 from app.schemas.codex import (
     CodexConfigResponse,
@@ -116,7 +117,7 @@ async def run_codex(
         started_at = time.monotonic()
         prompt = _build_prompt(payload.prompt.strip(), payload.skill_ids, auth_context, payload.output_mode)
         model_name = resolve_codex_model_name(payload.model_name, PROJECT_ROOT)
-        exec_args, output_path = _build_codex_exec_args(payload.sandbox_mode, payload.output_mode, model_name=model_name)
+        exec_args, output_path = _build_codex_exec_args(payload.sandbox_mode, payload.output_mode, json_output=True, model_name=model_name)
 
         try:
             process = await asyncio.create_subprocess_exec(
@@ -128,10 +129,12 @@ async def run_codex(
             )
         except OSError as exc:
             _cleanup_codex_output_file(output_path)
+            log_ai_call("failed", provider="codex", source="ai-coding", username=auth_context.username, model_name=model_name, error_type=type(exc).__name__)
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail=f"Failed to start Codex: {exc}",
             ) from exc
+        log_ai_call("started", provider="codex", source="ai-coding", username=auth_context.username, model_name=model_name)
 
         try:
             stdout_bytes, stderr_bytes = await asyncio.wait_for(
@@ -142,6 +145,7 @@ async def run_codex(
             process.kill()
             await process.wait()
             _cleanup_codex_output_file(output_path)
+            log_ai_call("timed_out", provider="codex", source="ai-coding", username=auth_context.username, model_name=model_name, duration_ms=round((time.monotonic() - started_at) * 1000), error_type="TimeoutError")
             raise HTTPException(
                 status_code=status.HTTP_504_GATEWAY_TIMEOUT,
                 detail="Codex task timed out before finishing.",
@@ -154,6 +158,7 @@ async def run_codex(
             output_path=output_path,
             stdout_bytes=stdout_bytes,
         )
+        log_ai_call("completed", provider="codex", source="ai-coding", username=auth_context.username, model_name=model_name, duration_ms=round((time.monotonic() - started_at) * 1000), usage=extract_codex_usage(stdout_bytes))
     finally:
         await _release_codex_slot(auth_context.username)
 
@@ -387,10 +392,12 @@ async def _run_codex_job(job: CodexJobState, auth_context: AuthContext) -> None:
             )
         except OSError as exc:
             _cleanup_codex_output_file(output_path)
+            log_ai_call("failed", provider="codex", source=_codex_audit_source(job), username=auth_context.username, job_id=job.job_id, model_name=job.model_name, error_type=type(exc).__name__)
             _mark_codex_job_failed(job, f"Failed to start Codex: {exc}")
             return
 
         _codex_job_processes[job.job_id] = process
+        log_ai_call("started", provider="codex", source=_codex_audit_source(job), username=auth_context.username, job_id=job.job_id, model_name=job.model_name)
         job.last_activity_at = datetime.now(UTC)
         job.last_event = "Codex 子进程已启动，正在分析任务。"
 
@@ -410,6 +417,7 @@ async def _run_codex_job(job: CodexJobState, auth_context: AuthContext) -> None:
                     process.kill()
                     await process.wait()
                     _cleanup_codex_output_file(output_path)
+                    log_ai_call("timed_out", provider="codex", source=_codex_audit_source(job), username=auth_context.username, job_id=job.job_id, model_name=job.model_name, duration_ms=round((time.monotonic() - started_at) * 1000), error_type="TimeoutError")
                     _mark_codex_job_failed(job, _job_timeout_message(job))
                     break
 
@@ -426,6 +434,7 @@ async def _run_codex_job(job: CodexJobState, auth_context: AuthContext) -> None:
             _cleanup_codex_output_file(output_path)
             if job.status == "running":
                 _mark_codex_job_cancelled(job, "Codex task was cancelled before finishing.")
+            log_ai_call("cancelled", provider="codex", source=_codex_audit_source(job), username=auth_context.username, job_id=job.job_id, model_name=job.model_name, duration_ms=round((time.monotonic() - started_at) * 1000), error_type="CancelledError")
             raise
         finally:
             await asyncio.gather(stdout_task, stderr_task, return_exceptions=True)
@@ -450,11 +459,16 @@ async def _run_codex_job(job: CodexJobState, auth_context: AuthContext) -> None:
             )
             job.status = "completed"
             job.completed_at = datetime.now(UTC)
+            log_ai_call("completed", provider="codex", source=_codex_audit_source(job), username=auth_context.username, job_id=job.job_id, model_name=job.model_name, duration_ms=round(duration_seconds * 1000), usage=extract_codex_usage(job.output_parts))
         elif job.completed_at is None:
             job.completed_at = datetime.now(UTC)
         _codex_job_processes.pop(job.job_id, None)
     finally:
         await _release_job_slot(job)
+
+
+def _codex_audit_source(job: CodexJobState) -> str:
+    return "knowledge-processing" if job.output_mode == "final" else "ai-coding"
 
 
 async def _get_enabled_history_ask_llm_config() -> dict[str, object]:
@@ -508,6 +522,9 @@ async def _run_history_ask_llm_job(job: CodexJobState, auth_context: AuthContext
                 prompt=prompt,
                 system=system,
                 max_tokens=4000,
+                audit_source="knowledge-processing",
+                audit_username=auth_context.username,
+                audit_job_id=job.job_id,
             ),
             timeout=_job_timeout_seconds(job),
         )
@@ -569,8 +586,10 @@ async def _stream_codex_events(
             )
         except OSError as exc:
             _cleanup_codex_output_file(output_path)
+            log_ai_call("failed", provider="codex", source="ai-coding-stream", username=owner_username, model_name=effective_model_name, error_type=type(exc).__name__)
             yield _json_line({"type": "error", "message": f"Failed to start Codex: {exc}"})
             return
+        log_ai_call("started", provider="codex", source="ai-coding-stream", username=owner_username, model_name=effective_model_name)
 
         assert process.stdin is not None
         process.stdin.write(prompt.encode("utf-8"))
@@ -587,6 +606,7 @@ async def _stream_codex_events(
                 process.kill()
                 await process.wait()
                 _cleanup_codex_output_file(output_path)
+                log_ai_call("timed_out", provider="codex", source="ai-coding-stream", username=owner_username, model_name=effective_model_name, duration_ms=round((time.monotonic() - started_at) * 1000), error_type="TimeoutError")
                 yield _json_line({"type": "error", "message": "Codex task timed out before finishing."})
                 break
 
@@ -613,6 +633,7 @@ async def _stream_codex_events(
             git_status=git_status,
             model_name=effective_model_name,
         )
+        log_ai_call("completed", provider="codex", source="ai-coding-stream", username=owner_username, model_name=effective_model_name, duration_ms=round((time.monotonic() - started_at) * 1000), usage=extract_codex_usage(stdout_parts))
         yield _json_line({"type": "complete", "response": response.model_dump()})
     finally:
         await _release_codex_slot(owner_username)

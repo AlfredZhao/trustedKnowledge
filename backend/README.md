@@ -33,6 +33,15 @@ TRUSTED_KNOWLEDGE_MEDIA_MAX_IMAGE_MB=8
 The pool ping/lifetime settings keep idle Oracle sessions from being reused too long after mobile PWA resumes or network interruptions.
 
 AI Ask keeps Base URL, model name, and enablement in Oracle, but reads the LLM API key only from `TRUSTED_KNOWLEDGE_HISTORY_ASK_LLM_API_KEY`.
+Every actual Codex or OpenAI-compatible model call is appended as JSON to `../logs/ai-audit.log`. Records use `Asia/Shanghai` (`+08:00`) time and include outcome, provider, source module, user, job ID (where applicable), model, duration, and provider-reported input/output/cached/total tokens. Prompts, API keys, and model response bodies are never written to this audit log. The file rotates at 5 MiB and retains 10 backups.
+
+If a provider reports token usage, the audit log can calculate an explicitly labeled estimate. Set `TRUSTED_KNOWLEDGE_AI_PRICING_JSON` to a JSON object keyed by model name; each price is USD per 1 million tokens:
+
+```bash
+TRUSTED_KNOWLEDGE_AI_PRICING_JSON={"your-model":{"input_per_million_usd":2.0,"cached_input_per_million_usd":0.5,"output_per_million_usd":8.0}}
+```
+
+The fields are `estimated_cost_usd` and `cost_status=estimated`; they are not provider billing records. Missing usage or a missing/invalid price configuration results in `cost_status=unavailable` rather than a guessed amount.
 Personal Secrets encrypts username/password/notes fields with an AES-GCM key derived from `TRUSTED_KNOWLEDGE_PERSONAL_SECRET_KEY`; set it to a stable random value of at least 32 characters before using that module.
 
 Protected API routes require:

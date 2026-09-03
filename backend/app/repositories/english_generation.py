@@ -75,11 +75,13 @@ async def generate_english_material(payload: EnglishMaterialGenerationRequest, a
             model_name=payload.model_name,
             project_root=Path(__file__).resolve().parents[3],
             timeout_seconds=90,
+            audit_source="english-generation",
+            audit_username=auth_context.username,
         )
     else:
         async with acquire_connection() as connection:
             config = await get_history_ask_llm_config(connection)
-        content = await _call_history_ask_llm(config=config, prompt=prompt, system=system, max_tokens=1800)
+        content = await _call_history_ask_llm(config=config, prompt=prompt, system=system, max_tokens=1800, audit_source="english-generation", audit_username=auth_context.username)
 
     result = _extract_json(content)
     result["category"] = "AI生成"
@@ -152,7 +154,7 @@ def _load_card_sections(selected_skills: list[dict[str, str]]) -> EnglishMateria
     return templates[0] if templates else None
 
 
-async def complete_english_material(payload: EnglishMaterialCompletionRequest, auth_context: AuthContext) -> EnglishMaterialCompletionResult:
+async def complete_english_material(payload: EnglishMaterialCompletionRequest, auth_context: AuthContext, audit_job_id: str | None = None) -> EnglishMaterialCompletionResult:
     selected_skills = get_prompt_skills(payload.skill_ids, auth_context, agent_code="english-extraction")
     card_sections = _load_card_sections(selected_skills)
     system, prompt = _build_completion_prompt(payload, selected_skills)
@@ -164,11 +166,14 @@ async def complete_english_material(payload: EnglishMaterialCompletionRequest, a
             model_name=payload.model_name,
             project_root=Path(__file__).resolve().parents[3],
             timeout_seconds=90,
+            audit_source="english-completion",
+            audit_username=auth_context.username,
+            audit_job_id=audit_job_id,
         )
     else:
         async with acquire_connection() as connection:
             config = await get_history_ask_llm_config(connection)
-        content = await _call_history_ask_llm(config=config, prompt=prompt, system=system, max_tokens=900)
+        content = await _call_history_ask_llm(config=config, prompt=prompt, system=system, max_tokens=900, audit_source="english-completion", audit_username=auth_context.username, audit_job_id=audit_job_id)
 
     try:
         result = EnglishMaterialCompletionResult.model_validate(_extract_json(content))

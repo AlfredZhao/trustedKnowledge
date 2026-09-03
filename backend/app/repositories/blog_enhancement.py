@@ -39,17 +39,18 @@ def _build_enhancement_prompt(
 async def enhance_blog_factory_content(
     payload: BlogFactoryEnhancementRequest,
     auth_context: AuthContext,
+    audit_job_id: str | None = None,
 ) -> BlogFactoryEnhancementResult:
     selected_skills = get_prompt_skills(payload.skill_ids, auth_context, agent_code="blog-enhancement")
     system, prompt = _build_enhancement_prompt(payload, selected_skills)
     if payload.execution_provider == "codex":
         if not settings.allow_web_codex:
             raise RuntimeError("Codex CLI 未启用，请联系管理员开启 Web Codex 后再试。")
-        content = await run_codex_final(prompt=f"{system}\n\n{prompt}", model_name=payload.model_name, project_root=Path(__file__).resolve().parents[3], timeout_seconds=90)
+        content = await run_codex_final(prompt=f"{system}\n\n{prompt}", model_name=payload.model_name, project_root=Path(__file__).resolve().parents[3], timeout_seconds=90, audit_source="blog-enhancement", audit_username=auth_context.username, audit_job_id=audit_job_id)
     else:
         async with acquire_connection() as connection:
             config = await get_history_ask_llm_config(connection)
-        content = await _call_history_ask_llm(config=config, prompt=prompt, system=system, max_tokens=6000)
+        content = await _call_history_ask_llm(config=config, prompt=prompt, system=system, max_tokens=6000, audit_source="blog-enhancement", audit_username=auth_context.username, audit_job_id=audit_job_id)
     normalized = content.strip()
     if not normalized:
         raise RuntimeError("AI 未生成可回填的增强内容，请重试。")
