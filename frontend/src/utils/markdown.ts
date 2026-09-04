@@ -14,58 +14,94 @@ export interface EnhancedCopyOptions {
 
 interface MarkdownRenderOptions {
   syntaxHighlight?: boolean;
+  sourceMap?: boolean;
 }
 
 export function markdownToHtml(markdown: string, options: MarkdownRenderOptions = {}) {
   const lines = removeLeakedMarkdownCodePlaceholders(markdown).replace(/\r\n/g, "\n").split("\n");
   const html: string[] = [];
-  let paragraph: string[] = [];
+  let paragraph: Array<{ content: string; sourceLine: number }> = [];
+  let paragraphStartLine = -1;
+  let paragraphEndLine = -1;
   let listType: "ul" | "ol" | null = null;
-  let listItems: string[] = [];
+  let listItems: Array<{ content: string; sourceLine: number }> = [];
+  let listStartLine = -1;
+  let listEndLine = -1;
   let inCodeBlock = false;
   let codeLanguage = "";
   let codeLines: string[] = [];
+  let codeBlockStartLine = -1;
   let codeBlockIndex = 0;
   let inMathBlock = false;
   let mathLines: string[] = [];
+  let mathBlockStartLine = -1;
+
+  const pushBlock = (content: string, startLine: number, endLine: number) => {
+    if (options.sourceMap && startLine >= 0) {
+      html.push(`<div data-markdown-source-start="${startLine}" data-markdown-source-end="${endLine}">${content}</div>`);
+      return;
+    }
+    html.push(content);
+  };
 
   const flushParagraph = () => {
     if (!paragraph.length) return;
-    html.push(`<p>${formatInlineMarkdown(paragraph.join(" "))}</p>`);
+    const content = paragraph
+      .map((item) => {
+        const rendered = formatInlineMarkdown(item.content);
+        return options.sourceMap
+          ? `<span data-markdown-source-line="${item.sourceLine}">${rendered}</span>`
+          : rendered;
+      })
+      .join(" ");
+    pushBlock(`<p>${content}</p>`, paragraphStartLine, paragraphEndLine);
     paragraph = [];
+    paragraphStartLine = -1;
+    paragraphEndLine = -1;
   };
 
   const flushList = () => {
     if (!listType || !listItems.length) return;
-    html.push(`<${listType}>${listItems.map((item) => `<li>${formatInlineMarkdown(item)}</li>`).join("")}</${listType}>`);
+    pushBlock(
+      `<${listType}>${listItems.map((item) => `<li${options.sourceMap ? ` data-markdown-source-line="${item.sourceLine}"` : ""}>${formatInlineMarkdown(item.content)}</li>`).join("")}</${listType}>`,
+      listStartLine,
+      listEndLine,
+    );
     listType = null;
     listItems = [];
+    listStartLine = -1;
+    listEndLine = -1;
   };
 
-  const flushCodeBlock = () => {
+  const flushCodeBlock = (endLine: number) => {
     const code = codeLines.join("\n");
     const languageClass = codeLanguage ? ` class="language-${escapeAttribute(codeLanguage)}"` : "";
     const codeBlockId = `code-block-${codeBlockIndex++}`;
     if (codeLanguage.trim().toLowerCase() === "mermaid") {
-      html.push(renderMermaidBlock(code, codeBlockId));
+      pushBlock(renderMermaidBlock(code, codeBlockId), codeBlockStartLine, endLine);
       inCodeBlock = false;
       codeLanguage = "";
       codeLines = [];
+      codeBlockStartLine = -1;
       return;
     }
     const highlighted = options.syntaxHighlight === false ? null : highlightCode(code, codeLanguage);
-    html.push(
+    pushBlock(
       `<div class="markdown-code-block" data-code-block="${codeBlockId}"><button type="button" class="markdown-code-copy-button" data-copy-code-block="${codeBlockId}" aria-label="复制代码">复制</button><pre><code${languageClass}>${highlighted ?? escapeHtml(code)}</code></pre></div>`,
+      codeBlockStartLine,
+      endLine,
     );
     inCodeBlock = false;
     codeLanguage = "";
     codeLines = [];
+    codeBlockStartLine = -1;
   };
 
-  const flushMathBlock = () => {
-    html.push(renderLatexBlock(mathLines.join("\n")));
+  const flushMathBlock = (endLine: number) => {
+    pushBlock(renderLatexBlock(mathLines.join("\n")), mathBlockStartLine, endLine);
     inMathBlock = false;
     mathLines = [];
+    mathBlockStartLine = -1;
   };
 
   for (let index = 0; index < lines.length; index += 1) {
@@ -73,13 +109,14 @@ export function markdownToHtml(markdown: string, options: MarkdownRenderOptions 
     const codeFence = line.match(/^```(\S*)\s*$/);
     if (codeFence) {
       if (inCodeBlock) {
-        flushCodeBlock();
+        flushCodeBlock(index);
       } else {
         flushParagraph();
         flushList();
         inCodeBlock = true;
         codeLanguage = codeFence[1] ?? "";
         codeLines = [];
+        codeBlockStartLine = index;
       }
       continue;
     }
@@ -94,7 +131,7 @@ export function markdownToHtml(markdown: string, options: MarkdownRenderOptions 
       if (trimmed.endsWith("$$")) {
         const closingContent = trimmed.slice(0, -2).trim();
         if (closingContent) mathLines.push(closingContent);
-        flushMathBlock();
+        flushMathBlock(index);
       } else {
         mathLines.push(line);
       }
@@ -108,13 +145,14 @@ export function markdownToHtml(markdown: string, options: MarkdownRenderOptions 
 
       const inlineMathContent = extractSingleLineMathBlock(trimmedLine);
       if (inlineMathContent !== null) {
-        html.push(renderLatexBlock(inlineMathContent));
+        pushBlock(renderLatexBlock(inlineMathContent), index, index);
         continue;
       }
 
       const openingContent = trimmedLine.slice(2).trim();
       inMathBlock = true;
       mathLines = openingContent ? [openingContent] : [];
+      mathBlockStartLine = index;
       continue;
     }
 
@@ -127,7 +165,7 @@ export function markdownToHtml(markdown: string, options: MarkdownRenderOptions 
     if (isMarkdownHorizontalRule(line)) {
       flushParagraph();
       flushList();
-      html.push("<hr />");
+      pushBlock("<hr />", index, index);
       continue;
     }
 
@@ -135,6 +173,7 @@ export function markdownToHtml(markdown: string, options: MarkdownRenderOptions 
       flushParagraph();
       flushList();
 
+      const tableStartLine = index;
       const headerCells = parseMarkdownTableCells(line);
       const alignments = parseMarkdownTableAlignments(lines[index + 1]);
       const bodyRows: string[][] = [];
@@ -146,7 +185,7 @@ export function markdownToHtml(markdown: string, options: MarkdownRenderOptions 
       }
       index -= 1;
 
-      html.push(renderMarkdownTable(headerCells, alignments, bodyRows));
+      pushBlock(renderMarkdownTable(headerCells, alignments, bodyRows), tableStartLine, index);
       continue;
     }
 
@@ -155,7 +194,7 @@ export function markdownToHtml(markdown: string, options: MarkdownRenderOptions 
       flushParagraph();
       flushList();
       const level = heading[1].length;
-      html.push(`<h${level}>${formatInlineMarkdown(heading[2])}</h${level}>`);
+      pushBlock(`<h${level}>${formatInlineMarkdown(heading[2])}</h${level}>`, index, index);
       continue;
     }
 
@@ -163,7 +202,7 @@ export function markdownToHtml(markdown: string, options: MarkdownRenderOptions 
     if (quote) {
       flushParagraph();
       flushList();
-      html.push(`<blockquote><p>${formatInlineMarkdown(quote[1])}</p></blockquote>`);
+      pushBlock(`<blockquote><p>${formatInlineMarkdown(quote[1])}</p></blockquote>`, index, index);
       continue;
     }
 
@@ -172,7 +211,9 @@ export function markdownToHtml(markdown: string, options: MarkdownRenderOptions 
       flushParagraph();
       if (listType !== "ul") flushList();
       listType = "ul";
-      listItems.push(unorderedItem[1]);
+      listItems.push({ content: unorderedItem[1], sourceLine: index });
+      if (listStartLine === -1) listStartLine = index;
+      listEndLine = index;
       continue;
     }
 
@@ -181,15 +222,19 @@ export function markdownToHtml(markdown: string, options: MarkdownRenderOptions 
       flushParagraph();
       if (listType !== "ol") flushList();
       listType = "ol";
-      listItems.push(orderedItem[1]);
+      listItems.push({ content: orderedItem[1], sourceLine: index });
+      if (listStartLine === -1) listStartLine = index;
+      listEndLine = index;
       continue;
     }
 
-    paragraph.push(line.trim());
+    if (!paragraph.length) paragraphStartLine = index;
+    paragraph.push({ content: line.trim(), sourceLine: index });
+    paragraphEndLine = index;
   }
 
-  if (inCodeBlock) flushCodeBlock();
-  if (inMathBlock) flushMathBlock();
+  if (inCodeBlock) flushCodeBlock(lines.length - 1);
+  if (inMathBlock) flushMathBlock(lines.length - 1);
   flushParagraph();
   flushList();
 

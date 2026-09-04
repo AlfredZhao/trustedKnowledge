@@ -31,7 +31,7 @@ Keep entries concrete. Prefer file paths, function names, SQL placeholders, and 
 
 ### Safe Pattern
 
-`MarkdownImageTextarea` 必须通过其 imperative handle 保存并恢复 `selectionStart`、`selectionEnd`、`scrollTop` 和 `scrollLeft`。切到预览时，以保存的光标位置提取当前 Markdown 行，`MarkdownPreview` 再将其匹配到的块级元素滚动至可见区域。按钮和快捷键必须调用同一切换函数。
+`MarkdownImageTextarea` 必须通过其 imperative handle 保存并恢复 `selectionStart`、`selectionEnd`、`scrollTop` 和 `scrollLeft`，恢复前还必须将 textarea 滚入外层页面或移动端 Sheet 视口。切到预览时，以保存的光标位置提取当前 Markdown 行；`MarkdownPreview` 必须为段落内的每一行及每个列表项保留独立源码行锚点，不能只定位连续图片所在段落的第一行。对未完成加载的图片，在短暂过渡期内应于 `load/error` 后重新定位，但滚轮、触摸、指针或键盘操作后必须停止自动滚动。预览中的滚动不得改写编辑快照；按钮和快捷键必须调用同一切换函数。
 
 ### Guardrail
 

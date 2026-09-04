@@ -4,8 +4,8 @@ import { copyText } from "../utils/appUtils";
 import { markdownToHtml } from "../utils/markdown";
 
 export const MarkdownPreview = memo(
-  forwardRef<HTMLDivElement, { markdown: string; scrollAnchor?: string }>(function MarkdownPreview({ markdown, scrollAnchor }, ref) {
-    const html = useMemo(() => markdownToHtml(markdown), [markdown]);
+  forwardRef<HTMLDivElement, { markdown: string; sourceLine?: number | null }>(function MarkdownPreview({ markdown, sourceLine }, ref) {
+    const html = useMemo(() => markdownToHtml(markdown, { sourceMap: sourceLine !== undefined && sourceLine !== null }), [markdown, sourceLine]);
     const previewRef = useRef<HTMLDivElement>(null);
     useImperativeHandle(ref, () => previewRef.current as HTMLDivElement, []);
 
@@ -57,23 +57,72 @@ export const MarkdownPreview = memo(
     }, [html]);
 
     useEffect(() => {
-      const anchor = scrollAnchor?.trim();
-      if (!anchor || !previewRef.current) return;
+      if (sourceLine === undefined || sourceLine === null || !previewRef.current) return;
 
-      const normalize = (value: string) => value
-        .replace(/^(?:#{1,4}\s+|>\s?|[-*]\s+|\d+\.\s+|- \[[ xX]\]\s+)/, "")
-        .replace(/[`*_~|]/g, "")
-        .replace(/\s+/g, " ")
-        .trim()
-        .toLowerCase();
-      const targetText = normalize(anchor);
-      if (targetText.length < 2) return;
+      const preview = previewRef.current;
+      const blocks = Array.from(preview.querySelectorAll<HTMLElement>("[data-markdown-source-start]"));
+      const exactLineTargets = Array.from(preview.querySelectorAll<HTMLElement>(`[data-markdown-source-line="${sourceLine}"]`));
+      const target = exactLineTargets.find((element) => element.tagName === "IMG") ?? exactLineTargets[0] ?? blocks.find((element) => {
+        const start = Number(element.dataset.markdownSourceStart);
+        const end = Number(element.dataset.markdownSourceEnd);
+        return start <= sourceLine && sourceLine <= end;
+      }) ?? (() => {
+        const precedingBlocks = blocks.filter((element) => Number(element.dataset.markdownSourceEnd) < sourceLine);
+        return precedingBlocks[precedingBlocks.length - 1] ?? blocks[0];
+      })();
+      if (!target) return;
 
-      const target = Array.from(previewRef.current.querySelectorAll<HTMLElement>(
-        "h1, h2, h3, h4, p, li, blockquote, .markdown-code-block, .markdown-mermaid-block, .tk-table-wrapper",
-      )).find((element) => normalize(element.textContent ?? "").includes(targetText));
-      target?.scrollIntoView({ block: "center" });
-    }, [html, scrollAnchor]);
+      let isActive = true;
+      let hasUserInteracted = false;
+      let frameId: number | null = null;
+      const stopAutoPositioning = () => {
+        hasUserInteracted = true;
+      };
+      const positionTarget = () => {
+        if (!isActive || hasUserInteracted) return;
+        target.scrollIntoView({ block: "center" });
+      };
+      const schedulePositioning = () => {
+        if (frameId !== null) window.cancelAnimationFrame(frameId);
+        frameId = window.requestAnimationFrame(() => {
+          frameId = null;
+          positionTarget();
+        });
+      };
+      const stopAfterImageLayoutSettles = window.setTimeout(() => {
+        isActive = false;
+      }, 2_000);
+
+      // Images are lazy-loaded and can change the document height after the
+      // preview first appears. Reapply the source-line position while the
+      // transition is still active, but never take scrolling away from a user.
+      const images = Array.from(preview.querySelectorAll("img"));
+      images.forEach((image) => {
+        if (!image.complete) {
+          image.addEventListener("load", schedulePositioning);
+          image.addEventListener("error", schedulePositioning);
+        }
+      });
+      window.addEventListener("wheel", stopAutoPositioning, { capture: true, passive: true });
+      window.addEventListener("touchstart", stopAutoPositioning, { capture: true, passive: true });
+      window.addEventListener("pointerdown", stopAutoPositioning, { capture: true, passive: true });
+      window.addEventListener("keydown", stopAutoPositioning, true);
+      schedulePositioning();
+
+      return () => {
+        isActive = false;
+        if (frameId !== null) window.cancelAnimationFrame(frameId);
+        window.clearTimeout(stopAfterImageLayoutSettles);
+        images.forEach((image) => {
+          image.removeEventListener("load", schedulePositioning);
+          image.removeEventListener("error", schedulePositioning);
+        });
+        window.removeEventListener("wheel", stopAutoPositioning, true);
+        window.removeEventListener("touchstart", stopAutoPositioning, true);
+        window.removeEventListener("pointerdown", stopAutoPositioning, true);
+        window.removeEventListener("keydown", stopAutoPositioning, true);
+      };
+    }, [html, sourceLine]);
 
     async function handlePreviewClick(event: React.MouseEvent<HTMLDivElement>) {
       const target = event.target;

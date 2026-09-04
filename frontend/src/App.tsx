@@ -8157,15 +8157,8 @@ interface MarkdownImageTextareaHandle {
   restoreViewport: (viewport: MarkdownEditorViewport) => void;
 }
 
-function getMarkdownPreviewAnchor(markdown: string, selectionStart: number) {
-  const lineStart = markdown.lastIndexOf("\n", Math.max(0, selectionStart - 1)) + 1;
-  const lineEnd = markdown.indexOf("\n", selectionStart);
-  const currentLine = markdown.slice(lineStart, lineEnd === -1 ? markdown.length : lineEnd).trim();
-  if (currentLine) return currentLine;
-
-  const precedingContent = markdown.slice(0, lineStart).trimEnd();
-  const precedingLineStart = precedingContent.lastIndexOf("\n") + 1;
-  return precedingContent.slice(precedingLineStart).trim();
+function getMarkdownSourceLine(markdown: string, selectionStart: number) {
+  return markdown.slice(0, selectionStart).split("\n").length - 1;
 }
 
 const MarkdownImageTextarea = forwardRef<MarkdownImageTextareaHandle, {
@@ -8196,6 +8189,10 @@ const MarkdownImageTextarea = forwardRef<MarkdownImageTextareaHandle, {
       const textarea = textareaRef.current;
       if (!textarea) return;
       // Formatting changes the controlled value and moves focus to the toolbar.
+      // On a preview-to-edit switch, the page or mobile Sheet can still be
+      // scrolled to the former preview position. Bring the editor back into the
+      // outer viewport before restoring its own viewport.
+      textarea.scrollIntoView({ block: "center" });
       // Preserve the editor viewport so a long document does not jump back to its
       // first line while the selection is restored.
       textarea.focus({ preventScroll: true });
@@ -8610,7 +8607,7 @@ function KnowledgeForm({
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
 }) {
   const [answerView, setAnswerView] = useState<"edit" | "preview">("edit");
-  const [answerPreviewAnchor, setAnswerPreviewAnchor] = useState("");
+  const [answerPreviewSourceLine, setAnswerPreviewSourceLine] = useState<number | null>(null);
   const answerEditorRef = useRef<MarkdownImageTextareaHandle | null>(null);
   const answerViewportRef = useRef<MarkdownEditorViewport | null>(null);
   const markdownViewShortcutLabel = getMarkdownViewToggleShortcutLabel();
@@ -8650,7 +8647,7 @@ function KnowledgeForm({
       const viewport = answerEditorRef.current?.getViewport();
       if (viewport) {
         answerViewportRef.current = viewport;
-        setAnswerPreviewAnchor(getMarkdownPreviewAnchor(draft.answer, viewport.selectionStart));
+        setAnswerPreviewSourceLine(getMarkdownSourceLine(draft.answer, viewport.selectionStart));
       }
     }
     setAnswerView(nextView);
@@ -8793,7 +8790,7 @@ function KnowledgeForm({
                 placeholder={contentPlaceholder}
               />
             ) : draft.answer.trim() ? (
-              <MarkdownPreview markdown={draft.answer} scrollAnchor={answerPreviewAnchor} />
+              <MarkdownPreview markdown={draft.answer} sourceLine={answerPreviewSourceLine} />
             ) : (
               <div className="grid min-h-[330px] place-items-center rounded-lg border border-dashed border-white/10 bg-white/[0.025] p-4 text-center text-sm text-slate-500">
                 暂无可信答案可预览。
@@ -12505,7 +12502,7 @@ function TodoWorkspace({
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
 }) {
   const [taskContentView, setTaskContentView] = useState<"edit" | "preview">("edit");
-  const [taskPreviewAnchor, setTaskPreviewAnchor] = useState("");
+  const [taskPreviewSourceLine, setTaskPreviewSourceLine] = useState<number | null>(null);
   const taskEditorRef = useRef<MarkdownImageTextareaHandle | null>(null);
   const taskViewportRef = useRef<MarkdownEditorViewport | null>(null);
   const markdownViewShortcutLabel = getMarkdownViewToggleShortcutLabel();
@@ -12557,7 +12554,7 @@ function TodoWorkspace({
       const viewport = taskEditorRef.current?.getViewport();
       if (viewport) {
         taskViewportRef.current = viewport;
-        setTaskPreviewAnchor(getMarkdownPreviewAnchor(draft.content, viewport.selectionStart));
+        setTaskPreviewSourceLine(getMarkdownSourceLine(draft.content, viewport.selectionStart));
       }
     }
     setTaskContentView(nextView);
@@ -12656,7 +12653,7 @@ function TodoWorkspace({
                 placeholder="补充待办事项背景、验收标准或下一步动作。"
               />
             ) : draft.content.trim() ? (
-              <MarkdownPreview markdown={draft.content} scrollAnchor={taskPreviewAnchor} />
+              <MarkdownPreview markdown={draft.content} sourceLine={taskPreviewSourceLine} />
             ) : (
               <div className="grid min-h-[320px] place-items-center rounded-lg border border-dashed border-white/10 bg-white/[0.025] p-4 text-center text-sm text-slate-500 xl:min-h-[380px]">
                 暂无任务内容可预览。

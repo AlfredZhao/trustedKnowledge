@@ -29,8 +29,8 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Fixed / 修复
 
-- Fixed Markdown editor/preview switching resetting long documents to their first line. Knowledge and Todo editors now preserve the caret, selection, and scroll position when returning to edit mode, while preview mode scrolls to the rendered block for the caret's current Markdown line.
-- 修复长 Markdown 在编辑/预览切换时总回到首行的问题。可信知识和待办编辑器现会在返回编辑模式时恢复光标、选区和滚动位置，并在预览模式定位到光标当前 Markdown 行对应的渲染内容。
+- Fixed Markdown editor/preview switching resetting long documents to their first line. Knowledge and Todo editors now preserve the caret, selection, and scroll position when returning to edit mode, while preview mode follows the exact Markdown source line, including individual images in a consecutive image block, even as lazy-loaded images change the layout.
+- 修复长 Markdown 在编辑/预览切换时总回到首行的问题。可信知识和待办编辑器现会在返回编辑模式时将编辑框带回视口并恢复光标、选区和滚动位置；预览模式会精确定位到光标所在 Markdown 源码行，即使多张连续图片被渲染为同一段落，也会在懒加载图片改变排版时持续定位至对应图片。
 
 - Fixed AI Coding live output rendering raw Codex JSONL events with escaped line breaks. Events are now expanded into readable, indented fields with their multi-line content displayed normally.
 - 修复 AI 编程实时输出直接展示 Codex JSONL 原文、换行显示为转义符的问题。事件现会展开为缩进清晰的字段，多行内容按正常换行展示。
