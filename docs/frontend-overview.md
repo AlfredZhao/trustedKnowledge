@@ -24,6 +24,7 @@
 - Markdown 图片：可信知识和 Todo 正文仍保存为文本 Markdown，图片由后端媒体 API 上传到本地媒体仓库，正文中插入 `/api/media/{public_id}/content` 形式的图片链接。
 - Markdown 工具栏在应用标题、列表、代码、表格、注释或图片插入后会恢复选区，并保留当前编辑区的横向和纵向滚动位置；长文编辑不会因格式化跳回首行。
 - 可信知识编辑和待办任务内容的 Markdown 编辑 / 预览模式可用快捷键切换：macOS 为 `⌘ + \\`，Windows/Linux 为 `Ctrl + \\`；仅在对应内容编辑器打开时生效，按钮悬停提示会显示该快捷键。
+- 在可信知识或待办的长 Markdown 中切换到预览时，会定位至光标所在行对应的渲染块；切回编辑时会恢复此前的光标、选区及横纵滚动位置。
 - 共享 Markdown 编辑器可用 `⌘ + I`（macOS）或 `Ctrl + I`（Windows/Linux）打开与“图片”按钮相同的本机图片选择器；上传进行中或编辑器禁用时不会重复触发。
 
 当前前端大部分逻辑集中在一个较大的 `App.tsx` 文件中。它同时承载导航、状态恢复、数据加载、视图切换和大部分页面组件。项目没有使用 React Router；当前工作区由 `activeView` 控制，并持久化到 localStorage 的 `trustedKnowledge.uiState.v2`。

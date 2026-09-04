@@ -15,6 +15,28 @@ When fixing a bug with meaningful regression risk, add a short entry with:
 
 Keep entries concrete. Prefer file paths, function names, SQL placeholders, and test names over broad advice.
 
+## Markdown 编辑与预览切换不得丢失当前位置
+
+### Symptom
+
+长 Markdown 在可信知识或待办编辑器中切换“Markdown 预览”后回到顶部，切回编辑时光标和滚动位置丢失。
+
+### Trigger
+
+将光标置于长文档中间或末尾，再通过按钮或 `Ctrl/⌘ + \\` 在编辑和预览之间切换。
+
+### Root Cause
+
+两种模式条件渲染，切换会卸载 textarea；若未在卸载前保存选区和滚动位置，重新挂载的受控 textarea 会回到浏览器默认位置。
+
+### Safe Pattern
+
+`MarkdownImageTextarea` 必须通过其 imperative handle 保存并恢复 `selectionStart`、`selectionEnd`、`scrollTop` 和 `scrollLeft`。切到预览时，以保存的光标位置提取当前 Markdown 行，`MarkdownPreview` 再将其匹配到的块级元素滚动至可见区域。按钮和快捷键必须调用同一切换函数。
+
+### Guardrail
+
+运行 `cd frontend && npm run build`。手工在可信知识和待办中分别准备包含标题、段落、列表及代码块的长内容，将光标放在中后段，分别用按钮和快捷键连续来回切换；确认预览定位到当前内容附近、返回编辑后焦点/光标与横纵滚动位置均保留，并确认窄屏编辑 Sheet 中控件没有溢出。
+
 ## 博客工厂 AI 审阅不得无限停留在“审阅中”
 
 ### Symptom

@@ -4,7 +4,7 @@ import { copyText } from "../utils/appUtils";
 import { markdownToHtml } from "../utils/markdown";
 
 export const MarkdownPreview = memo(
-  forwardRef<HTMLDivElement, { markdown: string }>(function MarkdownPreview({ markdown }, ref) {
+  forwardRef<HTMLDivElement, { markdown: string; scrollAnchor?: string }>(function MarkdownPreview({ markdown, scrollAnchor }, ref) {
     const html = useMemo(() => markdownToHtml(markdown), [markdown]);
     const previewRef = useRef<HTMLDivElement>(null);
     useImperativeHandle(ref, () => previewRef.current as HTMLDivElement, []);
@@ -55,6 +55,25 @@ export const MarkdownPreview = memo(
         observer.disconnect();
       };
     }, [html]);
+
+    useEffect(() => {
+      const anchor = scrollAnchor?.trim();
+      if (!anchor || !previewRef.current) return;
+
+      const normalize = (value: string) => value
+        .replace(/^(?:#{1,4}\s+|>\s?|[-*]\s+|\d+\.\s+|- \[[ xX]\]\s+)/, "")
+        .replace(/[`*_~|]/g, "")
+        .replace(/\s+/g, " ")
+        .trim()
+        .toLowerCase();
+      const targetText = normalize(anchor);
+      if (targetText.length < 2) return;
+
+      const target = Array.from(previewRef.current.querySelectorAll<HTMLElement>(
+        "h1, h2, h3, h4, p, li, blockquote, .markdown-code-block, .markdown-mermaid-block, .tk-table-wrapper",
+      )).find((element) => normalize(element.textContent ?? "").includes(targetText));
+      target?.scrollIntoView({ block: "center" });
+    }, [html, scrollAnchor]);
 
     async function handlePreviewClick(event: React.MouseEvent<HTMLDivElement>) {
       const target = event.target;

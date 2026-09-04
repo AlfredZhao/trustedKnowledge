@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, forwardRef, lazy, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import {
   Archive,
   Bold,
@@ -8145,19 +8145,42 @@ function MobileEditorSheet({
   );
 }
 
-function MarkdownImageTextarea({
-  value,
-  onChange,
-  className,
-  placeholder,
-  disabled,
-}: {
+interface MarkdownEditorViewport {
+  selectionStart: number;
+  selectionEnd: number;
+  scrollTop: number;
+  scrollLeft: number;
+}
+
+interface MarkdownImageTextareaHandle {
+  getViewport: () => MarkdownEditorViewport;
+  restoreViewport: (viewport: MarkdownEditorViewport) => void;
+}
+
+function getMarkdownPreviewAnchor(markdown: string, selectionStart: number) {
+  const lineStart = markdown.lastIndexOf("\n", Math.max(0, selectionStart - 1)) + 1;
+  const lineEnd = markdown.indexOf("\n", selectionStart);
+  const currentLine = markdown.slice(lineStart, lineEnd === -1 ? markdown.length : lineEnd).trim();
+  if (currentLine) return currentLine;
+
+  const precedingContent = markdown.slice(0, lineStart).trimEnd();
+  const precedingLineStart = precedingContent.lastIndexOf("\n") + 1;
+  return precedingContent.slice(precedingLineStart).trim();
+}
+
+const MarkdownImageTextarea = forwardRef<MarkdownImageTextareaHandle, {
   value: string;
   onChange: (value: string) => void;
   className: string;
   placeholder?: string;
   disabled?: boolean;
-}) {
+}>(function MarkdownImageTextarea({
+  value,
+  onChange,
+  className,
+  placeholder,
+  disabled,
+}, ref) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
@@ -8181,6 +8204,21 @@ function MarkdownImageTextarea({
       textarea.scrollLeft = scrollLeft;
     });
   }
+
+  useImperativeHandle(ref, () => ({
+    getViewport: () => {
+      const textarea = textareaRef.current;
+      return {
+        selectionStart: textarea?.selectionStart ?? value.length,
+        selectionEnd: textarea?.selectionEnd ?? value.length,
+        scrollTop: textarea?.scrollTop ?? 0,
+        scrollLeft: textarea?.scrollLeft ?? 0,
+      };
+    },
+    restoreViewport: (viewport) => {
+      restoreEditorSelection(viewport.selectionStart, viewport.selectionEnd, viewport.scrollTop, viewport.scrollLeft);
+    },
+  }), [value]);
 
   async function uploadAndInsert(files: File[]) {
     const imageFiles = files.filter((file) => file.type.startsWith("image/"));
@@ -8486,7 +8524,7 @@ function MarkdownImageTextarea({
       />
     </div>
   );
-}
+});
 
 function isMarkdownViewToggleShortcut(event: KeyboardEvent) {
   if (event.code !== "Backslash" || event.altKey || event.shiftKey || event.isComposing) return false;
@@ -8572,6 +8610,9 @@ function KnowledgeForm({
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
 }) {
   const [answerView, setAnswerView] = useState<"edit" | "preview">("edit");
+  const [answerPreviewAnchor, setAnswerPreviewAnchor] = useState("");
+  const answerEditorRef = useRef<MarkdownImageTextareaHandle | null>(null);
+  const answerViewportRef = useRef<MarkdownEditorViewport | null>(null);
   const markdownViewShortcutLabel = getMarkdownViewToggleShortcutLabel();
   const canSubmit = draft.question.trim().length > 0 && draft.answer.trim().length > 0 && !isSaving;
   const isEditing = mode === "edit";
@@ -8591,12 +8632,29 @@ function KnowledgeForm({
     function handleKeyDown(event: KeyboardEvent) {
       if (event.defaultPrevented || !isMarkdownViewToggleShortcut(event)) return;
       event.preventDefault();
-      setAnswerView((current) => (current === "edit" ? "preview" : "edit"));
+      setAnswerDisplay(answerView === "edit" ? "preview" : "edit");
     }
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isEditing]);
+  }, [answerView, isEditing]);
+
+  useEffect(() => {
+    if (answerView !== "edit" || !answerViewportRef.current) return;
+    answerEditorRef.current?.restoreViewport(answerViewportRef.current);
+  }, [answerView]);
+
+  function setAnswerDisplay(nextView: "edit" | "preview") {
+    if (nextView === answerView) return;
+    if (answerView === "edit") {
+      const viewport = answerEditorRef.current?.getViewport();
+      if (viewport) {
+        answerViewportRef.current = viewport;
+        setAnswerPreviewAnchor(getMarkdownPreviewAnchor(draft.answer, viewport.selectionStart));
+      }
+    }
+    setAnswerView(nextView);
+  }
 
   return (
     <section className={`min-w-0 ${embedded ? "" : "rounded-lg border border-white/10 bg-ink-900/74 p-4 shadow-soft-glow backdrop-blur-xl"}`}>
@@ -8709,7 +8767,7 @@ function KnowledgeForm({
                   aria-keyshortcuts={/Macintosh|Mac OS X/.test(navigator.userAgent) ? "Meta+Backslash" : "Control+Backslash"}
                   title={`切换到编辑（${markdownViewShortcutLabel}）`}
                   type="button"
-                  onClick={() => setAnswerView("edit")}
+                  onClick={() => setAnswerDisplay("edit")}
                 >
                   编辑
                 </button>
@@ -8720,7 +8778,7 @@ function KnowledgeForm({
                   aria-keyshortcuts={/Macintosh|Mac OS X/.test(navigator.userAgent) ? "Meta+Backslash" : "Control+Backslash"}
                   title={`切换到 Markdown 预览（${markdownViewShortcutLabel}）`}
                   type="button"
-                  onClick={() => setAnswerView("preview")}
+                  onClick={() => setAnswerDisplay("preview")}
                 >
                   Markdown 预览
                 </button>
@@ -8728,13 +8786,14 @@ function KnowledgeForm({
             </div>
             {answerView === "edit" ? (
               <MarkdownImageTextarea
+                ref={answerEditorRef}
                 value={draft.answer}
                 className="control min-h-[330px] resize-none leading-7"
                 onChange={(answer) => onDraftChange({ ...draft, answer })}
                 placeholder={contentPlaceholder}
               />
             ) : draft.answer.trim() ? (
-              <MarkdownPreview markdown={draft.answer} />
+              <MarkdownPreview markdown={draft.answer} scrollAnchor={answerPreviewAnchor} />
             ) : (
               <div className="grid min-h-[330px] place-items-center rounded-lg border border-dashed border-white/10 bg-white/[0.025] p-4 text-center text-sm text-slate-500">
                 暂无可信答案可预览。
@@ -12446,6 +12505,9 @@ function TodoWorkspace({
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
 }) {
   const [taskContentView, setTaskContentView] = useState<"edit" | "preview">("edit");
+  const [taskPreviewAnchor, setTaskPreviewAnchor] = useState("");
+  const taskEditorRef = useRef<MarkdownImageTextareaHandle | null>(null);
+  const taskViewportRef = useRef<MarkdownEditorViewport | null>(null);
   const markdownViewShortcutLabel = getMarkdownViewToggleShortcutLabel();
   const [isFiltersExpanded, setIsFiltersExpanded] = useState(false);
   const [isTodoListCollapsed, setIsTodoListCollapsed] = useState(false);
@@ -12477,12 +12539,29 @@ function TodoWorkspace({
     function handleKeyDown(event: KeyboardEvent) {
       if (event.defaultPrevented || !isMarkdownViewToggleShortcut(event)) return;
       event.preventDefault();
-      setTaskContentView((current) => (current === "edit" ? "preview" : "edit"));
+      setTaskContentDisplay(taskContentView === "edit" ? "preview" : "edit");
     }
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedId]);
+  }, [selectedId, taskContentView]);
+
+  useEffect(() => {
+    if (taskContentView !== "edit" || !taskViewportRef.current) return;
+    taskEditorRef.current?.restoreViewport(taskViewportRef.current);
+  }, [taskContentView]);
+
+  function setTaskContentDisplay(nextView: "edit" | "preview") {
+    if (nextView === taskContentView) return;
+    if (taskContentView === "edit") {
+      const viewport = taskEditorRef.current?.getViewport();
+      if (viewport) {
+        taskViewportRef.current = viewport;
+        setTaskPreviewAnchor(getMarkdownPreviewAnchor(draft.content, viewport.selectionStart));
+      }
+    }
+    setTaskContentView(nextView);
+  }
   const todoDetailPanel = (
     <>
       <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -12551,7 +12630,7 @@ function TodoWorkspace({
                   aria-keyshortcuts={/Macintosh|Mac OS X/.test(navigator.userAgent) ? "Meta+Backslash" : "Control+Backslash"}
                   title={`切换到编辑（${markdownViewShortcutLabel}）`}
                   type="button"
-                  onClick={() => setTaskContentView("edit")}
+                  onClick={() => setTaskContentDisplay("edit")}
                 >
                   编辑
                 </button>
@@ -12562,7 +12641,7 @@ function TodoWorkspace({
                   aria-keyshortcuts={/Macintosh|Mac OS X/.test(navigator.userAgent) ? "Meta+Backslash" : "Control+Backslash"}
                   title={`切换到 Markdown 预览（${markdownViewShortcutLabel}）`}
                   type="button"
-                  onClick={() => setTaskContentView("preview")}
+                  onClick={() => setTaskContentDisplay("preview")}
                 >
                   Markdown 预览
                 </button>
@@ -12570,13 +12649,14 @@ function TodoWorkspace({
             </div>
             {taskContentView === "edit" ? (
               <MarkdownImageTextarea
+                ref={taskEditorRef}
                 className="control min-h-[320px] resize-none leading-7 xl:min-h-[380px]"
                 value={draft.content}
                 onChange={(content) => onDraftChange({ ...draft, content })}
                 placeholder="补充待办事项背景、验收标准或下一步动作。"
               />
             ) : draft.content.trim() ? (
-              <MarkdownPreview markdown={draft.content} />
+              <MarkdownPreview markdown={draft.content} scrollAnchor={taskPreviewAnchor} />
             ) : (
               <div className="grid min-h-[320px] place-items-center rounded-lg border border-dashed border-white/10 bg-white/[0.025] p-4 text-center text-sm text-slate-500 xl:min-h-[380px]">
                 暂无任务内容可预览。
