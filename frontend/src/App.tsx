@@ -8385,6 +8385,19 @@ function MarkdownImageTextarea({
     void uploadAndInsert(files);
   }
 
+  function openImagePicker() {
+    if (disabled || isUploadingImage) return;
+    fileInputRef.current?.click();
+  }
+
+  function handleKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.nativeEvent.isComposing || event.altKey || event.shiftKey || (!event.metaKey && !event.ctrlKey) || event.key.toLowerCase() !== "i") return;
+    if (disabled || isUploadingImage) return;
+
+    event.preventDefault();
+    openImagePicker();
+  }
+
   return (
     <div className="space-y-2">
       <div className="markdown-toolbar rounded-lg p-2">
@@ -8440,9 +8453,9 @@ function MarkdownImageTextarea({
             <button
               className="markdown-tool-button ml-auto"
               disabled={disabled || isUploadingImage}
-              title="插入图片"
+              title="插入图片（⌘/Ctrl + I）"
               type="button"
-              onClick={() => fileInputRef.current?.click()}
+              onClick={openImagePicker}
             >
               {isUploadingImage ? <Loader2 className="animate-spin" size={15} /> : <ImagePlus size={15} />}
               <span>{isUploadingImage ? "上传中" : "图片"}</span>
@@ -8468,6 +8481,7 @@ function MarkdownImageTextarea({
         placeholder={placeholder}
         value={value}
         onChange={(event) => onChange(event.target.value)}
+        onKeyDown={handleKeyDown}
         onPaste={handlePaste}
       />
     </div>

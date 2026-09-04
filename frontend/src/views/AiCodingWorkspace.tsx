@@ -203,7 +203,7 @@ export default function AiCodingWorkspace({
                   {liveLastActivityAt ? ` · ${inactiveSeconds} 秒前` : ""}
                 </div>
                 {isCodexInactive ? <div className="rounded-lg border border-amberline/25 bg-amberline/10 px-3 py-3 text-sm leading-6 text-amber-100">超过 {inactiveSeconds} 秒没有新输出。任务可能正在等待外部命令、网络、审批或长耗时步骤；Web 端无法回答终端确认，请查看输出或终止任务。</div> : null}
-                <CodexOutputBlock title="Live Output" value={liveOutput || "等待 Codex 输出事件..."} />
+                <CodexOutputBlock title="Live Output（格式化）" value={formatCodexLiveOutput(liveOutput) || "等待 Codex 输出事件..."} />
                 {liveErrorOutput ? <CodexOutputBlock title="Live Error Output" value={liveErrorOutput} tone="warning" /> : null}
                 <button
                   className="flex h-10 w-full items-center justify-center rounded-lg border border-red-300/35 bg-red-300/10 px-4 text-sm font-medium text-red-200 transition hover:bg-red-300/16"
@@ -624,6 +624,47 @@ function CodexOutputBlock({
       <pre className="max-h-[420px] overflow-auto whitespace-pre-wrap break-words text-xs leading-5 text-slate-300">{value}</pre>
     </div>
   );
+}
+
+function formatCodexLiveOutput(output: string) {
+  return output
+    .replace(/\u001b\[[0-9;]*m/g, "")
+    .split(/\r?\n/)
+    .map((line) => {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith("{")) return line;
+
+      try {
+        return formatCodexLiveValue(JSON.parse(trimmed), 0);
+      } catch {
+        return line;
+      }
+    })
+    .join("\n\n")
+    .trim();
+}
+
+function formatCodexLiveValue(value: unknown, depth: number): string {
+  const indent = "  ".repeat(depth);
+
+  if (typeof value === "string") return value.replace(/\r?\n/g, `\n${indent}`);
+  if (value === null || typeof value !== "object") return String(value);
+
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => {
+        if (item !== null && typeof item === "object") return `${indent}-\n${formatCodexLiveValue(item, depth + 1)}`;
+        return `${indent}- ${formatCodexLiveValue(item, depth + 1)}`;
+      })
+      .join("\n");
+  }
+
+  return Object.entries(value)
+    .map(([key, item]) => {
+      if (item !== null && typeof item === "object") return `${indent}${key}:\n${formatCodexLiveValue(item, depth + 1)}`;
+      return `${indent}${key}: ${formatCodexLiveValue(item, depth + 1)}`;
+    })
+    .join("\n");
 }
 
 function ClearCodexMessageDisplayButton({ onClick }: { onClick: () => void }) {

@@ -18,6 +18,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Changed / 变更
 
+- Changed the shared Markdown image action to support `⌘ + I` on macOS and `Ctrl + I` on Windows/Linux, opening the same local image picker as the toolbar's `图片` button.
+- 共享 Markdown 编辑器的图片操作新增快捷键：macOS 使用 `⌘ + I`，Windows/Linux 使用 `Ctrl + I`，与工具栏“图片”按钮打开相同的本机图片选择器。
+
 - Changed downloaded learning-card HTML copy controls to be centered. Skill-defined `learning-card.json` section copy controls now use their own centered row.
 - 调整下载学习卡 HTML 的复制操作为居中布局；由 Skill 的 `learning-card.json` 定义的区块复制按钮单独使用一行并居中显示。
 
@@ -25,6 +28,9 @@ The format follows the common GitHub changelog convention inspired by
 - 调整英语素材详情弹窗的 PWA 操作区：窄屏每行显示两个按钮；`sm` 及以上仍保持每行三个按钮。
 
 #### Fixed / 修复
+
+- Fixed AI Coding live output rendering raw Codex JSONL events with escaped line breaks. Events are now expanded into readable, indented fields with their multi-line content displayed normally.
+- 修复 AI 编程实时输出直接展示 Codex JSONL 原文、换行显示为转义符的问题。事件现会展开为缩进清晰的字段，多行内容按正常换行展示。
 
 ### [0.4.6] - 2026-09-02
 
