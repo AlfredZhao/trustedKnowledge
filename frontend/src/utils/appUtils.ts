@@ -107,73 +107,73 @@ const COMPACT_BLOG_FACTORY_COVER_PROMPT_TEMPLATE = [
 export const BLOG_FACTORY_COVER_STYLE_PRESETS = [
   {
     id: "clear-minimal-business",
-    styleName: "清透极简商务（默认）",
-    styleText: "C4D 卡通 3D, Octane render, 干净现代，浅灰渐变底色，柔和低对比",
-    lightText: "柔和棚拍灯光，漫射天光，均匀柔光",
-    materialText: "玻璃, 亚克力, 磨砂透明材质，浅银金属细边",
+    styleName: "轻量商务插画 · 雾蓝课程（默认）",
+    styleText: "轻量商务扁平矢量插画，暖白底搭配雾蓝与浅青色系，大面积留白；左侧保留干净的标题与摘要排版区域，不生成可读文字，右侧以课程路径、知识卡片与阶梯里程碑呈现公开课和方法论主题；亲和、清晰、低饱和，不要 3D 渲染或复杂界面",
+    lightText: "柔和均匀的自然光感，低对比，无强烈高光或戏剧化阴影",
+    materialText: "细腻哑光纸张与轻薄矢量插画质感，少量克制的雾蓝色点缀",
   },
   {
     id: "dark-cyber-tech",
-    styleName: "暗黑赛博科技",
-    styleText: "C4D 卡通 3D, Octane render, 暗黑赛博科技，深黑底色，低明度画面，高对比光影",
-    lightText: "局部冷色聚光灯，轮廓霓虹光，微弱环境补光，暗场光影",
-    materialText: "深色透黑玻璃，深空灰亚克力，半透磨砂深色材质，金属冷银描边",
+    styleName: "轻量商务插画 · 靛紫 AI",
+    styleText: "轻量商务扁平矢量插画，暖白底搭配靛蓝与柔和紫罗兰色系，大面积留白；左侧保留干净的标题与摘要排版区域，不生成可读文字，右侧以智能体协作节点、模型中枢与有序信息流呈现 AI 和自动化主题；理性、前沿、低饱和，不要暗黑赛博、霓虹或 3D 渲染",
+    lightText: "柔和均匀的自然光感，低对比，无强烈高光或戏剧化阴影",
+    materialText: "细腻哑光纸张与轻薄矢量插画质感，少量克制的靛紫色点缀",
   },
   {
     id: "apple-matte-minimal",
-    styleName: "轻白产品哑光",
-    styleText: "C4D 卡通 3D, Octane render, 轻白产品发布会极简风，纯白哑光底色，低饱和高级灰，柔和层次",
-    lightText: "均匀漫射日光，无影柔光，平缓明暗过渡",
-    materialText: "雾面哑光玻璃，米灰磨砂亚克力，细浅金色金属边缘",
+    styleName: "轻量商务插画 · 青蓝 APEX",
+    styleText: "轻量商务扁平矢量插画，暖白底搭配青绿与湖蓝色系，大面积留白；左侧保留干净的标题与摘要排版区域，不生成可读文字，右侧以低代码积木、应用模块与顺畅流程连接呈现 APEX 和产品交付主题；轻盈、清晰、可落地，不要产品发布会 3D 或复杂界面",
+    lightText: "柔和均匀的自然光感，低对比，无强烈高光或戏剧化阴影",
+    materialText: "细腻哑光纸张与轻薄矢量插画质感，少量克制的青蓝色点缀",
   },
   {
     id: "warm-industrial-matte",
-    styleName: "暖调工业哑光科技",
-    styleText: "C4D 卡通 3D, Octane render, 暖调工业科技，浅炭灰底色，中性低对比，温润质感",
-    lightText: "暖白定向柔光，局部补光，无强烈高光",
-    materialText: "茶透玻璃，暖灰哑光亚克力，古铜细金属描边",
+    styleName: "轻量商务插画 · 米白 Oracle",
+    styleText: "轻量商务扁平矢量插画，浅米白底搭配浅灰蓝色系，大面积留白；左侧保留干净的标题与摘要排版区域，不生成可读文字，右侧以数据库圆柱、稳定架构层级与可靠连接呈现 Oracle 和数据库主题；专业、可信、克制，不要 3D 渲染或复杂界面",
+    lightText: "柔和均匀的自然光感，低对比，无强烈高光或戏剧化阴影",
+    materialText: "细腻哑光纸张与轻薄矢量插画质感，少量克制的浅灰蓝商务点缀",
   },
   {
     id: "colorful-modular-toolbox",
-    styleName: "彩色模块化工具台",
-    styleText: "C4D 风格化 3D，明快克制的钴蓝、橙色与暖黄色点缀，模块化效率工具台，井然有序且可操作",
-    lightText: "明亮棚拍柔光，均匀自然补光，清晰但不过曝",
-    materialText: "细腻哑光塑料，阳极氧化金属，少量半透明亚克力",
+    styleName: "轻量商务插画 · 琥珀效率",
+    styleText: "轻量商务扁平矢量插画，暖白底搭配琥珀橙与蓝灰色系，大面积留白；左侧保留干净的标题与摘要排版区域，不生成可读文字，右侧以工具组件、任务流与井然有序的效率仪表元素呈现效率工具箱主题；轻快、可操作、低饱和，不要 3D 渲染或复杂界面",
+    lightText: "柔和均匀的自然光感，低对比，无强烈高光或戏剧化阴影",
+    materialText: "细腻哑光纸张与轻薄矢量插画质感，少量克制的琥珀橙色点缀",
   },
   {
     id: "paper-cut-learning-cards",
-    styleName: "纸艺拼贴学习卡",
-    styleText: "编辑感纸艺拼贴插画，暖米白纸张肌理，精致手作学习卡片，少量蓝色与红色点缀，大面积留白",
-    lightText: "柔和日光，轻微纸张阴影，温暖低对比",
-    materialText: "棉麻纸，哑光彩纸，细腻铅笔与胶带质感",
+    styleName: "轻量商务插画 · 珊瑚英语",
+    styleText: "轻量商务扁平矢量插画，暖白底搭配珊瑚红与天蓝色系，大面积留白；左侧保留干净的标题与摘要排版区域，不生成可读文字，右侧以对话气泡、学习卡与表达路径呈现英语学习和沟通主题；温暖、友好、清爽，不要纸艺拼贴、手作胶带或 3D 渲染",
+    lightText: "柔和均匀的自然光感，低对比，无强烈高光或戏剧化阴影",
+    materialText: "细腻哑光纸张与轻薄矢量插画质感，少量克制的珊瑚红与天蓝色点缀",
   },
   {
     id: "data-glass-atlas",
-    styleName: "数据新闻玻璃图谱",
-    styleText: "编辑型数据可视化 3D，雾靛蓝与冷灰色调，半透明数据地形和关联图谱，冷静、精确、有洞察感",
-    lightText: "雾化顶光与柔和侧光，细微边缘高光，层次清晰",
-    materialText: "磨砂玻璃，半透明树脂，细银色金属连线",
+    styleName: "轻量商务插画 · 蓝绿数据",
+    styleText: "轻量商务扁平矢量插画，暖白底搭配蓝绿与深青色系，大面积留白；左侧保留干净的标题与摘要排版区域，不生成可读文字，右侧以数据流、简洁图表形态与洞察放大镜呈现数据分析主题；冷静、精确、有洞察感，不要玻璃 3D、伪数据文字或复杂图表",
+    lightText: "柔和均匀的自然光感，低对比，无强烈高光或戏剧化阴影",
+    materialText: "细腻哑光纸张与轻薄矢量插画质感，少量克制的蓝绿色点缀",
   },
   {
     id: "retro-terminal-engineering",
-    styleName: "复古终端像素工程",
-    styleText: "复古终端启发的 3D 工程插画，炭黑底色，低饱和荧光绿与琥珀色点缀，像素网格与模块化系统路径，克制硬朗",
-    lightText: "低调定向光，柔和终端屏幕辉光，有限的局部高光",
-    materialText: "磨砂深色金属，微纹理塑料，像素化发光面板",
+    styleName: "轻量商务插画 · 墨绿 Linux",
+    styleText: "轻量商务扁平矢量插画，暖白底搭配鼠尾草绿与深墨绿色系，大面积留白；左侧保留干净的标题与摘要排版区域，不生成可读文字，右侧以简洁终端窗口、服务器模块与清晰命令路径呈现 Linux 和工程实践主题；稳定、克制、专业，不要炭黑底、像素风、霓虹或 3D 渲染",
+    lightText: "柔和均匀的自然光感，低对比，无强烈高光或戏剧化阴影",
+    materialText: "细腻哑光纸张与轻薄矢量插画质感，少量克制的墨绿色点缀",
   },
 ] as const;
 
 export type BlogFactoryCoverStylePresetId = (typeof BLOG_FACTORY_COVER_STYLE_PRESETS)[number]["id"];
 
 export const BLOG_FACTORY_COVER_CATEGORY_STYLE_PRESETS = [
-  { category: "公开课", stylePresetId: "clear-minimal-business", description: "清晰、亲和的课程与方法论封面" },
-  { category: "AI", stylePresetId: "dark-cyber-tech", description: "未来感模型、智能体与自动化主题" },
-  { category: "APEX", stylePresetId: "apple-matte-minimal", description: "轻量、清晰的低代码产品与交付主题" },
-  { category: "Oracle", stylePresetId: "warm-industrial-matte", description: "稳定、有工程厚度的数据库与架构主题" },
-  { category: "效率工具箱", stylePresetId: "colorful-modular-toolbox", description: "强调可操作性的工具、流程与工作台主题" },
-  { category: "英语", stylePresetId: "paper-cut-learning-cards", description: "有温度的学习卡、表达与语言主题" },
-  { category: "Data", stylePresetId: "data-glass-atlas", description: "聚焦洞察、图谱与分析关系的数据主题" },
-  { category: "Linux", stylePresetId: "retro-terminal-engineering", description: "克制硬朗的终端、系统与工程实践主题" },
+  { category: "公开课", stylePresetId: "clear-minimal-business", description: "雾蓝课程路径与知识卡片的亲和商务插画" },
+  { category: "AI", stylePresetId: "dark-cyber-tech", description: "靛紫协作节点与模型中枢的理性商务插画" },
+  { category: "APEX", stylePresetId: "apple-matte-minimal", description: "青蓝低代码模块与流程连接的清爽商务插画" },
+  { category: "Oracle", stylePresetId: "warm-industrial-matte", description: "米白数据库层级与可靠连接的专业商务插画" },
+  { category: "效率工具箱", stylePresetId: "colorful-modular-toolbox", description: "琥珀工具组件与任务流的轻快商务插画" },
+  { category: "英语", stylePresetId: "paper-cut-learning-cards", description: "珊瑚对话气泡与学习路径的温暖商务插画" },
+  { category: "Data", stylePresetId: "data-glass-atlas", description: "蓝绿数据流与洞察图形的冷静商务插画" },
+  { category: "Linux", stylePresetId: "retro-terminal-engineering", description: "墨绿终端与服务器模块的克制商务插画" },
 ] as const satisfies ReadonlyArray<{
   category: string;
   stylePresetId: BlogFactoryCoverStylePresetId;
@@ -209,7 +209,7 @@ export const BLOG_FACTORY_COVER_PROMPT_OPTIONS = {
     "干净现代",
   ],
   objects: [
-    "围绕核心实体生成专属 3D 隐喻物件",
+    "围绕核心实体生成专属视觉隐喻物件",
     "浮动文档卡片",
     "发光节点网络",
     "数据流线",
@@ -247,7 +247,7 @@ export const DEFAULT_BLOG_FACTORY_COVER_PROMPT_CONFIG: BlogFactoryCoverPromptCon
   composition: "16:9 横向封面，主体居中，适配 2.35:1 裁切",
   stylePresetId: "clear-minimal-business",
   styles: [BLOG_FACTORY_COVER_STYLE_PRESETS[0].styleText],
-  objects: ["围绕核心实体生成专属 3D 隐喻物件", "浮动文档卡片", "发光节点网络", "数据流线"],
+  objects: ["围绕核心实体生成专属视觉隐喻物件", "浮动文档卡片", "连接节点", "数据流线"],
   materials: [BLOG_FACTORY_COVER_STYLE_PRESETS[0].materialText],
   lightings: [BLOG_FACTORY_COVER_STYLE_PRESETS[0].lightText],
   cameras: ["轻微景深"],
@@ -1169,7 +1169,7 @@ export function buildBlogFactoryCoverImagePrompt(
     !resolvedConfig.subject || resolvedConfig.subject === DEFAULT_BLOG_FACTORY_COVER_PROMPT_CONFIG.subject
       ? entities.slice(0, 3).join("、") || topic || "文章核心实体"
       : resolvedConfig.subject;
-  const entityObjects = entities.slice(0, 4).map((entity) => `${entity} 的专属 3D 隐喻物件`);
+  const entityObjects = entities.slice(0, 4).map((entity) => `${entity} 的专属视觉隐喻物件`);
 
   return renderBlogFactoryCoverPromptTemplate(resolveBlogFactoryCoverPromptTemplate(template), {
     title: resolvedTitle,

@@ -9,6 +9,17 @@ The format follows the common GitHub changelog convention inspired by
 
 ## 本次版本更新
 
+### [Unreleased]
+
+#### Added / 新增
+
+#### Changed / 变更
+
+- Changed all Blog Factory category cover presets to a shared light-business illustration system with a warm-white layout, left text reservation, right-side thematic illustration, and category-specific low-saturation palettes and visual metaphors; legacy preset IDs remain unchanged for existing local selections.
+- 博客工厂全部分类封面预设统一为暖白底、左侧文字预留、右侧主题插画的轻量商务插画体系，并以低饱和色系和主题隐喻区分类别；保留原预设 ID，兼容既有本地选择。
+
+#### Fixed / 修复
+
 ### [0.4.7] - 2026-09-04
 
 #### Added / 新增
