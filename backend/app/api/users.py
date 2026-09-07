@@ -88,6 +88,8 @@ async def patch_user(
         return ManagedUserItem.model_validate(await update_managed_user(user_id, payload))
     except UserNotFoundError as exc:
         raise _not_found(exc) from exc
+    except UserManagementError as exc:
+        raise _bad_request(exc) from exc
     except oracledb.Error as exc:
         raise oracle_http_exception(exc, "Oracle rejected the user update") from exc
 

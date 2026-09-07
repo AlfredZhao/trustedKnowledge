@@ -2,7 +2,7 @@ import oracledb
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api.errors import oracle_http_exception
-from app.core.security import require_api_key, require_current_user
+from app.core.security import require_admin_module, require_admin_user, require_api_key, require_current_user
 from app.db.oracle import acquire_connection
 from app.repositories.history_ask import ask_history
 from app.repositories.users import AuthContext
@@ -39,7 +39,7 @@ async def list_llm_configs() -> LlmModelConfigListResponse:
 
 
 @router.post("/llm-configs", response_model=LlmModelConfigResponse, status_code=status.HTTP_201_CREATED)
-async def create_llm_config(payload: LlmModelConfigInput) -> LlmModelConfigResponse:
+async def create_llm_config(payload: LlmModelConfigInput, _: AuthContext = Depends(require_admin_user)) -> LlmModelConfigResponse:
     try:
         async with acquire_connection() as connection:
             config = await create_llm_model_config(connection, payload.model_dump())
@@ -52,7 +52,7 @@ async def create_llm_config(payload: LlmModelConfigInput) -> LlmModelConfigRespo
 
 
 @router.put("/llm-configs/{model_config_id}", response_model=LlmModelConfigResponse)
-async def put_llm_config(model_config_id: int, payload: LlmModelConfigInput) -> LlmModelConfigResponse:
+async def put_llm_config(model_config_id: int, payload: LlmModelConfigInput, _: AuthContext = Depends(require_admin_user)) -> LlmModelConfigResponse:
     try:
         async with acquire_connection() as connection:
             config = await update_llm_model_config(connection, model_config_id, payload.model_dump())
@@ -66,7 +66,7 @@ async def put_llm_config(model_config_id: int, payload: LlmModelConfigInput) -> 
 
 
 @router.delete("/llm-configs/{model_config_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def remove_llm_config(model_config_id: int) -> None:
+async def remove_llm_config(model_config_id: int, _: AuthContext = Depends(require_admin_user)) -> None:
     try:
         async with acquire_connection() as connection:
             await delete_llm_model_config(connection, model_config_id)
@@ -79,7 +79,7 @@ async def remove_llm_config(model_config_id: int) -> None:
 @router.post("", response_model=HistoryAskResponse)
 async def post_history_ask(
     payload: HistoryAskRequest,
-    auth_context: AuthContext = Depends(require_current_user),
+    auth_context: AuthContext = Depends(require_admin_module("historyAsk")),
 ) -> HistoryAskResponse:
     try:
         result = await ask_history(

@@ -517,8 +517,13 @@ const emptyOverviewSectionErrors: OverviewSectionErrors = {
   english: null,
 };
 // Navigation and access boundaries.
-const SUPER_ADMIN_ONLY_VIEWS: AppView[] = ["users"];
-const ADMIN_ROLE_MODULE_VIEWS: AppView[] = ["aiCoding", "usage"];
+const USER_BASE_VIEWS: AppView[] = ["overview", "workbench", "factory", "blogFactory", "todos", "personalSecrets", "currentRecords", "history", "englishMaterials", "skills"];
+const ADMIN_VIEWS: AppView[] = ["users", "skills", "aiGraph", "historyAsk", "aiCoding", "usage"];
+const ADMIN_ROLE_MODULE_VIEWS: AppView[] = ["aiGraph", "historyAsk", "aiCoding", "usage"];
+const ADMIN_ROLE_MODULE_OPTIONS: { code: AdminModuleAccessItem["module_code"]; label: string }[] = [
+  { code: "aiGraph", label: "AI 图谱" }, { code: "historyAsk", label: "AI 问数" },
+  { code: "aiCoding", label: "AI 编程" }, { code: "usage", label: "AI 用量" },
+];
 
 interface OverviewData {
   usageItems: LlmUsageSample[];
@@ -540,13 +545,12 @@ interface OverviewSectionErrors {
 }
 
 function canAccessView(view: AppView, authUser: AuthUser | null): boolean {
-  if (SUPER_ADMIN_ONLY_VIEWS.includes(view)) {
-    return Boolean(authUser?.is_admin);
-  }
+  if (authUser?.is_admin) return ADMIN_VIEWS.includes(view);
+  if (USER_BASE_VIEWS.includes(view)) return true;
   if (ADMIN_ROLE_MODULE_VIEWS.includes(view)) {
-    return Boolean(authUser?.is_admin || authUser?.visible_admin_modules.includes(view));
+    return Boolean(authUser?.is_admin_role && authUser.visible_admin_modules.includes(view));
   }
-  return true;
+  return false;
 }
 
 function getVisibleUsers(authUser: AuthUser | null): string[] {
@@ -1786,7 +1790,7 @@ function App() {
 
   useEffect(() => {
     if (authUser && !canAccessView(activeView, authUser)) {
-      setActiveView("overview");
+      setActiveView(authUser.is_admin ? "users" : "overview");
     }
   }, [activeView, authUser]);
 
@@ -4857,7 +4861,7 @@ function App() {
 
   async function handleUpdateManagedUser(
     user: ManagedUserItem,
-    payload: { display_name?: string | null; role_code?: ManagedUserRole; is_admin_role?: boolean; status?: ManagedUserStatus },
+    payload: { display_name?: string | null; role_code?: ManagedUserRole; is_admin_role?: boolean; admin_module_codes?: AdminModuleAccessItem["module_code"][]; status?: ManagedUserStatus },
   ) {
     if (isUserManagementSaving) return;
     setIsUserManagementSaving(true);
@@ -6470,18 +6474,6 @@ function Sidebar({
   onToggleExpanded: () => void;
   onViewChange: (view: AppView) => void;
 }) {
-  type SidebarUtilityItem = {
-    icon: typeof BookOpenCheck;
-    label: string;
-  };
-
-  const utilityItems: SidebarUtilityItem[] = [
-    { icon: ShieldCheck, label: "Review" },
-    { icon: Database, label: "Sources" },
-  ];
-  const primaryItems = availableItems.filter((item) => item.view !== "usage");
-  const usageItem = availableItems.find((item) => item.view === "usage");
-  const usageActive = activeView === "usage";
   const sidebarButtonMotion =
     "transition-[width,gap,color,background-color,border-color,box-shadow,transform] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none";
   const sidebarLabelMotion = `min-w-0 overflow-hidden whitespace-nowrap transition-[max-width,opacity,transform] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none ${
@@ -6508,7 +6500,7 @@ function Sidebar({
         <span className={`${sidebarLabelMotion} text-sm font-medium text-mint-100`}>功能导航</span>
       </button>
       <nav className="flex flex-1 flex-col gap-3" aria-label="桌面功能页面">
-        {primaryItems.map((item) => {
+        {availableItems.map((item) => {
           const active = item.view === activeView;
           return (
             <button
@@ -6528,36 +6520,7 @@ function Sidebar({
             </button>
           );
         })}
-        {utilityItems.map((item) => (
-          <button
-            key={item.label}
-            className={`flex h-11 items-center overflow-hidden rounded-lg border border-transparent text-sm font-medium text-slate-500 hover:border-white/10 hover:bg-white/[0.04] hover:text-slate-200 ${sidebarButtonMotion} ${
-              isExpanded ? "w-full justify-start gap-3 px-[12.5px]" : "w-11 justify-start gap-0 px-[12.5px]"
-            }`}
-            title={item.label}
-            type="button"
-          >
-            <item.icon size={19} className="shrink-0" />
-            <span className={sidebarLabelMotion}>{item.label}</span>
-          </button>
-        ))}
       </nav>
-      {usageItem ? (
-        <button
-          className={`flex h-10 items-center overflow-hidden rounded-lg border text-xs font-semibold ${sidebarButtonMotion} ${
-            usageActive
-              ? "border-mint-300/25 bg-mint-300/10 text-mint-300"
-              : "border-white/10 text-slate-300 hover:border-mint-300/30 hover:bg-white/[0.04] hover:text-mint-300"
-          } ${isExpanded ? "w-full justify-start gap-3 px-2.5" : "w-10 justify-start gap-0 px-2.5"}`}
-          title={usageItem.label}
-          type="button"
-          aria-current={usageActive ? "page" : undefined}
-          onClick={() => onViewChange(usageItem.view)}
-        >
-          <span className="grid h-5 w-5 shrink-0 place-items-center">AI</span>
-          <span className={`${sidebarLabelMotion} text-sm font-medium`}>{usageItem.label}</span>
-        </button>
-      ) : null}
     </aside>
   );
 }
@@ -15106,7 +15069,7 @@ function UserManagementWorkspace({
   onCreateUser: (event: React.FormEvent<HTMLFormElement>) => void;
   onUpdateUser: (
     user: ManagedUserItem,
-    payload: { display_name?: string | null; role_code?: ManagedUserRole; is_admin_role?: boolean; status?: ManagedUserStatus },
+    payload: { display_name?: string | null; role_code?: ManagedUserRole; is_admin_role?: boolean; admin_module_codes?: AdminModuleAccessItem["module_code"][]; status?: ManagedUserStatus },
   ) => void;
   onResetPassword: (event: React.FormEvent<HTMLFormElement>) => void;
   onCreateRelation: (event: React.FormEvent<HTMLFormElement>) => void;
@@ -15230,6 +15193,7 @@ function UserManagementWorkspace({
                     </label>
                   </Field>
                 </div>
+                {user.is_admin_role ? <div className="mt-3 rounded-lg border border-amberline/20 bg-amberline/5 p-3"><div className="mb-2 text-xs font-medium text-amberline">额外菜单授权</div><div className="flex flex-wrap gap-x-4 gap-y-2">{ADMIN_ROLE_MODULE_OPTIONS.map((module) => <label key={module.code} className="flex items-center gap-2 text-xs text-slate-300"><input checked={user.admin_module_codes.includes(module.code)} className="h-4 w-4 accent-emerald-400" disabled={isSaving} type="checkbox" onChange={(event) => onUpdateUser(user, { admin_module_codes: event.target.checked ? [...user.admin_module_codes, module.code] : user.admin_module_codes.filter((code) => code !== module.code) })} />{module.label}</label>)}</div></div> : null}
               </article>
             ))}
           </div>
@@ -15301,31 +15265,6 @@ function UserManagementWorkspace({
           </form>
         </section>
 
-        <section className="rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
-          <div className="mb-4 flex items-center gap-2 text-sm text-mint-300">
-            <LockKeyhole size={17} />
-            Admin 模块授权
-          </div>
-          <div className="space-y-3">
-            {adminModules.map((module) => (
-              <div key={module.module_code} className="rounded-lg border border-white/10 bg-white/[0.028] p-3">
-                <div className="mb-2 text-sm font-medium text-slate-100">{module.label}</div>
-                <div className="mb-3 text-xs leading-5 text-slate-500">{module.description}</div>
-                <select
-                  className="control"
-                  disabled={isSaving}
-                  value={module.access_level}
-                  onChange={(event) =>
-                    onUpdateAdminModule(module.module_code, event.target.value as AdminModuleAccessLevel)
-                  }
-                >
-                  <option value="SUPER_ADMIN_ONLY">仅 admin 用户</option>
-                  <option value="ADMIN_ROLE">admin 用户 + admin 角色</option>
-                </select>
-              </div>
-            ))}
-          </div>
-        </section>
 
         <section className="rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
           <div className="mb-4 flex items-center gap-2 text-sm text-mint-300">

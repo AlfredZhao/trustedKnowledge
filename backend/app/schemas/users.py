@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 UserRole = Literal["USER", "PARENT"]
 UserStatus = Literal["ACTIVE", "DISABLED"]
-AdminModuleCode = Literal["aiCoding", "usage"]
+AdminModuleCode = Literal["aiGraph", "historyAsk", "aiCoding", "usage"]
 AdminModuleAccessLevel = Literal["SUPER_ADMIN_ONLY", "ADMIN_ROLE"]
 
 
@@ -16,6 +16,7 @@ class ManagedUserItem(BaseModel):
     display_name: str | None = None
     role_code: UserRole
     is_admin_role: bool = False
+    admin_module_codes: list[AdminModuleCode] = Field(default_factory=list)
     status: UserStatus
     has_password: bool
     parent_count: int
@@ -52,6 +53,7 @@ class ManagedUserUpdate(BaseModel):
     display_name: str | None = Field(default=None, max_length=100)
     role_code: UserRole | None = None
     is_admin_role: bool | None = None
+    admin_module_codes: list[AdminModuleCode] | None = None
     status: UserStatus | None = None
 
     @field_validator("display_name", mode="before")

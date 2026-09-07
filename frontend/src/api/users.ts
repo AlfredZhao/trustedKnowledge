@@ -27,7 +27,7 @@ export async function createManagedUser(draft: ManagedUserCreateDraft): Promise<
 
 export async function updateManagedUser(
   userId: number,
-  payload: { display_name?: string | null; role_code?: ManagedUserRole; is_admin_role?: boolean; status?: ManagedUserStatus },
+  payload: { display_name?: string | null; role_code?: ManagedUserRole; is_admin_role?: boolean; admin_module_codes?: AdminModuleAccessItem["module_code"][]; status?: ManagedUserStatus },
 ): Promise<ManagedUserItem> {
   return request<ManagedUserItem>(`/api/users/${userId}`, {
     method: "PATCH",

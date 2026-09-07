@@ -25,6 +25,8 @@ SESSION_DAYS = 14
 SUPER_ADMIN_ONLY = "SUPER_ADMIN_ONLY"
 ADMIN_ROLE = "ADMIN_ROLE"
 ADMIN_MODULES: dict[str, dict[str, str]] = {
+    "aiGraph": {"label": "AI 图谱", "description": "允许访问 AI 图谱页面。"},
+    "historyAsk": {"label": "AI 问数", "description": "允许访问 AI 问数及模型配置。"},
     "aiCoding": {
         "label": "AI 编程",
         "description": "控制 AI 编程任务页面是否允许 admin 角色用户访问。",
@@ -131,6 +133,18 @@ async def ensure_user_schema_for_connection(connection: oracledb.AsyncConnection
             constraint tk_users_status_ck check (status in ('ACTIVE', 'DISABLED')),
             constraint tk_users_role_ck check (role_code in ('USER', 'PARENT')),
             constraint tk_users_admin_enabled_ck check (admin_enabled in (0, 1))
+        )
+        """,
+    )
+    await _execute_ddl(
+        cursor,
+        """
+        create table tk_user_module_access (
+            user_id number not null,
+            module_code varchar2(50) not null,
+            created_at timestamp default systimestamp not null,
+            constraint tk_uma_user_fk foreign key (user_id) references tk_users(user_id),
+            constraint tk_uma_pair_uk unique (user_id, module_code)
         )
         """,
     )
@@ -779,6 +793,7 @@ def _managed_user_row_to_dict(row: Any) -> dict[str, Any]:
         "created_at": row[9],
         "updated_at": row[10],
         "last_login_at": row[11],
+        "admin_module_codes": [],
     }
 
 
@@ -831,7 +846,9 @@ async def list_managed_users(*, q: str | None = None) -> tuple[list[dict[str, An
         count_row = await cursor.fetchone()
         await cursor.execute(list_sql, params)
         rows = await cursor.fetchall()
-    return [_managed_user_row_to_dict(row) for row in rows], int(count_row[0]) if count_row else 0
+    items = [_managed_user_row_to_dict(row) for row in rows]
+    await _attach_admin_module_codes(items)
+    return items, int(count_row[0]) if count_row else 0
 
 
 async def get_managed_user(user_id: int) -> dict[str, Any] | None:
@@ -859,7 +876,11 @@ async def get_managed_user(user_id: int) -> dict[str, Any] | None:
             {"user_id": user_id},
         )
         row = await cursor.fetchone()
-    return _managed_user_row_to_dict(row) if row else None
+    if not row:
+        return None
+    item = _managed_user_row_to_dict(row)
+    await _attach_admin_module_codes([item])
+    return item
 
 
 async def create_managed_user(payload: ManagedUserCreate) -> dict[str, Any]:
@@ -903,8 +924,12 @@ async def update_managed_user(user_id: int, payload: ManagedUserUpdate) -> dict[
             raise UserNotFoundError("User not found")
         return existing
 
+    module_codes = values.pop("admin_module_codes", None)
+    if module_codes is not None and not set(module_codes).issubset(ADMIN_MODULES):
+        raise UserManagementError("Unknown admin module")
     assignments = []
     params: dict[str, Any] = {"user_id": user_id}
+    admin_role_disabled = "is_admin_role" in values and not values["is_admin_role"]
     if "is_admin_role" in values:
         values["admin_enabled"] = 1 if values.pop("is_admin_role") else 0
     for key, value in values.items():
@@ -915,17 +940,19 @@ async def update_managed_user(user_id: int, payload: ManagedUserUpdate) -> dict[
     async with acquire_connection() as connection:
         await ensure_user_schema_for_connection(connection)
         cursor = connection.cursor()
-        await cursor.execute(
-            f"""
-            update tk_users
-            set {", ".join(assignments)}
-            where user_id = :user_id
-            """,
-            params,
-        )
-        if cursor.rowcount == 0:
-            await connection.rollback()
-            raise UserNotFoundError("User not found")
+        if assignments:
+            await cursor.execute(f"update tk_users set {', '.join(assignments)} where user_id = :user_id", params)
+            if cursor.rowcount == 0:
+                await connection.rollback()
+                raise UserNotFoundError("User not found")
+        else:
+            await _assert_user_exists(cursor, user_id)
+        if module_codes is not None:
+            await cursor.execute("delete from tk_user_module_access where user_id = :user_id", {"user_id": user_id})
+            for module_code in module_codes:
+                await cursor.execute("insert into tk_user_module_access (user_id, module_code) values (:user_id, :module_code)", {"user_id": user_id, "module_code": module_code})
+        elif admin_role_disabled:
+            await cursor.execute("delete from tk_user_module_access where user_id = :user_id", {"user_id": user_id})
         await connection.commit()
 
     updated = await get_managed_user(user_id)
@@ -1247,17 +1274,28 @@ async def list_visible_admin_modules(context: AuthContext) -> list[str]:
     async with acquire_connection() as connection:
         await ensure_user_schema_for_connection(connection)
         cursor = connection.cursor()
-        await _ensure_module_access_defaults(cursor)
         await cursor.execute(
-            """
-            select module_code
-            from tk_module_access
-            where access_level = :access_level
-            order by module_code
-            """,
-            {"access_level": ADMIN_ROLE},
+            "select module_code from tk_user_module_access where user_id = :user_id order by module_code",
+            {"user_id": context.user_id},
         )
         return [str(row[0]) for row in await cursor.fetchall() if str(row[0]) in ADMIN_MODULES]
+
+
+async def _attach_admin_module_codes(items: list[dict[str, Any]]) -> None:
+    user_ids = [int(item["user_id"]) for item in items]
+    if not user_ids:
+        return
+    binds = {f"user_id_{index}": user_id for index, user_id in enumerate(user_ids)}
+    placeholders = ", ".join(f":{name}" for name in binds)
+    async with acquire_connection() as connection:
+        await ensure_user_schema_for_connection(connection)
+        cursor = connection.cursor()
+        await cursor.execute(f"select user_id, module_code from tk_user_module_access where user_id in ({placeholders})", binds)
+        codes_by_user: dict[int, list[str]] = {user_id: [] for user_id in user_ids}
+        for row in await cursor.fetchall():
+            codes_by_user[int(row[0])].append(str(row[1]))
+    for item in items:
+        item["admin_module_codes"] = codes_by_user[int(item["user_id"])]
 
 
 async def has_admin_module_access(context: AuthContext, module_code: str) -> bool:

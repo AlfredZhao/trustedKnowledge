@@ -200,7 +200,7 @@ export type AppView =
 
 export type ManagedUserRole = "USER" | "PARENT";
 export type ManagedUserStatus = "ACTIVE" | "DISABLED";
-export type AdminModuleCode = "aiCoding" | "usage";
+export type AdminModuleCode = "aiGraph" | "historyAsk" | "aiCoding" | "usage";
 export type AdminModuleAccessLevel = "SUPER_ADMIN_ONLY" | "ADMIN_ROLE";
 
 export interface ManagedUserItem {
@@ -209,6 +209,7 @@ export interface ManagedUserItem {
   display_name: string | null;
   role_code: ManagedUserRole;
   is_admin_role: boolean;
+  admin_module_codes: AdminModuleCode[];
   status: ManagedUserStatus;
   has_password: boolean;
   parent_count: number;

@@ -18,6 +18,15 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Changed / 变更
 
+- Changed navigation authorization into three tiers: super admin sees only management navigation; regular users see the business workspace plus Intelligent Orchestration; admin-role users receive AI Graph, AI Ask, AI Coding, and AI Usage individually through User Management.
+- 调整导航权限为三层：超级管理员仅显示管理导航；普通用户显示业务工作区及智能编排；admin 角色用户的 AI 图谱、AI 问数、AI 编程和 AI 用量改由用户管理逐人授权。
+
+- Restricted model-configuration writes to the super administrator; authorized users can select enabled models but cannot change shared providers, endpoints, or key references.
+- 模型配置的新增、修改和删除仅允许超级管理员；获授权用户可选择已启用模型，但不能修改共享供应商、端点或密钥引用。
+
+- Changed the desktop function sidebar to remove non-functional Review and Sources controls. AI Usage now uses the exact normal navigation item pattern and follows AI Coding directly in the shared list; mobile navigation stays aligned.
+- 调整桌面功能侧栏：移除无实际行为的 Review、Sources 控件；AI 用量完全复用普通导航项样式，在共享列表中紧随 AI 编程，移动端同步一致。
+
 - Changed Skill creation, knowledge processing, Blog Factory enhancement/review, English generation/completion, and AI Ask to use a selected configured model. Their selectors now show concrete configuration names; Codex CLI is reserved for AI Coding tasks.
 - 调整 Skill 创建、知识加工、博客工厂增强/审阅、英语生成/补全和 AI 问数，统一使用所选的具体模型配置；下拉框展示实际配置名称，Codex CLI 仅用于 AI 编程任务。
 

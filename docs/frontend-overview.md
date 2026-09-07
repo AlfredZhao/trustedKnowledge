@@ -59,6 +59,10 @@
 
 导航项由 `frontend/src/uiConfig.ts` 中的 `FUNCTION_NAV_ITEMS` 定义。
 
+- 超级管理员只显示用户管理及其后的管理导航：智能编排、AI 图谱、AI 问数、AI 编程、AI 用量；若其恢复到无权页面，界面自动回到用户管理。
+- 普通用户显示用户管理之前的业务菜单，另加智能编排；不显示用户管理、AI 图谱、AI 问数、AI 编程或 AI 用量。
+- 被授予 admin 角色的用户以普通用户菜单为基础；超级管理员可在该用户卡片中逐项授予 AI 图谱、AI 问数、AI 编程和 AI 用量。取消 admin 角色会同步移除这些额外授权。
+
 | View key | 页面名称 | 主要用途 |
 | --- | --- | --- |
 | `overview` | 总览 | 聚合 LLM 用量、Todo、英语素材和可信知识的 Dashboard。 |
@@ -70,7 +74,7 @@
 | `currentRecords` | 当前记录 | 管理当前学习记录，编辑 week/day/content 进度。 |
 | `history` | 历史查询 | 筛选、排序、查看历史记录和详情元数据。 |
 | `englishMaterials` | 英语素材 | 新增、列表、筛选、编辑和复制英语素材。 |
-| `users` | 用户管理 | 仅 super admin 可见；管理 `TK_USERS` 用户、admin 角色授权、AI 编程/AI 用量模块授权，以及 `TK_RELATIONS` 家长关系。 |
+| `users` | 用户管理 | 仅 super admin 可见；管理 `TK_USERS` 用户、admin 角色及逐用户的 AI 图谱/AI 问数/AI 编程/AI 用量菜单授权，以及 `TK_RELATIONS` 家长关系。 |
 | `skills` | 智能编排 | 创建、上传、编辑、删除 Skill 包和文件。 |
 | `aiGraph` | AI 图谱 | 以图谱方式展示当前项目功能模块实体、数据流和权限关系。 |
 | `historyAsk` | AI 问数 | 基于历史记录做自然语言问答，可选择具体的已启用模型配置和 Skill，并在右侧维护多个 OpenAI 兼容模型配置。 |
@@ -103,8 +107,8 @@
 
 - Visible at `lg` and above.
 - Can collapse to icon-only mode.
-- `AI 用量` is placed as a bottom utility entry.
-- 当前有两个仅展示的工具按钮：`Review` 和 `Sources`，没有切换视图的行为。
+- `AI 用量` 是功能导航中的最后一个系统工具项，紧随 `AI 编程`，完全复用其它导航项的布局和交互样式。
+- 不展示没有实际行为的占位工具按钮。
 
 移动端顶部导航：
 
