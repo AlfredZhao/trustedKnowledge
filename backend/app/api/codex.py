@@ -51,6 +51,7 @@ class CodexJobState:
     owner_username: str
     prompt: str
     model_name: str | None = None
+    model_selector: str | None = None
     skill_ids: list[str] = field(default_factory=list)
     sandbox_mode: str = "workspace-write"
     output_mode: str = "full"
@@ -103,7 +104,9 @@ async def run_codex(
     payload: CodexRunRequest,
     auth_context: AuthContext = Depends(require_current_user),
 ) -> CodexRunResponse:
-    if not settings.allow_web_codex:
+    if payload.execution_provider != "codex" or payload.output_mode != "full":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="此接口仅用于 AI 编程的 Codex CLI 任务。")
+    if payload.execution_provider == "codex" and not settings.allow_web_codex:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Web Codex is disabled. Set TRUSTED_KNOWLEDGE_ALLOW_WEB_CODEX=true to enable it.",
@@ -177,6 +180,8 @@ async def stream_codex(
     payload: CodexRunRequest,
     auth_context: AuthContext = Depends(require_current_user),
 ) -> StreamingResponse:
+    if payload.execution_provider != "codex" or payload.output_mode != "full":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="此接口仅用于 AI 编程的 Codex CLI 任务。")
     if not settings.allow_web_codex:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -206,7 +211,11 @@ async def start_codex_job(
     payload: CodexRunRequest,
     auth_context: AuthContext = Depends(require_current_user),
 ) -> CodexJobSnapshot:
-    if not settings.allow_web_codex:
+    if payload.output_mode == "full" and payload.execution_provider != "codex":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="AI 编程任务只能使用 Codex CLI。")
+    if payload.output_mode != "full" and payload.execution_provider != "history_ask_llm":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="非 AI 编程任务必须选择已配置模型。")
+    if payload.execution_provider == "codex" and not settings.allow_web_codex:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Web Codex is disabled. Set TRUSTED_KNOWLEDGE_ALLOW_WEB_CODEX=true to enable it.",
@@ -216,7 +225,7 @@ async def start_codex_job(
     execution_provider = payload.execution_provider
     model_name = resolve_codex_model_name(payload.model_name, PROJECT_ROOT)
     if execution_provider == "history_ask_llm":
-        history_ask_config = await _get_enabled_history_ask_llm_config()
+        history_ask_config = await _get_enabled_history_ask_llm_config(payload.model_name)
         model_name = str(history_ask_config["model_name"])
     if not await _try_reserve_codex_slot(auth_context.username):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_codex_concurrency_conflict_detail())
@@ -226,6 +235,7 @@ async def start_codex_job(
         owner_username=auth_context.username,
         prompt=payload.prompt.strip(),
         model_name=model_name,
+        model_selector=payload.model_name if execution_provider == "history_ask_llm" else None,
         skill_ids=payload.skill_ids,
         sandbox_mode=payload.sandbox_mode,
         output_mode=payload.output_mode,
@@ -471,10 +481,13 @@ def _codex_audit_source(job: CodexJobState) -> str:
     return "knowledge-processing" if job.output_mode == "final" else "ai-coding"
 
 
-async def _get_enabled_history_ask_llm_config() -> dict[str, object]:
-    async with acquire_connection() as connection:
-        await ensure_llm_config_table(connection)
-        config = await get_history_ask_llm_config(connection)
+async def _get_enabled_history_ask_llm_config(selector: str | None = None) -> dict[str, object]:
+    try:
+        async with acquire_connection() as connection:
+            await ensure_llm_config_table(connection)
+            config = await get_history_ask_llm_config(connection, selector)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     if not config["enabled"]:
         raise HTTPException(
@@ -512,7 +525,7 @@ def _build_history_ask_llm_prompt(job: CodexJobState, auth_context: AuthContext)
 async def _run_history_ask_llm_job(job: CodexJobState, auth_context: AuthContext) -> None:
     started_at = time.monotonic()
     try:
-        config = await _get_enabled_history_ask_llm_config()
+        config = await _get_enabled_history_ask_llm_config(job.model_selector)
         prompt, system = _build_history_ask_llm_prompt(job, auth_context)
         job.last_activity_at = datetime.now(UTC)
         job.last_event = "其他模型请求已发送，正在等待生成结果。"

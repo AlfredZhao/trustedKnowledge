@@ -52,7 +52,7 @@ class SkillDraftGenerationRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=120)
     description: str = Field(..., min_length=1, max_length=2000)
     skill_ids: list[str] = Field(default_factory=list, max_length=1)
-    execution_provider: Literal["codex", "history_ask_llm"] = "codex"
+    execution_provider: Literal["history_ask_llm"] = "history_ask_llm"
     model_name: str = Field(default="", max_length=120)
 
 

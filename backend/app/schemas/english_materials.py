@@ -63,7 +63,7 @@ class EnglishMaterialGenerationRequest(BaseModel):
     topic_mode: Literal["trend", "truth", "motivation", "workplace", "custom"] = "trend"
     topic: str | None = Field(default=None, max_length=300)
     skill_ids: list[str] = Field(default_factory=list, max_length=8)
-    execution_provider: Literal["codex", "history_ask_llm"] = "codex"
+    execution_provider: Literal["history_ask_llm"] = "history_ask_llm"
     model_name: str = Field(default="", max_length=120)
 
     @field_validator("topic", mode="before")
@@ -93,7 +93,7 @@ class EnglishMaterialGenerationResult(BaseModel):
 class EnglishMaterialCompletionRequest(BaseModel):
     full_script: str = Field(..., min_length=1, max_length=4000)
     skill_ids: list[str] = Field(default_factory=list, max_length=1)
-    execution_provider: Literal["codex", "history_ask_llm"] = "codex"
+    execution_provider: Literal["history_ask_llm"] = "history_ask_llm"
     model_name: str = Field(default="", max_length=120)
 
     @field_validator("full_script", mode="before")

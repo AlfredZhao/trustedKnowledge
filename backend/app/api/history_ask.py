@@ -6,13 +6,9 @@ from app.core.security import require_api_key, require_current_user
 from app.db.oracle import acquire_connection
 from app.repositories.history_ask import ask_history
 from app.repositories.users import AuthContext
-from app.repositories.llm_config import (
-    ensure_llm_config_table,
-    get_history_ask_llm_config,
-    update_history_ask_llm_config,
-)
+from app.repositories.llm_config import create_llm_model_config, delete_llm_model_config, ensure_llm_config_table, list_llm_model_configs, update_llm_model_config
 from app.schemas.history_ask import HistoryAskDomain, HistoryAskDomainListResponse, HistoryAskRequest, HistoryAskResponse
-from app.schemas.llm_config import LlmConfigResponse, LlmConfigUpdate
+from app.schemas.llm_config import LlmModelConfigInput, LlmModelConfigListResponse, LlmModelConfigResponse
 
 
 router = APIRouter(prefix="/history-ask", tags=["history-ask"], dependencies=[Depends(require_api_key)])
@@ -30,39 +26,54 @@ async def get_history_ask_domains() -> HistoryAskDomainListResponse:
     return HistoryAskDomainListResponse(items=DOMAINS)
 
 
-@router.get("/llm-config", response_model=LlmConfigResponse)
-async def get_llm_config() -> LlmConfigResponse:
+@router.get("/llm-configs", response_model=LlmModelConfigListResponse)
+async def list_llm_configs() -> LlmModelConfigListResponse:
     try:
         async with acquire_connection() as connection:
             await ensure_llm_config_table(connection)
-            config = await get_history_ask_llm_config(connection)
+            configs = await list_llm_model_configs(connection)
     except oracledb.Error as exc:
         raise oracle_http_exception(exc, "Oracle rejected the LLM config query") from exc
 
-    return LlmConfigResponse(
-        provider_name=config["provider_name"],
-        base_url=config["base_url"],
-        model_name=config["model_name"],
-        enabled=config["enabled"],
-        has_api_key=config["has_api_key"],
-    )
+    return LlmModelConfigListResponse(items=[LlmModelConfigResponse(**config) for config in configs])
 
 
-@router.put("/llm-config", response_model=LlmConfigResponse)
-async def put_llm_config(payload: LlmConfigUpdate) -> LlmConfigResponse:
+@router.post("/llm-configs", response_model=LlmModelConfigResponse, status_code=status.HTTP_201_CREATED)
+async def create_llm_config(payload: LlmModelConfigInput) -> LlmModelConfigResponse:
     try:
         async with acquire_connection() as connection:
-            config = await update_history_ask_llm_config(connection, payload.model_dump())
+            config = await create_llm_model_config(connection, payload.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except oracledb.Error as exc:
         raise oracle_http_exception(exc, "Oracle rejected the LLM config update") from exc
 
-    return LlmConfigResponse(
-        provider_name=config["provider_name"],
-        base_url=config["base_url"],
-        model_name=config["model_name"],
-        enabled=config["enabled"],
-        has_api_key=config["has_api_key"],
-    )
+    return LlmModelConfigResponse(**config)
+
+
+@router.put("/llm-configs/{model_config_id}", response_model=LlmModelConfigResponse)
+async def put_llm_config(model_config_id: int, payload: LlmModelConfigInput) -> LlmModelConfigResponse:
+    try:
+        async with acquire_connection() as connection:
+            config = await update_llm_model_config(connection, model_config_id, payload.model_dump())
+    except RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except oracledb.Error as exc:
+        raise oracle_http_exception(exc, "Oracle rejected the LLM config update") from exc
+    return LlmModelConfigResponse(**config)
+
+
+@router.delete("/llm-configs/{model_config_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_llm_config(model_config_id: int) -> None:
+    try:
+        async with acquire_connection() as connection:
+            await delete_llm_model_config(connection, model_config_id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except oracledb.Error as exc:
+        raise oracle_http_exception(exc, "Oracle rejected the LLM config deletion") from exc
 
 
 @router.post("", response_model=HistoryAskResponse)

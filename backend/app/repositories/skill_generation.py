@@ -56,6 +56,6 @@ async def generate_skill_draft(payload: SkillDraftGenerationRequest, auth_contex
         content = await run_codex_final(prompt=f"{system}\n\n{prompt}", model_name=payload.model_name, project_root=Path(__file__).resolve().parents[3], timeout_seconds=90, audit_source="skill-generation", audit_username=auth_context.username)
     else:
         async with acquire_connection() as connection:
-            config = await get_history_ask_llm_config(connection)
+            config = await get_history_ask_llm_config(connection, payload.model_name)
         content = await _call_history_ask_llm(config=config, prompt=prompt, system=system, max_tokens=1800, audit_source="skill-generation", audit_username=auth_context.username)
     return {"content": _validate_skill_markdown(content)}

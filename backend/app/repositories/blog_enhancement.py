@@ -49,7 +49,7 @@ async def enhance_blog_factory_content(
         content = await run_codex_final(prompt=f"{system}\n\n{prompt}", model_name=payload.model_name, project_root=Path(__file__).resolve().parents[3], timeout_seconds=90, audit_source="blog-enhancement", audit_username=auth_context.username, audit_job_id=audit_job_id)
     else:
         async with acquire_connection() as connection:
-            config = await get_history_ask_llm_config(connection)
+            config = await get_history_ask_llm_config(connection, payload.model_name)
         content = await _call_history_ask_llm(config=config, prompt=prompt, system=system, max_tokens=6000, audit_source="blog-enhancement", audit_username=auth_context.username, audit_job_id=audit_job_id)
     normalized = content.strip()
     if not normalized:

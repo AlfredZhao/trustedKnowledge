@@ -579,18 +579,25 @@ export interface SkillListResponse {
 }
 
 export interface LlmConfig {
+  id: number;
+  display_name: string;
   provider_name: string;
   base_url: string;
   model_name: string;
+  api_key_env_var: string;
   enabled: boolean;
+  sort_order: number;
   has_api_key: boolean;
 }
 
 export interface LlmConfigDraft {
+  display_name: string;
   provider_name: string;
   base_url: string;
   model_name: string;
+  api_key_env_var: string;
   enabled: boolean;
+  sort_order: number;
 }
 
 export interface CodexRunResponse {

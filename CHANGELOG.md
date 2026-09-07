@@ -13,7 +13,13 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Added / 新增
 
+- Added a shared multi-model configuration registry for all non-coding AI functions. Each configuration has its own provider, OpenAI-compatible endpoint, model name, enabled state, display name, and server-side API-key environment-variable reference; the former AI Ask configuration is imported automatically on first access.
+- 新增供所有非编程 AI 功能共用的多模型配置：每个配置可独立维护供应商、OpenAI 兼容端点、模型名、启用状态、显示名称和后端 API Key 环境变量引用；首次访问时会自动迁移原 AI 问数配置。
+
 #### Changed / 变更
+
+- Changed Skill creation, knowledge processing, Blog Factory enhancement/review, English generation/completion, and AI Ask to use a selected configured model. Their selectors now show concrete configuration names; Codex CLI is reserved for AI Coding tasks.
+- 调整 Skill 创建、知识加工、博客工厂增强/审阅、英语生成/补全和 AI 问数，统一使用所选的具体模型配置；下拉框展示实际配置名称，Codex CLI 仅用于 AI 编程任务。
 
 - Changed the English Materials `AI生成` and `AI补全` dialogs to default their execution model to the configured OpenAI-compatible model; users can still choose another available model.
 - 英语素材 `AI生成` 与 `AI补全` 弹窗的执行模型现默认使用“已配置模型”（OpenAI 兼容模型），用户仍可选择其他可用模型。
@@ -22,6 +28,15 @@ The format follows the common GitHub changelog convention inspired by
 - 博客工厂全部分类封面预设统一为暖白底、左侧文字预留、右侧主题插画的轻量商务插画体系，并以低饱和色系和主题隐喻区分类别；保留原预设 ID，兼容既有本地选择。
 
 #### Fixed / 修复
+
+- Fixed configured-model Knowledge Processing jobs being blocked for normal users by the unrelated AI Coding module permission. Knowledge Processing now has its own user-scoped job endpoints and cannot access AI Coding jobs.
+- 修复知识加工使用配置模型时仍被无关的 AI 编程模块权限拦截的问题；知识加工现使用独立的用户归属任务接口，且不能访问 AI 编程任务。
+
+- Fixed configured custom models stored in `backend/.env` being omitted from selectors because their allow-listed API-key variables were not exported into the backend process environment.
+- 修复自定义模型 API Key 写在 `backend/.env` 时，因未导出到进程环境而被前端模型选择器错误隐藏的问题。
+
+- Fixed Oracle multi-model configuration initialization failing because legacy-config migration string literals were escaped as dynamic SQL inside a normal `MERGE` statement.
+- 修复多模型配置初始化时，旧配置迁移 `MERGE` 语句错误沿用动态 SQL 转义，导致 Oracle 解析失败的问题。
 
 ### [0.4.7] - 2026-09-04
 

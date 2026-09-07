@@ -181,7 +181,7 @@ async def review_blog_factory_content(payload: BlogFactoryReviewRequest, auth_co
             raise
     else:
         async with acquire_connection() as connection:
-            config = await get_history_ask_llm_config(connection)
+            config = await get_history_ask_llm_config(connection, payload.model_name)
         try:
             content = await _call_history_ask_llm(
                 config=config,

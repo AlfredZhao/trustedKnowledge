@@ -16,6 +16,7 @@ from app.api.history_ask_quick_questions import router as history_ask_quick_ques
 from app.api.history_ontology import router as history_ontology_router
 from app.api.history import router as history_router
 from app.api.knowledge import router as knowledge_router
+from app.api.knowledge_processing import router as knowledge_processing_router
 from app.api.media import router as media_router
 from app.api.personal_secrets import router as personal_secrets_router
 from app.api.skills import router as skills_router
@@ -64,6 +65,7 @@ app.include_router(history_ask_quick_questions_router, prefix="/api")
 app.include_router(history_ontology_router, prefix="/api")
 app.include_router(history_router, prefix="/api")
 app.include_router(knowledge_router, prefix="/api")
+app.include_router(knowledge_processing_router, prefix="/api")
 app.include_router(media_router, prefix="/api")
 app.include_router(personal_secrets_router, prefix="/api")
 app.include_router(skills_router, prefix="/api")

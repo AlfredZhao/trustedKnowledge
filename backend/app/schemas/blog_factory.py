@@ -153,7 +153,7 @@ class BlogFactoryReviewRequest(BaseModel):
     question_snapshot: str | None = Field(default=None, max_length=4000)
     answer_snapshot: str | None = Field(default=None, max_length=12000)
     skill_ids: list[str] = Field(default_factory=list, max_length=8)
-    execution_provider: Literal["codex", "history_ask_llm"] = "codex"
+    execution_provider: Literal["history_ask_llm"] = "history_ask_llm"
     model_name: str = Field(default="", max_length=120)
 
     @field_validator("task_content", "question_snapshot", "answer_snapshot", mode="before")

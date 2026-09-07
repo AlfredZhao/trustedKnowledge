@@ -86,11 +86,13 @@ import {
   deleteKnowledge,
   fetchBlogFactoryItems,
   cancelBlogFactoryEnhancementJob,
+  cancelKnowledgeProcessingJob,
   fetchBlogPublishCategories,
   fetchBlogPublishConfigs,
   fetchKnowledge,
   fetchTodos,
   getBlogFactoryItem,
+  getKnowledgeProcessingJob,
   getKnowledge,
   getTodo,
   mergeKnowledge,
@@ -114,6 +116,7 @@ import {
   validateBlogPublishConfig,
   publishBlogFactoryArticle,
   refreshBlogFactoryVectors,
+  startKnowledgeProcessingJob,
 } from "./api/knowledge";
 import {
   createPersonalSecret,
@@ -131,7 +134,9 @@ import {
   createHistoryOntology,
   deleteHistoryAskQuickQuestion,
   deleteHistoryOntology,
-  fetchHistoryAskLlmConfig,
+  createHistoryAskLlmConfig,
+  deleteHistoryAskLlmConfig,
+  fetchHistoryAskLlmConfigs,
   fetchHistoryAskDomains,
   fetchHistoryAskQuickQuestions,
   fetchHistoryOntology,
@@ -459,10 +464,13 @@ const emptyEnglishMaterialDraft: EnglishMaterialDraft = {
 };
 
 const emptyLlmConfigDraft: LlmConfigDraft = {
+  display_name: "",
   provider_name: "OpenAI Compatible",
   base_url: "",
   model_name: "",
-  enabled: false,
+  api_key_env_var: "TRUSTED_KNOWLEDGE_HISTORY_ASK_LLM_API_KEY",
+  enabled: true,
+  sort_order: 0,
 };
 const emptyHistoryOntologyDraft: HistoryOntologyDraft = { domain_code: "history", name: "", aliases: "", description: "", visibility: "PERSONAL", shared_with_usernames: "" };
 
@@ -611,8 +619,7 @@ const englishMaterialFlagStyles: Record<EnglishMaterialDraft["flag"], string> = 
   "1": "border-mint-300/30 bg-mint-300/10 text-mint-300",
 };
 
-const FACTORY_CUSTOM_MODEL = "__factory_custom_model__";
-const HISTORY_ASK_CONFIGURED_MODEL = "__history_ask_configured_model__";
+const LLM_CONFIG_SELECTOR_PREFIX = "llm-config:";
 const KNOWLEDGE_TOPIC_TAG_PATTERN = /^[a-zA-Z0-9_,\s]*$/;
 const KNOWLEDGE_TOPIC_TAG_HINT = "多个标签请使用英文逗号（,）分隔，例如：Oracle,APEX；仅支持英文字母、数字、下划线和空格。";
 
@@ -709,9 +716,7 @@ function App() {
   const [factoryTask, setFactoryTask] = useState(restoredUiState.factory.task);
   const [factorySkillIds, setFactorySkillIds] = useState<string[]>(restoredUiState.factory.skillIds);
   const [factoryModelName, setFactoryModelName] = useState(
-    restoredUiState.factory.modelName === "__factory_history_ask_model__"
-      ? FACTORY_CUSTOM_MODEL
-      : restoredUiState.factory.modelName || AI_CODING_DEFAULT_MODEL,
+    restoredUiState.factory.modelName.startsWith(LLM_CONFIG_SELECTOR_PREFIX) ? restoredUiState.factory.modelName : "",
   );
   const [factoryError, setFactoryError] = useState<string | null>(null);
   const [isFactoryLoading, setIsFactoryLoading] = useState(false);
@@ -727,7 +732,7 @@ function App() {
     restoredUiState.factory.codexKnowledgeId ?? (restoredUiState.factory.codexJobId ? restoredUiState.factory.selectedId : null),
   );
   const [factoryCodexStatus, setFactoryCodexStatus] = useState(
-    restoredUiState.factory.codexJobId ? "正在恢复 Codex 加工状态..." : "",
+    restoredUiState.factory.codexJobId ? "正在恢复模型加工状态..." : "",
   );
   const [factoryRefreshToken, setFactoryRefreshToken] = useState(0);
   const [blogFactoryItems, setBlogFactoryItems] = useState<BlogFactoryItem[]>([]);
@@ -989,12 +994,14 @@ function App() {
   const [isHistoryVectorRefreshing, setIsHistoryVectorRefreshing] = useState(false);
   const [historyRefreshToken, setHistoryRefreshToken] = useState(0);
   const [historyAskQuestion, setHistoryAskQuestion] = useState(restoredUiState.historyAsk.question);
-  const [historyAskModelName, setHistoryAskModelName] = useState(AI_CODING_DEFAULT_MODEL);
+  const [historyAskModelName, setHistoryAskModelName] = useState("");
   const [historyAskAnswer, setHistoryAskAnswer] = useState<HistoryAskResponse | null>(restoredUiState.historyAsk.answer);
   const [historyAskError, setHistoryAskError] = useState<string | null>(null);
   const [hasCopiedHistoryAskAnswer, setHasCopiedHistoryAskAnswer] = useState(false);
   const [isHistoryAsking, setIsHistoryAsking] = useState(false);
+  const [historyAskLlmConfigs, setHistoryAskLlmConfigs] = useState<LlmConfig[]>([]);
   const [historyAskLlmConfig, setHistoryAskLlmConfig] = useState<LlmConfig | null>(null);
+  const [historyAskLlmConfigEditingId, setHistoryAskLlmConfigEditingId] = useState<number | null>(null);
   const [historyAskLlmConfigDraft, setHistoryAskLlmConfigDraft] = useState<LlmConfigDraft>(emptyLlmConfigDraft);
   const [isHistoryAskLlmConfigLoading, setIsHistoryAskLlmConfigLoading] = useState(false);
   const [isHistoryAskLlmConfigSaving, setIsHistoryAskLlmConfigSaving] = useState(false);
@@ -1142,21 +1149,12 @@ function App() {
     return getLatestCodexJobByOutputMode("full");
   }
 
-  const factoryModelOptions = useMemo(() => {
-    const options = buildAiCodingModelOptions(codexConfig);
-    options.push({ value: FACTORY_CUSTOM_MODEL, label: "其他模型" });
-    return options;
-  }, [codexConfig]);
-
-  const historyAskModelOptions = useMemo(() => {
-    const options = buildAiCodingModelOptions(codexConfig);
-    options.push({ value: HISTORY_ASK_CONFIGURED_MODEL, label: "已配置模型" });
-    return options;
-  }, [codexConfig]);
+  const historyAskModelOptions = useMemo(() => historyAskLlmConfigs
+    .filter((config) => config.enabled && config.has_api_key && config.base_url && config.model_name)
+    .map((config) => ({ value: `${LLM_CONFIG_SELECTOR_PREFIX}${config.id}`, label: config.display_name || `${config.provider_name} · ${config.model_name}` })), [historyAskLlmConfigs]);
+  const factoryModelOptions = historyAskModelOptions;
 
   function resolveFactoryModelName() {
-    if (factoryModelName === AI_CODING_DEFAULT_MODEL) return "";
-    if (factoryModelName === FACTORY_CUSTOM_MODEL) return "";
     return factoryModelName.trim();
   }
 
@@ -1304,6 +1302,7 @@ function App() {
       setHistoryTotal(0);
       setHistoryAskAnswer(null);
       setHasCopiedHistoryAskAnswer(false);
+      setHistoryAskLlmConfigs([]);
       setHistoryAskLlmConfig(null);
       setHistoryAskLlmConfigDraft(emptyLlmConfigDraft);
       setHistoryAskLlmConfigSaved(false);
@@ -1661,7 +1660,7 @@ function App() {
 
     async function pollFactoryCodexJob() {
       try {
-        const job = await getCodexJob(jobId);
+        const job = await getKnowledgeProcessingJob(jobId);
         if (cancelled) return;
 
         setFactoryTask(job.output);
@@ -1792,20 +1791,24 @@ function App() {
   }, [activeView, authUser]);
 
   useEffect(() => {
-    if (!apiKey || (activeView !== "historyAsk" && activeView !== "factory")) return;
+    if (!apiKey) return;
 
     let mounted = true;
     setIsHistoryAskLlmConfigLoading(true);
-    fetchHistoryAskLlmConfig()
-      .then((config) => {
+    fetchHistoryAskLlmConfigs()
+      .then(({ items }) => {
         if (!mounted) return;
+        const config = items[0] ?? null;
+        setHistoryAskLlmConfigs(items);
         setHistoryAskLlmConfig(config);
-        setHistoryAskLlmConfigDraft({
-          provider_name: config.provider_name,
-          base_url: config.base_url,
-          model_name: config.model_name,
-          enabled: config.enabled,
-        });
+        setHistoryAskLlmConfigEditingId(config?.id ?? null);
+        setHistoryAskLlmConfigDraft(config ? { display_name: config.display_name, provider_name: config.provider_name, base_url: config.base_url, model_name: config.model_name, api_key_env_var: config.api_key_env_var, enabled: config.enabled, sort_order: config.sort_order } : emptyLlmConfigDraft);
+        const selected = items.find((item) => item.enabled && item.has_api_key && item.base_url && item.model_name);
+        if (selected) {
+          const selector = `${LLM_CONFIG_SELECTOR_PREFIX}${selected.id}`;
+          setHistoryAskModelName((current) => current || selector);
+          setFactoryModelName((current) => current || selector);
+        }
         setHistoryAskLlmConfigError(null);
       })
       .catch((error: Error) => {
@@ -3334,32 +3337,24 @@ function App() {
     setFactorySelectedId(item.id);
     setFactoryCodexKnowledgeId(item.id);
     setFactoryTask("");
-    const usesHistoryAskModel = factoryModelName === FACTORY_CUSTOM_MODEL;
-    setFactoryCodexStatus(usesHistoryAskModel ? "正在提交其他模型加工任务..." : "正在提交 Codex 加工任务...");
+    setFactoryCodexStatus("正在提交模型加工任务...");
     setHasCopiedFactoryTask(false);
     setFactoryCopyError(null);
     setFactorySavedKnowledgeId(null);
 
     try {
       const prompt = buildFactorySkillPrompt(item);
-      const job = await startCodexJob(
-        prompt,
-        factorySkillIds,
-        "read-only",
-        "final",
-        requestedModelName,
-        usesHistoryAskModel ? "history_ask_llm" : "codex",
-      );
+      const job = await startKnowledgeProcessingJob(prompt, factorySkillIds, requestedModelName);
       setFactoryCodexJobId(job.job_id);
       setFactoryTask(job.output);
-      setFactoryCodexStatus(usesHistoryAskModel ? "其他模型任务已提交，正在加工..." : "Codex 任务已提交，正在加工...");
+      setFactoryCodexStatus("模型任务已提交，正在加工...");
     } catch (error) {
       setIsFactoryGenerating(false);
       setIsFactoryAutoSaving(false);
       setFactoryCodexJobId(null);
       setFactoryCodexKnowledgeId(null);
-      setFactoryCodexStatus(usesHistoryAskModel ? "其他模型加工失败。" : "Codex 加工失败。");
-      setFactoryCopyError(error instanceof Error ? error.message : usesHistoryAskModel ? "其他模型加工失败，请稍后重试。" : "Codex 加工失败，请稍后重试。");
+      setFactoryCodexStatus("模型加工失败。");
+      setFactoryCopyError(error instanceof Error ? error.message : "模型加工失败，请稍后重试。");
     }
   }
 
@@ -3368,7 +3363,7 @@ function App() {
 
     setFactoryCodexStatus("正在取消模型加工...");
     try {
-      const job = await cancelCodexJob(factoryCodexJobId);
+      const job = await cancelKnowledgeProcessingJob(factoryCodexJobId);
       setFactoryTask(job.output);
       setIsFactoryGenerating(false);
       setIsFactoryAutoSaving(false);
@@ -4671,12 +4666,10 @@ function App() {
     setHistoryAskError(null);
     setHasCopiedHistoryAskAnswer(false);
     try {
-      const usesConfiguredModel = historyAskModelName === HISTORY_ASK_CONFIGURED_MODEL;
       const answer = await askHistory(
         question,
         historyAskSkillIds,
-        usesConfiguredModel ? "history_ask_llm" : "codex",
-        historyAskModelName === AI_CODING_DEFAULT_MODEL ? "" : historyAskModelName,
+        historyAskModelName,
         historyAskDomainCode,
       );
       setHistoryAskAnswer(answer);
@@ -5034,14 +5027,13 @@ function App() {
     setHistoryAskLlmConfigError(null);
     setHistoryAskLlmConfigSaved(false);
     try {
-      const config = await updateHistoryAskLlmConfig(historyAskLlmConfigDraft);
+      const config = historyAskLlmConfigEditingId
+        ? await updateHistoryAskLlmConfig(historyAskLlmConfigEditingId, historyAskLlmConfigDraft)
+        : await createHistoryAskLlmConfig(historyAskLlmConfigDraft);
       setHistoryAskLlmConfig(config);
-      setHistoryAskLlmConfigDraft({
-        provider_name: config.provider_name,
-        base_url: config.base_url,
-        model_name: config.model_name,
-        enabled: config.enabled,
-      });
+      setHistoryAskLlmConfigEditingId(config.id);
+      setHistoryAskLlmConfigDraft({ display_name: config.display_name, provider_name: config.provider_name, base_url: config.base_url, model_name: config.model_name, api_key_env_var: config.api_key_env_var, enabled: config.enabled, sort_order: config.sort_order });
+      setHistoryAskLlmConfigs((items) => items.some((item) => item.id === config.id) ? items.map((item) => item.id === config.id ? config : item) : [...items, config]);
       setHistoryAskLlmConfigSaved(true);
       window.setTimeout(() => setHistoryAskLlmConfigSaved(false), 1600);
     } catch (error) {
@@ -5049,6 +5041,33 @@ function App() {
     } finally {
       setIsHistoryAskLlmConfigSaving(false);
     }
+  }
+
+  function handleSelectHistoryAskLlmConfig(config: LlmConfig) {
+    setHistoryAskLlmConfig(config);
+    setHistoryAskLlmConfigEditingId(config.id);
+    setHistoryAskLlmConfigDraft({ display_name: config.display_name, provider_name: config.provider_name, base_url: config.base_url, model_name: config.model_name, api_key_env_var: config.api_key_env_var, enabled: config.enabled, sort_order: config.sort_order });
+  }
+
+  function handleNewHistoryAskLlmConfig() {
+    setHistoryAskLlmConfig(null);
+    setHistoryAskLlmConfigEditingId(null);
+    setHistoryAskLlmConfigDraft({ ...emptyLlmConfigDraft, sort_order: historyAskLlmConfigs.length });
+  }
+
+  async function handleDeleteHistoryAskLlmConfig() {
+    if (!historyAskLlmConfigEditingId || isHistoryAskLlmConfigSaving) return;
+    setIsHistoryAskLlmConfigSaving(true);
+    setHistoryAskLlmConfigError(null);
+    try {
+      await deleteHistoryAskLlmConfig(historyAskLlmConfigEditingId);
+      const remaining = historyAskLlmConfigs.filter((item) => item.id !== historyAskLlmConfigEditingId);
+      setHistoryAskLlmConfigs(remaining);
+      const next = remaining[0] ?? null;
+      if (next) handleSelectHistoryAskLlmConfig(next); else handleNewHistoryAskLlmConfig();
+    } catch (error) {
+      setHistoryAskLlmConfigError(error instanceof Error ? error.message : "删除模型配置失败，请稍后重试。");
+    } finally { setIsHistoryAskLlmConfigSaving(false); }
   }
 
   async function handleSaveHistoryOntology(event: React.FormEvent<HTMLFormElement>) {
@@ -5568,6 +5587,7 @@ function App() {
               isLlmConfigLoading={isHistoryAskLlmConfigLoading}
               isLlmConfigSaving={isHistoryAskLlmConfigSaving}
               llmConfig={historyAskLlmConfig}
+              llmConfigs={historyAskLlmConfigs}
               llmConfigDraft={historyAskLlmConfigDraft}
               llmConfigError={historyAskLlmConfigError}
               llmConfigSaved={historyAskLlmConfigSaved}
@@ -5591,6 +5611,9 @@ function App() {
               onCopyAnswer={handleCopyHistoryAskAnswer}
               onLlmConfigDraftChange={setHistoryAskLlmConfigDraft}
               onLlmConfigSave={handleSaveHistoryAskLlmConfig}
+              onLlmConfigSelect={handleSelectHistoryAskLlmConfig}
+              onLlmConfigNew={handleNewHistoryAskLlmConfig}
+              onLlmConfigDelete={() => void handleDeleteHistoryAskLlmConfig()}
               onOntologyDraftChange={setHistoryOntologyDraft}
               onOntologySave={handleSaveHistoryOntology}
               onOntologyEdit={handleEditHistoryOntology}
@@ -9537,11 +9560,7 @@ function KnowledgeFactory({
                 ))}
               </select>
             </Field>
-            {modelName === FACTORY_CUSTOM_MODEL ? (
-              <p className="max-w-sm text-xs leading-5 text-slate-500">
-                使用“AI 问数”中已启用的供应商、Base URL、模型名和后端 API Key 配置。
-              </p>
-            ) : null}
+            <p className="max-w-sm text-xs leading-5 text-slate-500">使用所选的已启用模型配置。</p>
             {selectedItem ? (
               isGenerating ? (
                 <button
@@ -11575,7 +11594,7 @@ function BlogFactoryAiEnhancement({
   const [result, setResult] = useState<string | null>(null);
   const [enhancementJobId, setEnhancementJobId] = useState<string | null>(null);
   const [sourceTaskContent, setSourceTaskContent] = useState<string | null>(null);
-  const [modelName, setModelName] = useState(AI_CODING_DEFAULT_MODEL);
+  const [modelName, setModelName] = useState(() => modelOptions[0]?.value ?? "");
   const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
   const canEnhance = !disabled && !isEnhancing && taskContent.trim().length > 0;
 
@@ -11662,14 +11681,13 @@ function BlogFactoryAiEnhancement({
     setError(null);
     setSourceTaskContent(taskContent);
     try {
-      const usesConfiguredModel = modelName === HISTORY_ASK_CONFIGURED_MODEL;
       const job = await startBlogFactoryEnhancementJob({
         taskContent,
         questionSnapshot,
         answerSnapshot,
         skillIds: selectedSkillIds,
-        executionProvider: usesConfiguredModel ? "history_ask_llm" : "codex",
-        modelName: modelName === AI_CODING_DEFAULT_MODEL ? "" : modelName,
+        executionProvider: "history_ask_llm",
+        modelName,
       });
       storeEnhancementJob(job.job_id);
       setEnhancementJobId(job.job_id);
@@ -11740,7 +11758,7 @@ function BlogFactoryAiReview({
   const [reviewJobId, setReviewJobId] = useState<string | null>(null);
   const [sourceTaskContent, setSourceTaskContent] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [modelName, setModelName] = useState(AI_CODING_DEFAULT_MODEL);
+  const [modelName, setModelName] = useState(() => modelOptions[0]?.value ?? "");
   const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
   const canReview = !disabled && !isReviewing && taskContent.trim().length > 0;
 
@@ -11829,14 +11847,13 @@ function BlogFactoryAiReview({
     setError(null);
     setSourceTaskContent(taskContent);
     try {
-      const usesConfiguredModel = modelName === HISTORY_ASK_CONFIGURED_MODEL;
       const job = await startBlogFactoryReviewJob({
         taskContent,
         questionSnapshot,
         answerSnapshot,
         skillIds: selectedSkillIds,
-        executionProvider: usesConfiguredModel ? "history_ask_llm" : "codex",
-        modelName: modelName === AI_CODING_DEFAULT_MODEL ? "" : modelName,
+        executionProvider: "history_ask_llm",
+        modelName,
       });
       storeReviewJob(job.job_id);
       setReviewJobId(job.job_id);
@@ -14252,7 +14269,7 @@ function SkillAiCreation({
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
-  const [modelName, setModelName] = useState(AI_CODING_DEFAULT_MODEL);
+  const [modelName, setModelName] = useState(() => modelOptions[0]?.value ?? "");
   const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
   const canGenerate = !disabled && !isGenerating && draft.name.trim().length > 0 && draft.description.trim().length > 0;
 
@@ -14268,13 +14285,12 @@ function SkillAiCreation({
     setIsGenerating(true);
     setError(null);
     try {
-      const usesConfiguredModel = modelName === HISTORY_ASK_CONFIGURED_MODEL;
       const next = await generateSkillDraft({
         name: draft.name,
         description: draft.description,
         skillIds: selectedSkillIds,
-        executionProvider: usesConfiguredModel ? "history_ask_llm" : "codex",
-        modelName: modelName === AI_CODING_DEFAULT_MODEL ? "" : modelName,
+        executionProvider: "history_ask_llm",
+        modelName,
       });
       setResult(next.content);
     } catch (generationError) {
@@ -14313,7 +14329,7 @@ function EnglishMaterialAiGeneration({
   const [isOpen, setIsOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [modelName, setModelName] = useState(HISTORY_ASK_CONFIGURED_MODEL);
+  const [modelName, setModelName] = useState("");
   const [topicMode, setTopicMode] = useState<"trend" | "truth" | "motivation" | "workplace" | "custom">("trend");
   const [topic, setTopic] = useState("");
   const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
@@ -14324,13 +14340,12 @@ function EnglishMaterialAiGeneration({
     setIsGenerating(true);
     setError(null);
     try {
-      const usesConfiguredModel = modelName === HISTORY_ASK_CONFIGURED_MODEL;
       const result = await generateEnglishMaterial({
         topicMode,
         topic,
         skillIds: selectedSkillIds,
-        executionProvider: usesConfiguredModel ? "history_ask_llm" : "codex",
-        modelName: modelName === AI_CODING_DEFAULT_MODEL || usesConfiguredModel ? "" : modelName,
+        executionProvider: "history_ask_llm",
+        modelName,
       });
       onGenerated({
         ...draft,
@@ -14724,7 +14739,7 @@ function EnglishMaterialAiCompletion({
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<EnglishMaterialCompletionResult | null>(null);
   const [completionJobId, setCompletionJobId] = useState<string | null>(null);
-  const [modelName, setModelName] = useState(HISTORY_ASK_CONFIGURED_MODEL);
+  const [modelName, setModelName] = useState("");
   const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
   const canComplete = !disabled && !isCompleting && draft.full_script.trim().length > 0;
 
@@ -14818,12 +14833,11 @@ function EnglishMaterialAiCompletion({
     setIsCompleting(true);
     setError(null);
     try {
-      const usesConfiguredModel = modelName === HISTORY_ASK_CONFIGURED_MODEL;
       const job = await startEnglishMaterialCompletionJob({
         fullScript: draft.full_script,
         skillIds: selectedSkillIds,
-        executionProvider: usesConfiguredModel ? "history_ask_llm" : "codex",
-        modelName: modelName === AI_CODING_DEFAULT_MODEL || usesConfiguredModel ? "" : modelName,
+        executionProvider: "history_ask_llm",
+        modelName,
       });
       storeCompletionJob(job.job_id);
       setCompletionJobId(job.job_id);
@@ -16447,6 +16461,7 @@ function HistoryAskPanel({
   isLlmConfigLoading,
   isLlmConfigSaving,
   llmConfig,
+  llmConfigs,
   llmConfigDraft,
   llmConfigError,
   llmConfigSaved,
@@ -16470,6 +16485,9 @@ function HistoryAskPanel({
   onCopyAnswer,
   onLlmConfigDraftChange,
   onLlmConfigSave,
+  onLlmConfigSelect,
+  onLlmConfigNew,
+  onLlmConfigDelete,
   onOntologyDraftChange,
   onOntologySave,
   onOntologyEdit,
@@ -16492,6 +16510,7 @@ function HistoryAskPanel({
   isLlmConfigLoading: boolean;
   isLlmConfigSaving: boolean;
   llmConfig: LlmConfig | null;
+  llmConfigs: LlmConfig[];
   llmConfigDraft: LlmConfigDraft;
   llmConfigError: string | null;
   llmConfigSaved: boolean;
@@ -16515,6 +16534,9 @@ function HistoryAskPanel({
   onCopyAnswer: (view: MarkdownContentView) => void;
   onLlmConfigDraftChange: (draft: LlmConfigDraft) => void;
   onLlmConfigSave: (event: React.FormEvent<HTMLFormElement>) => void;
+  onLlmConfigSelect: (config: LlmConfig) => void;
+  onLlmConfigNew: () => void;
+  onLlmConfigDelete: () => void;
   onOntologyDraftChange: (draft: HistoryOntologyDraft) => void;
   onOntologySave: (event: React.FormEvent<HTMLFormElement>) => void;
   onOntologyEdit: (term: HistoryOntologyTerm) => void;
@@ -16544,8 +16566,7 @@ function HistoryAskPanel({
     !isLlmConfigSaving &&
     (!llmConfigDraft.enabled ||
       (llmConfigDraft.base_url.trim().length > 0 &&
-        llmConfigDraft.model_name.trim().length > 0 &&
-        Boolean(llmConfig?.has_api_key)));
+        llmConfigDraft.model_name.trim().length > 0));
   const examplesByDomain: Record<typeof domainCode, string[]> = {
     history: ["总结最近30天关于“中信泰富”的工作记录。", "针对 alfred 最近一周的工作记录，总结一份周报。", "向量待更新的历史记录里哪类工作最多？"],
     todos: ["列出最近一周待处理的事项。", "总结本月已完成待办的主题分布。"],
@@ -16605,7 +16626,7 @@ function HistoryAskPanel({
           <div className="mb-5 flex flex-wrap gap-x-4 gap-y-1 text-xs leading-5 text-slate-500">
             <span>{selectedDomain?.description ?? "正在加载可用业务域..."}</span>
             {selectedDomain?.source_tables.length ? <span>数据来源（受控只读）：{selectedDomain.source_tables.join("、")}</span> : null}
-            <span>{modelName === HISTORY_ASK_CONFIGURED_MODEL ? "使用已启用的 OpenAI 兼容模型配置。" : "使用 Codex CLI 在只读模式下生成问数总结。"}</span>
+            <span>{modelName ? "使用所选的已启用模型配置。" : "请先在右侧配置并选择可用模型。"}</span>
           </div>
 
           <form className="space-y-4" onSubmit={onSubmit}>
@@ -16875,6 +16896,18 @@ function HistoryAskPanel({
               <LoadingStack />
             ) : isModelConfigExpanded ? (
               <form className="space-y-3" onSubmit={onLlmConfigSave}>
+                <div className="flex gap-2">
+                  <select className="control h-10 min-w-0 flex-1" value={llmConfig?.id ?? ""} onChange={(event) => { const selected = llmConfigs.find((item) => item.id === Number(event.target.value)); if (selected) onLlmConfigSelect(selected); }}>
+                    <option value="" disabled>选择要维护的模型</option>
+                    {llmConfigs.map((config) => <option key={config.id} value={config.id}>{config.display_name || `${config.provider_name} · ${config.model_name}`}</option>)}
+                  </select>
+                  <button className="h-10 rounded-lg border border-white/10 px-3 text-xs text-mint-200" type="button" onClick={onLlmConfigNew}>新增</button>
+                  {llmConfig ? <button className="h-10 rounded-lg border border-red-300/30 px-3 text-xs text-red-200 disabled:opacity-50" disabled={isLlmConfigSaving} type="button" onClick={onLlmConfigDelete}>删除</button> : null}
+                </div>
+                <label className="block text-xs font-medium text-slate-500">
+                  显示名称
+                  <input className="control mt-2 h-10" value={llmConfigDraft.display_name} onChange={(event) => onLlmConfigDraftChange({ ...llmConfigDraft, display_name: event.target.value })} placeholder="DeepSeek · deepseek-chat" />
+                </label>
                 <label className="block text-xs font-medium text-slate-500">
                   供应商
                   <input
@@ -16908,11 +16941,15 @@ function HistoryAskPanel({
                     placeholder="deepseek-chat"
                   />
                 </label>
+                <label className="block text-xs font-medium text-slate-500">
+                  API Key 环境变量
+                  <input className="control mt-2 h-10 font-mono text-xs" value={llmConfigDraft.api_key_env_var} onChange={(event) => onLlmConfigDraftChange({ ...llmConfigDraft, api_key_env_var: event.target.value })} placeholder="TRUSTED_KNOWLEDGE_LLM_DEEPSEEK_API_KEY" />
+                </label>
                 <div className="rounded-lg border border-white/10 bg-white/[0.028] px-3 py-2 text-xs leading-5 text-slate-500">
                   API Key 仅从后端环境变量读取：{llmConfig?.has_api_key ? "已配置" : "未配置"}
                 </div>
                 <label className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.028] px-3 py-2 text-sm text-slate-300">
-                  <span>启用 AI 总结</span>
+                  <span>启用此模型</span>
                   <input
                     checked={llmConfigDraft.enabled}
                     className="h-4 w-4 accent-mint-300"

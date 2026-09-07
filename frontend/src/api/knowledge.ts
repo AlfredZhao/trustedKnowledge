@@ -1,4 +1,5 @@
 import type {
+  CodexJobSnapshot,
   BlogPublishCategory,
   BlogFactoryPublishResult,
   BlogFactoryReviewResult,
@@ -51,6 +52,18 @@ export interface TodoListResponse {
   total: number;
   limit: number;
   offset: number;
+}
+
+export async function startKnowledgeProcessingJob(prompt: string, skillIds: string[], modelName: string): Promise<CodexJobSnapshot> {
+  return request<CodexJobSnapshot>("/api/knowledge-processing/jobs", { method: "POST", body: JSON.stringify({ prompt, skill_ids: skillIds, sandbox_mode: "read-only", output_mode: "final", model_name: modelName, execution_provider: "history_ask_llm" }) });
+}
+
+export async function getKnowledgeProcessingJob(jobId: string): Promise<CodexJobSnapshot> {
+  return request<CodexJobSnapshot>(`/api/knowledge-processing/jobs/${encodeURIComponent(jobId)}`);
+}
+
+export async function cancelKnowledgeProcessingJob(jobId: string): Promise<CodexJobSnapshot> {
+  return request<CodexJobSnapshot>(`/api/knowledge-processing/jobs/${encodeURIComponent(jobId)}`, { method: "DELETE" });
 }
 
 export async function fetchKnowledge({

@@ -12,7 +12,7 @@ import oracledb
 
 from app.core.config import settings
 from app.db.oracle import acquire_connection
-from app.repositories.llm_config import get_history_ask_llm_config
+from app.repositories.llm_config import get_history_ask_llm_config, get_llm_api_key
 from app.repositories.history_ontology import find_matching_history_ontology_terms
 from app.repositories.skills import get_prompt_skills
 from app.repositories.todos import _ensure_todo_table
@@ -505,10 +505,10 @@ async def _call_history_ask_llm(
     audit_job_id: str | None = None,
 ) -> str:
     base_url = str(config.get("base_url") or "").strip()
-    api_key = settings.history_ask_llm_api_key.strip()
+    api_key = get_llm_api_key(config)
     model_name = str(config.get("model_name") or "").strip()
     if not base_url or not api_key or not model_name:
-        raise RuntimeError("LLM 配置未完整填写，需要 Base URL、模型名和后端环境变量 TRUSTED_KNOWLEDGE_HISTORY_ASK_LLM_API_KEY。")
+        raise RuntimeError("LLM 配置未完整填写，需要 Base URL、模型名和对应的后端 API Key 环境变量。")
 
     started_at = time.monotonic()
     log_ai_call("started", provider="openai-compatible", source=audit_source, username=audit_username, job_id=audit_job_id, model_name=model_name)
@@ -808,7 +808,7 @@ async def ask_history(
         llm_requested = False
 
         if rows:
-            llm_config = await get_history_ask_llm_config(connection)
+            llm_config = await get_history_ask_llm_config(connection, model_name)
             if execution_provider == "codex":
                 if not settings.allow_web_codex:
                     warning = "Codex CLI 未启用，请联系管理员开启 Web Codex 后再试。"
@@ -1000,7 +1000,7 @@ async def _ask_todos(
             elif execution_provider == "codex":
                 warning = "Codex CLI 未启用，请联系管理员开启 Web Codex 后再试。"
             else:
-                config = await get_history_ask_llm_config(connection)
+                config = await get_history_ask_llm_config(connection, model_name)
                 if config.get("enabled"):
                     llm_requested = True
                     try:
@@ -1094,7 +1094,7 @@ async def _finalize_catalog_ask(
                 except RuntimeError as exc:
                     warning = str(exc)[:500]
         else:
-            config = await get_history_ask_llm_config(connection)
+            config = await get_history_ask_llm_config(connection, model_name)
             if config.get("enabled"):
                 llm_requested = True
                 try:

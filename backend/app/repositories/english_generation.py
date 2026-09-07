@@ -80,7 +80,7 @@ async def generate_english_material(payload: EnglishMaterialGenerationRequest, a
         )
     else:
         async with acquire_connection() as connection:
-            config = await get_history_ask_llm_config(connection)
+            config = await get_history_ask_llm_config(connection, payload.model_name)
         content = await _call_history_ask_llm(config=config, prompt=prompt, system=system, max_tokens=1800, audit_source="english-generation", audit_username=auth_context.username)
 
     result = _extract_json(content)
@@ -172,7 +172,7 @@ async def complete_english_material(payload: EnglishMaterialCompletionRequest, a
         )
     else:
         async with acquire_connection() as connection:
-            config = await get_history_ask_llm_config(connection)
+            config = await get_history_ask_llm_config(connection, payload.model_name)
         content = await _call_history_ask_llm(config=config, prompt=prompt, system=system, max_tokens=900, audit_source="english-completion", audit_username=auth_context.username, audit_job_id=audit_job_id)
 
     try:
