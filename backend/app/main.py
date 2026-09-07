@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.auth import router as auth_router
 from app.api.agents import router as agents_router
+from app.api.ai_audit import router as ai_audit_router
 from app.api.blog_factory import router as blog_factory_router
 from app.api.codex import router as codex_router
 from app.api.current_records import router as current_records_router
@@ -56,6 +57,7 @@ app.add_middleware(
 
 app.include_router(auth_router, prefix="/api")
 app.include_router(agents_router, prefix="/api")
+app.include_router(ai_audit_router, prefix="/api")
 app.include_router(blog_factory_router, prefix="/api")
 app.include_router(codex_router, prefix="/api")
 app.include_router(current_records_router, prefix="/api")

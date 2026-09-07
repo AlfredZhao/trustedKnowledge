@@ -196,7 +196,8 @@ export type AppView =
   | "skills"
   | "historyAsk"
   | "aiCoding"
-  | "usage";
+  | "usage"
+  | "aiAudit";
 
 export type ManagedUserRole = "USER" | "PARENT";
 export type ManagedUserStatus = "ACTIVE" | "DISABLED";

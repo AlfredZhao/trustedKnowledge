@@ -10,6 +10,7 @@ import {
   History,
   Layers3,
   Network,
+  ShieldCheck,
   UserCog,
   WandSparkles,
   type LucideIcon,
@@ -44,6 +45,7 @@ export const APP_VIEWS: AppView[] = [
   "historyAsk",
   "aiCoding",
   "usage",
+  "aiAudit",
 ];
 
 export type FunctionNavItem = {
@@ -68,6 +70,7 @@ export const FUNCTION_NAV_ITEMS: FunctionNavItem[] = [
   { icon: Bot, label: "AI 问数", view: "historyAsk" },
   { icon: WandSparkles, label: "AI 编程", view: "aiCoding" },
   { icon: Bot, label: "AI 用量", view: "usage" },
+  { icon: ShieldCheck, label: "AI 审计", view: "aiAudit" },
 ];
 
 export const KNOWLEDGE_STATUS_OPTIONS: KnowledgeStatus[] = ["未发布", "已发布", "跳过"];

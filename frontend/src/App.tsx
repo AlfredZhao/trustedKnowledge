@@ -337,6 +337,7 @@ import {
 
 const OverviewDashboard = lazy(() => import("./views/OverviewDashboard"));
 const LlmUsageDashboard = lazy(() => import("./views/LlmUsageDashboard"));
+const AiAuditDashboard = lazy(() => import("./views/AiAuditDashboard"));
 const HistoryExplorer = lazy(() => import("./views/HistoryExplorer"));
 const AiCodingWorkspace = lazy(() => import("./views/AiCodingWorkspace"));
 const AiGraphWorkspace = lazy(() => import("./views/AiGraphWorkspace"));
@@ -518,7 +519,7 @@ const emptyOverviewSectionErrors: OverviewSectionErrors = {
 };
 // Navigation and access boundaries.
 const USER_BASE_VIEWS: AppView[] = ["overview", "workbench", "factory", "blogFactory", "todos", "personalSecrets", "currentRecords", "history", "englishMaterials", "skills"];
-const ADMIN_VIEWS: AppView[] = ["users", "skills", "aiGraph", "historyAsk", "aiCoding", "usage"];
+const ADMIN_VIEWS: AppView[] = ["users", "skills", "aiGraph", "historyAsk", "aiCoding", "usage", "aiAudit"];
 const ADMIN_ROLE_MODULE_VIEWS: AppView[] = ["aiGraph", "historyAsk", "aiCoding", "usage"];
 const ADMIN_ROLE_MODULE_OPTIONS: { code: AdminModuleAccessItem["module_code"]; label: string }[] = [
   { code: "aiGraph", label: "AI 图谱" }, { code: "historyAsk", label: "AI 问数" },
@@ -5368,7 +5369,9 @@ function App() {
                 ? "Ask Data"
                 : activeView === "aiCoding"
                   ? "Codex Workspace"
-              : "AI Usage";
+                  : activeView === "aiAudit"
+                    ? "AI Audit"
+                    : "AI Usage";
   const selectedKnowledgeIndex = selectedId === null ? -1 : items.findIndex((item) => item.id === selectedId);
   const isKnowledgeNavigationBlocked = isDetailLoading || isSaving || isDeleting || isConvertingKnowledgeToTodo;
   const canSelectPreviousKnowledge =
@@ -6068,6 +6071,10 @@ function App() {
                 loadError={usageError}
                 onRefresh={handleRefreshUsage}
               />
+            </Suspense>
+          ) : activeView === "aiAudit" ? (
+            <Suspense fallback={lazyViewFallback}>
+              <AiAuditDashboard />
             </Suspense>
           ) : activeView === "workbench" ? (
             <div

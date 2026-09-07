@@ -9,6 +9,17 @@ The format follows the common GitHub changelog convention inspired by
 
 ## 本次版本更新
 
+### [Unreleased]
+
+#### Added / 新增
+
+- Added a super-admin-only AI Audit dashboard. It reads the privacy-safe JSONL audit log and its rotations to show call success, tokens, duration, estimated cost, trends, user/source distribution, and filterable audit details without exposing prompts, responses, or secrets.
+- 新增仅超级管理员可见的 AI 审计看板：读取隐私安全 JSONL 审计日志及轮转副本，展示调用结果、Token、耗时、估算成本、趋势、用户/来源分布与可筛选明细，不暴露提示词、响应或密钥。
+
+#### Changed / 变更
+
+#### Fixed / 修复
+
 ### [0.4.8] - 2026-09-07
 
 #### Added / 新增
