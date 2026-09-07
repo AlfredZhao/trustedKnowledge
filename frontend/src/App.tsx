@@ -14313,7 +14313,7 @@ function EnglishMaterialAiGeneration({
   const [isOpen, setIsOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [modelName, setModelName] = useState(AI_CODING_DEFAULT_MODEL);
+  const [modelName, setModelName] = useState(HISTORY_ASK_CONFIGURED_MODEL);
   const [topicMode, setTopicMode] = useState<"trend" | "truth" | "motivation" | "workplace" | "custom">("trend");
   const [topic, setTopic] = useState("");
   const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
@@ -14330,7 +14330,7 @@ function EnglishMaterialAiGeneration({
         topic,
         skillIds: selectedSkillIds,
         executionProvider: usesConfiguredModel ? "history_ask_llm" : "codex",
-        modelName: modelName === AI_CODING_DEFAULT_MODEL ? "" : modelName,
+        modelName: modelName === AI_CODING_DEFAULT_MODEL || usesConfiguredModel ? "" : modelName,
       });
       onGenerated({
         ...draft,
@@ -14724,7 +14724,7 @@ function EnglishMaterialAiCompletion({
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<EnglishMaterialCompletionResult | null>(null);
   const [completionJobId, setCompletionJobId] = useState<string | null>(null);
-  const [modelName, setModelName] = useState(AI_CODING_DEFAULT_MODEL);
+  const [modelName, setModelName] = useState(HISTORY_ASK_CONFIGURED_MODEL);
   const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
   const canComplete = !disabled && !isCompleting && draft.full_script.trim().length > 0;
 
@@ -14823,7 +14823,7 @@ function EnglishMaterialAiCompletion({
         fullScript: draft.full_script,
         skillIds: selectedSkillIds,
         executionProvider: usesConfiguredModel ? "history_ask_llm" : "codex",
-        modelName: modelName === AI_CODING_DEFAULT_MODEL ? "" : modelName,
+        modelName: modelName === AI_CODING_DEFAULT_MODEL || usesConfiguredModel ? "" : modelName,
       });
       storeCompletionJob(job.job_id);
       setCompletionJobId(job.job_id);
