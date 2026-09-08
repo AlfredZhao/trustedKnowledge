@@ -8154,6 +8154,40 @@ function getMarkdownSourceLine(markdown: string, selectionStart: number) {
   return markdown.slice(0, selectionStart).split("\n").length - 1;
 }
 
+function useMarkdownEditorPreview(markdown: string, recordId: number | null) {
+  const [view, setView] = useState<"edit" | "preview">("edit");
+  const [previewSourceLine, setPreviewSourceLine] = useState<number | null>(null);
+  const editorRef = useRef<MarkdownImageTextareaHandle | null>(null);
+  const viewportRef = useRef<MarkdownEditorViewport | null>(null);
+
+  useEffect(() => {
+    // A viewport belongs to one record only. Do not use a previous record's
+    // caret line when the user selects another item while previewing.
+    setView("edit");
+    setPreviewSourceLine(null);
+    viewportRef.current = null;
+  }, [recordId]);
+
+  useEffect(() => {
+    if (view !== "edit" || !viewportRef.current) return;
+    editorRef.current?.restoreViewport(viewportRef.current);
+  }, [view]);
+
+  function setDisplay(nextView: "edit" | "preview") {
+    if (nextView === view) return;
+    if (view === "edit") {
+      const viewport = editorRef.current?.getViewport();
+      if (viewport) {
+        viewportRef.current = viewport;
+        setPreviewSourceLine(getMarkdownSourceLine(markdown, viewport.selectionStart));
+      }
+    }
+    setView(nextView);
+  }
+
+  return { editorRef, previewSourceLine, setDisplay, view };
+}
+
 const MarkdownImageTextarea = forwardRef<MarkdownImageTextareaHandle, {
   value: string;
   onChange: (value: string) => void;
@@ -8599,10 +8633,12 @@ function KnowledgeForm({
   onToggleMobileCollapsed?: () => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
 }) {
-  const [answerView, setAnswerView] = useState<"edit" | "preview">("edit");
-  const [answerPreviewSourceLine, setAnswerPreviewSourceLine] = useState<number | null>(null);
-  const answerEditorRef = useRef<MarkdownImageTextareaHandle | null>(null);
-  const answerViewportRef = useRef<MarkdownEditorViewport | null>(null);
+  const {
+    editorRef: answerEditorRef,
+    previewSourceLine: answerPreviewSourceLine,
+    setDisplay: setAnswerDisplay,
+    view: answerView,
+  } = useMarkdownEditorPreview(draft.answer, selectedId);
   const markdownViewShortcutLabel = getMarkdownViewToggleShortcutLabel();
   const canSubmit = draft.question.trim().length > 0 && draft.answer.trim().length > 0 && !isSaving;
   const isEditing = mode === "edit";
@@ -8628,23 +8664,6 @@ function KnowledgeForm({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [answerView, isEditing]);
-
-  useEffect(() => {
-    if (answerView !== "edit" || !answerViewportRef.current) return;
-    answerEditorRef.current?.restoreViewport(answerViewportRef.current);
-  }, [answerView]);
-
-  function setAnswerDisplay(nextView: "edit" | "preview") {
-    if (nextView === answerView) return;
-    if (answerView === "edit") {
-      const viewport = answerEditorRef.current?.getViewport();
-      if (viewport) {
-        answerViewportRef.current = viewport;
-        setAnswerPreviewSourceLine(getMarkdownSourceLine(draft.answer, viewport.selectionStart));
-      }
-    }
-    setAnswerView(nextView);
-  }
 
   return (
     <section className={`min-w-0 ${embedded ? "" : "rounded-lg border border-white/10 bg-ink-900/74 p-4 shadow-soft-glow backdrop-blur-xl"}`}>
@@ -12488,10 +12507,12 @@ function TodoWorkspace({
   onUsernameFilterChange: (username: string) => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
 }) {
-  const [taskContentView, setTaskContentView] = useState<"edit" | "preview">("edit");
-  const [taskPreviewSourceLine, setTaskPreviewSourceLine] = useState<number | null>(null);
-  const taskEditorRef = useRef<MarkdownImageTextareaHandle | null>(null);
-  const taskViewportRef = useRef<MarkdownEditorViewport | null>(null);
+  const {
+    editorRef: taskEditorRef,
+    previewSourceLine: taskPreviewSourceLine,
+    setDisplay: setTaskContentDisplay,
+    view: taskContentView,
+  } = useMarkdownEditorPreview(draft.content, selectedId);
   const markdownViewShortcutLabel = getMarkdownViewToggleShortcutLabel();
   const [isFiltersExpanded, setIsFiltersExpanded] = useState(false);
   const [isTodoListCollapsed, setIsTodoListCollapsed] = useState(false);
@@ -12516,6 +12537,7 @@ function TodoWorkspace({
     !isSaving &&
     !isConvertingToKnowledge;
   const canCopyContent = selectedId !== null && (draft.title.trim().length > 0 || draft.content.trim().length > 0);
+  const isMobileDetailVisible = isMobileEditorOpen && selectedId !== null && isMobileViewport();
 
   useEffect(() => {
     if (selectedId === null) return;
@@ -12530,22 +12552,6 @@ function TodoWorkspace({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [selectedId, taskContentView]);
 
-  useEffect(() => {
-    if (taskContentView !== "edit" || !taskViewportRef.current) return;
-    taskEditorRef.current?.restoreViewport(taskViewportRef.current);
-  }, [taskContentView]);
-
-  function setTaskContentDisplay(nextView: "edit" | "preview") {
-    if (nextView === taskContentView) return;
-    if (taskContentView === "edit") {
-      const viewport = taskEditorRef.current?.getViewport();
-      if (viewport) {
-        taskViewportRef.current = viewport;
-        setTaskPreviewSourceLine(getMarkdownSourceLine(draft.content, viewport.selectionStart));
-      }
-    }
-    setTaskContentView(nextView);
-  }
   const todoDetailPanel = (
     <>
       <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -12885,14 +12891,16 @@ function TodoWorkspace({
         <WorkspaceSidebarCollapseToggle isCollapsed={isTodoListCollapsed} label="待办事项列表" onToggle={() => setIsTodoListCollapsed((collapsed) => !collapsed)} />
       </section>
 
-      <aside className="min-w-0 rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
-        {todoDetailPanel}
-      </aside>
+      {!isMobileDetailVisible ? (
+        <aside className="min-w-0 rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
+          {todoDetailPanel}
+        </aside>
+      ) : null}
 
       <MobileEditorSheet
         icon={<Pencil size={17} />}
         isBusy={isDetailLoading || isSaving || isConvertingToKnowledge}
-        isOpen={isMobileEditorOpen && selectedId !== null}
+        isOpen={isMobileDetailVisible}
         label="Todo Detail"
         title="编辑待办事项"
         onClose={onCloseMobileEditor}

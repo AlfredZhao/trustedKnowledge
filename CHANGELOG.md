@@ -20,6 +20,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Fixed / 修复
 
+- Fixed Todo Markdown preview sometimes using a stale or wrong editor caret position. Knowledge and Todo now use one shared editor/preview state flow, and switching records clears the previous record's viewport snapshot.
+- 修复待办 Markdown 预览偶尔读取旧编辑器或错误光标位置的问题。可信知识与待办现共用同一套编辑/预览状态流程，切换记录时会清除上一条记录的位置快照。
+
 ### [0.4.8] - 2026-09-07
 
 #### Added / 新增
