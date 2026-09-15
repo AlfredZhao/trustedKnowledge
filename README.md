@@ -67,6 +67,38 @@ docs/        产品与回归说明
 cd frontend && npm run build
 ```
 
+## Docker 部署
+
+Docker Compose 会构建 React/Nginx 前端和 FastAPI 后端；Oracle 数据库仍作为外部服务使用。后端不暴露宿主机端口，浏览器请求统一由前端容器代理。
+
+```bash
+cp .env.docker.example .env.docker
+# 编辑 .env.docker，填写 Oracle 地址和所有必需密钥
+docker compose --env-file .env.docker up -d --build
+```
+
+默认访问 `http://localhost:8021`。如果宿主机的 `8021` 已被占用，可在 `.env.docker` 中修改：
+
+```env
+TRUSTED_KNOWLEDGE_HOST_PORT=18021
+```
+
+重新执行 `docker compose --env-file .env.docker up -d` 后，访问 `http://localhost:18021`。容器内的 Nginx `80` 和后端 `8022` 端口保持不变。
+
+常用 Docker 命令：
+
+```bash
+docker compose --env-file .env.docker ps
+docker compose --env-file .env.docker logs -f
+docker compose --env-file .env.docker down
+```
+
+上传媒体、用户 Skill 和审计日志分别保存在 Docker 命名卷中。`docker compose down` 不会删除它们；不要使用 `docker compose down -v`，除非明确需要删除持久化数据。
+
+容器中的 `localhost` 指向容器自身。如果 Oracle 位于其他服务器，应填写实际可访问的主机名或 IP；如果 Oracle 位于 Docker 宿主机，可将 DSN 主机写成 `host.docker.internal`，Compose 已为 Linux 配置 `host-gateway` 映射。
+
+基础镜像默认关闭网页 Codex 和网页重启功能。Codex CLI、宿主机服务脚本及 Git 凭据不会被打包进容器。
+
 ## 相关文档
 
 - [前端功能说明](docs/frontend-overview.md)

@@ -13,6 +13,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Added / 新增
 
+- Added a Docker Compose deployment with production Nginx frontend proxying, FastAPI health checks, persistent data/log volumes, and a configurable host HTTP port that defaults to `8021` while container ports remain fixed.
+- 新增 Docker Compose 部署方式：提供生产 Nginx 前端代理、FastAPI 健康检查、数据与日志持久卷，并支持自定义宿主机 HTTP 端口（默认 `8021`），容器内部端口保持固定。
+
 - Added a super-admin-only AI Audit dashboard. It reads the privacy-safe JSONL audit log and its rotations to show call success, tokens, duration, estimated cost, trends, user/source distribution, and filterable audit details without exposing prompts, responses, or secrets.
 - 新增仅超级管理员可见的 AI 审计看板：读取隐私安全 JSONL 审计日志及轮转副本，展示调用结果、Token、耗时、估算成本、趋势、用户/来源分布与可筛选明细，不暴露提示词、响应或密钥。
 
