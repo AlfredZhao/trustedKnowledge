@@ -51,6 +51,30 @@ class BlogEnhancementJobTests(unittest.IsolatedAsyncioTestCase):
             release.set()
             await blog_factory._enhancement_job_tasks[first.job_id]
 
+    async def test_different_revision_requirements_start_distinct_jobs(self) -> None:
+        started = asyncio.Event()
+        release = asyncio.Event()
+
+        async def delayed_enhancement(*_args, **_kwargs):
+            started.set()
+            await release.wait()
+            return BlogFactoryEnhancementResult(content="# Enhanced")
+
+        revised_payload = BlogFactoryEnhancementRequest(
+            task_content=self.payload.task_content,
+            revision_instruction="面向初级开发者改写开头。",
+        )
+        with patch.object(blog_factory, "enhance_blog_factory_content", delayed_enhancement):
+            first = await blog_factory.start_blog_factory_enhancement_job(self.payload, self.auth)
+            await started.wait()
+            second = await blog_factory.start_blog_factory_enhancement_job(revised_payload, self.auth)
+            self.assertNotEqual(first.job_id, second.job_id)
+            release.set()
+            await asyncio.gather(
+                blog_factory._enhancement_job_tasks[first.job_id],
+                blog_factory._enhancement_job_tasks[second.job_id],
+            )
+
     async def test_completed_job_exposes_enhanced_content(self) -> None:
         expected = BlogFactoryEnhancementResult(content="# Enhanced")
 

@@ -21,8 +21,22 @@ class BlogEnhancementTests(unittest.TestCase):
         self.assertIn("不要删除或改变图片链接地址", system)
         self.assertIn("不能改变事实边界", system)
         self.assertIn("mermaid", system.lower())
+        self.assertIn("用户修订要求优先于 Skill", system)
         self.assertIn(payload.task_content, prompt)
         self.assertIn("<article>", prompt)
+        self.assertIn("按默认增强策略处理", prompt)
+
+    def test_prompt_includes_user_revision_instruction_as_read_only_request(self) -> None:
+        payload = BlogFactoryEnhancementRequest(
+            task_content="# 标题\n\n正文",
+            revision_instruction="面向初级开发者重写开头，但保留所有代码。",
+        )
+
+        system, prompt = _build_enhancement_prompt(payload, [])
+
+        self.assertIn("优先满足它", system)
+        self.assertIn("<user_revision_instruction>", prompt)
+        self.assertIn(payload.revision_instruction, prompt)
 
 
 if __name__ == "__main__":

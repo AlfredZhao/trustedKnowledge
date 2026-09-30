@@ -167,6 +167,15 @@ class BlogFactoryReviewRequest(BaseModel):
 
 class BlogFactoryEnhancementRequest(BlogFactoryReviewRequest):
     skill_ids: list[str] = Field(default_factory=list, max_length=8)
+    revision_instruction: str | None = Field(default=None, max_length=4000)
+
+    @field_validator("revision_instruction", mode="before")
+    @classmethod
+    def strip_revision_instruction(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        return stripped or None
 
 
 class BlogFactoryEnhancementResult(BaseModel):

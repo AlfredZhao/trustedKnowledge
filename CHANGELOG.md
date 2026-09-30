@@ -9,6 +9,17 @@ The format follows the common GitHub changelog convention inspired by
 
 ## 本次版本更新
 
+### [Unreleased]
+
+#### Added / 新增
+
+- Added an optional Blog Factory AI Enhancement revision requirement. Users can direct the rewrite while existing fact, asset-preservation, full-Markdown, preview, and explicit-save safeguards remain in effect.
+- 新增博客工厂 AI 增强的可选“修订要求”：用户可定向指导改写，同时保留既有事实边界、资源保留、完整 Markdown、预览和显式保存保护。
+
+#### Changed / 变更
+
+#### Fixed / 修复
+
 ### [1.0.0] - 2026-09-18
 
 #### Added / 新增

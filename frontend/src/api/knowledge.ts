@@ -610,6 +610,7 @@ export async function enhanceBlogFactoryContent({
   skillIds,
   executionProvider,
   modelName,
+  revisionInstruction,
 }: {
   taskContent: string;
   questionSnapshot?: string;
@@ -617,6 +618,7 @@ export async function enhanceBlogFactoryContent({
   skillIds: string[];
   executionProvider: "codex" | "history_ask_llm";
   modelName: string;
+  revisionInstruction?: string;
 }): Promise<{ content: string }> {
   return request<{ content: string }>("/api/blog-factory/enhance", {
     method: "POST",
@@ -627,6 +629,7 @@ export async function enhanceBlogFactoryContent({
       skill_ids: skillIds,
       execution_provider: executionProvider,
       model_name: modelName,
+      revision_instruction: revisionInstruction?.trim() || null,
     }),
   });
 }
@@ -638,6 +641,7 @@ export async function startBlogFactoryEnhancementJob({
   skillIds,
   executionProvider,
   modelName,
+  revisionInstruction,
 }: {
   taskContent: string;
   questionSnapshot?: string;
@@ -645,6 +649,7 @@ export async function startBlogFactoryEnhancementJob({
   skillIds: string[];
   executionProvider: "codex" | "history_ask_llm";
   modelName: string;
+  revisionInstruction?: string;
 }): Promise<BlogFactoryEnhancementJobSnapshot> {
   return request<BlogFactoryEnhancementJobSnapshot>("/api/blog-factory/enhance/jobs", {
     method: "POST",
@@ -657,6 +662,7 @@ export async function startBlogFactoryEnhancementJob({
       skill_ids: skillIds,
       execution_provider: executionProvider,
       model_name: modelName,
+      revision_instruction: revisionInstruction?.trim() || null,
     }),
   });
 }

@@ -11585,6 +11585,7 @@ function BlogFactoryAiEnhancement({
   const [sourceTaskContent, setSourceTaskContent] = useState<string | null>(null);
   const [modelName, setModelName] = useState(() => modelOptions[0]?.value ?? "");
   const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
+  const [revisionInstruction, setRevisionInstruction] = useState("");
   const canEnhance = !disabled && !isEnhancing && taskContent.trim().length > 0;
 
   function clearStoredEnhancementJob() {
@@ -11662,6 +11663,7 @@ function BlogFactoryAiEnhancement({
     setResult(null);
     setEnhancementJobId(null);
     setSourceTaskContent(null);
+    setRevisionInstruction("");
   }
 
   async function handleEnhance() {
@@ -11677,6 +11679,7 @@ function BlogFactoryAiEnhancement({
         skillIds: selectedSkillIds,
         executionProvider: "history_ask_llm",
         modelName,
+        revisionInstruction,
       });
       storeEnhancementJob(job.job_id);
       setEnhancementJobId(job.job_id);
@@ -11714,10 +11717,10 @@ function BlogFactoryAiEnhancement({
       <section aria-modal="true" className="flex max-h-[100dvh] w-full max-w-4xl flex-col overflow-hidden rounded-t-lg border border-fuchsia-300/20 bg-ink-900 shadow-soft-glow sm:max-h-[calc(100dvh-3rem)] sm:rounded-lg" role="dialog" aria-label="AI 增强任务内容">
         <div className="flex shrink-0 items-start justify-between gap-4 border-b border-white/10 p-4 sm:p-5"><div><div className="mb-2 flex items-center gap-2 text-sm text-fuchsia-200"><WandSparkles size={17} />AI Enhancement</div><h2 className="text-xl font-semibold text-slate-50">增强任务内容</h2><p className="mt-1 text-xs leading-5 text-slate-500">生成完整的增强版文章。确认回填后会进入编辑模式，仍须由你点击保存才会更新任务内容。</p></div><button className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-white/10 bg-white/[0.035] text-slate-300 transition hover:text-fuchsia-200 disabled:cursor-not-allowed disabled:text-slate-600" disabled={isEnhancing} title="关闭" type="button" onClick={closeDialog}><X size={17} /></button></div>
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 sm:p-5">
-          {!result ? <><div className="rounded-lg border border-white/10 bg-white/[0.025] p-4 text-sm leading-7 text-slate-400">将生成完整 Markdown，并遵循所选增强 Skill。在适合的位置可插入 Mermaid 图表；不会编造事实、删除图片链接或自动保存。</div>{isEnhancing ? <div className="flex items-center gap-2 rounded-lg border border-fuchsia-300/25 bg-fuchsia-300/10 p-3 text-sm text-fuchsia-100"><Loader2 className="animate-spin" size={17} />增强任务正在后台执行；刷新此页面后重新打开此窗口可继续查看结果。</div> : <><Field label="执行模型" icon={<Settings2 size={16} />}><select className="control" value={modelName} onChange={(event) => setModelName(event.target.value)}>{modelOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field><SkillSelector agentCode="blog-enhancement" selectedSkillIds={selectedSkillIds} onSelectedSkillIdsChange={setSelectedSkillIds} /></>}</> : <div className="space-y-2"><p className="text-sm leading-6 text-slate-300">以下完整内容将回填到任务编辑区：</p><textarea className="control min-h-96 resize-y font-mono text-xs leading-6" readOnly value={result} /></div>}
+          {!result ? <><div className="rounded-lg border border-white/10 bg-white/[0.025] p-4 text-sm leading-7 text-slate-400">将生成完整 Markdown，并遵循所选增强 Skill。在适合的位置可插入 Mermaid 图表；不会编造事实、删除图片链接或自动保存。</div>{isEnhancing ? <div className="flex items-center gap-2 rounded-lg border border-fuchsia-300/25 bg-fuchsia-300/10 p-3 text-sm text-fuchsia-100"><Loader2 className="animate-spin" size={17} />增强任务正在后台执行；刷新此页面后重新打开此窗口可继续查看结果。</div> : <><Field label="修订要求（可选）" icon={<Pencil size={16} />}><textarea className="control min-h-28 resize-y" maxLength={4000} placeholder="例如：面向初级开发者重写开头；保留所有代码和图片；补充适用场景。" value={revisionInstruction} onChange={(event) => setRevisionInstruction(event.target.value)} /><p className="mt-1 text-xs leading-5 text-slate-500">本次修订要求优先于 Skill 的风格建议，但不能突破事实、链接保留和完整 Markdown 规则。</p></Field><Field label="执行模型" icon={<Settings2 size={16} />}><select className="control" value={modelName} onChange={(event) => setModelName(event.target.value)}>{modelOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field><SkillSelector agentCode="blog-enhancement" selectedSkillIds={selectedSkillIds} onSelectedSkillIdsChange={setSelectedSkillIds} /></>}</> : <div className="space-y-2"><p className="text-sm leading-6 text-slate-300">以下完整内容将回填到任务编辑区：</p><textarea className="control min-h-96 resize-y font-mono text-xs leading-6" readOnly value={result} /></div>}
           {error ? <div className="flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-3 text-sm text-red-100"><TriangleAlert className="mt-0.5 shrink-0 text-red-300" size={17} /><span>{error}</span></div> : null}
         </div>
-        <div className="flex shrink-0 justify-end gap-3 border-t border-white/10 p-4">{isEnhancing ? <button className="h-11 rounded-lg border border-red-300/30 bg-red-300/10 px-4 text-sm text-red-100 transition hover:bg-red-300/16" type="button" onClick={() => void cancelEnhancement()}>取消增强</button> : <button className="h-11 rounded-lg border border-white/10 bg-white/[0.035] px-4 text-sm text-slate-300 disabled:cursor-not-allowed disabled:text-slate-600" type="button" onClick={closeDialog}>取消</button>}{result ? <button className="flex h-11 items-center gap-2 rounded-lg border border-fuchsia-300/30 bg-fuchsia-300/14 px-4 text-sm font-medium text-fuchsia-100 transition hover:bg-fuchsia-300/20" type="button" onClick={applyEnhancement}><ClipboardCheck size={17} />确认回填</button> : !isEnhancing ? <button className="flex h-11 items-center gap-2 rounded-lg border border-fuchsia-300/30 bg-fuchsia-300/14 px-4 text-sm font-medium text-fuchsia-100 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500" disabled={!canEnhance} type="button" onClick={() => void handleEnhance()}><WandSparkles size={17} />生成增强内容</button> : null}</div>
+        <div className="flex shrink-0 justify-end gap-3 border-t border-white/10 p-4">{isEnhancing ? <button className="h-11 rounded-lg border border-red-300/30 bg-red-300/10 px-4 text-sm text-red-100 transition hover:bg-red-300/16" type="button" onClick={() => void cancelEnhancement()}>取消增强</button> : <button className="h-11 rounded-lg border border-white/10 bg-white/[0.035] px-4 text-sm text-slate-300 disabled:cursor-not-allowed disabled:text-slate-600" type="button" onClick={closeDialog}>取消</button>}{result ? <button className="flex h-11 items-center gap-2 rounded-lg border border-fuchsia-300/30 bg-fuchsia-300/14 px-4 text-sm font-medium text-fuchsia-100 transition hover:bg-fuchsia-300/20" type="button" onClick={applyEnhancement}><ClipboardCheck size={17} />确认回填</button> : !isEnhancing ? <button className="flex h-11 items-center gap-2 rounded-lg border border-fuchsia-300/30 bg-fuchsia-300/14 px-4 text-sm font-medium text-fuchsia-100 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500" disabled={!canEnhance} type="button" onClick={() => void handleEnhance()}><WandSparkles size={17} />{revisionInstruction.trim() ? "按要求生成" : "生成增强内容"}</button> : null}</div>
       </section>
     </div> : null}
   </>;
