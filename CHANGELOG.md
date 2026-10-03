@@ -21,9 +21,6 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Changed / 变更
 
-- Changed rich-text Markdown copying to include KaTeX styles with the copied HTML fragment, improving formula layout when pasted into editors that preserve pasted CSS.
-- 调整 Markdown 富文本复制：将 KaTeX 样式随 HTML 片段一并写入剪贴板，改善支持保留粘贴 CSS 的编辑器中的公式排版。
-
 #### Fixed / 修复
 
 ### [1.0.0] - 2026-09-18

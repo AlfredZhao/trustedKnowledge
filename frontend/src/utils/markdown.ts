@@ -344,7 +344,6 @@ export function removeLeakedMarkdownCodePlaceholders(markdown: string) {
 function buildRichClipboardHtml(innerHtml: string) {
   return [
     '<article style="font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Microsoft YaHei, Arial, sans-serif; color: #000000; line-height: 1.65; font-size: 14px;">',
-    getKatexClipboardStyleTag(),
     inlineClipboardStyles(innerHtml),
     "</article>",
   ].join("");
@@ -353,14 +352,9 @@ function buildRichClipboardHtml(innerHtml: string) {
 function buildEnhancedRichClipboardHtml(innerHtml: string) {
   return [
     '<article style="font-family: Georgia, Cambria, Times New Roman, serif; color: #2f1b1b; line-height: 1.85; font-size: 16px; background: #fffdfb;">',
-    getKatexClipboardStyleTag(),
     inlineEnhancedClipboardStyles(innerHtml),
     "</article>",
   ].join("");
-}
-
-function getKatexClipboardStyleTag() {
-  return `<style data-tk-katex-clipboard-styles>${katexCss}</style>`;
 }
 
 function buildStandaloneClipboardDocument(bodyHtml: string, title: string | null | undefined, summary: string | null | undefined, coverPrompt: string | null | undefined, sections: HtmlExportSection[] | undefined, exportStyle: HtmlExportStyle = "classic") {
