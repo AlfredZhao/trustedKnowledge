@@ -344,6 +344,7 @@ export function removeLeakedMarkdownCodePlaceholders(markdown: string) {
 function buildRichClipboardHtml(innerHtml: string) {
   return [
     '<article style="font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Microsoft YaHei, Arial, sans-serif; color: #000000; line-height: 1.65; font-size: 14px;">',
+    getKatexClipboardStyleTag(),
     inlineClipboardStyles(innerHtml),
     "</article>",
   ].join("");
@@ -352,9 +353,14 @@ function buildRichClipboardHtml(innerHtml: string) {
 function buildEnhancedRichClipboardHtml(innerHtml: string) {
   return [
     '<article style="font-family: Georgia, Cambria, Times New Roman, serif; color: #2f1b1b; line-height: 1.85; font-size: 16px; background: #fffdfb;">',
+    getKatexClipboardStyleTag(),
     inlineEnhancedClipboardStyles(innerHtml),
     "</article>",
   ].join("");
+}
+
+function getKatexClipboardStyleTag() {
+  return `<style data-tk-katex-clipboard-styles>${katexCss}</style>`;
 }
 
 function buildStandaloneClipboardDocument(bodyHtml: string, title: string | null | undefined, summary: string | null | undefined, coverPrompt: string | null | undefined, sections: HtmlExportSection[] | undefined, exportStyle: HtmlExportStyle = "classic") {
@@ -370,7 +376,7 @@ function buildStandaloneClipboardDocument(bodyHtml: string, title: string | null
     '<meta charset="utf-8" />',
     '<meta name="viewport" content="width=device-width, initial-scale=1" />',
     `<title>${safeTitle}</title>`,
-    `<style>${theme.css}</style></head>`,
+    `<style>${katexCss}\n${theme.css}</style></head>`,
     `<body style="margin:0; padding:32px 20px; background:${theme.background};">${buildStandaloneCopyToolbar(Boolean(summaryHtml), Boolean(coverPromptHtml), sections ?? [])}${insertStandaloneSummary(bodyHtml, `${summaryHtml}${coverPromptHtml}${sectionsHtml}`)}${buildStandaloneCopyScript()}</body>`,
     "</html>",
   ].join("");
@@ -806,10 +812,16 @@ function normalizeHtmlDownloadName(fileName: string | null | undefined) {
 
 function formatInlineMarkdown(value: string) {
   const codeSegments: string[] = [];
-  let html = escapeHtml(value).replace(/`([^`]+)`/g, (_match, code: string) => {
-    const index = codeSegments.push(`<code>${code}</code>`) - 1;
+  const mathSegments: string[] = [];
+  let source = value.replace(/`([^`]+)`/g, (_match, code: string) => {
+    const index = codeSegments.push(`<code>${escapeHtml(code)}</code>`) - 1;
     return `${INLINE_CODE_MARKER_PREFIX}${index}${INLINE_CODE_MARKER_SUFFIX}`;
   });
+  source = replaceInlineMath(source, (formula) => {
+    const index = mathSegments.push(renderLatex(formula, false)) - 1;
+    return `${INLINE_MATH_MARKER_PREFIX}${index}${INLINE_MATH_MARKER_SUFFIX}`;
+  });
+  let html = escapeHtml(source);
 
   html = html
     .replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (_match, alt: string, src: string) => {
@@ -829,7 +841,9 @@ function formatInlineMarkdown(value: string) {
     // Keep `_emphasis_` for standalone Markdown while leaving `foo_bar_baz` intact.
     .replace(/(^|[^\p{L}\p{N}_])_([^\s_](?:[^_\n]*[^\s_])?)_(?![\p{L}\p{N}_])/gu, "$1<em>$2</em>");
 
-  return html.replace(INLINE_CODE_MARKER_PATTERN, (_match, index: string) => codeSegments[Number(index)] ?? "");
+  return html
+    .replace(INLINE_CODE_MARKER_PATTERN, (_match, index: string) => codeSegments[Number(index)] ?? "")
+    .replace(INLINE_MATH_MARKER_PATTERN, (_match, index: string) => mathSegments[Number(index)] ?? "");
 }
 
 function extractSingleLineMathBlock(line: string) {
@@ -842,138 +856,41 @@ function extractSingleLineMathBlock(line: string) {
 function renderLatexBlock(value: string) {
   const normalized = value.replace(/\r\n/g, "\n").trim();
   if (!normalized) return "";
-
-  const rendered = renderLatexSequence({ source: normalized, index: 0 });
-  return `<div class="tk-math-block"><div class="tk-math-content">${rendered || escapeHtml(normalized)}</div></div>`;
+  return `<div class="tk-math-block"><div class="tk-math-content">${renderLatex(normalized, true)}</div></div>`;
 }
 
-function renderLatexSequence(state: LatexParserState, stopChar?: string): string {
-  const fragments: string[] = [];
-
-  while (state.index < state.source.length) {
-    const current = state.source[state.index];
-    if (stopChar && current === stopChar) break;
-
-    if (current === "\n") {
-      fragments.push("<br />");
-      state.index += 1;
-      continue;
-    }
-
-    if (/\s/.test(current)) {
-      state.index += 1;
-      if (fragments[fragments.length - 1] !== " ") fragments.push(" ");
-      continue;
-    }
-
-    if (current === "{") {
-      state.index += 1;
-      fragments.push(renderLatexSequence(state, "}"));
-      if (state.source[state.index] === "}") state.index += 1;
-      continue;
-    }
-
-    if (current === "^" || current === "_") {
-      const tag = current === "^" ? "sup" : "sub";
-      state.index += 1;
-      fragments.push(`<${tag}>${renderLatexArgument(state)}</${tag}>`);
-      continue;
-    }
-
-    if (current === "\\") {
-      fragments.push(renderLatexCommand(state));
-      continue;
-    }
-
-    fragments.push(escapeHtml(current));
-    state.index += 1;
-  }
-
-  return fragments.join("");
-}
-
-function renderLatexArgument(state: LatexParserState): string {
-  skipLatexWhitespace(state);
-  if (state.index >= state.source.length) return "";
-
-  if (state.source[state.index] === "{") {
-    state.index += 1;
-    const value = renderLatexSequence(state, "}");
-    if (state.source[state.index] === "}") state.index += 1;
-    return value;
-  }
-
-  if (state.source[state.index] === "\\") {
-    return renderLatexCommand(state);
-  }
-
-  const value = escapeHtml(state.source[state.index]);
-  state.index += 1;
-  return value;
-}
-
-function renderLatexCommand(state: LatexParserState): string {
-  const command = readLatexCommand(state);
-  if (!command) return "";
-
-  if (command in LATEX_SYMBOL_MAP) return LATEX_SYMBOL_MAP[command];
-
-  switch (command) {
-    case "text":
-    case "textrm":
-    case "mathrm":
-    case "operatorname":
-    case "mbox":
-      return `<span class="tk-math-text">${renderLatexArgument(state)}</span>`;
-    case "mathbf":
-      return `<strong>${renderLatexArgument(state)}</strong>`;
-    case "frac": {
-      const numerator = renderLatexArgument(state);
-      const denominator = renderLatexArgument(state);
-      return `<span class="tk-math-frac"><span class="tk-math-frac-top">${numerator}</span><span class="tk-math-frac-bottom">${denominator}</span></span>`;
-    }
-    case "sqrt":
-      return `<span class="tk-math-sqrt">√<span class="tk-math-sqrt-body">${renderLatexArgument(state)}</span></span>`;
-    case "left":
-    case "right":
-      return "";
-    case ",":
-    case ":":
-      return "&thinsp;";
-    case ";":
-      return "&#8197;";
-    case "quad":
-      return "&nbsp;&nbsp;";
-    case "qquad":
-      return "&nbsp;&nbsp;&nbsp;&nbsp;";
-    case "!":
-      return "";
-    case "\\":
-      return "<br />";
-    case "begin":
-    case "end":
-      renderLatexArgument(state);
-      return "";
-    default:
-      return `\\${escapeHtml(command)}`;
+function renderLatex(value: string, displayMode: boolean) {
+  try {
+    return katex.renderToString(value, { displayMode, throwOnError: false, trust: false });
+  } catch {
+    return `<code class="tk-math-error">${escapeHtml(value)}</code>`;
   }
 }
 
-function readLatexCommand(state: LatexParserState): string {
-  state.index += 1;
-  if (state.index >= state.source.length) return "";
-
-  const next = state.source[state.index];
-  if (/[A-Za-z]/.test(next)) {
-    const start = state.index;
-    while (state.index < state.source.length && /[A-Za-z]/.test(state.source[state.index])) {
-      state.index += 1;
+function replaceInlineMath(value: string, replace: (formula: string) => string) {
+  let result = "";
+  let index = 0;
+  while (index < value.length) {
+    if (value[index] !== "$" || value[index + 1] === "$" || isEscapedCharacter(value, index)) {
+      result += value[index++];
+      continue;
     }
-    return state.source.slice(start, state.index);
+    let end = index + 1;
+    while (end < value.length && (value[end] !== "$" || isEscapedCharacter(value, end))) end += 1;
+    if (end >= value.length || end === index + 1 || value.slice(index + 1, end).includes("\n")) {
+      result += value[index++];
+      continue;
+    }
+    result += replace(value.slice(index + 1, end));
+    index = end + 1;
   }
+  return result;
+}
 
-  state.index += 1;
-  return next;
+function isEscapedCharacter(value: string, index: number) {
+  let slashCount = 0;
+  for (let cursor = index - 1; cursor >= 0 && value[cursor] === "\\"; cursor -= 1) slashCount += 1;
+  return slashCount % 2 === 1;
 }
 
 function isMarkdownTableHeader(line: string) {
@@ -1059,6 +976,9 @@ function renderMarkdownTable(headers: string[], alignments: string[], rows: stri
 const INLINE_CODE_MARKER_PREFIX = "TKMDINLINECODE";
 const INLINE_CODE_MARKER_SUFFIX = "ENDTK";
 const INLINE_CODE_MARKER_PATTERN = new RegExp(`${INLINE_CODE_MARKER_PREFIX}(\\d+)${INLINE_CODE_MARKER_SUFFIX}`, "g");
+const INLINE_MATH_MARKER_PREFIX = "TKMDINLINEMATH";
+const INLINE_MATH_MARKER_SUFFIX = "ENDTK";
+const INLINE_MATH_MARKER_PATTERN = new RegExp(`${INLINE_MATH_MARKER_PREFIX}(\\d+)${INLINE_MATH_MARKER_SUFFIX}`, "g");
 
 function shouldKeepPlaceholderGap(before: string, after: string) {
   return /[A-Za-z0-9)\]]/.test(before) && /[A-Za-z0-9([]/.test(after);
@@ -1086,98 +1006,5 @@ function escapeAttribute(value: string) {
   return escapeHtml(value).replace(/`/g, "&#96;");
 }
 
-function skipLatexWhitespace(state: LatexParserState) {
-  while (state.index < state.source.length && /\s/.test(state.source[state.index])) {
-    state.index += 1;
-  }
-}
-
-type LatexParserState = {
-  source: string;
-  index: number;
-};
-
-const LATEX_SYMBOL_MAP: Record<string, string> = {
-  Alpha: "Α",
-  Beta: "Β",
-  Gamma: "Γ",
-  Delta: "Δ",
-  Epsilon: "Ε",
-  Theta: "Θ",
-  Lambda: "Λ",
-  Mu: "Μ",
-  Xi: "Ξ",
-  Pi: "Π",
-  Sigma: "Σ",
-  Phi: "Φ",
-  Psi: "Ψ",
-  Omega: "Ω",
-  alpha: "α",
-  beta: "β",
-  gamma: "γ",
-  delta: "δ",
-  epsilon: "ϵ",
-  zeta: "ζ",
-  eta: "η",
-  theta: "θ",
-  iota: "ι",
-  kappa: "κ",
-  lambda: "λ",
-  mu: "μ",
-  nu: "ν",
-  xi: "ξ",
-  pi: "π",
-  rho: "ρ",
-  sigma: "σ",
-  tau: "τ",
-  phi: "φ",
-  chi: "χ",
-  psi: "ψ",
-  omega: "ω",
-  cdot: "·",
-  times: "×",
-  div: "÷",
-  pm: "±",
-  mp: "∓",
-  approx: "≈",
-  sim: "∼",
-  neq: "≠",
-  le: "≤",
-  leq: "≤",
-  ge: "≥",
-  geq: "≥",
-  to: "→",
-  gets: "←",
-  leftarrow: "←",
-  Rightarrow: "⇒",
-  rightarrow: "→",
-  infty: "∞",
-  sum: "∑",
-  prod: "∏",
-  int: "∫",
-  partial: "∂",
-  nabla: "∇",
-  degree: "°",
-  percent: "%",
-  ldots: "…",
-  cdots: "⋯",
-  dots: "…",
-  subset: "⊂",
-  subseteq: "⊆",
-  supset: "⊃",
-  supseteq: "⊇",
-  cup: "∪",
-  cap: "∩",
-  in: "∈",
-  notin: "∉",
-  forall: "∀",
-  exists: "∃",
-  land: "∧",
-  lor: "∨",
-  "%": "%",
-  "{": "{",
-  "}": "}",
-  "#": "#",
-  "&": "&amp;",
-  _: "_",
-};
+import katex from "katex";
+import katexCss from "katex/dist/katex.min.css?inline";

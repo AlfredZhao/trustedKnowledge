@@ -13,10 +13,16 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Added / 新增
 
+- Added KaTeX rendering to shared Markdown previews and enhanced HTML exports. Markdown now supports `$...$` inline formulas and `$$...$$` display formulas, including fractions, roots, matrices, and other standard LaTeX notation.
+- 共用 Markdown 预览与增强 HTML 导出新增 KaTeX 公式渲染：支持 `$...$` 行内公式和 `$$...$$` 块公式，可展示分数、根号、矩阵等标准 LaTeX 数学表达式。
+
 - Added an optional Blog Factory AI Enhancement revision requirement. Users can direct the rewrite while existing fact, asset-preservation, full-Markdown, preview, and explicit-save safeguards remain in effect.
 - 新增博客工厂 AI 增强的可选“修订要求”：用户可定向指导改写，同时保留既有事实边界、资源保留、完整 Markdown、预览和显式保存保护。
 
 #### Changed / 变更
+
+- Changed rich-text Markdown copying to include KaTeX styles with the copied HTML fragment, improving formula layout when pasted into editors that preserve pasted CSS.
+- 调整 Markdown 富文本复制：将 KaTeX 样式随 HTML 片段一并写入剪贴板，改善支持保留粘贴 CSS 的编辑器中的公式排版。
 
 #### Fixed / 修复
 

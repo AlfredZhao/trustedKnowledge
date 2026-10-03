@@ -4,9 +4,11 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import katex from "../frontend/node_modules/katex/dist/katex.mjs";
 
 const SCRIPT_DIRECTORY = path.dirname(fileURLToPath(import.meta.url));
 const MERMAID_RUNTIME_PATH = path.resolve(SCRIPT_DIRECTORY, "../frontend/node_modules/mermaid/dist/mermaid.min.js");
+const KATEX_CSS_PATH = path.resolve(SCRIPT_DIRECTORY, "../frontend/node_modules/katex/dist/katex.min.css");
 
 async function main() {
   const args = process.argv.slice(2);
@@ -40,7 +42,8 @@ async function main() {
 
   const htmlBody = await markdownToHtml(markdown, inputDir);
   const mermaidRuntime = htmlBody.includes("data-mermaid-render") ? await fs.readFile(MERMAID_RUNTIME_PATH, "utf8") : "";
-  const documentHtml = buildStandaloneHtml(buildEnhancedRichHtml(htmlBody), articleTitle, mermaidRuntime, summary);
+  const katexCss = htmlBody.includes("katex") ? await fs.readFile(KATEX_CSS_PATH, "utf8") : "";
+  const documentHtml = buildStandaloneHtml(buildEnhancedRichHtml(htmlBody), articleTitle, mermaidRuntime, summary, katexCss);
 
   try {
     await fs.writeFile(outputPath, documentHtml, "utf8");
@@ -240,10 +243,16 @@ async function markdownToHtml(markdown, inputDir) {
 
 async function formatInlineMarkdown(value, inputDir) {
   const codeSegments = [];
-  let html = escapeHtml(value).replace(/`([^`]+)`/g, (_match, code) => {
-    const index = codeSegments.push(`<code>${code}</code>`) - 1;
+  const mathSegments = [];
+  let source = value.replace(/`([^`]+)`/g, (_match, code) => {
+    const index = codeSegments.push(`<code>${escapeHtml(code)}</code>`) - 1;
     return `${INLINE_CODE_MARKER_PREFIX}${index}${INLINE_CODE_MARKER_SUFFIX}`;
   });
+  source = replaceInlineMath(source, (formula) => {
+    const index = mathSegments.push(renderLatex(formula, false)) - 1;
+    return `${INLINE_MATH_MARKER_PREFIX}${index}${INLINE_MATH_MARKER_SUFFIX}`;
+  });
+  let html = escapeHtml(source);
 
   html = await replaceAsync(html, /!\[([^\]]*)\]\(([^)\s]+)\)/g, async (_match, alt, src) => {
     const safeSrc = await resolveMarkdownImageSource(src, inputDir);
@@ -262,7 +271,9 @@ async function formatInlineMarkdown(value, inputDir) {
     .replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>")
     .replace(/(^|[^\p{L}\p{N}_])_([^\s_](?:[^_\n]*[^\s_])?)_(?![\p{L}\p{N}_])/gu, "$1<em>$2</em>");
 
-  return html.replace(INLINE_CODE_MARKER_PATTERN, (_match, index) => codeSegments[Number(index)] ?? "");
+  return html
+    .replace(INLINE_CODE_MARKER_PATTERN, (_match, index) => codeSegments[Number(index)] ?? "")
+    .replace(INLINE_MATH_MARKER_PATTERN, (_match, index) => mathSegments[Number(index)] ?? "");
 }
 
 async function renderMarkdownTable(headers, alignments, rows, inputDir) {
@@ -340,7 +351,7 @@ function buildEnhancedRichHtml(innerHtml) {
   ].join("");
 }
 
-function buildStandaloneHtml(bodyHtml, title, mermaidRuntime = "", summary = "") {
+function buildStandaloneHtml(bodyHtml, title, mermaidRuntime = "", summary = "", katexCss = "") {
   const safeTitle = escapeHtml(title || "trustedKnowledge export");
   const summaryHtml = buildStandaloneSummaryHtml(summary);
   return [
@@ -350,6 +361,7 @@ function buildStandaloneHtml(bodyHtml, title, mermaidRuntime = "", summary = "")
     '<meta charset="utf-8" />',
     '<meta name="viewport" content="width=device-width, initial-scale=1" />',
     `<title>${safeTitle}</title>`,
+    katexCss ? `<style>${katexCss}</style>` : "",
     "</head>",
     `<body style="margin:0; padding:32px 20px; background:#f7f1ee;">${buildStandaloneCopyToolbar(Boolean(summaryHtml))}${insertStandaloneSummary(bodyHtml, summaryHtml)}${buildStandaloneCopyScript()}${mermaidRuntime ? `<script>${mermaidRuntime}</script>${buildStandaloneMermaidScript()}` : ""}</body>`,
     "</html>",
@@ -589,105 +601,41 @@ function extractSingleLineMathBlock(line) {
 function renderLatexBlock(value) {
   const normalized = value.replace(/\r\n/g, "\n").trim();
   if (!normalized) return "";
-
-  const rendered = renderLatexSequence({ source: normalized, index: 0 });
-  return `<div class="tk-math-block"><div class="tk-math-content">${rendered || escapeHtml(normalized)}</div></div>`;
+  return `<div class="tk-math-block"><div class="tk-math-content">${renderLatex(normalized, true)}</div></div>`;
 }
 
-function renderLatexSequence(state, stopChar) {
-  const fragments = [];
-
-  while (state.index < state.source.length) {
-    const current = state.source[state.index];
-    if (stopChar && current === stopChar) break;
-    if (current === "\n") {
-      fragments.push("<br />");
-      state.index += 1;
-      continue;
-    }
-    if (/\s/.test(current)) {
-      state.index += 1;
-      if (fragments[fragments.length - 1] !== " ") fragments.push(" ");
-      continue;
-    }
-    if (current === "{") {
-      state.index += 1;
-      fragments.push(renderLatexSequence(state, "}"));
-      if (state.source[state.index] === "}") state.index += 1;
-      continue;
-    }
-    if (current === "^" || current === "_") {
-      const tag = current === "^" ? "sup" : "sub";
-      state.index += 1;
-      fragments.push(`<${tag}>${renderLatexArgument(state)}</${tag}>`);
-      continue;
-    }
-    if (current === "\\") {
-      fragments.push(renderLatexCommand(state));
-      continue;
-    }
-    fragments.push(escapeHtml(current));
-    state.index += 1;
-  }
-  return fragments.join("");
-}
-
-function renderLatexArgument(state) {
-  skipLatexWhitespace(state);
-  if (state.index >= state.source.length) return "";
-  if (state.source[state.index] === "{") {
-    state.index += 1;
-    const value = renderLatexSequence(state, "}");
-    if (state.source[state.index] === "}") state.index += 1;
-    return value;
-  }
-  if (state.source[state.index] === "\\") return renderLatexCommand(state);
-  const value = escapeHtml(state.source[state.index]);
-  state.index += 1;
-  return value;
-}
-
-function renderLatexCommand(state) {
-  const command = readLatexCommand(state);
-  if (!command) return "";
-  if (command in LATEX_SYMBOL_MAP) return LATEX_SYMBOL_MAP[command];
-  switch (command) {
-    case "text": case "textrm": case "mathrm": case "operatorname": case "mbox":
-      return `<span class="tk-math-text">${renderLatexArgument(state)}</span>`;
-    case "mathbf": return `<strong>${renderLatexArgument(state)}</strong>`;
-    case "frac": {
-      const numerator = renderLatexArgument(state);
-      const denominator = renderLatexArgument(state);
-      return `<span class="tk-math-frac"><span class="tk-math-frac-top">${numerator}</span><span class="tk-math-frac-bottom">${denominator}</span></span>`;
-    }
-    case "sqrt": return `<span class="tk-math-sqrt">√<span class="tk-math-sqrt-body">${renderLatexArgument(state)}</span></span>`;
-    case "left": case "right": return "";
-    case ",": case ":": return "&thinsp;";
-    case ";": return "&#8197;";
-    case "quad": return "&nbsp;&nbsp;";
-    case "qquad": return "&nbsp;&nbsp;&nbsp;&nbsp;";
-    case "!": return "";
-    case "\\": return "<br />";
-    case "begin": case "end": renderLatexArgument(state); return "";
-    default: return `\\${escapeHtml(command)}`;
+function renderLatex(value, displayMode) {
+  try {
+    return katex.renderToString(value, { displayMode, throwOnError: false, trust: false });
+  } catch {
+    return `<code class="tk-math-error">${escapeHtml(value)}</code>`;
   }
 }
 
-function readLatexCommand(state) {
-  state.index += 1;
-  if (state.index >= state.source.length) return "";
-  const next = state.source[state.index];
-  if (/[A-Za-z]/.test(next)) {
-    const start = state.index;
-    while (state.index < state.source.length && /[A-Za-z]/.test(state.source[state.index])) state.index += 1;
-    return state.source.slice(start, state.index);
+function replaceInlineMath(value, replace) {
+  let result = "";
+  let index = 0;
+  while (index < value.length) {
+    if (value[index] !== "$" || value[index + 1] === "$" || isEscapedCharacter(value, index)) {
+      result += value[index++];
+      continue;
+    }
+    let end = index + 1;
+    while (end < value.length && (value[end] !== "$" || isEscapedCharacter(value, end))) end += 1;
+    if (end >= value.length || end === index + 1 || value.slice(index + 1, end).includes("\n")) {
+      result += value[index++];
+      continue;
+    }
+    result += replace(value.slice(index + 1, end));
+    index = end + 1;
   }
-  state.index += 1;
-  return next;
+  return result;
 }
 
-function skipLatexWhitespace(state) {
-  while (state.index < state.source.length && /\s/.test(state.source[state.index])) state.index += 1;
+function isEscapedCharacter(value, index) {
+  let slashCount = 0;
+  for (let cursor = index - 1; cursor >= 0 && value[cursor] === "\\"; cursor -= 1) slashCount += 1;
+  return slashCount % 2 === 1;
 }
 
 function isMarkdownTableHeader(line) {
@@ -801,11 +749,8 @@ function formatError(error) {
 const INLINE_CODE_MARKER_PREFIX = "TKMDINLINECODE";
 const INLINE_CODE_MARKER_SUFFIX = "ENDTK";
 const INLINE_CODE_MARKER_PATTERN = new RegExp(`${INLINE_CODE_MARKER_PREFIX}(\\d+)${INLINE_CODE_MARKER_SUFFIX}`, "g");
-
-const LATEX_SYMBOL_MAP = {
-  Alpha: "Α", Beta: "Β", Gamma: "Γ", Delta: "Δ", Epsilon: "Ε", Theta: "Θ", Lambda: "Λ", Mu: "Μ", Xi: "Ξ", Pi: "Π", Sigma: "Σ", Phi: "Φ", Psi: "Ψ", Omega: "Ω",
-  alpha: "α", beta: "β", gamma: "γ", delta: "δ", epsilon: "ϵ", zeta: "ζ", eta: "η", theta: "θ", iota: "ι", kappa: "κ", lambda: "λ", mu: "μ", nu: "ν", xi: "ξ", pi: "π", rho: "ρ", sigma: "σ", tau: "τ", phi: "φ", chi: "χ", psi: "ψ", omega: "ω",
-  cdot: "·", times: "×", div: "÷", pm: "±", mp: "∓", approx: "≈", sim: "∼", neq: "≠", le: "≤", leq: "≤", ge: "≥", geq: "≥", to: "→", gets: "←", leftarrow: "←", Rightarrow: "⇒", rightarrow: "→", infty: "∞", sum: "∑", prod: "∏", int: "∫", partial: "∂", nabla: "∇", degree: "°", percent: "%", ldots: "…", cdots: "⋯", dots: "…", subset: "⊂", subseteq: "⊆", supset: "⊃", supseteq: "⊇", cup: "∪", cap: "∩", in: "∈", notin: "∉", forall: "∀", exists: "∃", land: "∧", lor: "∨", "%": "%", "{": "{", "}": "}", "#": "#", "&": "&amp;", _: "_",
-};
+const INLINE_MATH_MARKER_PREFIX = "TKMDINLINEMATH";
+const INLINE_MATH_MARKER_SUFFIX = "ENDTK";
+const INLINE_MATH_MARKER_PATTERN = new RegExp(`${INLINE_MATH_MARKER_PREFIX}(\\d+)${INLINE_MATH_MARKER_SUFFIX}`, "g");
 
 main();

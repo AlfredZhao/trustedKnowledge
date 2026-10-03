@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 
 import App from "./App";
+import "katex/dist/katex.min.css";
 import "./styles.css";
 
 const UI_STATE_STORAGE_KEY = "trustedKnowledge.uiState.v2";
