@@ -197,6 +197,7 @@ import {
 import { clearApiResponseCache } from "./api/localCache";
 import { Field, FilterClearButton, LoadingStack, MetricTile, SemanticSearchField, VectorRefreshButton, VectorStatusBadge } from "./components/AppShellPrimitives";
 import { MarkdownPreview } from "./components/MarkdownPreview";
+import { MarkdownSlidesButton } from "./components/MarkdownSlidesButton";
 import {
   copyMarkdownAsEnhancedRichText,
   copyMarkdownAsPlainText,
@@ -3237,6 +3238,7 @@ function App() {
   }
 
   function handleLogout() {
+    window.dispatchEvent(new Event("trusted-knowledge:slides-expired"));
     clearStoredApiKey();
     clearApiResponseCache();
     clearStoredNewDraft();
@@ -8203,6 +8205,7 @@ const MarkdownImageTextarea = forwardRef<MarkdownImageTextareaHandle, {
 }, ref) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const slideViewportRef = useRef<MarkdownEditorViewport | null>(null);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
 
@@ -8464,7 +8467,20 @@ const MarkdownImageTextarea = forwardRef<MarkdownImageTextareaHandle, {
     <div className="space-y-2">
       <div className="markdown-toolbar rounded-lg p-2">
         <div className="space-y-2">
-          <span className="block text-[11px] font-medium uppercase tracking-[0.14em] text-slate-500">Markdown</span>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="block text-[11px] font-medium uppercase tracking-[0.14em] text-slate-500">Markdown</span>
+            <MarkdownSlidesButton markdown={value} disabled={disabled || isUploadingImage}
+              getSourceLine={() => {
+                const textarea = textareaRef.current;
+                if (!textarea) return 0;
+                slideViewportRef.current = { selectionStart: textarea.selectionStart, selectionEnd: textarea.selectionEnd, scrollTop: textarea.scrollTop, scrollLeft: textarea.scrollLeft };
+                return getMarkdownSourceLine(value, textarea.selectionStart);
+              }}
+              onReturn={() => {
+                const viewport = slideViewportRef.current;
+                if (viewport) restoreEditorSelection(viewport.selectionStart, viewport.selectionEnd, viewport.scrollTop, viewport.scrollLeft);
+              }} />
+          </div>
           <div className="flex flex-wrap items-center gap-1.5">
             {[
               { label: "H1", title: "一级标题", onClick: () => applyLineFormat("# ", "一级标题") },
@@ -8802,7 +8818,7 @@ function KnowledgeForm({
                 placeholder={contentPlaceholder}
               />
             ) : draft.answer.trim() ? (
-              <MarkdownPreview markdown={draft.answer} sourceLine={answerPreviewSourceLine} />
+              <MarkdownPreview markdown={draft.answer} sourceLine={answerPreviewSourceLine} showSlides />
             ) : (
               <div className="grid min-h-[330px] place-items-center rounded-lg border border-dashed border-white/10 bg-white/[0.025] p-4 text-center text-sm text-slate-500">
                 暂无可信答案可预览。
@@ -9613,7 +9629,7 @@ function KnowledgeFactory({
                 <Archive size={16} />
                 可信答案
               </div>
-              <MarkdownPreview markdown={maskSensitive(selectedItem.answer)} />
+              <MarkdownPreview markdown={maskSensitive(selectedItem.answer)} showSlides />
             </div>
 
             {selectedItem.topic_tag ? (
@@ -9703,7 +9719,7 @@ function KnowledgeFactory({
           </div>
         ) : task ? (
           taskView === "rendered" ? (
-            <MarkdownPreview markdown={task} />
+            <MarkdownPreview markdown={task} showSlides />
           ) : (
             <textarea
               className="control min-h-[420px] resize-none font-mono text-xs leading-6 text-slate-200"
@@ -10786,7 +10802,7 @@ function BlogFactoryRecords({
                   {removeLeakedMarkdownCodePlaceholders(selectedItem.task_content)}
                 </p>
               ) : (
-                <MarkdownPreview markdown={selectedItem.task_content} />
+                <MarkdownPreview markdown={selectedItem.task_content} showSlides />
               )
             ) : (
               <p className="whitespace-pre-wrap break-words text-sm leading-7 text-slate-400 [overflow-wrap:anywhere]">未记录</p>
@@ -12649,7 +12665,7 @@ function TodoWorkspace({
                 placeholder="补充待办事项背景、验收标准或下一步动作。"
               />
             ) : draft.content.trim() ? (
-              <MarkdownPreview markdown={draft.content} sourceLine={taskPreviewSourceLine} />
+              <MarkdownPreview markdown={draft.content} sourceLine={taskPreviewSourceLine} showSlides />
             ) : (
               <div className="grid min-h-[320px] place-items-center rounded-lg border border-dashed border-white/10 bg-white/[0.025] p-4 text-center text-sm text-slate-500 xl:min-h-[380px]">
                 暂无任务内容可预览。

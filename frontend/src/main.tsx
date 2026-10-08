@@ -4,6 +4,10 @@ import ReactDOM from "react-dom/client";
 import App from "./App";
 import "katex/dist/katex.min.css";
 import "./styles.css";
+import { SLIDES_QUERY_KEY } from "./utils/markdownSlidesSession";
+import { MarkdownSlidesBoundary } from "./components/MarkdownSlidesBoundary";
+
+const MarkdownSlideWindow = React.lazy(() => import("./components/MarkdownSlideWindow"));
 
 const UI_STATE_STORAGE_KEY = "trustedKnowledge.uiState.v2";
 
@@ -45,6 +49,8 @@ if ("serviceWorker" in navigator && import.meta.env.PROD) {
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <BootScrollLock />
-    <App />
+    {new URLSearchParams(window.location.search).has(SLIDES_QUERY_KEY)
+      ? <MarkdownSlidesBoundary onClose={() => { window.location.replace(window.location.pathname); }}><React.Suspense fallback={<div className="slide-screen slide-status" role="status">正在加载幻灯片…</div>}><MarkdownSlideWindow /></React.Suspense></MarkdownSlidesBoundary>
+      : <App />}
   </React.StrictMode>,
 );

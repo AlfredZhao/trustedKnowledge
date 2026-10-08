@@ -13,6 +13,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Added / 新增
 
+- Added a shared, read-only Markdown slideshow launcher to all shared editors and their related previews. Desktop opens an isolated snapshot in a new tab; mobile/PWA and blocked popups use an in-page presentation. Viewport-measured pagination preserves long prose, code indentation, lists and repeated table headers; diagrams and exceptional indivisible content fit the page with an explicit detail view. Includes keyboard navigation, page jump, directory, themes, fullscreen fallback, session invalidation and isolated browser regression tests.
+- 公共 Markdown 编辑器及其相关预览统一新增只读“幻灯片”入口：桌面新标签页播放草稿快照，手机/PWA 或弹窗受阻时在当前页放映。按实际屏幕尺寸自动续页，保留长段落、代码缩进、列表及续页表头；图表和无法合理拆分的内容适配缩放，并可显式展开查看。支持键盘翻页、页码跳转、目录、深浅主题、全屏降级、登录会话失效清理及隔离浏览器回归测试，不修改原文、API 或数据库。
+
 - Added KaTeX rendering to shared Markdown previews and enhanced HTML exports. Markdown now supports `$...$` inline formulas and `$$...$$` display formulas, including fractions, roots, matrices, and other standard LaTeX notation.
 - 共用 Markdown 预览与增强 HTML 导出新增 KaTeX 公式渲染：支持 `$...$` 行内公式和 `$$...$$` 块公式，可展示分数、根号、矩阵等标准 LaTeX 数学表达式。
 

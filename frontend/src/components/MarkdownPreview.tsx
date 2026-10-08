@@ -2,10 +2,18 @@ import { forwardRef, memo, useEffect, useImperativeHandle, useMemo, useRef } fro
 
 import { copyText } from "../utils/appUtils";
 import { markdownToHtml } from "../utils/markdown";
+import { MarkdownSlidesButton } from "./MarkdownSlidesButton";
 
 export const MarkdownPreview = memo(
-  forwardRef<HTMLDivElement, { markdown: string; sourceLine?: number | null }>(function MarkdownPreview({ markdown, sourceLine }, ref) {
-    const html = useMemo(() => markdownToHtml(markdown, { sourceMap: sourceLine !== undefined && sourceLine !== null }), [markdown, sourceLine]);
+  forwardRef<HTMLDivElement, {
+    markdown: string;
+    sourceLine?: number | null;
+    sourceMap?: boolean;
+    className?: string;
+    onRenderSettled?: () => void;
+    showSlides?: boolean;
+  }>(function MarkdownPreview({ markdown, sourceLine, sourceMap = false, className, onRenderSettled, showSlides = false }, ref) {
+    const html = useMemo(() => markdownToHtml(markdown, { sourceMap: sourceMap || (sourceLine !== undefined && sourceLine !== null) }), [markdown, sourceLine, sourceMap]);
     const previewRef = useRef<HTMLDivElement>(null);
     useImperativeHandle(ref, () => previewRef.current as HTMLDivElement, []);
 
@@ -47,14 +55,22 @@ export const MarkdownPreview = memo(
         }
       }
 
-      void renderMermaidDiagrams();
-      const observer = new MutationObserver(() => void renderMermaidDiagrams());
+      const render = () => {
+        void renderMermaidDiagrams().catch(() => {
+          if (disposed) return;
+          previewRef.current?.querySelectorAll<HTMLElement>("[data-mermaid-render]").forEach((target) => {
+            target.textContent = "Mermaid 图表加载失败，请查看源码。";
+          });
+        }).finally(() => { if (!disposed) onRenderSettled?.(); });
+      };
+      render();
+      const observer = new MutationObserver(render);
       observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
       return () => {
         disposed = true;
         observer.disconnect();
       };
-    }, [html]);
+    }, [html, onRenderSettled]);
 
     useEffect(() => {
       if (sourceLine === undefined || sourceLine === null || !previewRef.current) return;
@@ -144,13 +160,14 @@ export const MarkdownPreview = memo(
       }, 1600);
     }
 
-    return (
+    return <>
+      {showSlides && <div className="mb-2 flex justify-end"><MarkdownSlidesButton markdown={markdown} getSourceLine={() => sourceLine ?? 0} /></div>}
       <div
         ref={previewRef}
-        className="markdown-preview rounded-lg border border-white/8 bg-black/10 p-4 text-sm leading-7 text-slate-200"
+        className={className ?? "markdown-preview rounded-lg border border-white/8 bg-black/10 p-4 text-sm leading-7 text-slate-200"}
         dangerouslySetInnerHTML={{ __html: html }}
         onClick={handlePreviewClick}
       />
-    );
+    </>;
   }),
 );
