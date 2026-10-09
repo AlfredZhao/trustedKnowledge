@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Presentation } from "lucide-react";
 import { MarkdownSlidesBoundary } from "./MarkdownSlidesBoundary";
+import MarkdownOfficeButton from "./MarkdownOfficeButton";
 
 import { openSlideWindow, preferInlineSlides, watchSlideSession, type SlideSnapshot } from "../utils/markdownSlidesSession";
 
@@ -48,11 +49,14 @@ export function MarkdownSlidesButton({ markdown, getSourceLine, onReturn, disabl
   };
 
   return <>
+    <span className="markdown-output-tools inline-flex max-w-full flex-wrap items-center gap-1.5">
     <button ref={buttonRef} className="markdown-tool-button" disabled={disabled || !markdown.trim()}
       title="幻灯片：桌面新标签页放映，手机/PWA 在当前页放映；不保存或修改正文" type="button"
       onMouseDown={(event) => event.preventDefault()} onClick={open}>
       <Presentation size={15} /><span>幻灯片</span>
     </button>
+    <MarkdownOfficeButton markdown={markdown} disabled={disabled} getSourceLine={getSourceLine} onReturn={onReturn} />
+    </span>
     {snapshot && createPortal(
       <MarkdownSlidesBoundary onClose={() => setSnapshot(null)}>
       <Suspense fallback={<div className="slide-screen slide-status" role="dialog" aria-modal="true" aria-label="加载幻灯片"><p role="status">正在加载幻灯片…</p><button className="slide-control" type="button" autoFocus onClick={() => setSnapshot(null)}>返回编辑</button></div>}>

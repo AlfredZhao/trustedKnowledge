@@ -4,10 +4,12 @@ import { MarkdownSlidesButton } from "../src/components/MarkdownSlidesButton";
 import { MarkdownPreview } from "../src/components/MarkdownPreview";
 import { markdownToHtml } from "../src/utils/markdown";
 import { paginateMarkdownSlides, prepareMarkdownSlides } from "../src/utils/markdownSlides";
+import { officeMediaPath, prepareOfficeSource } from "../src/utils/officeSource";
 import "katex/dist/katex.min.css";
 import "../src/styles.css";
 
 Object.assign(window, { slidesTest: { markdownToHtml, paginateMarkdownSlides, prepareMarkdownSlides } });
+Object.assign(window, { officeTest: { officeMediaPath, prepareOfficeSource } });
 
 function Fixture() {
   const [markdown, setMarkdown] = useState("# 未保存草稿\n\n正文。");

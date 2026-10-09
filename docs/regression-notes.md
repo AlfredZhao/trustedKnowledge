@@ -15,6 +15,67 @@ When fixing a bug with meaningful regression risk, add a short entry with:
 
 Keep entries concrete. Prefer file paths, function names, SQL placeholders, and test names over broad advice.
 
+## Office 导出：多图预算同步与长标题原文保真
+
+- **Symptom**：33 张图被 24 个上限拒绝，第 13 张可能超过 12 MB；45 字符中英文标题出现 `Cover title requires a manually adapted layout`。
+- **Trigger**：多图文章、跨行的中英混合封面/章节标题、管理员修改限额后继续使用已有快照。
+- **Root cause**：前端/schema/worker/代理各自写死不一致的阈值；标题仅按 36 pt 两行估算，缺少长标题版式，逐字换行还能拆开英文标识符。
+- **Safe pattern**：`OfficeLimits` 统一服务端策略，GET 接口登录且 no-store；API 将已验证策略写入私有临时文件而非接受客户端覆写，worker 再验证。前端每次获取策略并复检缓存。请求/输出预算由编码预算派生，代理仅放宽 Office 路径。像素、超时、CPU、内存和并发保护不能删除。
+- **Safe pattern**：标题保留原始 `runs` 并单独生成 `line_runs`，保留单词/标识符，预览与 PPT 原生文本共用明确换行。封面至多三行、最低 28 pt，副标题/版本联动；章节和续页至多两行、最低 24 pt，标题不得进入正文区域。离线校验器同时校验实际显式换行与原文完整性，不能简单忽略所有文本差异。
+- **Guardrail**：`office_export_checks.py` 覆盖配置边界、认证/no-store、64/65 个、48 MB 等值/超限、像素预算及真实长标题 PPTX/DOCX。`markdown-office.spec.ts` 覆盖配置失败重试、缓存复检、33 张图真实 worker、长标题桌面/手机深浅主题不溢出。`scripts/office-export/test_export.py` 覆盖样稿往返、标题样式/链接/标识符与续页；`python -m tests.office_export_stress` 验证 33/64 张独立合成截图，禁止用重复图片去重掩盖负载。
+
+## Office 导出：动态版权年份与可定位的素材超限提示
+
+### Symptom
+
+PPTX 页脚固定为 2025，DOCX 固定为 2026；图片较多时只显示笼统的“图片数量或大小超过限制”，无法区分是哪一个上限。
+
+### Trigger
+
+新年份导出；图片、Mermaid 与公式合计超过 24 个，单个 Base64 超过 4,000,000 字节，或总编码超过 12,000,000 字节。
+
+### Root Cause
+
+版权配置写死年份且未在任务执行时解析；三种独立阈值共用一条错误，图表和公式的计数未说明。长错误在有最大高度的居中 flex 状态栏中还可能向上溢出。
+
+### Safe Pattern
+
+- `engine.load_template_profile()` 在每个任务中读取新配置，仅替换版权字段的 `{year}`，按 `Asia/Shanghai` 计算一次；在线 worker、离线 CLI 和 HTML 检查页复用同一份已解析配置。不得缓存启动年份、全局替换正文或改写二进制模板。
+- `officeAssetLimits.ts` 使用服务端下发的上限（首次诊断修复时为 24 个/12 MB，后续默认改为 64 个/48 MB）；数量检查基于全部已解析素材，在获取图片/渲染图形前执行。编码检查标明单个与累计的区别、分类序号、简短名称及精确字节数；累计报错不能声称已经测得整篇大小。提示只在当前会话 UI 中展示，不记录正文/素材名称到日志。
+- 错误状态采用可滚动块布局，长提示从开头可读，不挤掉手机端返回和重试操作；原正常/加载布局不变。
+
+### Guardrail
+
+`backend/tests/office_export_checks.py::CopyrightChecks` 覆盖 2026/2027、上海跨年边界、任务间不缓存、原文/配置/模板不变及真实 PPTX/DOCX/预览/离线输出。`frontend/tests/markdown-office.spec.ts` 覆盖 24/4 MB/12 MB 等值与超限边界、混合素材计数、失败前不请求媒体/导出 API、临时 DOM 清理、桌面/手机/横屏深浅主题和修改后重试。离线回归必须通过 `load_template_profile()` 获取配置，不能直接将 `{year}` 写进成品。
+
+## Office 导出：会话隔离、HTTP 兼容与受限任务生命周期
+
+### Symptom
+
+需要防止会话切换后旧草稿继续发往后端或触发下载、外链图片携带 API 凭据、取消后临时任务占用不释放，以及普通 HTTP 部署导出 Mermaid 时出现 `crypto.randomUUID is not a function`。
+
+### Trigger
+
+导出等待图片/字体/接口期间退出或切换登录；图片链接指向其它站点或发生重定向；内容超大或客户端取消；通过局域网 HTTP 访问应用。
+
+### Root Cause
+
+只靠定时会话观察不足以阻止异步完成瞬间的旧下载；直接给 Markdown 任意 URL 套用带凭据的 fetch 会突破可信地址边界；无上限的请求/解码/排版容易耗尽资源；只取消断连监测任务可能与 ASGI 取消域交互。`crypto.randomUUID` 依赖安全上下文，不能作为普通 HTTP 部署的必需功能。
+
+### Safe Pattern
+
+- `officeSource.ts` 使用 inert template，在 DOM 图片生效前校验路径；只读取现有可信媒体 API、禁止重定向，不改变原媒体 API 的访问规则。服务端只接收有界 PNG 数据，不读取用户路径或抓外链。
+- 沿用同一个 `sessionIdentity`，在源准备结束、API 调用前、预览回写和下载触发前检查；关闭/会话失效中止请求，清除临时 DOM，不把草稿或素材写入 localStorage。
+- 请求先做字节上限检查，再严格验证 IR；生成进程有时间、并发、字符、页数、对象和图片解码上限。使用显式停止信号退出断连监测；成功、失败、取消、超时均终止工作进程并清理本任务临时目录。
+- Mermaid 渲染 ID 使用和原幻灯片一致的 `crypto.getRandomValues`；不把 HTTPS-only API 当成局域网 HTTP 的前置条件。
+- 公式栅格化时保留字形外伸安全边距，不能直接按行内 span 的矩形裁图，否则上标和斜体字符可能被切掉；集成测试检查公式像素与图片四边之间的空隙。
+- 旧请求返回 401 时先核对会话身份，不能清除用户刚切换的新会话。
+- 离线样稿与在线接口共用 `backend/app/services/office/engine.py`，禁止再复制第二套分页/Office 填充实现。结构检查不等于原生 Office 视觉验收。
+
+### Guardrail
+
+`cd frontend && npm run test:slides` 覆盖桌面/移动端、深浅主题、正常/加载/空白/失败/设置/详情、取消、会话切换不下载、外链不发请求和 HTTP 下真实 Mermaid/公式导出。`cd backend && python -m unittest tests.test_office_export -v` 在隔离 ASGI 环境检查认证、限流、请求大小、非法路径/链接/图片、临时文件清理及真实 Office 包；不接数据库或启停服务。
+
 ## Markdown 幻灯片不得裁切内容、误分页或泄漏草稿快照
 
 ### Symptom

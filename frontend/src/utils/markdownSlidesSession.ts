@@ -9,7 +9,7 @@ export interface SlideSnapshot {
 export const SLIDES_QUERY_KEY = "markdown_slides";
 const MESSAGE_TYPE = "trusted-knowledge:markdown-slides";
 
-function sessionIdentity() {
+export function sessionIdentity() {
   try {
     return `${localStorage.getItem(API_KEY_STORAGE_KEY) ?? ""}\n${JSON.parse(localStorage.getItem(AUTH_USER_STORAGE_KEY) ?? "null")?.username ?? ""}`;
   } catch { return ""; }

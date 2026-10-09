@@ -9,9 +9,15 @@ The format follows the common GitHub changelog convention inspired by
 
 ## 本次版本更新
 
-### [Unreleased]
+### [1.0.1] - 2026-10-09
 
 #### Added / 新增
+
+- Added AIBS template mode and editable PPTX/DOCX export to the shared Markdown editor/preview controls. Fixed 16:9 previews, optional cover/footer metadata, cancellation, session invalidation and mobile-safe controls reuse the existing read-only snapshot flow. Authenticated, size-limited exports run in short-lived workers with bounded concurrency/time and automatic temporary-file cleanup; existing media access rules remain unchanged and no server-side external URL fetching is introduced.
+- 公共 Markdown 编辑/预览统一接入 AIBS 模板演示和可编辑 PPTX/DOCX 导出，保留默认阅读模式与只读快照，支持固定 16:9 预览、可选封面/页脚信息、取消、会话失效清理及移动端可达操作。新增接口沿用现有登录校验，使用有大小、并发和超时限制的短时进程并自动清理临时文件；沿用现有媒体访问规则，不新增服务端外链抓取，也不改变业务字段或数据库。
+
+- Added an isolated AIBS Office-template proof pipeline and adaptation specification, reusing the shared Markdown renderer to generate editable PPTX/DOCX samples, embedded graphics, source-coverage/package checks, and explicitly approximate HTML layout previews. macOS Office is the primary acceptance target; Windows compatibility, font approval and native rendering remain explicit gates before UI integration or delivery approval. No runtime API, database, authentication or service changes.
+- 新增独立的 AIBS Office 模板适配规范与样稿验证工具：复用公共 Markdown 渲染器，生成可编辑 PPTX/DOCX、嵌入图形、正文完整性与文件结构检查，以及明确标注为近似效果的 HTML 排版预览。以 macOS Office 为主要验收环境，Windows 兼容、字体确认及原生渲染验收通过后再接入 UI，不改动运行时 API、数据库、认证或服务状态。
 
 - Added a shared, read-only Markdown slideshow launcher to all shared editors and their related previews. Desktop opens an isolated snapshot in a new tab; mobile/PWA and blocked popups use an in-page presentation. Viewport-measured pagination preserves long prose, code indentation, lists and repeated table headers; diagrams and exceptional indivisible content fit the page with an explicit detail view. Includes keyboard navigation, page jump, directory, themes, fullscreen fallback, session invalidation and isolated browser regression tests.
 - 公共 Markdown 编辑器及其相关预览统一新增只读“幻灯片”入口：桌面新标签页播放草稿快照，手机/PWA 或弹窗受阻时在当前页放映。按实际屏幕尺寸自动续页，保留长段落、代码缩进、列表及续页表头；图表和无法合理拆分的内容适配缩放，并可显式展开查看。支持键盘翻页、页码跳转、目录、深浅主题、全屏降级、登录会话失效清理及隔离浏览器回归测试，不修改原文、API 或数据库。
@@ -24,7 +30,16 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Changed / 变更
 
+- Changed Office export budgets to administrator-configurable limits (default 64 assets / 48 MB Base64), shared through an authenticated policy endpoint and enforced by API and isolated workers. Coordinated body/output/pixel/time budgets; unrelated Nginx API upload limits remain unchanged.
+- Office 素材限额改为管理员配置，默认 64 个／总编码 48 MB，经登录策略接口统一下发并由 API/子进程双重校验；联动请求体、输出、像素与时间预算，不修改其它接口的 Nginx 上传上限。
+
 #### Fixed / 修复
+
+- Fixed long mixed Chinese/English Office titles with adaptive, lossless cover/section layouts and identifier-aware line breaks shared by PPTX and previews. Cover subtitle/version positions move together; unfit titles now show actionable Chinese errors.
+- 修复中英文混合长标题直接报错：封面/章节标题自适应字号与行数，按英文标识符边界换行，PPTX 与预览一致；副标题/版本联动避让，不截断原文，极长标题改为明确中文提示。
+
+- Fixed AIBS Office copyright years to resolve at each preview/export in Asia/Shanghai, consistently covering PPTX footers, DOCX cover/footers and the offline proof CLI. Image-limit errors now distinguish count, individual encoding and aggregate encoding, with actual usage and image/diagram/formula counts; existing resource limits remain unchanged.
+- 修复 AIBS Office 版权年份固定的问题：每次预览/导出按上海时区计算当年年份，统一应用到 PPTX 页脚、DOCX 封面与页脚及离线样稿。图片超限提示区分素材数量、单个编码和总编码，显示实际用量以及图片/图表/公式分类数量；保留原有资源上限。
 
 ### [1.0.0] - 2026-09-18
 

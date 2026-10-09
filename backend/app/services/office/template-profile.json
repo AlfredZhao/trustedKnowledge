@@ -1,0 +1,38 @@
+{
+  "id": "aibs-proof-v1",
+  "status": "prototype-not-approved-for-delivery",
+  "pptx": {
+    "path": "frontend/template/aibs_ppt_template.pptx",
+    "expected_slide_inches": [13.3333333333, 7.5],
+    "layouts": {"cover": "Title Slide", "content": "Title Only"},
+    "body_inches": [0.84, 1.55, 11.67, 5.10],
+    "title_pt": 32,
+    "body_pt": 22,
+    "code_pt": 16,
+    "table_pt": 18,
+    "copyright": "Copyright © {year}, Oracle and/or its affiliates"
+  },
+  "docx": {
+    "path": "frontend/template/aibs_word_template.docx",
+    "styles": {"title": "Title", "heading1": "Heading 1", "heading2": "Heading 2", "heading3": "Heading 3", "body": "Normal", "code": "Code"},
+    "copyright": "Copyright © {year}, Oracle and/or its affiliates"
+  },
+  "fonts": {
+    "latin": "Oracle Sans Tab",
+    "east_asia": "Noto Sans CJK SC",
+    "code": "Consolas",
+    "status": "Chinese font proposal and Oracle font availability require owner approval; fonts are not embedded."
+  },
+  "sample_metadata": {
+    "subtitle": "模板适配验证 · 原文保真 · 非正式交付",
+    "version": "技术样稿 v0.1",
+    "footer": "技术验证样稿 · 非正式交付"
+  },
+  "colors": {"text": "312D2A", "paper": "FCFBFA", "accent": "C74634", "muted": "5C5651", "table_header": "312D2A", "table_alternate": "F4F1ED"},
+  "pending_acceptance": [
+    "macOS Microsoft PowerPoint and Word native rendering",
+    "Windows Microsoft PowerPoint and Word compatibility",
+    "Oracle font availability and proposed Chinese font approval",
+    "Confidentiality, copyright and optional SOD disclaimer owner approval"
+  ]
+}

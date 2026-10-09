@@ -1,0 +1,5 @@
+# Optional, isolated proof-of-concept tooling; not backend runtime dependencies.
+python-pptx==1.0.2
+python-docx==1.2.0
+Pillow==12.3.0
+lxml==6.1.3

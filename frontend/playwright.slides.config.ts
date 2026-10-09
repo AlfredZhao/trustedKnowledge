@@ -2,7 +2,7 @@ import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./tests",
-  testMatch: "markdown-slides.spec.ts",
+  testMatch: ["markdown-slides.spec.ts", "markdown-office.spec.ts"],
   workers: 1,
   timeout: 60_000,
   outputDir: "./node_modules/.cache/slides-test-results",

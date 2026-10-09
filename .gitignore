@@ -23,3 +23,7 @@ __pycache__/
 # Build and tool caches
 .vite/
 .pytest_cache/
+
+# Isolated Office proof tooling and generated review artifacts (not production data)
+.office-export-venv/
+output/office-template-validation*/

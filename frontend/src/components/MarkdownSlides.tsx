@@ -5,13 +5,24 @@ import { MarkdownPreview } from "./MarkdownPreview";
 import { copyText } from "../utils/appUtils";
 import { paginateMarkdownSlides, prepareMarkdownSlides, slideIndexForAnchor, type MarkdownSlide, type SlideAnchor } from "../utils/markdownSlides";
 import type { SlideSnapshot } from "../utils/markdownSlidesSession";
+import MarkdownOfficeWorkspace from "./MarkdownOfficeWorkspace";
 
-export default function MarkdownSlides({ snapshot, onClose, notice = "", standalone = false }: {
+interface SlidesProps {
   snapshot: SlideSnapshot;
   onClose: () => void;
   notice?: string;
   standalone?: boolean;
-}) {
+}
+
+export default function MarkdownSlides(props: SlidesProps) {
+  const [templateLine, setTemplateLine] = useState<number | null>(null);
+  const [readerLine, setReaderLine] = useState(props.snapshot.sourceLine);
+  return templateLine !== null
+    ? <MarkdownOfficeWorkspace snapshot={{ ...props.snapshot, sourceLine: templateLine }} onClose={props.onClose} standalone={props.standalone} onReading={() => setTemplateLine(null)} />
+    : <MarkdownReadingSlides {...props} snapshot={{ ...props.snapshot, sourceLine: readerLine }} onTemplate={line => { setReaderLine(line); setTemplateLine(line); }} />;
+}
+
+function MarkdownReadingSlides({ snapshot, onClose, notice = "", standalone = false, onTemplate }: SlidesProps & { onTemplate: (line: number) => void }) {
   const screenRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const sourceRef = useRef<HTMLDivElement>(null);
@@ -41,6 +52,7 @@ export default function MarkdownSlides({ snapshot, onClose, notice = "", standal
 
   useEffect(() => {
     screenRef.current?.focus({ preventScroll: true });
+    setLight(document.documentElement.dataset.theme === "light");
     const overflow = document.body.style.overflow;
     const originalTheme = document.documentElement.dataset.theme;
     const originalColorScheme = document.documentElement.style.colorScheme;
@@ -181,6 +193,10 @@ export default function MarkdownSlides({ snapshot, onClose, notice = "", standal
     <header className="slide-header">
       <div className="slide-heading"><strong title={snapshot.title}>{snapshot.title}</strong><span>只读快照 · 不修改正文</span></div>
       <div className="slide-actions">
+        <select className="slide-control" aria-label="演示模板" value="reading" onChange={() => {
+          if (document.fullscreenElement === screenRef.current) void document.exitFullscreen().catch(() => undefined);
+          onTemplate(slide?.sourceStart ?? snapshot.sourceLine);
+        }}><option value="reading">默认阅读模式</option><option value="aibs">AIBS 模板 · 16:9</option></select>
         <button className="slide-control" type="button" disabled={!slides.length || busy} aria-expanded={directory} onClick={() => { setDirectory(!directory); setDetail(false); }}><List size={16} />目录</button>
         <button className="slide-control" type="button" onClick={() => void toggleFullscreen()}>{fullscreen ? <Minimize size={16} /> : <Maximize size={16} />}<span>{fullscreen ? "退出全屏" : "全屏"}</span></button>
         <button className="slide-control" type="button" aria-label={light ? "切换深色主题" : "切换浅色主题"} onClick={() => {
