@@ -389,7 +389,7 @@ function buildStandaloneMermaidScript() {
     "  mermaidApi.initialize({ startOnLoad: false, securityLevel: 'strict', htmlLabels: false, theme: 'base', themeVariables: { primaryColor: '#f8ebe6', primaryTextColor: '#5f1d1d', primaryBorderColor: '#c08475', lineColor: '#7c4a43', secondaryColor: '#fff9f6', tertiaryColor: '#fffdfb' } });",
     "  document.querySelectorAll('[data-mermaid-render]').forEach(async (target, index) => {",
     "    const source = target.closest('[data-mermaid-block]')?.querySelector('[data-mermaid-source]')?.textContent || '';",
-    "    try { const rendered = await mermaidApi.render(`tk-mermaid-export-${index}`, source); target.innerHTML = rendered.svg; rendered.bindFunctions?.(target); }",
+    "    try { const rendered = await mermaidApi.render(`tk-mermaid-export-${index}`, source); target.innerHTML = rendered.svg; target.querySelectorAll('.mindmap-node').forEach(node => { if (!node.querySelector('circle.basic')) return; node.querySelectorAll('.label text').forEach(label => label.setAttribute('text-anchor', 'middle')); }); rendered.bindFunctions?.(target); }",
     "    catch { target.textContent = 'Mermaid 图表渲染失败，请查看下方源码。'; }",
     "  });",
     "})();",

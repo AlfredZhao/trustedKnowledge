@@ -15,7 +15,7 @@
 - 展示配置：分页数量、导航项、排序字段和状态选项集中在 `frontend/src/uiConfig.ts`。
 - Markdown 渲染：`frontend/src/components/MarkdownPreview.tsx` 和 `frontend/src/utils/markdown.ts`。
 - Markdown 围栏代码块会保留原始换行与每行前导空格；清理泄漏的内部代码占位符不能压缩其它 Markdown 空白，确保 Python、YAML 等嵌套代码在预览中保持缩进。
-- 共用 Markdown 预览会将 ` ```mermaid ` 围栏渲染为 Mermaid SVG 图表；图表下方保留可展开的原始源码，右上角“复制”仍复制源码。单图源码超过 20,000 字符或解析失败时不执行图表渲染，并显示原因与源码回退。图表渲染使用 Mermaid 严格安全模式，深浅主题均有适配。
+- 共用 Markdown 预览会将 ` ```mermaid ` 围栏渲染为 Mermaid SVG 图表；图表下方保留可展开的原始源码，右上角“复制”仍复制源码。单图源码超过 20,000 字符或解析失败时不执行图表渲染，并显示原因与源码回退。图表渲染使用 Mermaid 严格安全模式，深浅主题均有适配；运行时锁定为 Mermaid 12.1.0，并在 Mindmap 圆形节点输出缺少锚点时显式居中 SVG 标签，保证 `root((中文标签))` 完整包住文字。
 - 带语言标识的代码围栏会按 Bash/Shell、Python、SQL/PLSQL、JavaScript/TypeScript、JSON、HTML/XML、CSS、YAML、Markdown 展示关键字、字符串、注释和数字高亮；未知语言继续按普通代码显示，绝不对未标识代码自动猜测语言。
 - 所有共用 Markdown 预览中的围栏代码块右上角均提供独立“复制”按钮；它只复制该代码块的纯文本，不包含围栏标记或语言标识，并会显示短暂的成功或失败反馈，方便将命令、SQL 或代码送至受控环境校验。
 - 单下划线斜体仅在独立 Markdown 标记中生效；变量名、路径和文件名中的词内下划线（如 `v_needs_update`、`my_file_name.md`）按普通文本显示，避免预览、富文本复制和增强 HTML 导出出现误斜体。

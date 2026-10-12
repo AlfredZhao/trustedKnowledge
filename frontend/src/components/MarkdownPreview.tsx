@@ -2,6 +2,7 @@ import { forwardRef, memo, useEffect, useImperativeHandle, useMemo, useRef } fro
 
 import { copyText } from "../utils/appUtils";
 import { markdownToHtml } from "../utils/markdown";
+import { normalizeMermaidSvg } from "../utils/mermaid";
 import { MarkdownSlidesButton } from "./MarkdownSlidesButton";
 
 export const MarkdownPreview = memo(
@@ -47,7 +48,7 @@ export const MarkdownPreview = memo(
           try {
             const rendered = await mermaid.render(`tk-mermaid-${Date.now()}-${index}`, source);
             if (disposed) return;
-            target.innerHTML = rendered.svg;
+            target.innerHTML = normalizeMermaidSvg(rendered.svg);
             rendered.bindFunctions?.(target);
           } catch {
             if (!disposed) target.textContent = "Mermaid 图表渲染失败，请查看下方源码。";

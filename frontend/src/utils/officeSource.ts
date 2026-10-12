@@ -3,6 +3,7 @@ import { prepareMarkdownSlides } from "./markdownSlides";
 import { apiUrl } from "../api/client";
 import { officeRequest } from "../api/office";
 import { assertOfficeAssetCount, assertOfficeAssetSize } from "./officeAssetLimits";
+import { normalizeMermaidSvg } from "./mermaid";
 import type { OfficeAsset, OfficeBlock, OfficeLimits, OfficeRun, OfficeSource } from "./officeTypes";
 
 function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
@@ -105,7 +106,7 @@ export async function prepareOfficeSource(markdown: string, signal: AbortSignal,
         if (code.length > 20_000 || /https?:|file:|data:|url\s*\(|@\{|<\s*(?:img|image|iframe)|%%\{/i.test(code)) throw new Error("Mermaid 过长或含有外部资源/自定义初始化，暂不支持导出。");
         const id = Array.from(crypto.getRandomValues(new Uint32Array(2)), value => value.toString(16)).join("");
         const rendered = await abortable(mermaid.render(`office-${id}`, code), signal);
-        diagram.innerHTML = rendered.svg;
+        diagram.innerHTML = normalizeMermaidSvg(rendered.svg);
         if (diagram.querySelector("image,foreignObject,script")) throw new Error("Mermaid 包含暂不支持的嵌入资源。");
       }
     }

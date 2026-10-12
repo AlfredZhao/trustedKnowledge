@@ -92,6 +92,10 @@ try {
       if (code.length > 20_000) throw new Error('Mermaid source exceeds 20,000 characters.');
       const result = await mermaid.render(`office-mermaid-${i++}`, code);
       target.innerHTML = result.svg;
+      target.querySelectorAll('.mindmap-node').forEach(node => {
+        if (!node.querySelector('circle.basic')) return;
+        node.querySelectorAll('.label text').forEach(label => label.setAttribute('text-anchor', 'middle'));
+      });
     }
     await Promise.all(Array.from(document.images, image => image.decode()));
     await document.fonts.ready;

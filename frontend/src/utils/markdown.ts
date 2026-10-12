@@ -1,4 +1,5 @@
 import { highlightCode } from "./codeHighlight";
+import { normalizeMermaidSvg } from "./mermaid";
 
 export type HtmlExportStyle = "classic" | "learning-card" | "minimal";
 export interface HtmlExportSection { id: string; label: string; value: string; }
@@ -431,7 +432,7 @@ async function renderMermaidBlocksAsPng(html: string) {
     try {
       const rendered = await mermaid.render(`tk-mermaid-clipboard-${Date.now()}-${index}`, source);
       const image = document.createElement("img");
-      const png = await svgToPngDataUrl(rendered.svg);
+      const png = await svgToPngDataUrl(normalizeMermaidSvg(rendered.svg));
       image.src = png.dataUrl;
       image.width = png.displayWidth;
       image.height = png.displayHeight;

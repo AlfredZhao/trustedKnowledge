@@ -674,9 +674,11 @@ Markdown 预览、富文本复制或增强 HTML 导出会将变量名、路径�
 
 `markdownToHtml()` 必须将 `mermaid` 围栏输出为带 `data-mermaid-render` 和可展开 `data-mermaid-source` 的独立块，源码始终经过 HTML 转义。`MarkdownPreview` 仅在实际存在 Mermaid 块时动态加载 Mermaid，并以 `securityLevel: "strict"`、`htmlLabels: false` 渲染；任何错误或超过 20,000 字符都回退显示源码。普通代码仅依据显式语言标识调用已注册的 Highlight.js 语言，不自动猜测。富文本复制必须使用未插入 Highlight.js span 的代码 HTML，并将 Mermaid 块异步渲染为内嵌 3 倍密度 PNG、移除复制按钮和源码折叠；PNG 必须默认按比例尽量填充 960×720 的逻辑显示区域、保留该显示宽高，并按比例应用 4,096 像素的最大边长，浏览器生成的增强 HTML 使用同一 PNG。命令行 `scripts/export-enhanced-html.mjs` 仍仅在含 Mermaid 时内嵌 runtime。
 
+Mindmap 的 `root((标签))` 使用圆形节点；Mermaid 运行时必须保持在 12.1.0 或更高的已锁定版本。部分运行时输出会遗漏圆形节点标签的 `text-anchor="middle"`，使标签从圆心向右开始绘制；每个 Mermaid 输出路径都必须在插入 SVG 后为 `.mindmap-node` 内含 `circle.basic` 的 `.label text` 补齐该属性。不得以应用 CSS 缩放 SVG 或仅扩大圆形作为替代，因为预览、富文本 PNG、独立 HTML 与 Office 导出均依赖同一运行时输出。
+
 ### Guardrail
 
-运行 `node --check scripts/export-enhanced-html.mjs` 和 `cd frontend && npm run build`。手工确认深浅主题与手机宽度下：有效 Mermaid 显示 SVG、无效 Mermaid 显示错误和“查看 Mermaid 源码”、复制源码正确；Bash/Python/SQL 关键字可见高亮。将高亮代码粘贴至第三方编辑器，空格和缩进必须与源码一致。复制含 Mermaid 的富文本、或打开浏览器生成的增强 HTML 后，第三方编辑器应得到 PNG 图，而不包含复制按钮、折叠源码或 Mermaid runtime。
+运行 `node --check scripts/export-enhanced-html.mjs` 和 `cd frontend && npm run build`。手工确认深浅主题与手机宽度下：有效 Mermaid 显示 SVG、无效 Mermaid 显示错误和“查看 Mermaid 源码”、复制源码正确；Bash/Python/SQL 关键字可见高亮。使用 `mindmap\n  root((氛围编程实战))` 及其子节点验证圆形根节点完整包住文字。将高亮代码粘贴至第三方编辑器，空格和缩进必须与源码一致。复制含 Mermaid 的富文本、或打开浏览器生成的增强 HTML 后，第三方编辑器应得到 PNG 图，而不包含复制按钮、折叠源码或 Mermaid runtime。
 
 ## Markdown 代码块不得在占位符清理时丢失缩进
 

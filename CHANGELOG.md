@@ -9,6 +9,17 @@ The format follows the common GitHub changelog convention inspired by
 
 ## 本次版本更新
 
+### [Unreleased]
+
+#### Added / 新增
+
+#### Changed / 变更
+
+#### Fixed / 修复
+
+- Fixed Mermaid Mindmap circular nodes drawing Chinese labels outside their border. The shared renderer now uses Mermaid 12.1.0 and explicitly centres circular-node SVG labels; Markdown previews, rich-copy PNG rendering, standalone HTML export, and Office export use the same correction.
+- 修复 Mermaid 思维导图圆形节点无法完整包住中文标签的问题：共用渲染器升级至 Mermaid 12.1.0，并显式居中圆形节点的 SVG 标签；Markdown 预览、富文本复制 PNG、独立 HTML 导出和 Office 导出同步应用该修正。
+
 ### [1.0.1] - 2026-10-09
 
 #### Added / 新增
