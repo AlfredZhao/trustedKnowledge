@@ -29,6 +29,7 @@ import {
   ImagePlus,
   Lock,
   Layers3,
+  Link,
   List,
   ListChecks,
   ListOrdered,
@@ -8375,6 +8376,25 @@ const MarkdownImageTextarea = forwardRef<MarkdownImageTextareaHandle, {
     );
   }
 
+  function applyLink() {
+    const textarea = textareaRef.current;
+    const start = textarea?.selectionStart ?? value.length;
+    const end = textarea?.selectionEnd ?? value.length;
+    const selected = value.slice(start, end);
+    const isUrl = /^https?:\/\/\S+$/i.test(selected);
+    const label = selected || "链接文字";
+    const href = isUrl ? selected : "https://";
+    const markdown = `[${label}](${href})`;
+    const hrefStart = label.length + 3;
+
+    // For a selected URL, preserve it as both label and destination. For any
+    // other selection, place the caret selection on the destination so a URL
+    // can be pasted immediately; an empty selection starts with the label.
+    const selectionStart = selected ? hrefStart : 1;
+    const selectionEnd = selected ? hrefStart + href.length : label.length + 1;
+    replaceSelection(markdown, selectionStart, selectionEnd, true);
+  }
+
   function applyCodeBlock() {
     const textarea = textareaRef.current;
     const start = textarea?.selectionStart ?? value.length;
@@ -8505,6 +8525,9 @@ const MarkdownImageTextarea = forwardRef<MarkdownImageTextareaHandle, {
             </button>
             <button className="markdown-tool-button" disabled={disabled} title="行内代码" type="button" onClick={applyInlineCode}>
               <Code2 size={15} /> <span>行内代码</span>
+            </button>
+            <button className="markdown-tool-button" disabled={disabled} title="插入链接" type="button" onClick={applyLink}>
+              <Link size={15} /> <span>链接</span>
             </button>
             <button className="markdown-tool-button" disabled={disabled} title="代码块" type="button" onClick={applyCodeBlock}>
               <Code2 size={15} /> <span>代码块</span>

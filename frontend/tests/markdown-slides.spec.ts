@@ -2,6 +2,7 @@ import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 import { build } from "vite";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { mockPresentationFullscreen, presentationLayout } from "./slide-presentation.helpers";
 
 const output = path.resolve("node_modules/.cache/slides-browser-build");
 const extensions: Record<string, string> = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".woff2": "font/woff2", ".woff": "font/woff", ".ttf": "font/ttf", ".svg": "image/svg+xml" };
@@ -262,4 +263,122 @@ test("resizing keeps the current reading location rather than returning to page 
   await expect(page.locator(".slide-page")).toHaveAttribute("aria-busy", "false");
   await expect(page.locator("[data-slide-page]")).toContainText("最后一章");
   await checkLayout(page);
+});
+
+for (const size of [{ width: 1440, height: 900 }, { width: 390, height: 844 }, { width: 844, height: 390 }]) {
+  for (const theme of ["dark", "light"]) {
+    test(`pure presentation reader ${size.width}x${size.height} ${theme}`, async ({ page }, testInfo) => {
+      await page.setViewportSize(size);
+      await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
+      await mockPresentationFullscreen(page, "denied");
+      await inline(page, "# 开头\n\n第一章。\n\n## 中间\n\n第二章。\n\n## 尾声\n\n最后一章。");
+      await checkLayout(page);
+      await page.locator(".slide-screen").press("End");
+      await page.getByRole("button", { name: "幻灯片全屏", exact: true }).click();
+      await expect(page.locator(".slide-screen")).toHaveClass(/slide-presenting/);
+      await expect(page.locator(".slide-page")).toHaveAttribute("aria-busy", "false");
+      await expect(page.locator("[data-slide-page]")).toContainText("最后一章");
+      await expect(page.locator(".slide-presentation-hint")).toContainText("未允许全屏");
+      await presentationLayout(page); await checkLayout(page);
+      await page.screenshot({ path: testInfo.outputPath("pure-reader.png") });
+      const dimensions = await page.locator(".slide-viewport").boundingBox();
+      const count = await page.locator(".slide-presentation-count").textContent();
+      await page.mouse.move(1, 1);
+      await expect(page.locator(".slide-presentation-controls")).toHaveAttribute("data-visible", "false", { timeout: 6000 });
+      expect(await page.locator(".slide-viewport").boundingBox()).toEqual(dimensions);
+      expect(await page.locator(".slide-presentation-count").textContent()).toBe(count);
+      await page.keyboard.press("Tab");
+      await expect(page.locator(".slide-presentation-controls")).toHaveAttribute("data-visible", "true");
+      await expect(page.getByRole("button", { name: "上一页", exact: true })).toBeFocused();
+      await page.getByRole("button", { name: "目录", exact: true }).click();
+      await expect(page.getByRole("dialog", { name: "幻灯片目录", exact: true })).toBeVisible();
+      await page.getByRole("button", { name: "返回放映", exact: true }).press("Escape");
+      await expect(page.locator(".slide-screen")).toHaveClass(/slide-presenting/);
+      await page.getByRole("button", { name: "展开本页", exact: true }).click();
+      await expect(page.getByRole("dialog", { name: "本页详细内容", exact: true })).toContainText("最后一章");
+      await page.getByRole("button", { name: "返回放映", exact: true }).click();
+      await page.getByRole("button", { name: "退出放映", exact: true }).click();
+      await expect(page.locator(".slide-screen")).not.toHaveClass(/slide-presenting/);
+      await expect(page.locator(".slide-page")).toHaveAttribute("aria-busy", "false");
+      await expect(page.locator("[data-slide-page]")).toContainText("最后一章");
+      await checkLayout(page);
+      await page.getByRole("button", { name: "返回编辑", exact: true }).click();
+      await expect(page.getByLabel("测试正文")).toContainText("最后一章");
+    });
+  }
+}
+
+test("pure presentation fullscreen ownership, native exit and late request resolution", async ({ page }) => {
+  await inline(page, "# 第一页\n\n正文。\n\n## 第二页\n\n下一页。");
+  await mockPresentationFullscreen(page);
+  await page.getByRole("button", { name: "全屏", exact: true }).click();
+  await page.getByRole("button", { name: "幻灯片全屏", exact: true }).click();
+  await page.getByRole("button", { name: "退出放映", exact: true }).click();
+  await expect(page.getByRole("button", { name: "退出全屏", exact: true })).toBeVisible();
+  expect(await page.evaluate(() => (window as any).presentationFullscreen.requests)).toBe(1);
+  await page.getByRole("button", { name: "退出全屏", exact: true }).click();
+  await page.getByRole("button", { name: "幻灯片全屏", exact: true }).click();
+  await page.locator(".slide-screen").press("Escape");
+  await expect(page.locator(".slide-screen")).not.toHaveClass(/slide-presenting/);
+  expect(await page.evaluate(() => document.fullscreenElement === null)).toBe(true);
+  await page.getByRole("button", { name: "幻灯片全屏", exact: true }).click();
+  await page.evaluate(() => document.exitFullscreen());
+  await page.locator(".slide-screen").press("Escape");
+  await expect(page.locator(".slide-screen")).toBeVisible();
+  await expect(page.locator(".slide-screen")).not.toHaveClass(/slide-presenting/);
+  await mockPresentationFullscreen(page, "pending");
+  await page.getByRole("button", { name: "幻灯片全屏", exact: true }).click();
+  await page.getByRole("button", { name: "退出放映", exact: true }).click();
+  await page.evaluate(() => (window as any).presentationFullscreen.resolve());
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement === null)).toBe(true);
+  await expect(page.locator(".slide-screen")).not.toHaveClass(/slide-presenting/);
+  await mockPresentationFullscreen(page, "pending");
+  await page.getByRole("button", { name: "幻灯片全屏", exact: true }).click();
+  await page.getByRole("button", { name: "退出放映", exact: true }).click();
+  await page.getByRole("button", { name: "返回编辑", exact: true }).click();
+  await page.evaluate(() => (window as any).presentationFullscreen.resolve());
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement === null)).toBe(true);
+  await expect(page.locator(".slide-screen")).toHaveCount(0);
+});
+
+test("pure presentation empty content keeps exit reachable and disables entry", async ({ page }) => {
+  await inline(page, "<!-- slide -->");
+  await expect(page.getByRole("button", { name: "幻灯片全屏", exact: true })).toBeDisabled();
+  await expect(page.getByRole("status")).toContainText("暂无可放映");
+  await page.getByRole("button", { name: "返回编辑", exact: true }).click();
+  await expect(page.getByLabel("测试正文")).toHaveValue("<!-- slide -->");
+});
+
+test("pure presentation real browser fullscreen returns to preview without closing it", async ({ page }) => {
+  await inline(page, "# 原生全屏\n\n可返回预览。");
+  await page.getByRole("button", { name: "幻灯片全屏", exact: true }).click();
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement === document.querySelector(".slide-screen"))).toBe(true);
+  await expect(page.locator(".slide-page")).toHaveAttribute("aria-busy", "false");
+  await presentationLayout(page);
+  await page.evaluate(() => document.exitFullscreen());
+  await expect(page.locator(".slide-screen")).not.toHaveClass(/slide-presenting/);
+  await expect(page.getByRole("button", { name: "幻灯片全屏", exact: true })).toBeVisible();
+});
+
+test.describe("pure presentation touch", () => {
+  test.use({ hasTouch: true, isMobile: true, viewport: { width: 320, height: 568 } });
+  test("unsupported fullscreen, touch reveal, rotation and page navigation", async ({ page }) => {
+    await mockPresentationFullscreen(page, "unsupported");
+    await inline(page, "# 开头\n\n第一页。\n\n## 结尾\n\n最后一页。");
+    await page.getByRole("button", { name: "幻灯片全屏", exact: true }).tap();
+    await expect(page.locator(".slide-page")).toHaveAttribute("aria-busy", "false");
+    await expect(page.locator(".slide-presentation-hint")).toContainText("不支持全屏");
+    await presentationLayout(page);
+    await expect(page.locator(".slide-presentation-controls")).toHaveAttribute("data-visible", "false", { timeout: 6000 });
+    await page.locator(".slide-viewport").tap({ position: { x: 30, y: 30 } });
+    await expect(page.locator(".slide-presentation-controls")).toHaveAttribute("data-visible", "true");
+    await page.getByRole("button", { name: "下一页", exact: true }).tap();
+    await expect(page.locator("[data-slide-page]")).toContainText("最后一页");
+    await page.setViewportSize({ width: 844, height: 390 });
+    await expect(page.locator(".slide-page")).toHaveAttribute("aria-busy", "false");
+    await expect(page.locator("[data-slide-page]")).toContainText("最后一页");
+    await presentationLayout(page); await checkLayout(page);
+    await page.locator(".slide-screen").press("Escape");
+    await expect(page.getByRole("button", { name: "幻灯片全屏", exact: true })).toBeVisible();
+  });
 });

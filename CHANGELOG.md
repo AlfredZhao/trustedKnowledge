@@ -9,11 +9,20 @@ The format follows the common GitHub changelog convention inspired by
 
 ## 本次版本更新
 
-### [Unreleased]
+### [1.0.2] - 2026-10-16
 
 #### Added / 新增
 
+- Added a separate pure slideshow fullscreen mode to the Markdown reader and AIBS preview, preserving existing workspace fullscreen. Shared floating controls support keyboard/touch, auto-hide without changing pagination, and browser-fullscreen fallback; reading anchors and fixed 16:9 template pages are preserved.
+- Markdown 阅读幻灯片及 AIBS 预览新增独立“幻灯片全屏”，保留原工作区全屏。隐藏外围工具栏，共用悬浮控制支持键盘、触摸与自动隐藏，不因控件显隐反复分页；全屏受限时降级页面内纯放映，沿用阅读锚点与固定 16:9 模板页。
+
+- Added a Link action to the shared Markdown toolbar. It wraps a selected URL as `[url](url)`, or wraps other selected text and selects the `https://` destination for immediate entry.
+- 共用 Markdown 工具栏新增“链接”操作：选中 URL 时生成 `[url](url)`；选中普通文字时生成链接并自动选中 `https://` 地址，便于直接粘贴。
+
 #### Changed / 变更
+
+- Reduced the pure slideshow floating toolbar height by removing its default keyboard-operation hint; browser/fullscreen failure messages remain visible when needed.
+- 纯放映悬浮工具栏移除默认的键盘操作提示，缩减底部高度；浏览器或全屏失败等状态消息仍会在需要时显示。
 
 #### Fixed / 修复
 

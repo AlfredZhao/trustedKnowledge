@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { ChevronLeft, ChevronRight, Download, List, Loader2, Maximize, Minimize, Settings2, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, List, Loader2, Maximize, Minimize, Presentation, Settings2, X } from "lucide-react";
 import { downloadOffice, getOfficeLimits, previewOffice } from "../api/office";
 import { assertOfficeAssets } from "../utils/officeAssetLimits";
 import { prepareOfficeSource } from "../utils/officeSource";
 import type { OfficeLimits, OfficeMetadata, OfficePreview, OfficeSource } from "../utils/officeTypes";
 import { sessionIdentity, watchSlideSession, type SlideSnapshot } from "../utils/markdownSlidesSession";
 import OfficeCanvas, { OfficePageText } from "./OfficeCanvas";
+import SlidePresentationControls from "./SlidePresentationControls";
+import { useSlidePresentation } from "./useSlidePresentation";
 
 const emptyMetadata: OfficeMetadata = { subtitle: "", version: "", footer: "" };
 
@@ -31,6 +33,7 @@ export default function MarkdownOfficeWorkspace({ snapshot, onClose, onReading, 
   const [fullscreen, setFullscreen] = useState(false);
   const [light, setLight] = useState(document.documentElement.dataset.theme === "light");
   const page = preview?.pages[index];
+  const presentation = useSlidePresentation(root, busy || !!error || !!panel);
 
   const run = async (action: (signal: AbortSignal, content: OfficeSource) => Promise<void>, initial: string) => {
     if (owner.current !== sessionIdentity()) { closeRef.current(); return; }
@@ -126,7 +129,7 @@ export default function MarkdownOfficeWorkspace({ snapshot, onClose, onReading, 
       const first = controls[0], last = controls[controls.length - 1];
       if (first && (!scope?.contains(document.activeElement) || document.activeElement === root.current || (event.shiftKey && document.activeElement === first) || (!event.shiftKey && document.activeElement === last))) { event.preventDefault(); (event.shiftKey ? last : first).focus(); }
     } else if (event.key === "Escape") {
-      event.preventDefault(); if (panel) closePanel(); else if (document.fullscreenElement === root.current) void full(); else leave();
+      event.preventDefault(); if (panel) closePanel(); else if (presentation.escape()) return; else if (document.fullscreenElement === root.current) void full(); else leave();
     } else if (!panel && !event.altKey && !event.ctrlKey && !event.metaKey && !event.nativeEvent.isComposing && !(event.target as Element).closest("input,select,textarea")) {
       if (["ArrowRight", "ArrowDown", "PageDown", "ArrowLeft", "ArrowUp", "PageUp", "Home", "End"].includes(event.key)) {
         event.preventDefault();
@@ -139,7 +142,7 @@ export default function MarkdownOfficeWorkspace({ snapshot, onClose, onReading, 
     signal.throwIfAborted(); if (valid.current) setMessage(`${format.toUpperCase()} 已生成并请求下载，请在 Office 中检查后交付。`);
   }, `正在生成 ${format.toUpperCase()}…`);
 
-  return <div ref={root} className="slide-screen office-screen" role="dialog" aria-modal="true" aria-label="Markdown 模板与 Office 导出" tabIndex={-1} onKeyDown={keyDown} onClick={event => event.stopPropagation()}>
+  return <div ref={root} className={`slide-screen office-screen${presentation.active ? " slide-presenting" : ""}`} role="dialog" aria-modal="true" aria-label="Markdown 模板与 Office 导出" tabIndex={-1} onPointerMove={presentation.reveal} onPointerDown={presentation.reveal} onFocusCapture={presentation.reveal} onKeyDownCapture={presentation.reveal} onKeyDown={keyDown} onClick={event => event.stopPropagation()}>
     <header className="slide-header">
       <div className="slide-heading"><strong title={snapshot.title}>{snapshot.title}</strong><span>只读快照 · 不修改正文</span></div>
       <div className="slide-actions">
@@ -147,6 +150,7 @@ export default function MarkdownOfficeWorkspace({ snapshot, onClose, onReading, 
         <button className="slide-control" type="button" disabled={busy} onClick={() => { setDraft(metadata); setPanel("settings"); }}><Settings2 size={15} />导出设置</button>
         <button className="slide-control" type="button" aria-label={light ? "切换深色主题" : "切换浅色主题"} onClick={() => { document.documentElement.dataset.theme = light ? "dark" : "light"; document.documentElement.style.colorScheme = light ? "dark" : "light"; setLight(!light); }}>{light ? "深色" : "浅色"}</button>
         <button className="slide-control" type="button" onClick={() => void full()}>{fullscreen ? <Minimize size={15} /> : <Maximize size={15} />}{fullscreen ? "退出全屏" : "全屏"}</button>
+        <button className="slide-control" type="button" disabled={busy || !page || !!error} onClick={() => void presentation.enter()}><Presentation size={15} />幻灯片全屏</button>
         <button className="slide-control" type="button" onClick={leave}><X size={15} />{standalone ? "关闭" : "返回编辑"}</button>
       </div>
     </header>
@@ -170,6 +174,8 @@ export default function MarkdownOfficeWorkspace({ snapshot, onClose, onReading, 
         <button className="slide-control" type="button" disabled={busy || !page} onClick={() => setPanel("detail")}>展开本页</button>
       </div>
     </footer>
+    <SlidePresentationControls presentation={presentation} index={index} count={preview?.pages.length || 0} busy={busy}
+      message={error} onNavigate={changePage} onDirectory={() => setPanel("directory")} onDetail={() => setPanel("detail")} />
     {panel && <div className="slide-panel-backdrop" onClick={event => { if (event.target === event.currentTarget) closePanel(); }}><section className="slide-panel office-panel" data-office-panel role="dialog" aria-modal="true" aria-label={panel === "settings" ? "Office 导出设置" : panel === "directory" ? "模板目录" : "本页详细内容"}>
       <header><strong>{panel === "settings" ? "模板与封面信息" : panel === "directory" ? "模板目录" : "本页详细内容"}</strong><button className="slide-control" type="button" autoFocus onClick={closePanel}>返回放映</button></header>
       {panel === "settings" ? <form className="office-settings" onSubmit={event => { event.preventDefault(); setMetadata(draft); closePanel(); build(draft); }}>

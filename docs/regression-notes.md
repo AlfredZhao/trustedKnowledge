@@ -15,6 +15,14 @@ When fixing a bug with meaningful regression risk, add a short entry with:
 
 Keep entries concrete. Prefer file paths, function names, SQL placeholders, and test names over broad advice.
 
+## 幻灯片纯放映：全屏退出与悬浮控件不得影响内容布局
+
+- **Symptom**：需防止原生 Esc 退出全屏后继续关闭整个预览、退出后迟到的全屏请求重新占屏、控制栏显隐导致阅读分页反复变化，以及手机隐藏控件后无法退出。
+- **Trigger**：阅读/AIBS 进入“幻灯片全屏”、浏览器拒绝或不支持全屏、已有工作区全屏、快速退出未完成请求、原生退出全屏、触摸唤出和键盘导航。
+- **Root cause**：将纯放映状态等同于 Fullscreen API 状态；未区分全屏所有权与异步请求生命周期；将自动隐藏控件放入画布的正常布局。
+- **Safe pattern**：`useSlidePresentation` 独立管理纯放映及全屏所有权，监听 `fullscreenchange`，抑制同次退出的 Esc，失效请求成功后释放全屏；保留预先存在的工作区全屏。悬浮栏绝对定位，键盘聚焦时不隐藏，鼠标/触摸/Tab 可恢复；加载或弹层状态仍可退出。阅读按现有锚点重新分页，AIBS 只缩放、不重建或请求导出。
+- **Guardrail**：`cd frontend && npm run test:slides -- --grep 'pure presentation'` 覆盖桌面/移动横竖屏、深浅主题、阅读位置、固定页数/16:9、自动隐藏无重排、目录/详情、键盘/触摸、拒绝/不支持/原生全屏、全屏所有权及迟到请求；测试通过请求拦截运行，不启动服务。
+
 ## Office 导出：多图预算同步与长标题原文保真
 
 - **Symptom**：33 张图被 24 个上限拒绝，第 13 张可能超过 12 MB；45 字符中英文标题出现 `Cover title requires a manually adapted layout`。

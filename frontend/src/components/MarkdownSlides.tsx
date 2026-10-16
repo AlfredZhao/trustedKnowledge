@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent } from "react";
-import { ChevronLeft, ChevronRight, List, Maximize, Minimize, Moon, Sun, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, List, Maximize, Minimize, Moon, Presentation, Sun, X } from "lucide-react";
 
 import { MarkdownPreview } from "./MarkdownPreview";
 import { copyText } from "../utils/appUtils";
 import { paginateMarkdownSlides, prepareMarkdownSlides, slideIndexForAnchor, type MarkdownSlide, type SlideAnchor } from "../utils/markdownSlides";
 import type { SlideSnapshot } from "../utils/markdownSlidesSession";
 import MarkdownOfficeWorkspace from "./MarkdownOfficeWorkspace";
+import SlidePresentationControls from "./SlidePresentationControls";
+import { useSlidePresentation } from "./useSlidePresentation";
 
 interface SlidesProps {
   snapshot: SlideSnapshot;
@@ -43,6 +45,7 @@ function MarkdownReadingSlides({ snapshot, onClose, notice = "", standalone = fa
   const [light, setLight] = useState(document.documentElement.dataset.theme === "light");
   const prepared = useMemo(() => prepareMarkdownSlides(snapshot.markdown), [snapshot.markdown]);
   const slide = slides[index];
+  const presentation = useSlidePresentation(screenRef, busy || !!error || directory || detail);
 
   const refresh = useCallback(() => {
     window.clearTimeout(refreshTimer.current);
@@ -160,6 +163,7 @@ function MarkdownReadingSlides({ snapshot, onClose, notice = "", standalone = fa
         setDirectory(false);
         screenRef.current?.focus({ preventScroll: true });
       }
+      else if (presentation.escape()) return;
       else if (document.fullscreenElement === screenRef.current) void toggleFullscreen();
       else close();
       return;
@@ -188,8 +192,9 @@ function MarkdownReadingSlides({ snapshot, onClose, notice = "", standalone = fa
   };
 
   const sizeStyle = { width: dimensions.width, "--slide-height": `${dimensions.height}px` } as CSSProperties;
-  return <div ref={screenRef} className="slide-screen" role="dialog" aria-modal="true" aria-label="Markdown 幻灯片" tabIndex={-1}
-    onKeyDown={handleKeyDown} onClick={(event) => event.stopPropagation()}>
+  return <div ref={screenRef} className={`slide-screen${presentation.active ? " slide-presenting" : ""}`} role="dialog" aria-modal="true" aria-label="Markdown 幻灯片" tabIndex={-1}
+    onPointerMove={presentation.reveal} onPointerDown={presentation.reveal} onFocusCapture={presentation.reveal}
+    onKeyDownCapture={presentation.reveal} onKeyDown={handleKeyDown} onClick={(event) => event.stopPropagation()}>
     <header className="slide-header">
       <div className="slide-heading"><strong title={snapshot.title}>{snapshot.title}</strong><span>只读快照 · 不修改正文</span></div>
       <div className="slide-actions">
@@ -199,6 +204,7 @@ function MarkdownReadingSlides({ snapshot, onClose, notice = "", standalone = fa
         }}><option value="reading">默认阅读模式</option><option value="aibs">AIBS 模板 · 16:9</option></select>
         <button className="slide-control" type="button" disabled={!slides.length || busy} aria-expanded={directory} onClick={() => { setDirectory(!directory); setDetail(false); }}><List size={16} />目录</button>
         <button className="slide-control" type="button" onClick={() => void toggleFullscreen()}>{fullscreen ? <Minimize size={16} /> : <Maximize size={16} />}<span>{fullscreen ? "退出全屏" : "全屏"}</span></button>
+        <button className="slide-control" type="button" disabled={busy || !slides.length || !!error} onClick={() => void presentation.enter()}><Presentation size={16} />幻灯片全屏</button>
         <button className="slide-control" type="button" aria-label={light ? "切换深色主题" : "切换浅色主题"} onClick={() => {
           setBusy(true);
           document.documentElement.dataset.theme = light ? "dark" : "light";
@@ -239,6 +245,10 @@ function MarkdownReadingSlides({ snapshot, onClose, notice = "", standalone = fa
         <button type="button" disabled={!slide || busy} onClick={() => setDetail(true)}>展开本页</button>
       </div>
     </footer>
+
+    <SlidePresentationControls presentation={presentation} index={index} count={slides.length} busy={busy}
+      message={error || message} onNavigate={next => { goTo(next); screenRef.current?.focus({ preventScroll: true }); }}
+      onDirectory={() => { setDirectory(true); setDetail(false); }} onDetail={() => { setDetail(true); setDirectory(false); }} />
 
     {(directory || detail) && <div className="slide-panel-backdrop" onClick={(event) => { if (event.target === event.currentTarget) { setDirectory(false); setDetail(false); screenRef.current?.focus({ preventScroll: true }); } }}>
       <section className="slide-panel" data-slide-panel role="dialog" aria-modal="true" aria-label={directory ? "幻灯片目录" : "本页详细内容"}>

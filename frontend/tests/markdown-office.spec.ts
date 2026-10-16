@@ -6,6 +6,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { assertOfficeAssetCount, assertOfficeAssetSize } from "../src/utils/officeAssetLimits";
 import type { OfficeAsset, OfficeLimits } from "../src/utils/officeTypes";
+import { mockPresentationFullscreen, presentationLayout } from "./slide-presentation.helpers";
 
 const serverLimits: OfficeLimits = { max_assets: 64, max_asset_bytes: 4_000_000, max_total_bytes: 48_000_000, max_total_pixels: 128_000_000, max_body_bytes: 56_000_000, max_output_bytes: 64_000_000, max_job_seconds: 90, client_timeout_seconds: 180 };
 const legacyLimits = { ...serverLimits, max_assets: 24, max_total_bytes: 12_000_000 };
@@ -258,10 +259,12 @@ test("empty disabled, masked snapshot only, cancellation and recoverable errors"
   await page.evaluate(() => { (window as any).originalPrivateContent = "PRIVATE-ORIGINAL-12345"; });
   await page.getByRole("button", { name: "导出", exact: true }).click();
   await expect(page.getByRole("button", { name: "取消处理" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "幻灯片全屏", exact: true })).toBeDisabled();
   await page.getByRole("button", { name: "取消处理" }).click();
   await expect(page.getByRole("status")).toContainText("取消");
   await page.getByRole("button", { name: "重新预览" }).click();
   await expect(page.getByRole("alert")).toContainText("表格过宽");
+  await expect(page.getByRole("button", { name: "幻灯片全屏", exact: true })).toBeDisabled();
   expect(JSON.stringify(state.requests)).not.toContain("PRIVATE-ORIGINAL");
   expect(JSON.stringify(state.requests)).toContain("电话：***");
   state.fail = false; state.delay = 0;
@@ -358,3 +361,54 @@ test("real browser IR → bounded Python worker → native PPTX/DOCX, including 
   }
   expect(state.external).toEqual([]);
 });
+
+for (const size of [{ width: 1440, height: 900 }, { width: 390, height: 844 }, { width: 844, height: 390 }]) {
+  for (const theme of ["dark", "light"]) {
+    test(`pure presentation AIBS ${size.width}x${size.height} ${theme}`, async ({ page, context }, testInfo) => {
+      const state = { requests: [] as any[], downloads: 0, external: [] as string[] };
+      await routeApp(context, state);
+      await page.setViewportSize(size);
+      await openOffice(page);
+      await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
+      await expect(page.locator(".office-canvas")).toBeVisible();
+      await reachable(page);
+      await mockPresentationFullscreen(page, "denied");
+      await page.locator(".office-screen").press("End");
+      await expect(page.locator(".office-canvas")).toContainText("第二页");
+      await page.getByRole("button", { name: "幻灯片全屏", exact: true }).click();
+      await expect(page.locator(".office-screen")).toHaveClass(/slide-presenting/);
+      await expect(page.locator(".office-toolbar")).toBeHidden();
+      await expect(page.locator(".office-status")).toBeHidden();
+      await expect(page.locator(".slide-presentation-count")).toHaveText("2 / 2");
+      await presentationLayout(page);
+      await page.screenshot({ path: testInfo.outputPath("pure-aibs.png") });
+      const dimensions = await page.locator(".office-canvas").boundingBox();
+      await page.mouse.move(1, 1);
+      await expect(page.locator(".slide-presentation-controls")).toHaveAttribute("data-visible", "false", { timeout: 6000 });
+      expect(await page.locator(".office-canvas").boundingBox()).toEqual(dimensions);
+      await page.keyboard.press("Tab");
+      await expect(page.getByRole("button", { name: "上一页", exact: true })).toBeFocused();
+      await page.getByRole("button", { name: "目录", exact: true }).click();
+      await expect(page.getByRole("dialog", { name: "模板目录", exact: true })).toBeVisible();
+      await page.getByRole("button", { name: "返回放映", exact: true }).press("Escape");
+      await expect(page.locator(".office-screen")).toHaveClass(/slide-presenting/);
+      await page.getByRole("button", { name: "展开本页", exact: true }).click();
+      await expect(page.getByRole("dialog", { name: "本页详细内容", exact: true })).toContainText("第二页");
+      await page.getByRole("button", { name: "返回放映", exact: true }).click();
+      await page.locator(".office-screen").press("Home");
+      await expect(page.locator(".slide-presentation-count")).toHaveText("1 / 2");
+      await page.locator(".office-screen").press("ArrowRight");
+      await expect(page.locator(".slide-presentation-count")).toHaveText("2 / 2");
+      await page.getByRole("button", { name: "退出放映", exact: true }).click();
+      await expect(page.locator(".office-screen")).not.toHaveClass(/slide-presenting/);
+      await expect(page.locator(".office-canvas")).toContainText("第二页");
+      await reachable(page);
+      expect(state.requests).toHaveLength(1); // No rebuild/re-export for a display-only change.
+      await mockPresentationFullscreen(page);
+      await page.getByRole("button", { name: "幻灯片全屏", exact: true }).click();
+      await page.evaluate(() => document.exitFullscreen());
+      await expect(page.locator(".office-screen")).not.toHaveClass(/slide-presenting/);
+      await expect(page.getByRole("button", { name: "返回编辑", exact: true })).toBeVisible();
+    });
+  }
+}

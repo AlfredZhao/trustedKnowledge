@@ -170,6 +170,39 @@
   .slide-detail-content { padding: 12px; }
 }
 
+/* Pure presentation keeps controls out of layout: revealing them must not repaginate. */
+.slide-presenting > .slide-header,
+.slide-presenting > .slide-footer,
+.slide-presenting > .office-toolbar,
+.slide-presenting > .office-status { display: none; }
+.slide-presenting > .slide-stage,
+.slide-presenting > .office-main { padding: 0; }
+.slide-presenting .slide-page { max-width: none; border: 0; border-radius: 0; box-shadow: none; }
+.slide-presentation-controls {
+  position: absolute;
+  z-index: 1;
+  left: max(8px, env(safe-area-inset-left));
+  right: max(8px, env(safe-area-inset-right));
+  bottom: max(8px, env(safe-area-inset-bottom));
+  width: fit-content;
+  max-width: calc(100% - 16px - env(safe-area-inset-left) - env(safe-area-inset-right));
+  max-height: calc(100% - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  overflow: auto;
+  margin-inline: auto;
+  padding: 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  background: var(--app-bg);
+  color: var(--text-base);
+  box-shadow: var(--shadow-soft-glow);
+}
+.slide-presentation-controls[data-visible="false"] { opacity: 0; pointer-events: none; }
+/* Opacity (not visibility/display) keeps controls discoverable by keyboard/assistive tech. */
+.slide-presentation-controls:focus-within { opacity: 1; pointer-events: auto; }
+.slide-presentation-actions { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px; }
+.slide-presentation-count { font-size: 12px; white-space: nowrap; }
+.slide-presentation-hint { margin-top: 6px; font-size: 11px; text-align: center; color: var(--text-soft); overflow-wrap: anywhere; }
+
 :root {
   color-scheme: dark;
   font-family:
