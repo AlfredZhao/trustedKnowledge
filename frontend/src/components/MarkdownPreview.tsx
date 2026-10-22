@@ -13,8 +13,9 @@ export const MarkdownPreview = memo(
     className?: string;
     onRenderSettled?: () => void;
     showSlides?: boolean;
-  }>(function MarkdownPreview({ markdown, sourceLine, sourceMap = false, className, onRenderSettled, showSlides = false }, ref) {
-    const html = useMemo(() => markdownToHtml(markdown, { sourceMap: sourceMap || (sourceLine !== undefined && sourceLine !== null) }), [markdown, sourceLine, sourceMap]);
+    privateContent?: boolean;
+  }>(function MarkdownPreview({ markdown, sourceLine, sourceMap = false, className, onRenderSettled, showSlides = false, privateContent = false }, ref) {
+    const html = useMemo(() => markdownToHtml(markdown, { sourceMap: sourceMap || (sourceLine !== undefined && sourceLine !== null), privateContent }), [markdown, sourceLine, sourceMap, privateContent]);
     const previewRef = useRef<HTMLDivElement>(null);
     useImperativeHandle(ref, () => previewRef.current as HTMLDivElement, []);
 
@@ -162,7 +163,7 @@ export const MarkdownPreview = memo(
     }
 
     return <>
-      {showSlides && <div className="mb-2 flex justify-end"><MarkdownSlidesButton markdown={markdown} getSourceLine={() => sourceLine ?? 0} /></div>}
+      {showSlides && !privateContent && <div className="mb-2 flex justify-end"><MarkdownSlidesButton markdown={markdown} getSourceLine={() => sourceLine ?? 0} /></div>}
       <div
         ref={previewRef}
         className={className ?? "markdown-preview rounded-lg border border-white/8 bg-black/10 p-4 text-sm leading-7 text-slate-200"}

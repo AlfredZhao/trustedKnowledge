@@ -12277,7 +12277,7 @@ function SecretDisplayField({ label, value, action }: { label: string; value: st
   );
 }
 
-function PersonalSecretEditorDialog({
+export function PersonalSecretEditorDialog({
   draft,
   isDeleting,
   isOpen,
@@ -12354,6 +12354,7 @@ function PersonalSecretEditorDialog({
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
           <PersonalSecretEditorForm
+            key={selectedItem?.id ?? "new"}
             draft={draft}
             isDeleting={isDeleting}
             isSaving={isSaving}
@@ -12389,6 +12390,8 @@ function PersonalSecretEditorForm({
   onSave: () => void;
 }) {
   const canSave = draft.system_name.trim().length > 0 && !isSaving && !isDeleting;
+  const [notesView, setNotesView] = useState<"edit" | "preview">("edit");
+  const notesEditorRef = useRef<HTMLTextAreaElement>(null);
 
   return (
     <div className="space-y-4">
@@ -12438,14 +12441,70 @@ function PersonalSecretEditorForm({
           />
         </Field>
       </div>
-      <Field label="备注" icon={<FileText size={16} />}>
-        <textarea
-          className="control min-h-[120px] resize-y leading-7"
-          maxLength={4000}
-          value={draft.notes}
-          onChange={(event) => onDraftChange({ ...draft, notes: event.target.value })}
-        />
-      </Field>
+      <div className="min-w-0">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
+          <label className="flex items-center gap-2 text-sm text-slate-300" htmlFor="personal-secret-notes">
+            <span className="text-slate-500"><FileText size={16} /></span>
+            备注
+          </label>
+          <div className="flex rounded-lg border border-white/10 bg-white/[0.025] p-1 text-xs" role="group" aria-label="备注显示模式">
+            <button
+              className={`rounded-md px-3 py-1.5 transition ${notesView === "edit" ? "bg-mint-300/15 text-mint-200" : "text-slate-400 hover:text-slate-200"}`}
+              aria-pressed={notesView === "edit"}
+              type="button"
+              onClick={() => {
+                setNotesView("edit");
+                window.requestAnimationFrame(() => {
+                  notesEditorRef.current?.focus({ preventScroll: true });
+                  notesEditorRef.current?.scrollIntoView({ block: "nearest" });
+                });
+              }}
+            >
+              编辑
+            </button>
+            <button
+              className={`rounded-md px-3 py-1.5 transition ${notesView === "preview" ? "bg-mint-300/15 text-mint-200" : "text-slate-400 hover:text-slate-200"}`}
+              aria-pressed={notesView === "preview"}
+              type="button"
+              onClick={() => setNotesView("preview")}
+            >
+              Markdown 预览
+            </button>
+          </div>
+        </div>
+        {/* Keep the editor mounted so switching views preserves selection, scroll and manual resizing. */}
+        <div className={notesView === "edit" ? "" : "hidden"}>
+          <textarea
+            ref={notesEditorRef}
+            id="personal-secret-notes"
+            aria-describedby="personal-secret-notes-hint"
+            className="control min-h-[360px] resize-y leading-7"
+            autoComplete="off"
+            spellCheck={false}
+            maxLength={4000}
+            value={draft.notes}
+            onChange={(event) => onDraftChange({ ...draft, notes: event.target.value })}
+          />
+        </div>
+        {notesView === "preview" && (
+          <div className="min-h-[360px] min-w-0" role="region" aria-label="备注 Markdown 预览">
+            {draft.notes.trim() ? (
+              <MarkdownPreview
+                markdown={draft.notes}
+                privateContent
+                className="markdown-preview min-h-[360px] min-w-0 overflow-x-auto rounded-lg border border-white/8 bg-black/10 p-4 text-sm leading-7 text-slate-200"
+              />
+            ) : (
+              <div className="grid min-h-[360px] place-items-center rounded-lg border border-dashed border-white/10 bg-white/[0.025] p-4 text-center text-sm text-slate-500">
+                暂无备注可预览。
+              </div>
+            )}
+          </div>
+        )}
+        <p id="personal-secret-notes-hint" className="mt-2 text-xs leading-5 text-slate-500">
+          支持 Markdown，最多 4000 字符。为保护机密，预览不加载图片，图表仅显示源码。
+        </p>
+      </div>
 
       {saveError ? <div className="rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-2 text-sm text-red-100">{saveError}</div> : null}
 

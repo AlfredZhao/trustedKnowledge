@@ -15,6 +15,14 @@ When fixing a bug with meaningful regression risk, add a short entry with:
 
 Keep entries concrete. Prefer file paths, function names, SQL placeholders, and test names over broad advice.
 
+## 个人机密：大备注编辑区与私密 Markdown 预览
+
+- **Symptom**：新增/编辑机密时备注最低只有 120px，长备注难以阅读；增高或引入公共 Markdown 预览时需防止手机操作区不可达、切换丢失原文/编辑位置及隐式资源请求。
+- **Trigger**：桌面或手机横竖屏编辑长备注，切换编辑/预览，备注包含宽表格、长代码、图片、HTML 或 Mermaid，保存中/保存失败，关闭重开或切换记录。
+- **Root cause**：普通备注 textarea 的最低高度过小；直接套用通用预览会允许图片和图表渲染；复用可上传或导出的编辑器不适合私密内容。
+- **Safe pattern**：`PersonalSecretEditorForm` 的编辑、预览和空态均至少 360px，保留原弹窗视口上限及内部滚动；原 textarea 在切换时只隐藏不卸载，按记录 key 隔离状态。`MarkdownPreview privateContent` 在生成 HTML 时禁止图片（不是挂载后删除），Mermaid 回退源码，HTML 仍转义，链接采用显式协议白名单且不发送 referrer，不提供幻灯片/导出。只读预览不改草稿、不持久化明文、不改变 API、4000 字符限制或后端加密。
+- **Guardrail**：`cd frontend && npx playwright test --config playwright.personal-secrets.config.ts` 使用实际弹窗与合成数据，覆盖 1440/390/320/844px、深浅主题、360px 最低高度、空态、长表格/代码无外溢、保存原文、忙碌态/错误、关闭/换记录重置、选区滚动/高度保留，以及所有内联位置禁图、无资源请求/HTML 执行/明文持久化；普通 Markdown 图片/图表默认行为保持不变。测试仅请求拦截，不启动服务。
+
 ## 幻灯片纯放映：全屏退出与悬浮控件不得影响内容布局
 
 - **Symptom**：需防止原生 Esc 退出全屏后继续关闭整个预览、退出后迟到的全屏请求重新占屏、控制栏显隐导致阅读分页反复变化，以及手机隐藏控件后无法退出。

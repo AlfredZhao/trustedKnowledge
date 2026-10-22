@@ -9,6 +9,20 @@ The format follows the common GitHub changelog convention inspired by
 
 ## 本次版本更新
 
+### [Unreleased]
+
+#### Added / 新增
+
+- Added edit/Markdown-preview switching to personal-secret notes. Private previews disable images, render diagrams as source, and expose no slideshow/export actions; original text, the 4000-character limit and existing encrypted storage remain unchanged.
+- 个人机密备注新增「编辑 / Markdown 预览」切换；机密预览禁用图片、图表仅显示源码，不提供幻灯片或导出入口，保持原文、4000 字符限制及既有加密存储不变。
+
+#### Changed / 变更
+
+#### Fixed / 修复
+
+- Fixed cramped personal-secret notes in the shared create/edit dialog by increasing the minimum editor/preview height from 120px to 360px. Preserve resizing and edit position, with viewport-bounded scrolling on desktop/mobile and light/dark browser regression coverage.
+- 修复个人机密新增/编辑弹窗备注区域过矮的问题：编辑/预览区最低高度提升至 360px（原编辑区 120px 的三倍），保留拖动增高和编辑位置；沿用视口内滚动，并新增桌面/移动端及深浅主题浏览器回归测试。
+
 ### [1.0.2] - 2026-10-16
 
 #### Added / 新增

@@ -16,6 +16,8 @@ export interface EnhancedCopyOptions {
 interface MarkdownRenderOptions {
   syntaxHighlight?: boolean;
   sourceMap?: boolean;
+  // Private notes must not load images or render resource-capable diagrams.
+  privateContent?: boolean;
 }
 
 export function markdownToHtml(markdown: string, options: MarkdownRenderOptions = {}) {
@@ -49,7 +51,7 @@ export function markdownToHtml(markdown: string, options: MarkdownRenderOptions 
     if (!paragraph.length) return;
     const content = paragraph
       .map((item) => {
-        const rendered = formatInlineMarkdown(item.content);
+        const rendered = formatInlineMarkdown(item.content, options);
         return options.sourceMap
           ? `<span data-markdown-source-line="${item.sourceLine}">${rendered}</span>`
           : rendered;
@@ -64,7 +66,7 @@ export function markdownToHtml(markdown: string, options: MarkdownRenderOptions 
   const flushList = () => {
     if (!listType || !listItems.length) return;
     pushBlock(
-      `<${listType}>${listItems.map((item) => `<li${options.sourceMap ? ` data-markdown-source-line="${item.sourceLine}"` : ""}>${formatInlineMarkdown(item.content)}</li>`).join("")}</${listType}>`,
+      `<${listType}>${listItems.map((item) => `<li${options.sourceMap ? ` data-markdown-source-line="${item.sourceLine}"` : ""}>${formatInlineMarkdown(item.content, options)}</li>`).join("")}</${listType}>`,
       listStartLine,
       listEndLine,
     );
@@ -78,7 +80,7 @@ export function markdownToHtml(markdown: string, options: MarkdownRenderOptions 
     const code = codeLines.join("\n");
     const languageClass = codeLanguage ? ` class="language-${escapeAttribute(codeLanguage)}"` : "";
     const codeBlockId = `code-block-${codeBlockIndex++}`;
-    if (codeLanguage.trim().toLowerCase() === "mermaid") {
+    if (codeLanguage.trim().toLowerCase() === "mermaid" && !options.privateContent) {
       pushBlock(renderMermaidBlock(code, codeBlockId), codeBlockStartLine, endLine);
       inCodeBlock = false;
       codeLanguage = "";
@@ -186,7 +188,7 @@ export function markdownToHtml(markdown: string, options: MarkdownRenderOptions 
       }
       index -= 1;
 
-      pushBlock(renderMarkdownTable(headerCells, alignments, bodyRows), tableStartLine, index);
+      pushBlock(renderMarkdownTable(headerCells, alignments, bodyRows, options), tableStartLine, index);
       continue;
     }
 
@@ -195,7 +197,7 @@ export function markdownToHtml(markdown: string, options: MarkdownRenderOptions 
       flushParagraph();
       flushList();
       const level = heading[1].length;
-      pushBlock(`<h${level}>${formatInlineMarkdown(heading[2])}</h${level}>`, index, index);
+      pushBlock(`<h${level}>${formatInlineMarkdown(heading[2], options)}</h${level}>`, index, index);
       continue;
     }
 
@@ -203,7 +205,7 @@ export function markdownToHtml(markdown: string, options: MarkdownRenderOptions 
     if (quote) {
       flushParagraph();
       flushList();
-      pushBlock(`<blockquote><p>${formatInlineMarkdown(quote[1])}</p></blockquote>`, index, index);
+      pushBlock(`<blockquote><p>${formatInlineMarkdown(quote[1], options)}</p></blockquote>`, index, index);
       continue;
     }
 
@@ -805,7 +807,7 @@ function normalizeHtmlDownloadName(fileName: string | null | undefined) {
   return /\.html?$/i.test(trimmed) ? trimmed : `${trimmed}.html`;
 }
 
-function formatInlineMarkdown(value: string) {
+function formatInlineMarkdown(value: string, options: MarkdownRenderOptions = {}) {
   const codeSegments: string[] = [];
   const mathSegments: string[] = [];
   let source = value.replace(/`([^`]+)`/g, (_match, code: string) => {
@@ -820,6 +822,7 @@ function formatInlineMarkdown(value: string) {
 
   html = html
     .replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (_match, alt: string, src: string) => {
+      if (options.privateContent) return `${escapeHtml(alt)}（图片已禁用）`;
       const safeSrc = sanitizeMarkdownUrl(src);
       if (!safeSrc) return alt;
       const safeAlt = escapeAttribute(alt);
@@ -827,6 +830,7 @@ function formatInlineMarkdown(value: string) {
     })
     .replace(/\[([^\]]+)]\(([^)\s]+)\)/g, (_match, label: string, href: string) => {
       const safeHref = sanitizeMarkdownUrl(href);
+      if (options.privateContent && !/^(https?:\/\/|mailto:)/i.test(safeHref)) return label;
       return safeHref ? `<a href="${escapeAttribute(safeHref)}" target="_blank" rel="noreferrer">${label}</a>` : label;
     })
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
@@ -947,19 +951,19 @@ function parseMarkdownTableCells(line: string) {
   return cells;
 }
 
-function renderMarkdownTable(headers: string[], alignments: string[], rows: string[][]) {
+function renderMarkdownTable(headers: string[], alignments: string[], rows: string[][], options: MarkdownRenderOptions = {}) {
   const normalizeCellCount = (cells: string[]) =>
     Array.from({ length: headers.length }, (_value, index) => cells[index] ?? "");
   const renderAlignment = (alignment: string) => (alignment ? ` data-align="${alignment}"` : "");
 
   const headerHtml = normalizeCellCount(headers)
-    .map((cell, index) => `<th${renderAlignment(alignments[index] ?? "")}>${formatInlineMarkdown(cell)}</th>`)
+    .map((cell, index) => `<th${renderAlignment(alignments[index] ?? "")}>${formatInlineMarkdown(cell, options)}</th>`)
     .join("");
 
   const bodyHtml = rows
     .map((row) => {
       const cells = normalizeCellCount(row)
-        .map((cell, index) => `<td${renderAlignment(alignments[index] ?? "")}>${formatInlineMarkdown(cell)}</td>`)
+        .map((cell, index) => `<td${renderAlignment(alignments[index] ?? "")}>${formatInlineMarkdown(cell, options)}</td>`)
         .join("");
       return `<tr>${cells}</tr>`;
     })
