@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { BookOpenCheck, ChartLine, ClipboardCheck, FileText, RefreshCw, ShieldCheck, TriangleAlert } from "lucide-react";
+import { BookOpenCheck, ChartLine, ChevronRight, ClipboardCheck, FileText, RefreshCw, Search, ShieldCheck, TriangleAlert, X } from "lucide-react";
 
 import { MetricTile, LoadingStack } from "../components/AppShellPrimitives";
 import type { AppView, EnglishMaterialItem, KnowledgeItem, LlmUsageSample, TodoItem } from "../types";
@@ -22,6 +22,20 @@ type OverviewSectionErrors = {
   todos: string | null;
   knowledge: string | null;
   english: string | null;
+};
+
+export type OverviewSearchResult = {
+  id: string | number;
+  title: string;
+  summary: string | null;
+  similarity?: number | null;
+};
+
+export type OverviewSearchGroup = {
+  view: AppView;
+  label: string;
+  total: number;
+  items: OverviewSearchResult[];
 };
 
 const statusStyles: Record<KnowledgeItem["blog_status"], string> = {
@@ -51,6 +65,14 @@ export default function OverviewDashboard({
   onRefresh,
   englishLimit,
   onEnglishLimitChange,
+  searchQuery,
+  searchMode,
+  searchGroups,
+  isSearchLoading,
+  searchError,
+  onSearchQueryChange,
+  onSearchModeChange,
+  onOpenSearchResult,
 }: {
   canViewUsage: boolean;
   data: OverviewData;
@@ -66,6 +88,14 @@ export default function OverviewDashboard({
   onRefresh: () => void;
   englishLimit: number;
   onEnglishLimitChange: (limit: number) => void;
+  searchQuery: string;
+  searchMode: "keyword" | "semantic";
+  searchGroups: OverviewSearchGroup[];
+  isSearchLoading: boolean;
+  searchError: string | null;
+  onSearchQueryChange: (query: string) => void;
+  onSearchModeChange: (mode: "keyword" | "semantic") => void;
+  onOpenSearchResult: (view: AppView) => void;
 }) {
   const latestUsage = canViewUsage && data.usageItems.length > 0 ? data.usageItems[data.usageItems.length - 1] : null;
   const remainingPercent = latestUsage ? clampPercent((latestUsage.remaining_budget / latestUsage.total_budget) * 100) : 0;
@@ -160,6 +190,100 @@ export default function OverviewDashboard({
       </div>
 
       {loadError ? <div className="mb-4 rounded-lg border border-amberline/25 bg-amberline/10 p-3 text-sm text-amber-100/80">{loadError}</div> : null}
+
+      <section className="mb-4 rounded-lg border border-white/10 bg-ink-900/64 p-4 backdrop-blur-xl">
+        <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2 text-sm font-medium text-mint-300">
+            <Search size={17} />
+            <span>全局内容搜索</span>
+          </div>
+          <div className="flex rounded-lg border border-white/10 bg-white/[0.025] p-0.5 text-xs">
+            <button
+              className={`rounded-md px-2.5 py-1.5 transition ${searchMode === "keyword" ? "bg-mint-300/15 text-mint-200" : "text-slate-500 hover:text-slate-300"}`}
+              type="button"
+              onClick={() => onSearchModeChange("keyword")}
+            >
+              关键字
+            </button>
+            <button
+              className={`rounded-md px-2.5 py-1.5 transition ${searchMode === "semantic" ? "bg-mint-300/15 text-mint-200" : "text-slate-500 hover:text-slate-300"}`}
+              type="button"
+              onClick={() => onSearchModeChange("semantic")}
+            >
+              近似检索
+            </button>
+          </div>
+        </div>
+        <p className="mb-3 text-xs leading-5 text-slate-500">
+          {searchMode === "keyword"
+            ? "搜索所有可访问内容，不沿用各模块的状态、日期或分类筛选。"
+            : "搜索英语素材、博客工厂和历史查询中向量已就绪的相近内容。"}
+        </p>
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={17} />
+          <input
+            className="h-10 w-full rounded-lg border border-white/10 bg-white/[0.035] py-2 pl-10 pr-10 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 hover:border-mint-300/30 focus:border-mint-300/50"
+            value={searchQuery}
+            onChange={(event) => onSearchQueryChange(event.target.value)}
+            placeholder={searchMode === "keyword" ? "输入关键词，跨模块定位内容" : "描述想找的内容，匹配相近语义"}
+            aria-label="全局内容搜索"
+          />
+          {searchQuery ? (
+            <button
+              className="absolute right-2 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded text-slate-400 transition hover:bg-white/[0.07] hover:text-slate-100"
+              type="button"
+              onClick={() => onSearchQueryChange("")}
+              aria-label="清空全局搜索"
+              title="清空"
+            >
+              <X size={16} />
+            </button>
+          ) : null}
+        </div>
+
+        {searchQuery.trim() ? (
+          <div className="mt-3">
+            {isSearchLoading ? <div className="text-sm text-slate-400">正在{searchMode === "keyword" ? "搜索全部内容" : "进行近似检索"}…</div> : null}
+            {searchError ? <OverviewInlineError message={`部分模块搜索失败：${searchError}`} /> : null}
+            {!isSearchLoading && searchGroups.length === 0 ? <div className="py-3 text-sm text-slate-500">未找到匹配内容。</div> : null}
+            {searchGroups.length > 0 ? (
+              <div className="space-y-3">
+                {searchGroups.map((group) => (
+                  <div key={group.view} className="rounded-lg border border-white/10 bg-white/[0.025] p-3">
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                      <span className="text-xs font-medium text-mint-200">{group.label} · {formatAmount(group.total)} 条匹配</span>
+                      <button
+                        className="flex shrink-0 items-center gap-1 text-xs text-slate-400 transition hover:text-mint-300"
+                        type="button"
+                        onClick={() => onOpenSearchResult(group.view)}
+                      >
+                        查看全部
+                        <ChevronRight size={14} />
+                      </button>
+                    </div>
+                    <div className="space-y-1">
+                      {group.items.map((item) => (
+                        <button
+                          key={`${group.view}-${item.id}`}
+                          className="block w-full rounded-md px-2 py-2 text-left transition hover:bg-white/[0.055]"
+                          type="button"
+                          onClick={() => onOpenSearchResult(group.view)}
+                        >
+                          <div className="truncate text-sm text-slate-200">{item.title}</div>
+                          {item.summary ? <div className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">{item.summary}</div> : null}
+                          {searchMode === "semantic" && typeof item.similarity === "number" ? (
+                            <div className="mt-1 text-xs text-mint-300/80">相似度 {Math.round(item.similarity * 100)}%</div>
+                          ) : null}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </section>
 
       <div className="mb-4 grid grid-cols-2 gap-4">
         <MetricTile

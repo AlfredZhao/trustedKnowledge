@@ -343,6 +343,7 @@ const AiAuditDashboard = lazy(() => import("./views/AiAuditDashboard"));
 const HistoryExplorer = lazy(() => import("./views/HistoryExplorer"));
 const AiCodingWorkspace = lazy(() => import("./views/AiCodingWorkspace"));
 const AiGraphWorkspace = lazy(() => import("./views/AiGraphWorkspace"));
+import type { OverviewSearchGroup } from "./views/OverviewDashboard";
 import type {
   AdminModuleAccessItem,
   AdminModuleAccessLevel,
@@ -1087,6 +1088,12 @@ function App() {
   const [overviewUpdatedAt, setOverviewUpdatedAt] = useState<string | null>(null);
   const [overviewRefreshToken, setOverviewRefreshToken] = useState(0);
   const [overviewEnglishLimit, setOverviewEnglishLimit] = useState(3);
+  const [overviewSearchQuery, setOverviewSearchQuery] = useState("");
+  const [overviewSearchMode, setOverviewSearchMode] = useState<"keyword" | "semantic">("keyword");
+  const debouncedOverviewSearchQuery = useDebouncedValue(overviewSearchQuery.trim(), 320);
+  const [overviewSearchGroups, setOverviewSearchGroups] = useState<OverviewSearchGroup[]>([]);
+  const [isOverviewSearchLoading, setIsOverviewSearchLoading] = useState(false);
+  const [overviewSearchError, setOverviewSearchError] = useState<string | null>(null);
   const [aiCodingPrompt, setAiCodingPrompt] = useState(restoredUiState.aiCoding.prompt);
   const [aiCodingModelName, setAiCodingModelName] = useState(
     restoredUiState.aiCoding.modelName === AI_CODING_DEFAULT_MODEL ||
@@ -2880,6 +2887,134 @@ function App() {
   }, [activeView, apiKey, authUser, overviewRefreshToken, canAccessUsage, overviewEnglishLimit]);
 
   useEffect(() => {
+    if (!apiKey || activeView !== "overview" || !authUser || !debouncedOverviewSearchQuery) {
+      setOverviewSearchGroups([]);
+      setOverviewSearchError(null);
+      setIsOverviewSearchLoading(false);
+      return;
+    }
+
+    let mounted = true;
+    const query = debouncedOverviewSearchQuery;
+    const limit = 5;
+    setOverviewSearchGroups([]);
+    setIsOverviewSearchLoading(true);
+    setOverviewSearchError(null);
+
+    const searches = overviewSearchMode === "semantic"
+      ? [
+          fetchEnglishMaterials({ semanticQuery: query, limit, offset: 0 }).then((data): OverviewSearchGroup => ({
+            view: "englishMaterials",
+            label: "英语素材",
+            total: data.total,
+            items: data.items.map((item) => ({
+              id: item.id,
+              title: item.title || item.base_expression || "未命名素材",
+              summary: item.professional_sentence || item.chinese_translation || item.full_script,
+              similarity: item.similarity,
+            })),
+          })),
+          fetchBlogFactoryItems({ semanticQuery: query, limit, offset: 0 }).then((data): OverviewSearchGroup => ({
+            view: "blogFactory",
+            label: "博客工厂",
+            total: data.total,
+            items: data.items.map((item) => ({
+              id: item.id,
+              title: item.article_title || item.question_snapshot || "未命名博客任务",
+              summary: item.task_content || item.article_markdown || item.answer_snapshot,
+              similarity: item.similarity,
+            })),
+          })),
+          fetchHistory({ semanticQuery: query, limit, offset: 0 }).then((data): OverviewSearchGroup => ({
+            view: "history",
+            label: "历史查询",
+            total: data.total,
+            items: data.items.map((item) => ({
+              id: item.id,
+              title: item.type || "历史记录",
+              summary: item.content,
+              similarity: item.similarity,
+            })),
+          })),
+        ]
+      : [
+      fetchKnowledge({ query, limit, offset: 0 }).then((data): OverviewSearchGroup => ({
+        view: "workbench",
+        label: "可信知识",
+        total: data.total,
+        items: data.items.map((item) => ({ id: item.id, title: item.question, summary: item.answer })),
+      })),
+      fetchTodos({ query, limit, offset: 0 }).then((data): OverviewSearchGroup => ({
+        view: "todos",
+        label: "待办事项",
+        total: data.total,
+        items: data.items.map((item) => ({ id: item.id, title: item.title, summary: item.content })),
+      })),
+      fetchEnglishMaterials({ query, limit, offset: 0 }).then((data): OverviewSearchGroup => ({
+        view: "englishMaterials",
+        label: "英语素材",
+        total: data.total,
+        items: data.items.map((item) => ({
+          id: item.id,
+          title: item.title || item.base_expression || "未命名素材",
+          summary: item.professional_sentence || item.chinese_translation || item.full_script,
+        })),
+      })),
+      fetchBlogFactoryItems({ query, limit, offset: 0 }).then((data): OverviewSearchGroup => ({
+        view: "blogFactory",
+        label: "博客工厂",
+        total: data.total,
+        items: data.items.map((item) => ({
+          id: item.id,
+          title: item.article_title || item.question_snapshot || "未命名博客任务",
+          summary: item.task_content || item.article_markdown || item.answer_snapshot,
+        })),
+      })),
+      fetchCurrentRecords({ query, limit, offset: 0 }).then((data): OverviewSearchGroup => ({
+        view: "currentRecords",
+        label: "当前记录",
+        total: data.total,
+        items: data.items.map((item) => ({ id: item.id, title: item.type || "当前记录", summary: item.content })),
+      })),
+      fetchHistory({ query, limit, offset: 0 }).then((data): OverviewSearchGroup => ({
+        view: "history",
+        label: "历史查询",
+        total: data.total,
+        items: data.items.map((item) => ({ id: item.id, title: item.type || "历史记录", summary: item.content })),
+      })),
+      fetchPersonalSecrets({ query, limit, offset: 0 }).then((data): OverviewSearchGroup => ({
+        view: "personalSecrets",
+        label: "个人机密",
+        total: data.total,
+        items: data.items.map((item) => ({ id: item.id, title: item.system_name, summary: item.tags || item.login_url })),
+      })),
+      fetchSkills({ q: query, scope: "owned" }).then((data): OverviewSearchGroup => ({
+        view: "skills",
+        label: "智能编排",
+        total: data.total,
+        items: data.items.slice(0, limit).map((item) => ({ id: item.id, title: item.name, summary: item.description })),
+      })),
+    ];
+
+    Promise.allSettled(searches)
+      .then((results) => {
+        if (!mounted) return;
+        const groups = results.flatMap((result) => (result.status === "fulfilled" && result.value.total > 0 ? [result.value] : []));
+        const failures = results
+          .flatMap((result) => (result.status === "rejected" ? [result.reason instanceof Error ? result.reason.message : "未知错误"] : []));
+        setOverviewSearchGroups(groups);
+        setOverviewSearchError(failures.length > 0 ? failures.join("；") : null);
+      })
+      .finally(() => {
+        if (mounted) setIsOverviewSearchLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [activeView, apiKey, authUser, debouncedOverviewSearchQuery, overviewSearchMode]);
+
+  useEffect(() => {
     if (!apiKey || activeView !== "usage" || !canAccessUsage) return;
 
     let mounted = true;
@@ -4646,6 +4781,103 @@ function App() {
     setActiveView(view);
   }
 
+  function handleOpenOverviewSearchResult(view: AppView) {
+    const query = overviewSearchQuery.trim();
+    if (!query || !canAccessView(view, authUser)) return;
+
+    if (overviewSearchMode === "semantic") {
+      if (view === "blogFactory") {
+        setBlogFactoryQuery("");
+        setBlogFactorySemanticQuery(query);
+        setBlogFactoryPage(1);
+        setBlogFactoryUsername("");
+        setBlogFactoryStatus("all");
+        setBlogFactoryTopic("");
+        setBlogFactoryKnowledgeId("");
+        setBlogFactoryVectorStatus("all");
+      } else if (view === "englishMaterials") {
+        setEnglishMaterialQuery("");
+        setEnglishMaterialSemanticQuery(query);
+        setEnglishMaterialPage(1);
+        setEnglishMaterialUsername("");
+        setEnglishMaterialCategory("");
+        setEnglishMaterialFlag("");
+        setEnglishMaterialVectorStatus("all");
+      } else if (view === "history") {
+        setHistoryQuery("");
+        setHistorySemanticQuery(query);
+        setHistoryPage(1);
+        setHistoryUsername("");
+        setHistoryType("");
+        setHistoryWeek("");
+        setHistoryDay("");
+        setHistoryLearnLevel("");
+        setHistoryVectorStatus("all");
+        setHistoryDateFrom("");
+        setHistoryDateTo("");
+      }
+      setActiveView(view);
+      return;
+    }
+
+    if (view === "workbench") {
+      setQuery(query);
+      setPage(1);
+      setWorkbenchUsername("");
+      setStatusFilter("all");
+    } else if (view === "todos") {
+      setTodoQuery(query);
+      setTodoPage(1);
+      setTodoUsername("");
+      setTodoStatus("all");
+    } else if (view === "blogFactory") {
+      setBlogFactoryQuery(query);
+      setBlogFactoryPage(1);
+      setBlogFactoryUsername("");
+      setBlogFactoryStatus("all");
+      setBlogFactoryTopic("");
+      setBlogFactoryKnowledgeId("");
+      setBlogFactoryVectorStatus("all");
+      setBlogFactorySemanticQuery("");
+    } else if (view === "personalSecrets") {
+      setPersonalSecretQuery(query);
+      setPersonalSecretPage(1);
+    } else if (view === "currentRecords") {
+      setCurrentRecordQuery(query);
+      setCurrentRecordPage(1);
+      setCurrentRecordUsername("");
+      setCurrentRecordTypeFilter("");
+      setCurrentRecordWeek("");
+      setCurrentRecordDay("");
+      setCurrentRecordLearnLevel("");
+    } else if (view === "englishMaterials") {
+      setEnglishMaterialQuery(query);
+      setEnglishMaterialPage(1);
+      setEnglishMaterialUsername("");
+      setEnglishMaterialCategory("");
+      setEnglishMaterialFlag("");
+      setEnglishMaterialVectorStatus("all");
+      setEnglishMaterialSemanticQuery("");
+    } else if (view === "history") {
+      setHistoryQuery(query);
+      setHistoryPage(1);
+      setHistoryUsername("");
+      setHistoryType("");
+      setHistoryWeek("");
+      setHistoryDay("");
+      setHistoryLearnLevel("");
+      setHistoryVectorStatus("all");
+      setHistoryDateFrom("");
+      setHistoryDateTo("");
+      setHistorySemanticQuery("");
+    } else if (view === "skills") {
+      setSkillQuery(query);
+      setSkillListScope("owned");
+    }
+
+    setActiveView(view);
+  }
+
   function handleOpenOverviewTodo(item: TodoItem) {
     setSelectedTodoId(item.id);
     selectedTodoSavedDraftRef.current = todoItemToDraft(item);
@@ -5529,6 +5761,14 @@ function App() {
                 onRefresh={handleRefreshOverview}
                 englishLimit={overviewEnglishLimit}
                 onEnglishLimitChange={setOverviewEnglishLimit}
+                searchQuery={overviewSearchQuery}
+                searchMode={overviewSearchMode}
+                searchGroups={overviewSearchGroups}
+                isSearchLoading={isOverviewSearchLoading}
+                searchError={overviewSearchError}
+                onSearchQueryChange={setOverviewSearchQuery}
+                onSearchModeChange={setOverviewSearchMode}
+                onOpenSearchResult={handleOpenOverviewSearchResult}
               />
             </Suspense>
           ) : activeView === "skills" ? (

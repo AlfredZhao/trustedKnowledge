@@ -13,6 +13,12 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Added / 新增
 
+- Added a dashboard-wide content search that searches the currently accessible knowledge, Todos, English materials, blog factory, current records, history, personal-secret metadata, and owned Skills without carrying over page-specific filters. Results are grouped by module and route to the matching module with the keyword applied; personal-secret results remain limited to safe metadata.
+- 总览新增跨模块内容搜索：在当前账号可访问范围内检索可信知识、Todo、英语素材、博客工厂、当前记录、历史查询、个人机密元数据及自有 Skill，不继承页面状态、日期、分类等筛选。结果按模块分组，点击后带关键词进入对应模块；个人机密结果仍只展示安全元数据。
+
+- Added a separate semantic-search mode to dashboard content search. It reuses the current, access-controlled vectors for English materials, blog factory and history only, ranks by similarity, displays the score, and transfers the semantic query to the destination module. Records without a current vector are intentionally excluded.
+- 总览内容搜索新增独立“近似检索”模式：仅复用英语素材、博客工厂和历史查询中当前可用、受权限控制的向量，按相似度排序并显示分数，跳转时携带近似检索条件；未建立或待更新向量的记录会被明确排除。
+
 - Added edit/Markdown-preview switching to personal-secret notes. Private previews disable images, render diagrams as source, and expose no slideshow/export actions; original text, the 4000-character limit and existing encrypted storage remain unchanged.
 - 个人机密备注新增「编辑 / Markdown 预览」切换；机密预览禁用图片、图表仅显示源码，不提供幻灯片或导出入口，保持原文、4000 字符限制及既有加密存储不变。
 
