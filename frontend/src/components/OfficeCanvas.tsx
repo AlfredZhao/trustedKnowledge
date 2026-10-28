@@ -39,7 +39,7 @@ export default function OfficeCanvas({ preview, page, assets }: { preview: Offic
   return <div ref={ref} className="office-canvas-stage">
     <div style={{ width: 960 * scale, height: 540 * scale, position: "relative", flex: "none" }}>
       <article className="office-canvas" aria-label={`AIBS 模板页：${page.title}`} style={{ transform: `scale(${scale})`, background: `#${preview.colors.paper}`, color: `#${preview.colors.text}`, fontFamily: `${preview.fonts.latin}, ${preview.fonts.east_asia}, sans-serif` }}>
-        {preview.decorations[page.layout]?.map((item, index) => item.src ? <img key={index} style={geometry(item)} src={item.src} alt="" /> : <span key={index} style={{ ...geometry(item), border: "1px dashed #c74634", fontSize: 6 }} title="该品牌装饰在 Office 中显示">{item.unsupported}</span>)}
+        {preview.decorations[page.layout]?.filter(item => item.src).map((item, index) => <img key={index} style={geometry(item)} src={item.src!} alt="" />)}
         {page.elements.map(element)}
         <span className="office-canvas-footer" style={{ left: 60 }}>{preview.pages.indexOf(page) + 1}</span>
         <span className="office-canvas-footer" style={{ left: 88 }}>{preview.copyright}</span>

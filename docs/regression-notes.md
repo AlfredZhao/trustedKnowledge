@@ -31,6 +31,14 @@ Keep entries concrete. Prefer file paths, function names, SQL placeholders, and 
 - **Safe pattern**：`useSlidePresentation` 独立管理纯放映及全屏所有权，监听 `fullscreenchange`，抑制同次退出的 Esc，失效请求成功后释放全屏；保留预先存在的工作区全屏。悬浮栏绝对定位，键盘聚焦时不隐藏，鼠标/触摸/Tab 可恢复；加载或弹层状态仍可退出。阅读按现有锚点重新分页，AIBS 只缩放、不重建或请求导出。
 - **Guardrail**：`cd frontend && npm run test:slides -- --grep 'pure presentation'` 覆盖桌面/移动横竖屏、深浅主题、阅读位置、固定页数/16:9、自动隐藏无重排、目录/详情、键盘/触摸、拒绝/不支持/原生全屏、全屏所有权及迟到请求；测试通过请求拦截运行，不启动服务。
 
+## AIBS 网页预览：不渲染 WMF 降级占位框
+
+- **Symptom**：切换 AIBS 模板或进入其纯放映时，右下角出现写有 `wmf` 的红色虚线框，但导出的 PPTX 中该位置是正常的品牌装饰。
+- **Trigger**：PPTX 模板母版或版式含浏览器无法解码的 WMF 图片，预览接口将其以 `unsupported` 装饰返回。
+- **Root cause**：`OfficeCanvas` 将仅供开发布局检查的 `unsupported` 标记直接渲染到面向用户的近似预览画布。
+- **Safe pattern**：`OfficeCanvas` 只渲染带 `src` 的、浏览器可显示的模板装饰；无法渲染的 WMF 不占用正常布局流，也不显示诊断框。PPTX 导出路径必须继续保留模板中的原始 WMF，不能以隐藏网页标记为由删除 Office 图形。
+- **Guardrail**：`cd frontend && npm run test:office -- --grep 'pure presentation AIBS'` 的预览 mock 注入 `unsupported: "wmf"` 装饰，并断言 `.office-canvas` 不包含 `wmf`；覆盖桌面/手机横竖屏及深浅主题，不启动服务。
+
 ## Office 导出：多图预算同步与长标题原文保真
 
 - **Symptom**：33 张图被 24 个上限拒绝，第 13 张可能超过 12 MB；45 字符中英文标题出现 `Cover title requires a manually adapted layout`。

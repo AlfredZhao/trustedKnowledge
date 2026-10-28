@@ -26,6 +26,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Fixed / 修复
 
+- Fixed AIBS web slideshow previews showing a red dashed `wmf` fallback in the lower-right corner. Unsupported template decorations are now omitted from the browser canvas while the original WMF remains in exported PPTX files.
+- 修复 AIBS 网页放映右下角显示红色虚线 `wmf` 占位的问题：浏览器画布不再展示无法渲染的模板装饰，导出 PPTX 仍保留原始 WMF 图形。
+
 - Fixed cramped personal-secret notes in the shared create/edit dialog by increasing the minimum editor/preview height from 120px to 360px. Preserve resizing and edit position, with viewport-bounded scrolling on desktop/mobile and light/dark browser regression coverage.
 - 修复个人机密新增/编辑弹窗备注区域过矮的问题：编辑/预览区最低高度提升至 360px（原编辑区 120px 的三倍），保留拖动增高和编辑位置；沿用视口内滚动，并新增桌面/移动端及深浅主题浏览器回归测试。
 

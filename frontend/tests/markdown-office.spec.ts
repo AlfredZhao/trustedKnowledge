@@ -23,7 +23,7 @@ test.beforeAll(async () => {
 
 function mockPreview(payload: any) {
   const title = payload.source.blocks.find((block: any) => block.type === "heading")?.runs?.[0]?.text || "正文";
-  return { pages: [0, 1].map(index => ({ layout: "content", title: index ? title + "（续）" : title, elements: [{ kind: "text", name: `title-${index}`, block: payload.source.blocks[0].id, x: 60, y: 20, w: 840, h: 70, size: 32, runs: [{ text: index ? "第二页" : title }] }] })), decorations: { cover: [], content: [] }, fonts: { latin: "Arial", east_asia: "Noto Sans CJK SC", code: "Consolas" }, colors: { text: "312D2A", paper: "FCFBFA", accent: "C74634", table_header: "312D2A", table_alternate: "F4F1ED" }, copyright: "Template copyright", footer: payload.metadata.footer, warnings: [] };
+  return { pages: [0, 1].map(index => ({ layout: "content", title: index ? title + "（续）" : title, elements: [{ kind: "text", name: `title-${index}`, block: payload.source.blocks[0].id, x: 60, y: 20, w: 840, h: 70, size: 32, runs: [{ text: index ? "第二页" : title }] }] })), decorations: { cover: [], content: [{ x: 860, y: 480, w: 80, h: 40, unsupported: "wmf" }] }, fonts: { latin: "Arial", east_asia: "Noto Sans CJK SC", code: "Consolas" }, colors: { text: "312D2A", paper: "FCFBFA", accent: "C74634", table_header: "312D2A", table_alternate: "F4F1ED" }, copyright: "Template copyright", footer: payload.metadata.footer, warnings: [] };
 }
 
 async function routeApp(context: BrowserContext, state: { delay?: number; gate?: Promise<void>; fail?: boolean; unauthorized?: boolean; real?: boolean; limits?: OfficeLimits; limitsFail?: boolean; requests: any[]; downloads: number; external: string[] }) {
@@ -371,6 +371,7 @@ for (const size of [{ width: 1440, height: 900 }, { width: 390, height: 844 }, {
       await openOffice(page);
       await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
       await expect(page.locator(".office-canvas")).toBeVisible();
+      await expect(page.locator(".office-canvas")).not.toContainText("wmf");
       await reachable(page);
       await mockPresentationFullscreen(page, "denied");
       await page.locator(".office-screen").press("End");
