@@ -125,6 +125,8 @@ try {
       const next = { ...style };
       if (element.matches('strong,b')) next.bold = true;
       if (element.matches('em,i')) next.italic = true;
+      if (element.matches('u')) next.underline = true;
+      if (element.matches('del,s,strike')) next.strike = true;
       if (element.matches('code')) next.code = true;
       if (element.matches('a')) next.href = element.getAttribute('href');
       return Array.from(element.childNodes).flatMap(child => runs(child, next));

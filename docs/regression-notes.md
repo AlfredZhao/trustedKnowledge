@@ -15,6 +15,14 @@ When fixing a bug with meaningful regression risk, add a short entry with:
 
 Keep entries concrete. Prefer file paths, function names, SQL placeholders, and test names over broad advice.
 
+## Markdown 行内删除线与下划线：跨渲染/导出格式一致
+
+- **Symptom**：编辑器插入删除线或下划线后，预览、幻灯片、复制、增强 HTML 或 Office 导出中的任一链路显示原始标记或丢失格式。
+- **Trigger**：对选区或空光标点击工具栏的“删除线”“下划线”，再次点击取消格式；内容进入表格、标题、列表、幻灯片、富文本复制、增强 HTML 或 PPTX/DOCX。
+- **Root cause**：Markdown 内联解析、离线增强 HTML 解析和 Office HTML→IR→文件生成是独立链路；下划线不是 CommonMark 标准，不能依赖浏览器将原始 HTML 自动解释。
+- **Safe pattern**：删除线统一使用 `~~text~~` 并渲染为 `<del>`；下划线统一使用项目扩展 `++text++` 并渲染为 `<u>`。工具栏复用受控 textarea 的选区/滚动恢复；所有渲染器同步解析。Office IR 用 `underline`、`strike` 显式传递，网页画布、PPTX 和 DOCX 分别渲染，不能静默降级为纯文本。
+- **Guardrail**：Markdown 渲染和编辑器专项测试覆盖空选区、整行含尾换行、取消格式及嵌套；`npm run test:slides` 覆盖幻灯片，`npm run test:office` 与 `scripts/office-export/test_export.py` 覆盖 Office IR 和导出格式。
+
 ## 个人机密：大备注编辑区与私密 Markdown 预览
 
 - **Symptom**：新增/编辑机密时备注最低只有 120px，长备注难以阅读；增高或引入公共 Markdown 预览时需防止手机操作区不可达、切换丢失原文/编辑位置及隐式资源请求。

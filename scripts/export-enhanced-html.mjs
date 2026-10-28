@@ -266,6 +266,8 @@ async function formatInlineMarkdown(value, inputDir) {
       const safeHref = sanitizeMarkdownUrl(href);
       return safeHref ? `<a href="${escapeAttribute(safeHref)}" target="_blank" rel="noreferrer">${label}</a>` : label;
     })
+    .replace(/~~([^~]+)~~/g, '<del>$1</del>')
+    .replace(/\+\+([^+]+)\+\+/g, '<u>$1</u>')
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
     .replace(/__([^_]+)__/g, "<strong>$1</strong>")
     .replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>")

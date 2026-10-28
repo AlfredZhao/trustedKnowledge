@@ -140,6 +140,8 @@ export async function prepareOfficeSource(markdown: string, signal: AbortSignal,
       const next = { ...style };
       if (node.matches("strong,b")) next.bold = true;
       if (node.matches("em,i")) next.italic = true;
+      if (node.matches("u")) next.underline = true;
+      if (node.matches("del,s,strike")) next.strike = true;
       if (node.matches("code")) next.code = true;
       if (node.matches("a")) {
         const href = node.getAttribute("href") || "";

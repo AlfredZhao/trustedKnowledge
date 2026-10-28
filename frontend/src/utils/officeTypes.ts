@@ -1,4 +1,4 @@
-export interface OfficeRun { text?: string; asset?: string; alt?: string; bold?: boolean; italic?: boolean; code?: boolean; href?: string; }
+export interface OfficeRun { text?: string; asset?: string; alt?: string; bold?: boolean; italic?: boolean; underline?: boolean; strike?: boolean; code?: boolean; href?: string; }
 export interface OfficeAsset { id: string; kind: "image" | "formula" | "mermaid"; alt: string; width: number; height: number; data: string; }
 export interface OfficeBlock {
   id: string; type: "heading" | "paragraph" | "code" | "graphic" | "table" | "break" | "rule";

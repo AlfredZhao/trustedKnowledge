@@ -9,9 +9,15 @@ The format follows the common GitHub changelog convention inspired by
 
 ## 本次版本更新
 
-### [Unreleased]
+### [1.0.3] - 2026-10-28
 
 #### Added / 新增
+
+- Added category checkboxes plus Select all / Clear all actions to dashboard global content search. Keyword and semantic search default to all categories supported by their current mode; users can limit requests to selected modules, reducing unnecessary query and vector-search load. Switching modes resets the selection to that mode's supported categories.
+- 总览全局内容搜索新增分类复选框及“全选 / 取消全选”操作：关键字和近似检索默认勾选当前模式支持的全部分类，用户可快速限定为所选模块，降低无关查询与向量检索负载；切换检索方式时会重置为该方式支持的分类。
+
+- Added strikethrough and underline actions to the shared Markdown editor. Strikethrough uses `~~text~~`; underline uses the documented project extension `++text++`. Both retain selection/scroll position and render consistently in previews, slides, rich copies, enhanced HTML and Office exports.
+- 共用 Markdown 编辑器新增“删除线”和“下划线”操作：删除线使用 `~~文字~~`，下划线使用项目扩展 `++文字++`。两者均保留选区与滚动位置，并在预览、幻灯片、富文本复制、增强 HTML 和 Office 导出中保持一致。
 
 - Added a dashboard-wide content search that searches the currently accessible knowledge, Todos, English materials, blog factory, current records, history, personal-secret metadata, and owned Skills without carrying over page-specific filters. Results are grouped by module and route to the matching module with the keyword applied; personal-secret results remain limited to safe metadata.
 - 总览新增跨模块内容搜索：在当前账号可访问范围内检索可信知识、Todo、英语素材、博客工厂、当前记录、历史查询、个人机密元数据及自有 Skill，不继承页面状态、日期、分类等筛选。结果按模块分组，点击后带关键词进入对应模块；个人机密结果仍只展示安全元数据。
@@ -25,6 +31,9 @@ The format follows the common GitHub changelog convention inspired by
 #### Changed / 变更
 
 #### Fixed / 修复
+
+- Fixed the Markdown toolbar strikethrough button icon to use a single clear strikethrough glyph instead of a visually noisy overlaid character.
+- 修复 Markdown 工具栏“删除线”按钮使用叠加字符导致横线杂乱的问题，改为清晰的单一删除线图标。
 
 - Fixed AIBS web slideshow previews showing a red dashed `wmf` fallback in the lower-right corner. Unsupported template decorations are now omitted from the browser canvas while the original WMF remains in exported PPTX files.
 - 修复 AIBS 网页放映右下角显示红色虚线 `wmf` 占位的问题：浏览器画布不再展示无法渲染的模板装饰，导出 PPTX 仍保留原始 WMF 图形。

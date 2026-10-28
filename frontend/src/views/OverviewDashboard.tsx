@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { BookOpenCheck, ChartLine, ChevronRight, ClipboardCheck, FileText, RefreshCw, Search, ShieldCheck, TriangleAlert, X } from "lucide-react";
+import { BookOpenCheck, ChartLine, Check, ChevronRight, ClipboardCheck, FileText, RefreshCw, Search, ShieldCheck, TriangleAlert, X } from "lucide-react";
 
 import { MetricTile, LoadingStack } from "../components/AppShellPrimitives";
 import type { AppView, EnglishMaterialItem, KnowledgeItem, LlmUsageSample, TodoItem } from "../types";
@@ -38,6 +38,11 @@ export type OverviewSearchGroup = {
   items: OverviewSearchResult[];
 };
 
+export type OverviewSearchCategory = {
+  view: AppView;
+  label: string;
+};
+
 const statusStyles: Record<KnowledgeItem["blog_status"], string> = {
   未发布: "border-slate-500/30 bg-slate-400/10 text-slate-200",
   已发布: "border-mint-300/30 bg-mint-300/10 text-mint-300",
@@ -68,10 +73,14 @@ export default function OverviewDashboard({
   searchQuery,
   searchMode,
   searchGroups,
+  searchCategories,
+  selectedSearchCategories,
   isSearchLoading,
   searchError,
   onSearchQueryChange,
   onSearchModeChange,
+  onSearchCategoryToggle,
+  onSetSearchCategories,
   onOpenSearchResult,
 }: {
   canViewUsage: boolean;
@@ -91,10 +100,14 @@ export default function OverviewDashboard({
   searchQuery: string;
   searchMode: "keyword" | "semantic";
   searchGroups: OverviewSearchGroup[];
+  searchCategories: OverviewSearchCategory[];
+  selectedSearchCategories: AppView[];
   isSearchLoading: boolean;
   searchError: string | null;
   onSearchQueryChange: (query: string) => void;
   onSearchModeChange: (mode: "keyword" | "semantic") => void;
+  onSearchCategoryToggle: (view: AppView) => void;
+  onSetSearchCategories: (selectAll: boolean) => void;
   onOpenSearchResult: (view: AppView) => void;
 }) {
   const latestUsage = canViewUsage && data.usageItems.length > 0 ? data.usageItems[data.usageItems.length - 1] : null;
@@ -216,9 +229,60 @@ export default function OverviewDashboard({
         </div>
         <p className="mb-3 text-xs leading-5 text-slate-500">
           {searchMode === "keyword"
-            ? "搜索所有可访问内容，不沿用各模块的状态、日期或分类筛选。"
-            : "搜索英语素材、博客工厂和历史查询中向量已就绪的相近内容。"}
+            ? "仅搜索所选分类中的可访问内容，不沿用各模块的状态、日期或分类筛选。"
+            : "仅搜索所选分类中向量已就绪的相近内容，可减少不需要的向量查询。"}
         </p>
+        <fieldset className="mb-3">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <legend className="text-xs font-medium text-slate-400">限定分类</legend>
+            <div className="flex items-center gap-2 text-xs">
+              <button
+                className="text-slate-400 transition hover:text-mint-300 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={selectedSearchCategories.length === searchCategories.length}
+                type="button"
+                onClick={() => onSetSearchCategories(true)}
+              >
+                全选
+              </button>
+              <span className="text-white/15">/</span>
+              <button
+                className="text-slate-400 transition hover:text-mint-300 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={selectedSearchCategories.length === 0}
+                type="button"
+                onClick={() => onSetSearchCategories(false)}
+              >
+                取消全选
+              </button>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {searchCategories.map((category) => {
+              const isSelected = selectedSearchCategories.includes(category.view);
+              return (
+                <label
+                  key={category.view}
+                  className={`group inline-flex cursor-pointer items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs transition ${
+                    isSelected
+                      ? "border-mint-300/35 bg-mint-300/10 text-mint-200"
+                      : "border-white/10 bg-white/[0.025] text-slate-500 hover:border-white/20 hover:text-slate-300"
+                  }`}
+                >
+                  <input
+                    className="sr-only"
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={() => onSearchCategoryToggle(category.view)}
+                  />
+                  <span className={`grid h-3.5 w-3.5 place-items-center rounded border ${isSelected ? "border-mint-300 bg-mint-300 text-ink-950" : "border-slate-500/70"}`} aria-hidden="true">
+                    {isSelected ? <Check size={11} strokeWidth={3} /> : null}
+                  </span>
+                  {category.label}
+                </label>
+              );
+            })}
+          </div>
+          <div className="mt-2 text-xs text-slate-500">已选 {selectedSearchCategories.length} 个分类；仅对已选分类发起查询。</div>
+        </fieldset>
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={17} />
           <input
@@ -243,9 +307,10 @@ export default function OverviewDashboard({
 
         {searchQuery.trim() ? (
           <div className="mt-3">
-            {isSearchLoading ? <div className="text-sm text-slate-400">正在{searchMode === "keyword" ? "搜索全部内容" : "进行近似检索"}…</div> : null}
+            {isSearchLoading ? <div className="text-sm text-slate-400">正在{searchMode === "keyword" ? "搜索已选分类" : "进行近似检索"}…</div> : null}
             {searchError ? <OverviewInlineError message={`部分模块搜索失败：${searchError}`} /> : null}
-            {!isSearchLoading && searchGroups.length === 0 ? <div className="py-3 text-sm text-slate-500">未找到匹配内容。</div> : null}
+            {!isSearchLoading && selectedSearchCategories.length === 0 ? <div className="py-3 text-sm text-slate-500">请至少选择一个分类后再搜索。</div> : null}
+            {!isSearchLoading && selectedSearchCategories.length > 0 && searchGroups.length === 0 ? <div className="py-3 text-sm text-slate-500">未找到匹配内容。</div> : null}
             {searchGroups.length > 0 ? (
               <div className="space-y-3">
                 {searchGroups.map((group) => (

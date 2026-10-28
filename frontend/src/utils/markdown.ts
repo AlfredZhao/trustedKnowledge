@@ -662,6 +662,8 @@ function inlineClipboardStyles(html: string) {
     .replace(/<td(?=[\s>])/g, '<td style="border: 1px solid #d1d5db; padding: 8px 10px; text-align: left; vertical-align: top;"')
     .replace(/<strong>/g, '<strong style="color: #000000; font-weight: 700;">')
     .replace(/<em>/g, '<em style="color: #000000;">')
+    .replace(/<del>/g, '<del style="text-decoration: line-through;">')
+    .replace(/<u>/g, '<u style="text-decoration: underline; text-underline-offset: 2px;">')
     .replace(/<img /g, '<img style="display: block; max-width: 100%; height: auto; margin: 14px 0; border-radius: 10px;" ')
     .replace(/<a /g, '<a style="color: #2563eb; text-decoration: underline;" ');
 }
@@ -736,6 +738,8 @@ function inlineEnhancedClipboardStyles(html: string) {
     .replace(/<span class="hljs-title function_">/g, '<span style="color:#93c5fd;">')
     .replace(/<strong>/g, '<strong style="color: #5f1d1d; font-weight: 700;">')
     .replace(/<em>/g, '<em style="color: #7c4a43;">')
+    .replace(/<del>/g, '<del style="text-decoration: line-through;">')
+    .replace(/<u>/g, '<u style="text-decoration: underline; text-underline-offset: 2px;">')
     .replace(/<img /g, '<img style="display: block; max-width: 100%; height: auto; margin: 18px auto; border-radius: 14px; box-shadow: 0 8px 24px rgba(95, 29, 29, 0.08);" ')
     .replace(/<a /g, '<a style="color: #8f2d2d; text-decoration: underline; text-decoration-color: #d6a79c; text-underline-offset: 3px;" ');
 }
@@ -833,6 +837,9 @@ function formatInlineMarkdown(value: string, options: MarkdownRenderOptions = {}
       if (options.privateContent && !/^(https?:\/\/|mailto:)/i.test(safeHref)) return label;
       return safeHref ? `<a href="${escapeAttribute(safeHref)}" target="_blank" rel="noreferrer">${label}</a>` : label;
     })
+    .replace(/~~([^~]+)~~/g, "<del>$1</del>")
+    // Underline is not CommonMark. `++text++` is the documented project extension.
+    .replace(/\+\+([^+]+)\+\+/g, "<u>$1</u>")
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
     .replace(/__([^_]+)__/g, "<strong>$1</strong>")
     .replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>")

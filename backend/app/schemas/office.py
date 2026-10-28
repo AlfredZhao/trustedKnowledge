@@ -18,6 +18,8 @@ class OfficeRun(OfficeModel):
     alt: str = Field('', max_length=20_000)
     bold: bool = False
     italic: bool = False
+    underline: bool = False
+    strike: bool = False
     code: bool = False
     href: str | None = Field(None, max_length=2048)
 

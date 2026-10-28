@@ -107,6 +107,26 @@ test("pagination preserves prose, code indentation, lists and every table row wi
   expect(result.maxHeight).toBeLessThanOrEqual(300);
 });
 
+test("strikethrough and underline render in previews and are retained by Office source", async ({ page }) => {
+  const result = await page.evaluate(async () => {
+    const { markdownToHtml } = (window as any).slidesTest;
+    const { prepareOfficeSource } = (window as any).officeTest;
+    const markdown = "# 标题 ~~旧标题~~ ++新标题++\n\n正文含 ~~删除文字~~ 和 ++下划线文字++。";
+    const html = markdownToHtml(markdown);
+    const source = await prepareOfficeSource(
+      markdown,
+      new AbortController().signal,
+      () => undefined,
+      { max_assets: 64, max_asset_bytes: 4_000_000, max_total_bytes: 48_000_000, max_total_pixels: 128_000_000, max_body_bytes: 56_000_000, max_output_bytes: 64_000_000, max_job_seconds: 90, client_timeout_seconds: 180 },
+    );
+    return { html, runs: source.blocks.flatMap((block: any) => block.runs ?? []) };
+  });
+  expect(result.html).toContain("<del>旧标题</del>");
+  expect(result.html).toContain("<u>新标题</u>");
+  expect(result.runs).toContainEqual(expect.objectContaining({ text: "删除文字", strike: true }));
+  expect(result.runs).toContainEqual(expect.objectContaining({ text: "下划线文字", underline: true }));
+});
+
 test("desktop opens isolated snapshot; edits and multiple decks cannot overwrite it; refresh and logout", async ({ page, context }) => {
   await loadContent(page, "# 原草稿\n\n未保存的第一篇内容。");
   const firstPromise = context.waitForEvent("page");

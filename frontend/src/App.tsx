@@ -52,11 +52,13 @@ import {
   Settings2,
   ShieldCheck,
   Sparkles,
+  Strikethrough,
   Sun,
   Tags,
   Table2,
   TriangleAlert,
   Trash2,
+  Underline,
   UserCog,
   WandSparkles,
   X,
@@ -343,7 +345,24 @@ const AiAuditDashboard = lazy(() => import("./views/AiAuditDashboard"));
 const HistoryExplorer = lazy(() => import("./views/HistoryExplorer"));
 const AiCodingWorkspace = lazy(() => import("./views/AiCodingWorkspace"));
 const AiGraphWorkspace = lazy(() => import("./views/AiGraphWorkspace"));
-import type { OverviewSearchGroup } from "./views/OverviewDashboard";
+import type { OverviewSearchCategory, OverviewSearchGroup } from "./views/OverviewDashboard";
+
+const OVERVIEW_KEYWORD_SEARCH_CATEGORIES: OverviewSearchCategory[] = [
+  { view: "workbench", label: "可信知识" },
+  { view: "todos", label: "待办事项" },
+  { view: "englishMaterials", label: "英语素材" },
+  { view: "blogFactory", label: "博客工厂" },
+  { view: "currentRecords", label: "当前记录" },
+  { view: "history", label: "历史查询" },
+  { view: "personalSecrets", label: "个人机密" },
+  { view: "skills", label: "智能编排" },
+];
+
+const OVERVIEW_SEMANTIC_SEARCH_CATEGORIES: OverviewSearchCategory[] = [
+  { view: "englishMaterials", label: "英语素材" },
+  { view: "blogFactory", label: "博客工厂" },
+  { view: "history", label: "历史查询" },
+];
 import type {
   AdminModuleAccessItem,
   AdminModuleAccessLevel,
@@ -1090,6 +1109,9 @@ function App() {
   const [overviewEnglishLimit, setOverviewEnglishLimit] = useState(3);
   const [overviewSearchQuery, setOverviewSearchQuery] = useState("");
   const [overviewSearchMode, setOverviewSearchMode] = useState<"keyword" | "semantic">("keyword");
+  const [overviewSearchCategories, setOverviewSearchCategories] = useState<AppView[]>(() =>
+    OVERVIEW_KEYWORD_SEARCH_CATEGORIES.map((category) => category.view),
+  );
   const debouncedOverviewSearchQuery = useDebouncedValue(overviewSearchQuery.trim(), 320);
   const [overviewSearchGroups, setOverviewSearchGroups] = useState<OverviewSearchGroup[]>([]);
   const [isOverviewSearchLoading, setIsOverviewSearchLoading] = useState(false);
@@ -2901,102 +2923,126 @@ function App() {
     setIsOverviewSearchLoading(true);
     setOverviewSearchError(null);
 
+    const selectedSearchCategories = new Set(overviewSearchCategories);
     const searches = overviewSearchMode === "semantic"
       ? [
-          fetchEnglishMaterials({ semanticQuery: query, limit, offset: 0 }).then((data): OverviewSearchGroup => ({
-            view: "englishMaterials",
-            label: "英语素材",
-            total: data.total,
-            items: data.items.map((item) => ({
-              id: item.id,
-              title: item.title || item.base_expression || "未命名素材",
-              summary: item.professional_sentence || item.chinese_translation || item.full_script,
-              similarity: item.similarity,
-            })),
-          })),
-          fetchBlogFactoryItems({ semanticQuery: query, limit, offset: 0 }).then((data): OverviewSearchGroup => ({
-            view: "blogFactory",
-            label: "博客工厂",
-            total: data.total,
-            items: data.items.map((item) => ({
-              id: item.id,
-              title: item.article_title || item.question_snapshot || "未命名博客任务",
-              summary: item.task_content || item.article_markdown || item.answer_snapshot,
-              similarity: item.similarity,
-            })),
-          })),
-          fetchHistory({ semanticQuery: query, limit, offset: 0 }).then((data): OverviewSearchGroup => ({
-            view: "history",
-            label: "历史查询",
-            total: data.total,
-            items: data.items.map((item) => ({
-              id: item.id,
-              title: item.type || "历史记录",
-              summary: item.content,
-              similarity: item.similarity,
-            })),
-          })),
+          selectedSearchCategories.has("englishMaterials")
+            ? fetchEnglishMaterials({ semanticQuery: query, limit, offset: 0 }).then((data): OverviewSearchGroup => ({
+                view: "englishMaterials",
+                label: "英语素材",
+                total: data.total,
+                items: data.items.map((item) => ({
+                  id: item.id,
+                  title: item.title || item.base_expression || "未命名素材",
+                  summary: item.professional_sentence || item.chinese_translation || item.full_script,
+                  similarity: item.similarity,
+                })),
+              }))
+            : null,
+          selectedSearchCategories.has("blogFactory")
+            ? fetchBlogFactoryItems({ semanticQuery: query, limit, offset: 0 }).then((data): OverviewSearchGroup => ({
+                view: "blogFactory",
+                label: "博客工厂",
+                total: data.total,
+                items: data.items.map((item) => ({
+                  id: item.id,
+                  title: item.article_title || item.question_snapshot || "未命名博客任务",
+                  summary: item.task_content || item.article_markdown || item.answer_snapshot,
+                  similarity: item.similarity,
+                })),
+              }))
+            : null,
+          selectedSearchCategories.has("history")
+            ? fetchHistory({ semanticQuery: query, limit, offset: 0 }).then((data): OverviewSearchGroup => ({
+                view: "history",
+                label: "历史查询",
+                total: data.total,
+                items: data.items.map((item) => ({
+                  id: item.id,
+                  title: item.type || "历史记录",
+                  summary: item.content,
+                  similarity: item.similarity,
+                })),
+              }))
+            : null,
         ]
       : [
-      fetchKnowledge({ query, limit, offset: 0 }).then((data): OverviewSearchGroup => ({
-        view: "workbench",
-        label: "可信知识",
-        total: data.total,
-        items: data.items.map((item) => ({ id: item.id, title: item.question, summary: item.answer })),
-      })),
-      fetchTodos({ query, limit, offset: 0 }).then((data): OverviewSearchGroup => ({
-        view: "todos",
-        label: "待办事项",
-        total: data.total,
-        items: data.items.map((item) => ({ id: item.id, title: item.title, summary: item.content })),
-      })),
-      fetchEnglishMaterials({ query, limit, offset: 0 }).then((data): OverviewSearchGroup => ({
-        view: "englishMaterials",
-        label: "英语素材",
-        total: data.total,
-        items: data.items.map((item) => ({
-          id: item.id,
-          title: item.title || item.base_expression || "未命名素材",
-          summary: item.professional_sentence || item.chinese_translation || item.full_script,
-        })),
-      })),
-      fetchBlogFactoryItems({ query, limit, offset: 0 }).then((data): OverviewSearchGroup => ({
-        view: "blogFactory",
-        label: "博客工厂",
-        total: data.total,
-        items: data.items.map((item) => ({
-          id: item.id,
-          title: item.article_title || item.question_snapshot || "未命名博客任务",
-          summary: item.task_content || item.article_markdown || item.answer_snapshot,
-        })),
-      })),
-      fetchCurrentRecords({ query, limit, offset: 0 }).then((data): OverviewSearchGroup => ({
-        view: "currentRecords",
-        label: "当前记录",
-        total: data.total,
-        items: data.items.map((item) => ({ id: item.id, title: item.type || "当前记录", summary: item.content })),
-      })),
-      fetchHistory({ query, limit, offset: 0 }).then((data): OverviewSearchGroup => ({
-        view: "history",
-        label: "历史查询",
-        total: data.total,
-        items: data.items.map((item) => ({ id: item.id, title: item.type || "历史记录", summary: item.content })),
-      })),
-      fetchPersonalSecrets({ query, limit, offset: 0 }).then((data): OverviewSearchGroup => ({
-        view: "personalSecrets",
-        label: "个人机密",
-        total: data.total,
-        items: data.items.map((item) => ({ id: item.id, title: item.system_name, summary: item.tags || item.login_url })),
-      })),
-      fetchSkills({ q: query, scope: "owned" }).then((data): OverviewSearchGroup => ({
-        view: "skills",
-        label: "智能编排",
-        total: data.total,
-        items: data.items.slice(0, limit).map((item) => ({ id: item.id, title: item.name, summary: item.description })),
-      })),
-    ];
+          selectedSearchCategories.has("workbench")
+            ? fetchKnowledge({ query, limit, offset: 0 }).then((data): OverviewSearchGroup => ({
+                view: "workbench",
+                label: "可信知识",
+                total: data.total,
+                items: data.items.map((item) => ({ id: item.id, title: item.question, summary: item.answer })),
+              }))
+            : null,
+          selectedSearchCategories.has("todos")
+            ? fetchTodos({ query, limit, offset: 0 }).then((data): OverviewSearchGroup => ({
+                view: "todos",
+                label: "待办事项",
+                total: data.total,
+                items: data.items.map((item) => ({ id: item.id, title: item.title, summary: item.content })),
+              }))
+            : null,
+          selectedSearchCategories.has("englishMaterials")
+            ? fetchEnglishMaterials({ query, limit, offset: 0 }).then((data): OverviewSearchGroup => ({
+                view: "englishMaterials",
+                label: "英语素材",
+                total: data.total,
+                items: data.items.map((item) => ({
+                  id: item.id,
+                  title: item.title || item.base_expression || "未命名素材",
+                  summary: item.professional_sentence || item.chinese_translation || item.full_script,
+                })),
+              }))
+            : null,
+          selectedSearchCategories.has("blogFactory")
+            ? fetchBlogFactoryItems({ query, limit, offset: 0 }).then((data): OverviewSearchGroup => ({
+                view: "blogFactory",
+                label: "博客工厂",
+                total: data.total,
+                items: data.items.map((item) => ({
+                  id: item.id,
+                  title: item.article_title || item.question_snapshot || "未命名博客任务",
+                  summary: item.task_content || item.article_markdown || item.answer_snapshot,
+                })),
+              }))
+            : null,
+          selectedSearchCategories.has("currentRecords")
+            ? fetchCurrentRecords({ query, limit, offset: 0 }).then((data): OverviewSearchGroup => ({
+                view: "currentRecords",
+                label: "当前记录",
+                total: data.total,
+                items: data.items.map((item) => ({ id: item.id, title: item.type || "当前记录", summary: item.content })),
+              }))
+            : null,
+          selectedSearchCategories.has("history")
+            ? fetchHistory({ query, limit, offset: 0 }).then((data): OverviewSearchGroup => ({
+                view: "history",
+                label: "历史查询",
+                total: data.total,
+                items: data.items.map((item) => ({ id: item.id, title: item.type || "历史记录", summary: item.content })),
+              }))
+            : null,
+          selectedSearchCategories.has("personalSecrets")
+            ? fetchPersonalSecrets({ query, limit, offset: 0 }).then((data): OverviewSearchGroup => ({
+                view: "personalSecrets",
+                label: "个人机密",
+                total: data.total,
+                items: data.items.map((item) => ({ id: item.id, title: item.system_name, summary: item.tags || item.login_url })),
+              }))
+            : null,
+          selectedSearchCategories.has("skills")
+            ? fetchSkills({ q: query, scope: "owned" }).then((data): OverviewSearchGroup => ({
+                view: "skills",
+                label: "智能编排",
+                total: data.total,
+                items: data.items.slice(0, limit).map((item) => ({ id: item.id, title: item.name, summary: item.description })),
+              }))
+            : null,
+        ];
+    const selectedSearches = searches.filter((search): search is Promise<OverviewSearchGroup> => search !== null);
 
-    Promise.allSettled(searches)
+    Promise.allSettled(selectedSearches)
       .then((results) => {
         if (!mounted) return;
         const groups = results.flatMap((result) => (result.status === "fulfilled" && result.value.total > 0 ? [result.value] : []));
@@ -3012,7 +3058,7 @@ function App() {
     return () => {
       mounted = false;
     };
-  }, [activeView, apiKey, authUser, debouncedOverviewSearchQuery, overviewSearchMode]);
+  }, [activeView, apiKey, authUser, debouncedOverviewSearchQuery, overviewSearchCategories, overviewSearchMode]);
 
   useEffect(() => {
     if (!apiKey || activeView !== "usage" || !canAccessUsage) return;
@@ -4781,6 +4827,23 @@ function App() {
     setActiveView(view);
   }
 
+  function handleOverviewSearchModeChange(mode: "keyword" | "semantic") {
+    setOverviewSearchMode(mode);
+    setOverviewSearchCategories((mode === "semantic" ? OVERVIEW_SEMANTIC_SEARCH_CATEGORIES : OVERVIEW_KEYWORD_SEARCH_CATEGORIES).map((category) => category.view));
+  }
+
+  function handleOverviewSearchCategoryToggle(view: AppView) {
+    setOverviewSearchCategories((current) => (current.includes(view) ? current.filter((category) => category !== view) : [...current, view]));
+  }
+
+  function handleSetOverviewSearchCategories(selectAll: boolean) {
+    setOverviewSearchCategories(
+      selectAll
+        ? (overviewSearchMode === "semantic" ? OVERVIEW_SEMANTIC_SEARCH_CATEGORIES : OVERVIEW_KEYWORD_SEARCH_CATEGORIES).map((category) => category.view)
+        : [],
+    );
+  }
+
   function handleOpenOverviewSearchResult(view: AppView) {
     const query = overviewSearchQuery.trim();
     if (!query || !canAccessView(view, authUser)) return;
@@ -5764,10 +5827,14 @@ function App() {
                 searchQuery={overviewSearchQuery}
                 searchMode={overviewSearchMode}
                 searchGroups={overviewSearchGroups}
+                searchCategories={overviewSearchMode === "semantic" ? OVERVIEW_SEMANTIC_SEARCH_CATEGORIES : OVERVIEW_KEYWORD_SEARCH_CATEGORIES}
+                selectedSearchCategories={overviewSearchCategories}
                 isSearchLoading={isOverviewSearchLoading}
                 searchError={overviewSearchError}
                 onSearchQueryChange={setOverviewSearchQuery}
-                onSearchModeChange={setOverviewSearchMode}
+                onSearchModeChange={handleOverviewSearchModeChange}
+                onSearchCategoryToggle={handleOverviewSearchCategoryToggle}
+                onSetSearchCategories={handleSetOverviewSearchCategories}
                 onOpenSearchResult={handleOpenOverviewSearchResult}
               />
             </Suspense>
@@ -8616,6 +8683,37 @@ const MarkdownImageTextarea = forwardRef<MarkdownImageTextareaHandle, {
     );
   }
 
+  function applyInlineFormat(marker: string, fallback: string) {
+    const textarea = textareaRef.current;
+    const start = textarea?.selectionStart ?? value.length;
+    const end = textarea?.selectionEnd ?? value.length;
+    // Keep a trailing selected newline outside inline markers, matching bold.
+    const selectionEnd = end > start && value[end - 1] === "\n" ? end - 1 : end;
+    const selected = value.slice(start, selectionEnd);
+    const isWrappedSelection =
+      selected.length > 0 &&
+      value.slice(Math.max(0, start - marker.length), start) === marker &&
+      value.slice(selectionEnd, selectionEnd + marker.length) === marker;
+    const isFormatted =
+      (selected.startsWith(marker) && selected.endsWith(marker) && selected.length >= marker.length * 2) ||
+      isWrappedSelection;
+    const content =
+      selected.startsWith(marker) && selected.endsWith(marker)
+        ? selected.slice(marker.length, -marker.length)
+        : selected || fallback;
+    const markdown = isFormatted ? content : `${marker}${content}${marker}`;
+    const offset = isFormatted ? 0 : marker.length;
+    replaceSelection(
+      markdown,
+      offset,
+      offset + content.length,
+      true,
+      isWrappedSelection
+        ? { start: start - marker.length, end: selectionEnd + marker.length }
+        : { start, end: selectionEnd },
+    );
+  }
+
   function applyLink() {
     const textarea = textareaRef.current;
     const start = textarea?.selectionStart ?? value.length;
@@ -8762,6 +8860,12 @@ const MarkdownImageTextarea = forwardRef<MarkdownImageTextareaHandle, {
             <span className="hidden h-5 w-px bg-white/10 sm:block" />
             <button className="markdown-tool-button" disabled={disabled} title="加粗" type="button" onClick={applyBold}>
               <Bold size={15} /> <span>加粗</span>
+            </button>
+            <button className="markdown-tool-button" disabled={disabled} title="删除线" type="button" onClick={() => applyInlineFormat("~~", "删除文字")}>
+              <Strikethrough size={15} /> <span>删除线</span>
+            </button>
+            <button className="markdown-tool-button" disabled={disabled} title="下划线" type="button" onClick={() => applyInlineFormat("++", "下划线文字")}>
+              <Underline size={15} /> <span>下划线</span>
             </button>
             <button className="markdown-tool-button" disabled={disabled} title="行内代码" type="button" onClick={applyInlineCode}>
               <Code2 size={15} /> <span>行内代码</span>

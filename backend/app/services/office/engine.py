@@ -377,6 +377,9 @@ def ppt_text(frame, runs, size, profile, *, bold=False, code=False, nowrap=False
                 run = paragraph.add_run(); run.text = text
                 ppt_font(run, size, profile, bold or item.get('bold', False), code or item.get('code', False))
                 run.font.italic = item.get('italic', False)
+                rpr = run._r.get_or_add_rPr()
+                if item.get('underline'): rpr.set('u', 'sng')
+                if item.get('strike'): rpr.set('strike', 'sngStrike')
                 if item.get('href'):
                     run.hyperlink.address = item['href']
 
@@ -481,6 +484,10 @@ def word_runs(paragraph, runs, profile, assets, directory, code=False):
         run.text = item.get('text', '')
         if 'bold' in item: run.bold = item['bold']
         if 'italic' in item: run.italic = item['italic']
+        if item.get('underline'):
+            underline = OxmlElement('w:u'); underline.set(qn('w:val'), 'single'); run._element.get_or_add_rPr().append(underline)
+        if item.get('strike'):
+            strike = OxmlElement('w:strike'); run._element.get_or_add_rPr().append(strike)
         word_font(run, profile, 9 if code else None, code or item.get('code', False))
         if item.get('href'):
             link = OxmlElement('w:hyperlink')
@@ -614,6 +621,8 @@ def write_preview(source, profile, pages, directory):
             text = html.escape(run.get('text', ''))
             if run.get('bold'): text = f'<b>{text}</b>'
             if run.get('italic'): text = f'<i>{text}</i>'
+            if run.get('underline'): text = f'<u>{text}</u>'
+            if run.get('strike'): text = f'<s>{text}</s>'
             if run.get('code'): text = f'<code>{text}</code>'
             out.append(text)
         return ''.join(out)

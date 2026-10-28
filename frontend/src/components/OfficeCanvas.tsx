@@ -3,7 +3,8 @@ import type { OfficeAsset, OfficeElement, OfficePage, OfficePreview, OfficeRun }
 
 export function OfficeRuns({ runs }: { runs: OfficeRun[] }) {
   return <>{runs.map((run, index) => {
-    const style: CSSProperties = { fontWeight: run.bold ? 700 : undefined, fontStyle: run.italic ? "italic" : undefined, fontFamily: run.code ? "Consolas, monospace" : undefined };
+    const decorations = [run.underline ? "underline" : "", run.strike ? "line-through" : ""].filter(Boolean).join(" ");
+    const style: CSSProperties = { fontWeight: run.bold ? 700 : undefined, fontStyle: run.italic ? "italic" : undefined, fontFamily: run.code ? "Consolas, monospace" : undefined, textDecoration: decorations || undefined };
     return run.href ? <a key={index} href={run.href} target="_blank" rel="noreferrer" style={style}>{run.text}</a> : <span key={index} style={style}>{run.text}</span>;
   })}</>;
 }
