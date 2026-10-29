@@ -12479,11 +12479,11 @@ function PersonalSecretsWorkspace({
             暂无个人机密记录。
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-2">
             {items.map((item) => (
               <button
                 key={item.id}
-                className={`w-full rounded-lg border p-3 text-left transition ${
+                className={`w-full rounded-lg border px-3 py-2.5 text-left transition ${
                   selectedItem?.id === item.id
                     ? "border-mint-300/35 bg-mint-300/10"
                     : "border-white/10 bg-white/[0.025] hover:border-mint-300/25 hover:bg-white/[0.04]"
@@ -12491,15 +12491,11 @@ function PersonalSecretsWorkspace({
                 type="button"
                 onClick={() => onSelect(item)}
               >
-                <div className="mb-2 flex items-start justify-between gap-3">
+                <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0 font-medium text-slate-100">{item.system_name}</div>
                   <span className="shrink-0 text-xs text-slate-500">#{item.id}</span>
                 </div>
-                <div className="truncate text-xs text-slate-500">{item.login_url || "未记录登录地址"}</div>
-                <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-500">
-                  {item.username_preview ? <span>用户 {item.username_preview}</span> : null}
-                  {item.tags ? <span>{item.tags}</span> : null}
-                </div>
+                <div className="mt-1 truncate text-xs text-slate-500">{item.login_url || "未记录登录地址"}</div>
               </button>
             ))}
 

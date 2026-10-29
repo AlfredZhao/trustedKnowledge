@@ -9,6 +9,20 @@ The format follows the common GitHub changelog convention inspired by
 
 ## 本次版本更新
 
+### [Unreleased]
+
+#### Added / 新增
+
+#### Changed / 变更
+
+- Changed the locally managed backend listener from `0.0.0.0:8022` to `127.0.0.1:8022`. The Vite development proxy already targets loopback, so normal local frontend access remains unchanged; Docker continues using its container-network listener.
+- 本地托管后端监听由 `0.0.0.0:8022` 改为 `127.0.0.1:8022`。Vite 开发代理原本即指向回环地址，正常本地前端访问不受影响；Docker 仍使用容器网络监听。
+
+- Compacted Personal Secrets list records to show only the system name, login address, and record ID; detail-only metadata no longer increases list-item height.
+- 精简个人机密列表条目：仅展示系统名称、登录地址和记录编号，详情专属元数据不再撑高左侧列表。
+
+#### Fixed / 修复
+
 ### [1.0.3] - 2026-10-28
 
 #### Added / 新增

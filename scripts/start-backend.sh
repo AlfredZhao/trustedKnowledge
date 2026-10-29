@@ -22,10 +22,10 @@ if [[ ! -f "$PROJECT_ROOT/backend/.env" ]]; then
   exit 1
 fi
 
-echo "Starting backend on 0.0.0.0:$BACKEND_PORT..."
+echo "Starting backend on 127.0.0.1:$BACKEND_PORT..."
 (
   cd "$PROJECT_ROOT/backend"
-  nohup setsid "$CONDA_BIN/uvicorn" app.main:app --host 0.0.0.0 --port "$BACKEND_PORT" \
+  nohup setsid "$CONDA_BIN/uvicorn" app.main:app --host 127.0.0.1 --port "$BACKEND_PORT" \
     > "$LOG_FILE" 2>&1 &
   echo $! > "$PID_FILE"
 )

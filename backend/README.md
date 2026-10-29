@@ -99,7 +99,7 @@ Manual command:
 
 ```bash
 cd backend
-conda run -n alfred uvicorn app.main:app --host 0.0.0.0 --port 8022
+conda run -n alfred uvicorn app.main:app --host 127.0.0.1 --port 8022
 ```
 
 Open:
