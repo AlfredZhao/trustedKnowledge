@@ -159,6 +159,25 @@ test("a source above the former 12 MB limit can now reach export", async ({ page
   expect(state.requests[0].source.assets.reduce((sum: number, asset: OfficeAsset) => sum + asset.data.length, 0)).toBe(16_000_000);
 });
 
+test("AIBS export preserves mixed nested lists as separately indented editable paragraphs", async ({ page, context }) => {
+  const state = { requests: [] as any[], downloads: 0, external: [] as string[] };
+  await routeApp(context, state);
+  await openOffice(page, "# 嵌套列表\n\n1. 父级一\n   - 子级一\n     3. 三级从三开始\n   - 子级二\n2. 父级二");
+  await expect(page.locator(".office-canvas")).toBeVisible();
+  const lists = state.requests[0].source.blocks.filter((block: any) => block.list);
+  expect(lists.map((block: any) => [block.list, block.listLevel, block.prefix, block.runs.map((run: any) => run.text || "").join("")])).toEqual([
+    ["ol", 0, "1. ", "父级一"],
+    ["ul", 1, "• ", "子级一"],
+    ["ol", 2, "3. ", "三级从三开始"],
+    ["ul", 1, "• ", "子级二"],
+    ["ol", 0, "2. ", "父级二"],
+  ]);
+  const positions = await page.locator(".office-canvas-text").evaluateAll(nodes => nodes
+    .filter(node => ["1. 父级一", "• 子级一", "3. 三级从三开始"].includes(node.textContent || ""))
+    .map(node => Number.parseFloat((node as HTMLElement).style.left)));
+  expect(positions).toEqual([60, 82, 104]);
+});
+
 for (const viewport of [{ width: 1440, height: 900 }, { width: 320, height: 568 }, { width: 844, height: 390 }]) {
   test(`asset count diagnostics ${viewport.width}x${viewport.height}: mixed graphics, themes, no fetch, retry`, async ({ page, context }) => {
     const state = { limits: legacyLimits, requests: [] as any[], downloads: 0, external: [] as string[] };

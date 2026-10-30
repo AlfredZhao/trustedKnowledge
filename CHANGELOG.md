@@ -13,6 +13,12 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Added / 新增
 
+- Added AIBS Office export support for up to six levels of nested text lists. Mixed ordered/unordered lists, explicit ordered-list starts and hierarchy indentation now carry through the browser preview, PPTX and DOCX output.
+- AIBS Office 导出新增最多六层的文本型嵌套列表支持：有序/无序混合、显式起始编号和层级缩进会同步保留在网页预览、PPTX 与 DOCX 中。
+
+- Improved slide readability for third-level headings: each H3 topic starts separately and is kept with its first content block in both default reading and AIBS export slides.
+- 优化幻灯片三级标题可读性：默认阅读与 AIBS 导出中，每个 H3 小节单独起页，并尽量与其首个内容块保持同页，避免页尾孤立标题。
+
 #### Changed / 变更
 
 - Changed the locally managed backend listener from `0.0.0.0:8022` to `127.0.0.1:8022`. The Vite development proxy already targets loopback, so normal local frontend access remains unchanged; Docker continues using its container-network listener.
@@ -22,6 +28,9 @@ The format follows the common GitHub changelog convention inspired by
 - 精简个人机密列表条目：仅展示系统名称、登录地址和记录编号，详情专属元数据不再撑高左侧列表。
 
 #### Fixed / 修复
+
+- Fixed third-level headings joining the continuation page of a preceding third-level topic after that topic overflowed across slides. The subsection boundary now persists until the next H2 section.
+- 修复三级标题内容跨页后，下一三级标题仍被排入前一小节续页的问题：小节边界会持续保持到下一个 H2 章节。
 
 ### [1.0.3] - 2026-10-28
 

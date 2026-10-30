@@ -56,6 +56,7 @@ class OfficeBlock(OfficeModel):
     alt: str = Field('', max_length=20_000)
     rows: list[list[list[OfficeRun]]] = Field(default_factory=list, max_length=201)
     list: Literal['ul', 'ol'] | None = None
+    listLevel: int = Field(0, ge=0, le=5)
     prefix: str = Field('', max_length=20)
     quote: bool = False
 
@@ -63,6 +64,8 @@ class OfficeBlock(OfficeModel):
     def valid_block(self) -> Self:
         if self.type in ('heading', 'paragraph') and not self.runs:
             raise ValueError('段落没有内容')
+        if self.list is None and self.listLevel:
+            raise ValueError('列表层级只能用于列表段落')
         if self.type == 'heading' and (any(run.asset for run in self.runs) or not ''.join(run.text or '' for run in self.runs).strip()):
             raise ValueError('标题必须包含文字，暂不支持标题内图片或公式')
         if self.type == 'graphic' and not self.asset:

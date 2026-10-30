@@ -21,15 +21,16 @@ interface MarkdownRenderOptions {
 }
 
 export function markdownToHtml(markdown: string, options: MarkdownRenderOptions = {}) {
+  type ListType = "ul" | "ol";
+  type ListItem = { content: string; sourceLine: number; value?: number; children: ListGroup[] };
+  type ListGroup = { type: ListType; indent: number; start?: number; sourceStart: number; sourceEnd: number; items: ListItem[] };
   const lines = removeLeakedMarkdownCodePlaceholders(markdown).replace(/\r\n/g, "\n").split("\n");
   const html: string[] = [];
   let paragraph: Array<{ content: string; sourceLine: number }> = [];
   let paragraphStartLine = -1;
   let paragraphEndLine = -1;
-  let listType: "ul" | "ol" | null = null;
-  let listItems: Array<{ content: string; sourceLine: number }> = [];
-  let listStartLine = -1;
-  let listEndLine = -1;
+  let listRoots: ListGroup[] = [];
+  let listStack: ListGroup[] = [];
   let inCodeBlock = false;
   let codeLanguage = "";
   let codeLines: string[] = [];
@@ -64,16 +65,34 @@ export function markdownToHtml(markdown: string, options: MarkdownRenderOptions 
   };
 
   const flushList = () => {
-    if (!listType || !listItems.length) return;
-    pushBlock(
-      `<${listType}>${listItems.map((item) => `<li${options.sourceMap ? ` data-markdown-source-line="${item.sourceLine}"` : ""}>${formatInlineMarkdown(item.content, options)}</li>`).join("")}</${listType}>`,
-      listStartLine,
-      listEndLine,
-    );
-    listType = null;
-    listItems = [];
-    listStartLine = -1;
-    listEndLine = -1;
+    if (!listRoots.length) return;
+    const renderGroup = (group: ListGroup): string => {
+      const start = group.type === "ol" && group.start && group.start !== 1 ? ` start="${group.start}"` : "";
+      return `<${group.type}${start}>${group.items.map((item) => {
+        const value = group.type === "ol" && item.value && item.value !== group.start ? ` value="${item.value}"` : "";
+        const source = options.sourceMap ? ` data-markdown-source-line="${item.sourceLine}"` : "";
+        return `<li${value}${source}>${formatInlineMarkdown(item.content, options)}${item.children.map(renderGroup).join("")}</li>`;
+      }).join("")}</${group.type}>`;
+    };
+    for (const group of listRoots) pushBlock(renderGroup(group), group.sourceStart, group.sourceEnd);
+    listRoots = [];
+    listStack = [];
+  };
+
+  const addListItem = (type: ListType, indent: number, content: string, sourceLine: number, value?: number) => {
+    while (listStack.length && listStack[listStack.length - 1].indent > indent) listStack.pop();
+    if (listStack.length && listStack[listStack.length - 1].indent === indent && listStack[listStack.length - 1].type !== type) listStack.pop();
+    let group = listStack[listStack.length - 1];
+    if (!group || group.indent !== indent || group.type !== type) {
+      group = { type, indent, start: type === "ol" ? value : undefined, sourceStart: sourceLine, sourceEnd: sourceLine, items: [] };
+      const parent = listStack[listStack.length - 1];
+      const parentItem = parent?.items[parent.items.length - 1];
+      if (parent && parent.indent < indent && parentItem) parentItem.children.push(group);
+      else listRoots.push(group);
+      listStack.push(group);
+    }
+    group.items.push({ content, sourceLine, value, children: [] });
+    for (const current of listStack) current.sourceEnd = sourceLine;
   };
 
   const flushCodeBlock = (endLine: number) => {
@@ -209,25 +228,17 @@ export function markdownToHtml(markdown: string, options: MarkdownRenderOptions 
       continue;
     }
 
-    const unorderedItem = line.match(/^\s*[-*]\s+(.+)$/);
+    const unorderedItem = line.match(/^(\s*)[-*]\s+(.+)$/);
     if (unorderedItem) {
       flushParagraph();
-      if (listType !== "ul") flushList();
-      listType = "ul";
-      listItems.push({ content: unorderedItem[1], sourceLine: index });
-      if (listStartLine === -1) listStartLine = index;
-      listEndLine = index;
+      addListItem("ul", unorderedItem[1].replace(/\t/g, "  ").length, unorderedItem[2], index);
       continue;
     }
 
-    const orderedItem = line.match(/^\s*\d+\.\s+(.+)$/);
+    const orderedItem = line.match(/^(\s*)(\d+)\.\s+(.+)$/);
     if (orderedItem) {
       flushParagraph();
-      if (listType !== "ol") flushList();
-      listType = "ol";
-      listItems.push({ content: orderedItem[1], sourceLine: index });
-      if (listStartLine === -1) listStartLine = index;
-      listEndLine = index;
+      addListItem("ol", orderedItem[1].replace(/\t/g, "  ").length, orderedItem[3], index, Number(orderedItem[2]));
       continue;
     }
 

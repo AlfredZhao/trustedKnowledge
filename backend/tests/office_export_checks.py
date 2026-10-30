@@ -148,6 +148,57 @@ class SchemaChecks(unittest.TestCase):
         value = payload(); value['limits'] = {'max_assets': 99999}
         with self.assertRaises(ValidationError): OfficeRequest.model_validate(value)
 
+    def test_nested_list_levels_are_bounded_and_preserved(self):
+        value = payload()
+        value['source']['blocks'] = [
+            {'id': 'title', 'type': 'heading', 'level': 1, 'runs': [{'text': '嵌套列表'}]},
+            {'id': 'top', 'type': 'paragraph', 'list': 'ol', 'listLevel': 0, 'prefix': '1. ', 'runs': [{'text': '父级'}]},
+            {'id': 'child', 'type': 'paragraph', 'list': 'ul', 'listLevel': 1, 'prefix': '• ', 'runs': [{'text': '子级'}]},
+            {'id': 'deep', 'type': 'paragraph', 'list': 'ol', 'listLevel': 5, 'prefix': '3. ', 'runs': [{'text': '第六层'}]},
+        ]
+        request = OfficeRequest.model_validate(value)
+        self.assertEqual([block.listLevel for block in request.source.blocks[1:]], [0, 1, 5])
+        value['source']['blocks'][-1]['listLevel'] = 6
+        with self.assertRaises(ValidationError): OfficeRequest.model_validate(value)
+        value['source']['blocks'][-1]['listLevel'] = 1
+        value['source']['blocks'][-1]['list'] = None
+        with self.assertRaisesRegex(ValidationError, '列表层级'): OfficeRequest.model_validate(value)
+
+    def test_planner_starts_each_third_level_heading_on_a_readable_page(self):
+        source = payload()['source']
+        source['blocks'] = [
+            {'id': 'title', 'type': 'heading', 'level': 1, 'runs': [{'text': '总览'}]},
+            {'id': 'section', 'type': 'heading', 'level': 2, 'runs': [{'text': '章节'}]},
+            {'id': 'one', 'type': 'heading', 'level': 3, 'runs': [{'text': '① 当前问题'}]},
+            {'id': 'one-body', 'type': 'paragraph', 'runs': [{'text': '第一小节正文'}]},
+            {'id': 'two', 'type': 'heading', 'level': 3, 'runs': [{'text': '② 解决方案'}]},
+            {'id': 'two-body', 'type': 'paragraph', 'runs': [{'text': '第二小节正文'}]},
+        ]
+        class Metrics:
+            def lines(self, text, width, size): return [(0, len(text))] if text else []
+            def width(self, text, size): return len(text) * size
+        pages = engine.Planner(source, engine.load_template_profile(), Metrics()).build()
+        bodies = [[element['block'] for element in page['elements'] if element.get('block')] for page in pages]
+        self.assertEqual(bodies, [['title'], ['section', 'one', 'one-body'], ['two', 'two-body']])
+
+    def test_planner_keeps_next_third_level_heading_off_a_previous_subsection_continuation(self):
+        source = payload()['source']
+        source['blocks'] = [
+            {'id': 'title', 'type': 'heading', 'level': 1, 'runs': [{'text': '总览'}]},
+            {'id': 'section', 'type': 'heading', 'level': 2, 'runs': [{'text': '章节'}]},
+            {'id': 'one', 'type': 'heading', 'level': 3, 'runs': [{'text': '① 当前问题'}]},
+            {'id': 'one-body', 'type': 'paragraph', 'runs': [{'text': 'A' * 80}]},
+            {'id': 'two', 'type': 'heading', 'level': 3, 'runs': [{'text': '② 解决方案'}]},
+            {'id': 'two-body', 'type': 'paragraph', 'runs': [{'text': '第二小节正文'}]},
+        ]
+        class Metrics:
+            def lines(self, text, width, size): return [(index, index + 1) for index in range(len(text))] or [(0, 0)]
+            def width(self, text, size): return len(text) * size
+        pages = engine.Planner(source, engine.load_template_profile(), Metrics()).build()
+        second = next(page for page in pages if any(element.get('block') == 'two' for element in page['elements']))
+        second_blocks = [element['block'] for element in second['elements'] if element.get('block')]
+        self.assertEqual(second_blocks, ['two', 'two-body'])
+
     def test_worker_enforces_configured_decoded_pixel_budget(self):
         value = image_payload(3000, 3000)
         value['source']['assets'].append({**value['source']['assets'][0], 'id': 'asset2'})

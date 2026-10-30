@@ -3,7 +3,7 @@ export interface OfficeAsset { id: string; kind: "image" | "formula" | "mermaid"
 export interface OfficeBlock {
   id: string; type: "heading" | "paragraph" | "code" | "graphic" | "table" | "break" | "rule";
   sourceStart: number; sourceEnd: number; runs?: OfficeRun[]; level?: number; text?: string; language?: string;
-  asset?: string; alt?: string; rows?: OfficeRun[][][]; list?: "ul" | "ol"; prefix?: string; quote?: boolean;
+  asset?: string; alt?: string; rows?: OfficeRun[][][]; list?: "ul" | "ol"; listLevel?: number; prefix?: string; quote?: boolean;
 }
 export interface OfficeSource { blocks: OfficeBlock[]; assets: OfficeAsset[]; }
 export interface OfficeLimits {

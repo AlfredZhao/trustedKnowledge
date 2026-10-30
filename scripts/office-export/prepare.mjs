@@ -153,12 +153,26 @@ try {
       } else if (element.matches('.tk-table-wrapper')) {
         blocks.push({ ...base, type: 'table', rows: Array.from(element.querySelectorAll('tr'), row => Array.from(row.children, cell => runs(cell))) });
       } else if (element.matches('ul,ol')) {
-        for (const li of element.children) {
-          const line = Number(li.dataset.markdownSourceLine);
-          const marker = lines[line]?.match(/^\s*(\d+)\.\s/);
-          blocks.push({ ...base, sourceStart: line, sourceEnd: line, type: 'paragraph', list: element.tagName.toLowerCase(),
-            prefix: marker ? `${marker[1]}. ` : '• ', runs: runs(li) });
-        }
+        const addList = (list, listLevel = 0) => {
+          if (listLevel > 5) throw new Error('Nested lists exceed the six-level Office export limit.');
+          const ordered = list.tagName.toLowerCase() === 'ol';
+          let number = Number(list.getAttribute('start') || '1');
+          for (const li of Array.from(list.children).filter(child => child.matches('li'))) {
+            const line = Number(li.dataset.markdownSourceLine);
+            const explicitNumber = Number(li.getAttribute('value'));
+            if (ordered && Number.isFinite(explicitNumber) && explicitNumber > 0) number = explicitNumber;
+            const directRuns = Array.from(li.childNodes)
+              .filter(child => !(child instanceof Element && child.matches('ul,ol')))
+              .flatMap(child => runs(child));
+            if (directRuns.some(run => run.text || run.asset)) {
+              blocks.push({ ...base, sourceStart: line, sourceEnd: line, type: 'paragraph', list: ordered ? 'ol' : 'ul',
+                listLevel, prefix: ordered ? `${number}. ` : '• ', runs: directRuns });
+            }
+            for (const child of Array.from(li.children).filter(child => child.matches('ul,ol'))) addList(child, listLevel + 1);
+            if (ordered) number += 1;
+          }
+        };
+        addList(element);
       } else if (element.matches('p,blockquote')) {
         let pending = [];
         const flush = () => { if (pending.length) blocks.push({ ...base, type: 'paragraph', quote: element.matches('blockquote'), runs: pending }); pending = []; };

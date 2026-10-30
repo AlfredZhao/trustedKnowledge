@@ -78,6 +78,74 @@ test("manual separators never split code, formulas or comments", async ({ page }
   expect(result.rule.breaks).toEqual([]);
 });
 
+test("shared reader preserves nested list structure for default reading and Office source", async ({ page }) => {
+  const result = await page.evaluate(async () => {
+    const { markdownToHtml } = (window as any).slidesTest;
+    const { prepareOfficeSource } = (window as any).officeTest;
+    const markdown = "# 嵌套列表\n\n1. 父级一\n   - 子级一\n     3. 三级从三开始\n   - 子级二\n2. 父级二";
+    const container = document.createElement("div");
+    container.innerHTML = markdownToHtml(markdown, { sourceMap: true });
+    const source = await prepareOfficeSource(markdown, new AbortController().signal, () => undefined, {
+      max_assets: 64, max_asset_bytes: 4_000_000, max_total_bytes: 48_000_000, max_total_pixels: 128_000_000,
+      max_body_bytes: 56_000_000, max_output_bytes: 64_000_000, max_job_seconds: 90, client_timeout_seconds: 180,
+    });
+    return {
+      topItems: container.querySelectorAll(":scope > div > ol > li").length,
+      nested: container.querySelector("ol > li > ul > li > ol[start='3'] > li")?.textContent,
+      blocks: source.blocks.filter((block: any) => block.list).map((block: any) => [block.list, block.listLevel, block.prefix, block.runs.map((run: any) => run.text || "").join("")]),
+    };
+  });
+  expect(result.topItems).toBe(2);
+  expect(result.nested).toBe("三级从三开始");
+  expect(result.blocks).toEqual([
+    ["ol", 0, "1. ", "父级一"], ["ul", 1, "• ", "子级一"], ["ol", 2, "3. ", "三级从三开始"], ["ul", 1, "• ", "子级二"], ["ol", 0, "2. ", "父级二"],
+  ]);
+});
+
+test("third-level topics start separately and keep their first paragraph in default slides", async ({ page }) => {
+  const result = await page.evaluate(async () => {
+    const { prepareMarkdownSlides, paginateMarkdownSlides, markdownToHtml } = (window as any).slidesTest;
+    const markdown = "# 总览\n\n### ① 当前问题\n第一小节正文。\n\n### ② 解决方案\n第二小节正文。";
+    const source = document.createElement("div");
+    const measure = document.createElement("div");
+    for (const node of [source, measure]) { node.className = "markdown-preview slide-content"; node.style.width = "550px"; node.style.setProperty("--slide-height", "300px"); document.body.append(node); }
+    const prepared = prepareMarkdownSlides(markdown);
+    source.innerHTML = markdownToHtml(prepared.markdown, { sourceMap: true });
+    const slides = await paginateMarkdownSlides(source, measure, 550, 300, prepared.breaks);
+    const sections = slides.map((slide: any) => {
+      const page = document.createElement("div"); page.innerHTML = slide.detailHtml;
+      return { headings: Array.from(page.querySelectorAll("h3"), node => node.textContent), text: page.textContent };
+    }).filter((page: any) => page.headings.length);
+    source.remove(); measure.remove();
+    return sections;
+  });
+  expect(result).toEqual([
+    { headings: ["① 当前问题"], text: "① 当前问题第一小节正文。" },
+    { headings: ["② 解决方案"], text: "② 解决方案第二小节正文。" },
+  ]);
+});
+
+test("a later third-level topic does not join a continuation page of the previous topic", async ({ page }) => {
+  const result = await page.evaluate(async () => {
+    const { prepareMarkdownSlides, paginateMarkdownSlides, markdownToHtml } = (window as any).slidesTest;
+    const first = "第一小节延续内容。".repeat(180);
+    const markdown = `# 总览\n\n### ① 当前问题\n${first}\n\n### ② 解决方案\n第二小节正文。`;
+    const source = document.createElement("div");
+    const measure = document.createElement("div");
+    for (const node of [source, measure]) { node.className = "markdown-preview slide-content"; node.style.width = "550px"; node.style.setProperty("--slide-height", "300px"); document.body.append(node); }
+    const prepared = prepareMarkdownSlides(markdown);
+    source.innerHTML = markdownToHtml(prepared.markdown, { sourceMap: true });
+    const slides = await paginateMarkdownSlides(source, measure, 550, 300, prepared.breaks);
+    const second = slides.find((slide: any) => slide.detailHtml.includes("② 解决方案"));
+    source.remove(); measure.remove();
+    return { count: slides.length, second: second?.detailHtml || "" };
+  });
+  expect(result.count).toBeGreaterThan(2);
+  expect(result.second).toContain("② 解决方案");
+  expect(result.second).toContain("第二小节正文。");
+  expect(result.second).not.toContain("第一小节延续内容。");
+});
+
 test("pagination preserves prose, code indentation, lists and every table row without scrolling", async ({ page }) => {
   const prose = "长段落里的加粗文字和链接必须完整保留。😀".repeat(180);
   const code = Array.from({ length: 90 }, (_, index) => `    print(${index})  # keep indentation`).join("\n");

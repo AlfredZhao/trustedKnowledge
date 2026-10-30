@@ -128,6 +128,7 @@ export async function paginateMarkdownSlides(
   let pending: Piece[] = [];
   let title = "正文";
   let previousLine = -1;
+  let sectionHasSubsection = false;
   let work = 0;
   const clone = (node: HTMLElement) => node.cloneNode(true) as HTMLElement;
   const measureNodes = (nodes: HTMLElement[]) => {
@@ -290,14 +291,23 @@ export async function paginateMarkdownSlides(
     return [fitAtomic(makePiece(base, block))];
   };
 
-  for (const [block, original] of Array.from(source.children).entries()) {
+  const originals = Array.from(source.children);
+  for (const [block, original] of originals.entries()) {
     if (isCancelled()) return [];
     if (!(original instanceof HTMLElement)) continue;
     const node = clone(original);
     const startLine = Number(node.dataset.markdownSourceStart ?? 0);
     if (breaks.some((line) => line > previousLine && line <= startLine)) flush();
     const heading = node.querySelector("h1, h2");
-    if (heading) title = heading.textContent || "正文";
+    if (heading) { title = heading.textContent || "正文"; sectionHasSubsection = false; }
+    const subsection = node.querySelector(":scope > h3");
+    if (subsection && pending.length) {
+      const next = originals[block + 1];
+      // Keep numbered third-level topics separate, and move a heading together
+      // with its next block when the remaining space would leave it orphaned.
+      if (sectionHasSubsection || (next instanceof HTMLElement && !fits([...pending.map(piece => piece.node), node, clone(next)]))) flush();
+    }
+    if (subsection) sectionHasSubsection = true;
     previousLine = Number(node.dataset.markdownSourceEnd ?? startLine);
     if (fits([node])) append(makePiece(node, block));
     else {

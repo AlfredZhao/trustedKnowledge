@@ -15,6 +15,22 @@ When fixing a bug with meaningful regression risk, add a short entry with:
 
 Keep entries concrete. Prefer file paths, function names, SQL placeholders, and test names over broad advice.
 
+## AIBS Office 导出：嵌套列表不能被扁平化或重复拼接
+
+- **Symptom**：导出含缩进列表的 Markdown 时提示“暂不支持嵌套列表”，或取消拦截后父项重复包含子项文字、PPTX/DOCX 丢失层级。
+- **Trigger**：有序/无序列表嵌套、混合列表、非 1 起始编号，或列表跨页。
+- **Root cause**：`officeSource.ts` 曾按顶层 `li` 调用递归的 `runs(item)`，它会连同子列表内容一起读取；Office IR 也没有层级字段，后端只能按同一左边距排版。
+- **Safe pattern**：递归遍历 `ul/ol > li`，父项只读取非 `ul/ol` 的直接子节点，再单独导出子列表；通过受限的 `listLevel`（0～5）传递层级。PPTX 预览/文件和 DOCX 都必须按该层级缩进，列表文字保持可编辑的显式项目符号/编号。
+- **Guardrail**：`frontend/tests/markdown-office.spec.ts` 验证混合嵌套列表 IR、编号和预览缩进；`backend/tests/office_export_checks.py` 验证 0～5 层约束以及 PPTX/DOCX 输出中的列表内容与缩进。
+
+## 幻灯片：三级标题不能与下一三级标题挤在同页或孤立在页尾
+
+- **Symptom**：同一页同时出现 `①`、`②` 等三级标题，或 `②` 留在页尾而正文翻到下一页，阅读层级不清晰。
+- **Trigger**：H3 小节连续出现，或当前页剩余空间只能容纳标题、不能容纳其首个内容块。
+- **Root cause**：默认阅读分页器与 AIBS `Planner` 只把 H1/H2 当作章节边界，H3 按普通正文流式排版；初版修复又把“已出现 H3”状态附着在当前页，自动续页会丢失该状态。
+- **Safe pattern**：同一页只放一个 H3；遇到下一 H3 时先分页。H3 入页前预留首个后续内容块的最小空间，默认阅读和 AIBS 都将“当前 H2 章节已开始 H3”状态保留跨自动续页，直到下一个 H2 才清空。
+- **Guardrail**：`frontend/tests/markdown-slides.spec.ts` 验证默认阅读中两个 H3 分页、标题与正文同页及首个 H3 跨页后的边界；`backend/tests/office_export_checks.py` 验证 AIBS 布局为每个 H3 创建独立正文页，并防止下一 H3 进入前一小节续页。
+
 ## Markdown 行内删除线与下划线：跨渲染/导出格式一致
 
 - **Symptom**：编辑器插入删除线或下划线后，预览、幻灯片、复制、增强 HTML 或 Office 导出中的任一链路显示原始标记或丢失格式。

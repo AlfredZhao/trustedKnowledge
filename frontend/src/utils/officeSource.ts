@@ -174,12 +174,27 @@ export async function prepareOfficeSource(markdown: string, signal: AbortSignal,
       } else if (element.matches(".tk-table-wrapper")) {
         add({ ...base, type: "table", rows: Array.from(element.querySelectorAll("tr"), row => Array.from(row.children, cell => runs(cell))) });
       } else if (element.matches("ul,ol")) {
-        for (const item of Array.from(element.children)) {
-          const line = Number((item as HTMLElement).dataset.markdownSourceLine);
-          if (/^\s{2,}/.test(lines[line])) throw new Error("暂不支持嵌套列表导出，请将列表展平或改用小标题。");
-          const number = lines[line].match(/^\s*(\d+)\.\s/)?.[1];
-          add({ sourceStart: line, sourceEnd: line, type: "paragraph", list: element.tagName.toLowerCase() as "ul" | "ol", prefix: number ? `${number}. ` : "• ", runs: runs(item) });
-        }
+        const addList = (list: Element, listLevel = 0) => {
+          if (listLevel > 5) throw new Error("嵌套列表超过 6 层，请拆分后导出。");
+          const ordered = list.tagName.toLowerCase() === "ol";
+          let number = Number(list.getAttribute("start") || "1");
+          for (const item of Array.from(list.children).filter((child): child is HTMLElement => child.matches("li"))) {
+            const line = Number(item.dataset.markdownSourceLine);
+            const explicitNumber = Number(item.getAttribute("value"));
+            if (ordered && Number.isFinite(explicitNumber) && explicitNumber > 0) number = explicitNumber;
+            // A list item's recursive text includes its child lists. Export the direct
+            // content separately, then emit children as their own indented paragraphs.
+            const directRuns = Array.from(item.childNodes)
+              .filter(child => !(child instanceof Element && child.matches("ul,ol")))
+              .flatMap(child => runs(child));
+            if (directRuns.some(run => run.text || run.asset)) {
+              add({ sourceStart: line, sourceEnd: line, type: "paragraph", list: ordered ? "ol" : "ul", listLevel, prefix: ordered ? `${number}. ` : "• ", runs: directRuns });
+            }
+            for (const child of Array.from(item.children).filter(child => child.matches("ul,ol"))) addList(child, listLevel + 1);
+            if (ordered) number += 1;
+          }
+        };
+        addList(element);
       } else if (element.matches("p,blockquote")) {
         let pending: OfficeRun[] = [];
         const flush = () => { if (pending.length) add({ ...base, type: "paragraph", quote: element.matches("blockquote"), runs: pending }); pending = []; };

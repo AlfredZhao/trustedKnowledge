@@ -109,6 +109,8 @@ class Planner:
         self.box = [value * 72 for value in profile["pptx"]["body_inches"]]
         self.sequence = 0
         self.section_pages = 0
+        # Persists across automatic continuation pages; reset only for a new H2.
+        self.section_has_subsection = False
 
     def heading(self, runs, width, height, sizes, max_lines, label, prefer_main_title=True):
         """Explicit line layout shared by PPT and previews; source runs stay intact."""
@@ -185,8 +187,10 @@ class Planner:
         if not text:
             return
         line_height = size * 1.40
+        list_indent = min(block.get('listLevel', 0), 5) * 22 if block.get('list') else 0
+        x, width = self.box[0] + list_indent, self.box[2] - list_indent
         # Account for frame margins and avoid consuming the footer's safety zone.
-        lines = self.metrics.lines(text, self.box[2] - 14, size)
+        lines = self.metrics.lines(text, width - 14, size)
         position = 0
         while position < len(lines):
             self.room(line_height + 8)
@@ -195,32 +199,34 @@ class Planner:
             end = lines[position + count - 1][1]
             chunk = slice_runs(runs, lines[position][0], end)
             height = count * line_height + 8
-            self.add({"kind": "text", "block": block["id"], "x": self.box[0], "y": self.y, "w": self.box[2], "h": height,
+            self.add({"kind": "text", "block": block["id"], "x": x, "y": self.y, "w": width, "h": height,
                       "size": size, "code": code, "quote": block.get("quote", False), "runs": chunk})
             self.y += height + 8
             position += count
 
     def inline_graphics(self, block, runs, size):
         # Lay out native text fragments and embedded formula pictures in reading order.
-        x, line_height = self.box[0], size * 1.6
+        list_indent = min(block.get('listLevel', 0), 5) * 22 if block.get('list') else 0
+        left, right = self.box[0] + list_indent, self.box[0] + self.box[2]
+        x, line_height = left, size * 1.6
         self.room(line_height)
         for run in runs:
             if "asset" in run:
                 asset = self.assets[run["asset"]]
                 height = size * 1.25
                 width = height * asset["width"] / asset["height"]
-                if width > self.box[2]:
+                if width > right - left:
                     raise ValueError("Inline formula too wide; use a display formula")
                 if x + width > self.box[0] + self.box[2]:
-                    self.y += line_height; self.room(line_height); x = self.box[0]
+                    self.y += line_height; self.room(line_height); x = left
                 self.add({"kind": "image", "block": block["id"], "asset": asset["id"], "x": x, "y": self.y + 3, "w": width, "h": height})
                 x += width + 4
                 continue
             value, start = run.get("text", ""), 0
             while start < len(value):
-                available = self.box[0] + self.box[2] - x - 6
+                available = right - x - 6
                 if available < size * 1.2:
-                    self.y += line_height; self.room(line_height); x = self.box[0]; continue
+                    self.y += line_height; self.room(line_height); x = left; continue
                 end = self.metrics.lines(value[start:], available, size)[0][1] + start
                 fragment = value[start:end]
                 width = self.metrics.width(fragment.rstrip('\n'), size) + 4
@@ -228,7 +234,7 @@ class Planner:
                           "size": size, "runs": [{**run, "text": fragment}], "nowrap": True})
                 x += width; start = end
                 if start < len(value) or fragment.endswith('\n'):
-                    self.y += line_height; self.room(line_height); x = self.box[0]
+                    self.y += line_height; self.room(line_height); x = left
         self.y += line_height + 8
 
     def graphic(self, block, following=None):
@@ -287,6 +293,25 @@ class Planner:
                       "size": size, "rows": rows, "row_indices": [0], "widths": widths, "heights": heights})
             self.y += heights[0] + 12
 
+    def subsection_reserve(self, index: int) -> float:
+        """Keep an H3 with the start of its own content instead of orphaning it."""
+        size = self.profile['pptx']['body_pt']
+        for candidate in self.source['blocks'][index + 1:]:
+            kind = candidate['type']
+            if kind == 'break' or (kind == 'heading' and candidate['level'] <= 3):
+                return 0
+            if kind in ('paragraph', 'heading'):
+                text = candidate.get('prefix', '') + text_of(candidate['runs'])
+                indent = min(candidate.get('listLevel', 0), 5) * 22 if candidate.get('list') else 0
+                return min(2, max(1, len(self.metrics.lines(text, self.box[2] - indent - 14, size)))) * size * 1.4 + 16
+            if kind == 'code':
+                return size * 1.4 + 16
+            if kind == 'graphic':
+                return 120
+            if kind == 'table':
+                return size * 1.4 + 28
+        return 0
+
     def build(self):
         for index, block in enumerate(self.source["blocks"]):
             kind = block["type"]
@@ -307,18 +332,31 @@ class Planner:
                           "size": 14, "runs": [{"text": self.profile['sample_metadata']['version']}]})
                 self.page = None; self.title = "概览"
                 self.section_pages = 0
+                self.section_has_subsection = False
             elif kind == "heading" and block["level"] <= 2:
                 if any('asset' in run for run in block['runs']):
                     raise ValueError('章节标题暂不支持图片或公式，请移至正文。')
+                self.section_has_subsection = False
                 self.new_page(text_of(block["runs"]), block["id"], block['runs'])
+            elif kind == "heading" and block["level"] == 3:
+                # One third-level topic per content page makes numbered subsections
+                # scannable, while the reserve prevents a heading at the page bottom.
+                if self.page is not None and self.section_has_subsection:
+                    self.new_page()
+                size = self.profile['pptx']['body_pt']
+                heading_height = max(1, len(self.metrics.lines(text_of(block['runs']), self.box[2] - 14, size))) * size * 1.4 + 8
+                self.room(heading_height + self.subsection_reserve(index))
+                self.section_has_subsection = True
+                self.paragraph(block, [{**run, "bold": True} for run in block['runs']], size)
             elif kind in ("paragraph", "heading"):
-                if block.get('list') and (index == 0 or self.source['blocks'][index - 1].get('list') != block['list']):
+                if block.get('list') and (index == 0 or not self.source['blocks'][index - 1].get('list')):
                     # Keep a short contiguous list together instead of orphaning its last item.
                     height = 0
                     for candidate in self.source['blocks'][index:]:
-                        if candidate.get('list') != block['list'] or any('asset' in run for run in candidate.get('runs', [])): break
+                        if not candidate.get('list') or any('asset' in run for run in candidate.get('runs', [])): break
                         size = self.profile['pptx']['body_pt']
-                        height += len(self.metrics.lines(candidate.get('prefix', '') + text_of(candidate['runs']), self.box[2] - 14, size)) * size * 1.4 + 16
+                        indent = min(candidate.get('listLevel', 0), 5) * 22
+                        height += len(self.metrics.lines(candidate.get('prefix', '') + text_of(candidate['runs']), self.box[2] - indent - 14, size)) * size * 1.4 + 16
                     if 0 < height <= self.box[3]: self.room(height)
                 runs = [{"text": block["prefix"]}] + block['runs'] if block.get('prefix') else block['runs']
                 if kind == "heading":
@@ -544,6 +582,12 @@ def write_docx(source, profile, directory):
                 shade = OxmlElement('w:shd'); shade.set(qn('w:fill'), profile['colors']['table_alternate']); paragraph._p.get_or_add_pPr().append(shade)
             if block.get('quote'):
                 paragraph.paragraph_format.left_indent = WordInches(.2)
+            if block.get('list'):
+                # Markers remain editable literal text, but preserve Markdown hierarchy
+                # with a hanging indent so wrapped lines align after the marker.
+                indent = WordInches(.28 * (block.get('listLevel', 0) + 1))
+                paragraph.paragraph_format.left_indent = indent
+                paragraph.paragraph_format.first_line_indent = WordInches(-.18)
             if block.get('prefix'):
                 word_runs(paragraph, [{'text': block['prefix']}], profile, assets, directory)
             runs = [{'text': block['text']}] if kind == 'code' else block['runs']
