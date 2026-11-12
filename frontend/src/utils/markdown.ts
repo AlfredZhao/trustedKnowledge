@@ -37,6 +37,7 @@ export function markdownToHtml(markdown: string, options: MarkdownRenderOptions 
   let codeBlockStartLine = -1;
   let codeBlockIndex = 0;
   let inMathBlock = false;
+  let mathBlockClosingDelimiter = "$$";
   let mathLines: string[] = [];
   let mathBlockStartLine = -1;
 
@@ -122,6 +123,7 @@ export function markdownToHtml(markdown: string, options: MarkdownRenderOptions 
   const flushMathBlock = (endLine: number) => {
     pushBlock(renderLatexBlock(mathLines.join("\n")), mathBlockStartLine, endLine);
     inMathBlock = false;
+    mathBlockClosingDelimiter = "$$";
     mathLines = [];
     mathBlockStartLine = -1;
   };
@@ -150,8 +152,8 @@ export function markdownToHtml(markdown: string, options: MarkdownRenderOptions 
 
     if (inMathBlock) {
       const trimmed = line.trim();
-      if (trimmed.endsWith("$$")) {
-        const closingContent = trimmed.slice(0, -2).trim();
+      if (trimmed.endsWith(mathBlockClosingDelimiter)) {
+        const closingContent = trimmed.slice(0, -mathBlockClosingDelimiter.length).trim();
         if (closingContent) mathLines.push(closingContent);
         flushMathBlock(index);
       } else {
@@ -161,18 +163,21 @@ export function markdownToHtml(markdown: string, options: MarkdownRenderOptions 
     }
 
     const trimmedLine = line.trim();
-    if (trimmedLine.startsWith("$$")) {
+    const mathBlockOpeningDelimiter = getMathBlockOpeningDelimiter(trimmedLine);
+    if (mathBlockOpeningDelimiter) {
       flushParagraph();
       flushList();
 
-      const inlineMathContent = extractSingleLineMathBlock(trimmedLine);
+      const closingDelimiter = mathBlockOpeningDelimiter === "$$" ? "$$" : "\\]";
+      const inlineMathContent = extractSingleLineMathBlock(trimmedLine, mathBlockOpeningDelimiter, closingDelimiter);
       if (inlineMathContent !== null) {
         pushBlock(renderLatexBlock(inlineMathContent), index, index);
         continue;
       }
 
-      const openingContent = trimmedLine.slice(2).trim();
+      const openingContent = trimmedLine.slice(mathBlockOpeningDelimiter.length).trim();
       inMathBlock = true;
+      mathBlockClosingDelimiter = closingDelimiter;
       mathLines = openingContent ? [openingContent] : [];
       mathBlockStartLine = index;
       continue;
@@ -863,11 +868,17 @@ function formatInlineMarkdown(value: string, options: MarkdownRenderOptions = {}
     .replace(INLINE_MATH_MARKER_PATTERN, (_match, index: string) => mathSegments[Number(index)] ?? "");
 }
 
-function extractSingleLineMathBlock(line: string) {
-  if (!line.startsWith("$$")) return null;
-  const lastDelimiterIndex = line.lastIndexOf("$$");
-  if (lastDelimiterIndex <= 1) return null;
-  return line.slice(2, lastDelimiterIndex).trim();
+function getMathBlockOpeningDelimiter(line: string) {
+  if (line.startsWith("$$")) return "$$";
+  if (line.startsWith("\\[")) return "\\[";
+  return null;
+}
+
+function extractSingleLineMathBlock(line: string, openingDelimiter: string, closingDelimiter: string) {
+  if (!line.startsWith(openingDelimiter)) return null;
+  const lastDelimiterIndex = line.lastIndexOf(closingDelimiter);
+  if (lastDelimiterIndex < openingDelimiter.length) return null;
+  return line.slice(openingDelimiter.length, lastDelimiterIndex).trim();
 }
 
 function renderLatexBlock(value: string) {
@@ -888,18 +899,26 @@ function replaceInlineMath(value: string, replace: (formula: string) => string) 
   let result = "";
   let index = 0;
   while (index < value.length) {
-    if (value[index] !== "$" || value[index + 1] === "$" || isEscapedCharacter(value, index)) {
+    const isDollarMath = value[index] === "$" && value[index + 1] !== "$" && !isEscapedCharacter(value, index);
+    const isParenthesisMath = value[index] === "\\" && value[index + 1] === "(" && !isEscapedCharacter(value, index);
+    if (!isDollarMath && !isParenthesisMath) {
       result += value[index++];
       continue;
     }
-    let end = index + 1;
-    while (end < value.length && (value[end] !== "$" || isEscapedCharacter(value, end))) end += 1;
-    if (end >= value.length || end === index + 1 || value.slice(index + 1, end).includes("\n")) {
+    const openingLength = isParenthesisMath ? 2 : 1;
+    let end = index + openingLength;
+    if (isParenthesisMath) {
+      while (end < value.length && !(value[end] === "\\" && value[end + 1] === ")" && !isEscapedCharacter(value, end))) end += 1;
+    } else {
+      while (end < value.length && (value[end] !== "$" || isEscapedCharacter(value, end))) end += 1;
+    }
+    const formula = value.slice(index + openingLength, end);
+    if (end >= value.length || !formula || formula.includes("\n")) {
       result += value[index++];
       continue;
     }
-    result += replace(value.slice(index + 1, end));
-    index = end + 1;
+    result += replace(formula);
+    index = end + (isParenthesisMath ? 2 : 1);
   }
   return result;
 }
@@ -945,16 +964,12 @@ function parseMarkdownTableCells(line: string) {
   const trimmed = line.trim().replace(/^\|/, "").replace(/\|$/, "");
   const cells: string[] = [];
   let current = "";
-  let escaped = false;
 
-  for (const char of trimmed) {
-    if (escaped) {
-      current += char;
-      escaped = false;
-      continue;
-    }
-    if (char === "\\") {
-      escaped = true;
+  for (let index = 0; index < trimmed.length; index += 1) {
+    const char = trimmed[index];
+    if (char === "\\" && trimmed[index + 1] === "|") {
+      current += "|";
+      index += 1;
       continue;
     }
     if (char === "|") {

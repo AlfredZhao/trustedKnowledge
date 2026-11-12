@@ -21,7 +21,7 @@ export function prepareMarkdownSlides(markdown: string): PreparedSlides {
   const explicit: number[] = [];
   const headings: number[] = [];
   let fence: { character: string; length: number } | null = null;
-  let math = false;
+  let mathClosingDelimiter: "$$" | "\\]" | null = null;
   let comment = false;
   lines.forEach((line, index) => {
     const trimmed = line.trim();
@@ -29,8 +29,8 @@ export function prepareMarkdownSlides(markdown: string): PreparedSlides {
       if (new RegExp(`^${fence.character}{${fence.length},}\\s*$`).test(trimmed)) fence = null;
       return;
     }
-    if (math) {
-      if (trimmed.endsWith("$$")) math = false;
+    if (mathClosingDelimiter) {
+      if (trimmed.endsWith(mathClosingDelimiter)) mathClosingDelimiter = null;
       return;
     }
     if (comment) {
@@ -43,7 +43,11 @@ export function prepareMarkdownSlides(markdown: string): PreparedSlides {
       return;
     }
     if (trimmed.startsWith("$$")) {
-      math = trimmed.length === 2 || !trimmed.slice(2).endsWith("$$");
+      mathClosingDelimiter = trimmed.length === 2 || !trimmed.slice(2).endsWith("$$") ? "$$" : null;
+      return;
+    }
+    if (trimmed.startsWith("\\[")) {
+      mathClosingDelimiter = trimmed.length === 2 || !trimmed.slice(2).endsWith("\\]") ? "\\]" : null;
       return;
     }
     if (/^<!--\s*slide\s*-->$/i.test(trimmed)) {

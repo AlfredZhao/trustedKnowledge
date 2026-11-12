@@ -70,12 +70,38 @@ test("manual separators never split code, formulas or comments", async ({ page }
   const result = await page.evaluate(() => {
     const { prepareMarkdownSlides: prepare } = (window as any).slidesTest;
     const code = "# 标题\n\n```md\n## 示例标题\n<!-- slide -->\n```\n\n$$\n<!-- slide -->\n$$\n\n<!--\n<!-- slide -->\n\n<!-- slide -->\n下一页";
-    return { explicit: prepare(code), headings: prepare("# A\n\n## B\n\n```\n## not a heading\n```"), rule: prepare("正文\n\n---\n\n正文") };
+    const slashMath = "\\[\n<!-- slide -->\n\\]\n\n<!-- slide -->\n下一页";
+    return { explicit: prepare(code), slashMath: prepare(slashMath), headings: prepare("# A\n\n## B\n\n```\n## not a heading\n```"), rule: prepare("正文\n\n---\n\n正文") };
   });
   expect(result.explicit.breaks).toEqual([14]);
   expect(result.explicit.markdown).toContain("## 示例标题\n<!-- slide -->");
+  expect(result.slashMath.breaks).toEqual([4]);
+  expect(result.slashMath.markdown).toContain("\\[\n<!-- slide -->\n\\]");
   expect(result.headings.breaks).toEqual([0, 2]);
   expect(result.rule.breaks).toEqual([]);
+});
+
+test("LaTeX backslash delimiters and table commands render through the shared Markdown pipeline", async ({ page }) => {
+  const result = await page.evaluate(() => {
+    const { markdownToHtml } = (window as any).slidesTest;
+    const markdown = [
+      "设长方体三条相邻棱长为 \\(a,b,c\\)。",
+      "", "\\[", "V=abc", "\\]", "",
+      "全面积记作 \\(F\\)：", "", "\\[F=2(ab+bc+ac)\\]", "",
+      "| 名称 | 公式 |", "| --- | --- |", "| 分数 | $\\frac{1}{2}$ |", "| 面积 | \\(F=2(ab+bc+ac)\\) |", "",
+      "行内代码 `\\(not math\\)`。",
+    ].join("\n");
+    const container = document.createElement("div");
+    container.innerHTML = markdownToHtml(markdown);
+    return {
+      formulas: container.querySelectorAll(".katex").length,
+      blocks: container.querySelectorAll(".tk-math-block").length,
+      tableFormulas: container.querySelectorAll("td .katex").length,
+      errors: container.querySelectorAll(".katex-error,.tk-math-error").length,
+      code: container.querySelector("code")?.textContent,
+    };
+  });
+  expect(result).toEqual({ formulas: 6, blocks: 2, tableFormulas: 2, errors: 0, code: String.raw`\(not math\)` });
 });
 
 test("shared reader preserves nested list structure for default reading and Office source", async ({ page }) => {

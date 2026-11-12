@@ -82,6 +82,7 @@ async function markdownToHtml(markdown, inputDir) {
   let codeLines = [];
   let codeBlockIndex = 0;
   let inMathBlock = false;
+  let mathBlockClosingDelimiter = "$$";
   let mathLines = [];
 
   const flushParagraph = async () => {
@@ -117,6 +118,7 @@ async function markdownToHtml(markdown, inputDir) {
   const flushMathBlock = () => {
     html.push(renderLatexBlock(mathLines.join("\n")));
     inMathBlock = false;
+    mathBlockClosingDelimiter = "$$";
     mathLines = [];
   };
 
@@ -143,8 +145,8 @@ async function markdownToHtml(markdown, inputDir) {
 
     if (inMathBlock) {
       const trimmed = line.trim();
-      if (trimmed.endsWith("$$")) {
-        const closingContent = trimmed.slice(0, -2).trim();
+      if (trimmed.endsWith(mathBlockClosingDelimiter)) {
+        const closingContent = trimmed.slice(0, -mathBlockClosingDelimiter.length).trim();
         if (closingContent) mathLines.push(closingContent);
         flushMathBlock();
       } else {
@@ -154,18 +156,21 @@ async function markdownToHtml(markdown, inputDir) {
     }
 
     const trimmedLine = line.trim();
-    if (trimmedLine.startsWith("$$")) {
+    const mathBlockOpeningDelimiter = getMathBlockOpeningDelimiter(trimmedLine);
+    if (mathBlockOpeningDelimiter) {
       await flushParagraph();
       await flushList();
 
-      const inlineMathContent = extractSingleLineMathBlock(trimmedLine);
+      const closingDelimiter = mathBlockOpeningDelimiter === "$$" ? "$$" : "\\]";
+      const inlineMathContent = extractSingleLineMathBlock(trimmedLine, mathBlockOpeningDelimiter, closingDelimiter);
       if (inlineMathContent !== null) {
         html.push(renderLatexBlock(inlineMathContent));
         continue;
       }
 
-      const openingContent = trimmedLine.slice(2).trim();
+      const openingContent = trimmedLine.slice(mathBlockOpeningDelimiter.length).trim();
       inMathBlock = true;
+      mathBlockClosingDelimiter = closingDelimiter;
       mathLines = openingContent ? [openingContent] : [];
       continue;
     }
@@ -593,11 +598,17 @@ function removeLeakedMarkdownCodePlaceholders(markdown) {
     });
 }
 
-function extractSingleLineMathBlock(line) {
-  if (!line.startsWith("$$")) return null;
-  const lastDelimiterIndex = line.lastIndexOf("$$");
-  if (lastDelimiterIndex <= 1) return null;
-  return line.slice(2, lastDelimiterIndex).trim();
+function getMathBlockOpeningDelimiter(line) {
+  if (line.startsWith("$$")) return "$$";
+  if (line.startsWith("\\[")) return "\\[";
+  return null;
+}
+
+function extractSingleLineMathBlock(line, openingDelimiter, closingDelimiter) {
+  if (!line.startsWith(openingDelimiter)) return null;
+  const lastDelimiterIndex = line.lastIndexOf(closingDelimiter);
+  if (lastDelimiterIndex < openingDelimiter.length) return null;
+  return line.slice(openingDelimiter.length, lastDelimiterIndex).trim();
 }
 
 function renderLatexBlock(value) {
@@ -618,18 +629,26 @@ function replaceInlineMath(value, replace) {
   let result = "";
   let index = 0;
   while (index < value.length) {
-    if (value[index] !== "$" || value[index + 1] === "$" || isEscapedCharacter(value, index)) {
+    const isDollarMath = value[index] === "$" && value[index + 1] !== "$" && !isEscapedCharacter(value, index);
+    const isParenthesisMath = value[index] === "\\" && value[index + 1] === "(" && !isEscapedCharacter(value, index);
+    if (!isDollarMath && !isParenthesisMath) {
       result += value[index++];
       continue;
     }
-    let end = index + 1;
-    while (end < value.length && (value[end] !== "$" || isEscapedCharacter(value, end))) end += 1;
-    if (end >= value.length || end === index + 1 || value.slice(index + 1, end).includes("\n")) {
+    const openingLength = isParenthesisMath ? 2 : 1;
+    let end = index + openingLength;
+    if (isParenthesisMath) {
+      while (end < value.length && !(value[end] === "\\" && value[end + 1] === ")" && !isEscapedCharacter(value, end))) end += 1;
+    } else {
+      while (end < value.length && (value[end] !== "$" || isEscapedCharacter(value, end))) end += 1;
+    }
+    const formula = value.slice(index + openingLength, end);
+    if (end >= value.length || !formula || formula.includes("\n")) {
       result += value[index++];
       continue;
     }
-    result += replace(value.slice(index + 1, end));
-    index = end + 1;
+    result += replace(formula);
+    index = end + (isParenthesisMath ? 2 : 1);
   }
   return result;
 }
@@ -671,16 +690,12 @@ function parseMarkdownTableCells(line) {
   const trimmed = line.trim().replace(/^\|/, "").replace(/\|$/, "");
   const cells = [];
   let current = "";
-  let escaped = false;
 
-  for (const char of trimmed) {
-    if (escaped) {
-      current += char;
-      escaped = false;
-      continue;
-    }
-    if (char === "\\") {
-      escaped = true;
+  for (let index = 0; index < trimmed.length; index += 1) {
+    const char = trimmed[index];
+    if (char === "\\" && trimmed[index + 1] === "|") {
+      current += "|";
+      index += 1;
       continue;
     }
     if (char === "|") {

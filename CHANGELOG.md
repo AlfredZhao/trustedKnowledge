@@ -29,6 +29,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Fixed / 修复
 
+- Fixed shared Markdown LaTeX rendering for content that uses `\(...\)` inline and `\[...\]` display delimiters. Table cells now preserve LaTeX command backslashes such as `\frac`, with the same behavior in previews, slides, enhanced HTML and Office export.
+- 修复共用 Markdown 对 `\(...\)` 行内公式及 `\[...\]` 块公式无法渲染的问题；表格单元格不再误删 `\frac` 等 LaTeX 命令的反斜杠，并在预览、幻灯片、增强 HTML 与 Office 导出中保持一致。
+
 - Fixed third-level headings joining the continuation page of a preceding third-level topic after that topic overflowed across slides. The subsection boundary now persists until the next H2 section.
 - 修复三级标题内容跨页后，下一三级标题仍被排入前一小节续页的问题：小节边界会持续保持到下一个 H2 章节。
 
