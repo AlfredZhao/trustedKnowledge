@@ -9,9 +9,12 @@ The format follows the common GitHub changelog convention inspired by
 
 ## 本次版本更新
 
-### [Unreleased]
+### [1.0.4] - 2026-11-21
 
 #### Added / 新增
+
+- Added `compose.deploy.yml` for Docker Compose and Podman deployments that consume prebuilt frontend/backend images from a registry or offline image archive without requiring source builds on the target machine.
+- 新增 `compose.deploy.yml`，支持 Docker Compose 与 Podman 在目标机器直接使用镜像仓库或离线导入的前后端预构建镜像，无需在部署机器保留源码构建环境。
 
 - Added AIBS Office export support for up to six levels of nested text lists. Mixed ordered/unordered lists, explicit ordered-list starts and hierarchy indentation now carry through the browser preview, PPTX and DOCX output.
 - AIBS Office 导出新增最多六层的文本型嵌套列表支持：有序/无序混合、显式起始编号和层级缩进会同步保留在网页预览、PPTX 与 DOCX 中。
@@ -21,6 +24,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Changed / 变更
 
+- Changed the locally managed Vite development listener from `0.0.0.0:8021` to `127.0.0.1:8021`. Container deployments continue to expose the built frontend through Nginx; the development server is no longer reachable directly from the LAN by default.
+- 本地托管的 Vite 开发服务监听由 `0.0.0.0:8021` 改为 `127.0.0.1:8021`。容器部署仍通过 Nginx 暴露构建后的前端；开发服务默认不再允许局域网直接访问。
+
 - Changed the locally managed backend listener from `0.0.0.0:8022` to `127.0.0.1:8022`. The Vite development proxy already targets loopback, so normal local frontend access remains unchanged; Docker continues using its container-network listener.
 - 本地托管后端监听由 `0.0.0.0:8022` 改为 `127.0.0.1:8022`。Vite 开发代理原本即指向回环地址，正常本地前端访问不受影响；Docker 仍使用容器网络监听。
 
@@ -28,6 +34,9 @@ The format follows the common GitHub changelog convention inspired by
 - 精简个人机密列表条目：仅展示系统名称、登录地址和记录编号，详情专属元数据不再撑高左侧列表。
 
 #### Fixed / 修复
+
+- Fixed the Vite development dependency at `6.4.6` or newer within the 6.x line, closing GHSA-p4f5-76q4-ffq7, which allowed crafted requests to execute code in the development server process. Removed the confirmed attack artifact `frontend/%261`; exposed credentials must still be rotated outside the codebase.
+- 将 Vite 开发依赖提升至 6.x 系列的 `6.4.6` 或更高版本，修复 GHSA-p4f5-76q4-ffq7（恶意请求可在开发服务进程中执行代码）；已移除确认的攻击产物 `frontend/%261`，但已暴露凭据仍需在代码库外完成轮换。
 
 - Fixed shared Markdown LaTeX rendering for content that uses `\(...\)` inline and `\[...\]` display delimiters. Table cells now preserve LaTeX command backslashes such as `\frac`, with the same behavior in previews, slides, enhanced HTML and Office export.
 - 修复共用 Markdown 对 `\(...\)` 行内公式及 `\[...\]` 块公式无法渲染的问题；表格单元格不再误删 `\frac` 等 LaTeX 命令的反斜杠，并在预览、幻灯片、增强 HTML 与 Office 导出中保持一致。

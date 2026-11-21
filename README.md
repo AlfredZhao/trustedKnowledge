@@ -99,6 +99,31 @@ docker compose --env-file .env.docker down
 
 基础镜像默认关闭网页 Codex 和网页重启功能。Codex CLI、宿主机服务脚本及 Git 凭据不会被打包进容器。
 
+### 预构建镜像部署（Docker / Podman）
+
+`compose.deploy.yml` 只引用镜像、不读取源码构建，适合镜像仓库发布或离线导入。先在构建机器生成与默认配置匹配的镜像：
+
+```bash
+podman build -f backend/Dockerfile -t localhost/trustedknowledge-backend:latest .
+podman build -f frontend/Dockerfile -t localhost/trustedknowledge-frontend:latest .
+```
+
+将镜像推送到仓库时，在 `.env.docker` 中把下列值改为完整仓库地址；离线使用 `podman save` / `podman load` 时可保留默认的 `localhost` 名称：
+
+```env
+TRUSTED_KNOWLEDGE_BACKEND_IMAGE=registry.example.com/trustedknowledge/backend:v1.0.0
+TRUSTED_KNOWLEDGE_FRONTEND_IMAGE=registry.example.com/trustedknowledge/frontend:v1.0.0
+```
+
+使用 Podman 启动预构建镜像：
+
+```bash
+podman-compose -f compose.deploy.yml --env-file .env.docker up -d
+podman-compose -f compose.deploy.yml --env-file .env.docker ps
+```
+
+Docker 环境使用等价的 `docker compose -f compose.deploy.yml ...` 命令。部署文件与源码构建版共用相同的端口、健康检查和持久化卷；切换部署方式时不要执行带 `-v` 的 `down`。
+
 ## 相关文档
 
 - [前端功能说明](docs/frontend-overview.md)

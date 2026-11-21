@@ -15,6 +15,14 @@ When fixing a bug with meaningful regression risk, add a short entry with:
 
 Keep entries concrete. Prefer file paths, function names, SQL placeholders, and test names over broad advice.
 
+## Vite 开发服务不得使用可远程利用版本或默认暴露到局域网
+
+- **Symptom**：页面闲置时突然出现 `[plugin:vite:import-glob] Unknown glob option "RCE_B64:..."`；前端日志中出现 `Function(globalThis.Buffer.from(...))`，并可能包含环境凭据或内网信息。
+- **Trigger**：使用受 GHSA-p4f5-76q4-ffq7 影响的 Vite 6.4.5 及以前版本，且开发服务绑定 `0.0.0.0`、可被不可信网络访问。
+- **Root cause**：Vite `import.meta.glob` 选项解析会对攻击者控制的对象键执行属性访问，导致开发服务端 Node.js 进程中的远程代码执行；项目同时使用 `--host 0.0.0.0` 扩大了可访问面。
+- **Safe pattern**：`frontend/package.json` 必须要求 Vite `^6.4.6` 或已修复的更高主版本，锁文件不得回退到受影响版本。本地启动默认只监听 `127.0.0.1`；需对外服务时应构建静态前端并通过 Nginx 发布，不得将 Vite 开发服务直接暴露到公网。
+- **Guardrail**：运行 `node -p "require('./frontend/node_modules/vite/package.json').version"` 应输出 `6.4.6` 或更高安全版本；`cd frontend && npm run build` 必须通过；检查 `frontend/vite.config.ts` 及 `scripts/start-frontend.sh` 仍默认使用 `127.0.0.1:8021`。若日志出现 `RCE_B64`，必须按已成功入侵处理，立即轮换日志/回响中出现的所有凭据，不得仅关闭浏览器 overlay。
+
 ## AIBS Office 导出：嵌套列表不能被扁平化或重复拼接
 
 - **Symptom**：导出含缩进列表的 Markdown 时提示“暂不支持嵌套列表”，或取消拦截后父项重复包含子项文字、PPTX/DOCX 丢失层级。

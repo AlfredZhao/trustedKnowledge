@@ -27,3 +27,4 @@ __pycache__/
 # Isolated Office proof tooling and generated review artifacts (not production data)
 .office-export-venv/
 output/office-template-validation*/
+output/

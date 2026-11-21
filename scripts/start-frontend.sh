@@ -17,7 +17,7 @@ if port_is_listening "$FRONTEND_PORT"; then
   exit 1
 fi
 
-echo "Starting frontend on 0.0.0.0:$FRONTEND_PORT..."
+echo "Starting frontend on 127.0.0.1:$FRONTEND_PORT..."
 (
   cd "$PROJECT_ROOT/frontend"
   nohup setsid "$CONDA_BIN/npm" run dev > "$LOG_FILE" 2>&1 &

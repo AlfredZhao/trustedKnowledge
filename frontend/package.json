@@ -6,7 +6,7 @@
   "scripts": {
     "test:slides": "playwright test --config playwright.slides.config.ts",
     "test:office": "playwright test --config playwright.slides.config.ts markdown-office.spec.ts",
-    "dev": "vite --host 0.0.0.0",
+    "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview --host 0.0.0.0"
@@ -21,7 +21,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "typescript": "^5.7.2",
-    "vite": "^6.0.7"
+    "vite": "^6.4.6"
   },
   "devDependencies": {
     "@playwright/test": "^1.64.0",
