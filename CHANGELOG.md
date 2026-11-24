@@ -9,6 +9,17 @@ The format follows the common GitHub changelog convention inspired by
 
 ## 本次版本更新
 
+### [Unreleased]
+
+#### Added / 新增
+
+#### Changed / 变更
+
+- Added an environment-managed exact host allowlist for temporary internal-domain access to the Vite development server. The list remains empty by default, while production access continues to use the Nginx-built frontend.
+- 为 Vite 开发服务新增环境变量管理的精确域名白名单，用于临时内网域名访问；默认白名单仍为空，正式访问继续使用 Nginx 托管的构建前端。
+
+#### Fixed / 修复
+
 ### [1.0.4] - 2026-11-21
 
 #### Added / 新增

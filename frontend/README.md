@@ -27,6 +27,18 @@ http://localhost:8021
 
 `strictPort` is enabled, so Vite will fail instead of moving to an unapproved port.
 
+For temporary access through an internal reverse-proxy domain, add only the
+required host names to `frontend/.env.development` (comma-separated, without a
+scheme, port, or path):
+
+```bash
+TRUSTED_KNOWLEDGE_VITE_ALLOWED_HOSTS=knowledge.example.net,knowledge-test.example.net
+```
+
+The list is empty by default. Do not use a wildcard or `allowedHosts: true`;
+production deployments should continue to serve the built frontend through
+Nginx rather than exposing the Vite development server.
+
 ## API
 
 The frontend calls same-origin `/api/...`. During development, Vite proxies `/api` to:
