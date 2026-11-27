@@ -22,7 +22,8 @@ LIST_COLUMNS = """
     todo_item.topic_tag,
     todo_item.created_at,
     todo_item.updated_at,
-    todo_item.todo_status
+    todo_item.todo_status,
+    todo_item.pinned_at
 """
 
 _table_ready = False
@@ -30,6 +31,10 @@ logger = logging.getLogger(__name__)
 
 
 class TodoUpdateLocked(RuntimeError):
+    pass
+
+
+class TodoPinStatusConflict(RuntimeError):
     pass
 
 
@@ -43,6 +48,7 @@ def _row_to_dict(row: Any) -> dict[str, Any]:
         "created_at": row[5],
         "updated_at": row[6],
         "todo_status": row[7],
+        "pinned_at": row[8],
     }
 
 
@@ -67,6 +73,7 @@ async def _ensure_todo_table(connection: oracledb.AsyncConnection) -> None:
                     created_at timestamp default systimestamp not null,
                     updated_at timestamp,
                     todo_status varchar2(20) default ''待处理'' not null,
+                    pinned_at timestamp,
                     constraint ai_todo_items_status_ck
                         check (todo_status in (''待处理'', ''处理中'', ''已完成''))
                 )
@@ -74,6 +81,22 @@ async def _ensure_todo_table(connection: oracledb.AsyncConnection) -> None:
         exception
             when others then
                 if sqlcode != -955 then
+                    raise;
+                end if;
+        end;
+        """
+    )
+    logger.info("Ensuring Oracle column ai_todo_items.pinned_at exists")
+    await cursor.execute(
+        """
+        begin
+            execute immediate '
+                alter table ai_todo_items
+                add pinned_at timestamp
+            ';
+        exception
+            when others then
+                if sqlcode != -1430 then
                     raise;
                 end if;
         end;
@@ -90,6 +113,22 @@ async def _ensure_todo_table(connection: oracledb.AsyncConnection) -> None:
         exception
             when others then
                 if sqlcode != -1430 then
+                    raise;
+                end if;
+        end;
+        """
+    )
+    logger.info("Ensuring Oracle index ai_todo_items_user_pin_created_idx exists")
+    await cursor.execute(
+        """
+        begin
+            execute immediate '
+                create index ai_todo_items_user_pin_created_idx
+                on ai_todo_items (user_id, todo_status, pinned_at desc, created_at desc)
+            ';
+        exception
+            when others then
+                if sqlcode != -955 then
                     raise;
                 end if;
         end;
@@ -179,7 +218,14 @@ async def list_todos(
             select {LIST_COLUMNS}
             from ai_todo_items todo_item
             {where_sql}
-            order by todo_item.created_at desc nulls last, todo_item.id desc
+            order by
+                case
+                    when todo_item.todo_status = '处理中' and todo_item.pinned_at is not null then 0
+                    else 1
+                end,
+                todo_item.pinned_at desc nulls last,
+                todo_item.created_at desc nulls last,
+                todo_item.id desc
             offset :offset rows fetch next :limit rows only
         """
         cursor = connection.cursor()
@@ -269,6 +315,8 @@ async def update_todo(todo_id: int, payload: TodoUpdate, auth_context: AuthConte
         return await get_todo_by_id(todo_id, auth_context)
 
     assignments = [f"{column} = :{column}" for column in values]
+    if values.get("todo_status") is not None and values["todo_status"] != "处理中":
+        assignments.append("pinned_at = null")
     assignments.append("updated_at = systimestamp")
     params = {**values, "todo_id": todo_id}
     lock_params: dict[str, Any] = {"todo_id": todo_id}
@@ -304,6 +352,51 @@ async def update_todo(todo_id: int, payload: TodoUpdate, auth_context: AuthConte
             return None
         _set_todo_lob_input_sizes(cursor, values.keys())
         await cursor.execute(sql, params)
+        if cursor.rowcount == 0:
+            await connection.rollback()
+            return None
+        await connection.commit()
+
+    return await get_todo_by_id(todo_id, auth_context)
+
+
+async def set_todo_pinned(todo_id: int, pinned: bool, auth_context: AuthContext) -> dict[str, Any] | None:
+    lock_params: dict[str, Any] = {"todo_id": todo_id}
+    lock_clauses = ["id = :todo_id"]
+    append_user_visibility_clause(lock_clauses, lock_params, auth_context, "user_id")
+    lock_sql = f"""
+        select id, todo_status
+        from ai_todo_items
+        where {" and ".join(lock_clauses)}
+        for update wait 5
+    """
+    update_sql = f"""
+        update ai_todo_items
+        set pinned_at = {"systimestamp" if pinned else "null"},
+            updated_at = systimestamp
+        where {" and ".join(lock_clauses)}
+    """
+
+    async with acquire_connection() as connection:
+        await _ensure_todo_table(connection)
+        cursor = connection.cursor()
+        try:
+            await cursor.execute(lock_sql, lock_params)
+        except oracledb.Error as exc:
+            if _is_lock_timeout_error(exc):
+                await connection.rollback()
+                raise TodoUpdateLocked("待办事项正在被另一个保存请求占用，请稍后重试。") from exc
+            raise
+
+        locked_row = await cursor.fetchone()
+        if locked_row is None:
+            await connection.rollback()
+            return None
+        if pinned and locked_row[1] != "处理中":
+            await connection.rollback()
+            raise TodoPinStatusConflict("只有“处理中”的待办事项可以置顶。")
+
+        await cursor.execute(update_sql, lock_params)
         if cursor.rowcount == 0:
             await connection.rollback()
             return None

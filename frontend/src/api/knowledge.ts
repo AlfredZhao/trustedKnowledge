@@ -298,6 +298,14 @@ export async function updateTodo(id: number, draft: TodoDraft): Promise<TodoItem
   });
 }
 
+export async function setTodoPinned(id: number, pinned: boolean): Promise<TodoItem> {
+  return request<TodoItem>(`/api/todos/${id}/pin`, {
+    method: "PATCH",
+    invalidatePrefixes: ["/api/todos"],
+    body: JSON.stringify({ pinned }),
+  });
+}
+
 export async function appendTodoToCurrent({
   id,
   username,

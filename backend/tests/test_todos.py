@@ -31,6 +31,11 @@ class FakeCursor:
     async def fetchone(self):
         return self.fetch_rows.pop(0) if self.fetch_rows else None
 
+    async def fetchall(self):
+        rows = self.fetch_rows
+        self.fetch_rows = []
+        return rows
+
     def setinputsizes(self, **kwargs) -> None:
         self.input_sizes = kwargs
         self.input_size_history.append(kwargs)
@@ -134,6 +139,69 @@ class TodoRepositoryTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("title", cursor.input_sizes)
         self.assertIn("content = :content", cursor.executed[1][0].lower())
         self.assertNotIn(":title", cursor.executed[1][0].lower())
+
+    async def test_update_todo_clears_pin_when_status_leaves_processing(self) -> None:
+        cursor = FakeCursor(fetch_rows=[(42,)])
+        connection = FakeConnection(cursor)
+        expected = {"id": 42, "title": "title", "content": "content", "source": None, "topic_tag": None, "todo_status": "已完成", "pinned_at": None}
+
+        with (
+            patch("app.repositories.todos.acquire_connection", return_value=FakeAcquire(connection)),
+            patch("app.repositories.todos._ensure_todo_table", new=AsyncMock()),
+            patch("app.repositories.todos.get_todo_by_id", new=AsyncMock(return_value=expected)),
+        ):
+            result = await todos.update_todo(42, TodoUpdate(todo_status="已完成"), self.auth)
+
+        self.assertEqual(result, expected)
+        self.assertIn("pinned_at = null", cursor.executed[1][0].lower())
+
+    async def test_set_todo_pinned_updates_processing_item(self) -> None:
+        cursor = FakeCursor(fetch_rows=[(42, "处理中")])
+        connection = FakeConnection(cursor)
+        expected = {"id": 42, "title": "title", "content": "content", "source": None, "topic_tag": None, "todo_status": "处理中", "pinned_at": "now"}
+
+        with (
+            patch("app.repositories.todos.acquire_connection", return_value=FakeAcquire(connection)),
+            patch("app.repositories.todos._ensure_todo_table", new=AsyncMock()),
+            patch("app.repositories.todos.get_todo_by_id", new=AsyncMock(return_value=expected)),
+        ):
+            result = await todos.set_todo_pinned(42, True, self.auth)
+
+        self.assertEqual(result, expected)
+        self.assertTrue(connection.committed)
+        self.assertIn("for update wait 5", cursor.executed[0][0].lower())
+        self.assertIn("pinned_at = systimestamp", cursor.executed[1][0].lower())
+
+    async def test_set_todo_pinned_rejects_non_processing_item(self) -> None:
+        cursor = FakeCursor(fetch_rows=[(42, "已完成")])
+        connection = FakeConnection(cursor)
+
+        with (
+            patch("app.repositories.todos.acquire_connection", return_value=FakeAcquire(connection)),
+            patch("app.repositories.todos._ensure_todo_table", new=AsyncMock()),
+        ):
+            with self.assertRaises(todos.TodoPinStatusConflict):
+                await todos.set_todo_pinned(42, True, self.auth)
+
+        self.assertTrue(connection.rolled_back)
+        self.assertFalse(connection.committed)
+        self.assertEqual(len(cursor.executed), 1)
+
+    async def test_list_todos_orders_pinned_processing_items_first(self) -> None:
+        cursor = FakeCursor(fetch_rows=[])
+        connection = FakeConnection(cursor)
+
+        with (
+            patch("app.repositories.todos.acquire_connection", return_value=FakeAcquire(connection)),
+            patch("app.repositories.todos._ensure_todo_table", new=AsyncMock()),
+        ):
+            items, total = await todos.list_todos(limit=8, offset=0, include_total=False, auth_context=self.auth)
+
+        self.assertEqual(items, [])
+        self.assertEqual(total, 0)
+        list_sql = cursor.executed[0][0].lower()
+        self.assertIn("todo_item.pinned_at desc nulls last", list_sql)
+        self.assertLess(list_sql.index("todo_item.pinned_at desc"), list_sql.index("todo_item.created_at desc"))
 
     async def test_update_todo_rolls_back_when_visible_row_missing(self) -> None:
         cursor = FakeCursor(fetch_rows=[])

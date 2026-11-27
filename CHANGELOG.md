@@ -13,6 +13,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Added / 新增
 
+- Added persistent pinning for Todo items in the `处理中` state. Recently pinned items sort first across pagination, unpinned items return to the normal creation-time order, and changing a pinned item to another state clears its pin automatically.
+- 待办事项新增“处理中”记录持久化置顶：最近置顶的事项会跨分页排在最前，取消置顶后恢复按创建时间排序，置顶事项离开“处理中”状态时会自动取消置顶。
+
 #### Changed / 变更
 
 - Added an environment-managed exact host allowlist for temporary internal-domain access to the Vite development server. The list remains empty by default, while production access continues to use the Nginx-built frontend.

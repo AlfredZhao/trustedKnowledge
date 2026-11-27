@@ -72,6 +72,10 @@ class TodoUpdate(BaseModel):
         return normalize_optional_topic_tag(value)
 
 
+class TodoPinUpdate(BaseModel):
+    pinned: bool
+
+
 class TodoCurrentAppendTarget(BaseModel):
     username: str = Field(..., min_length=1, max_length=30)
     type: str = Field(..., min_length=1, max_length=40)
@@ -92,6 +96,7 @@ class TodoItem(TodoBase):
     id: int
     created_at: datetime | None = None
     updated_at: datetime | None = None
+    pinned_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

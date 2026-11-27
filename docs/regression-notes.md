@@ -15,6 +15,14 @@ When fixing a bug with meaningful regression risk, add a short entry with:
 
 Keep entries concrete. Prefer file paths, function names, SQL placeholders, and test names over broad advice.
 
+## 待办置顶必须在服务端分页前排序，并随状态退出自动清除
+
+- **Symptom**：置顶只在当前页生效，刷新或换设备后失效；取消置顶没有回到按创建时间排列的位置；已完成事项仍显示在置顶区。
+- **Trigger**：从第二页置顶、多个事项连续置顶、取消置顶，或将已置顶事项从 `处理中` 改为其他状态。
+- **Root cause**：仅在前端对当前页数组排序无法跨服务端分页；把置顶作为普通布尔值也无法表达“最近置顶优先”；状态更新未同步清理置顶时间会留下失效置顶。
+- **Safe pattern**：使用 `AI_TODO_ITEMS.PINNED_AT` 持久化置顶时间；`list_todos` 必须在 `OFFSET/FETCH` 前按“处理中且已置顶、置顶时间倒序、创建时间倒序、ID 倒序”排序。置顶接口在行锁内校验当前状态；`update_todo` 将状态改离 `处理中` 时必须同时清空 `PINNED_AT`。取消置顶只清空时间，不修改创建时间。
+- **Guardrail**：运行 `cd backend && python -m pytest tests/test_todos.py -q`，覆盖置顶状态校验、排序 SQL 和状态退出时自动清除；运行 `cd frontend && npm run build`。手工验证桌面/移动端中从非首页置顶会回到第一页顶部，连续置顶按最近操作排序，取消置顶恢复正常顺序。
+
 ## Vite 开发服务不得使用可远程利用版本或默认暴露到局域网
 
 - **Symptom**：页面闲置时突然出现 `[plugin:vite:import-glob] Unknown glob option "RCE_B64:..."`；前端日志中出现 `Function(globalThis.Buffer.from(...))`，并可能包含环境凭据或内网信息。

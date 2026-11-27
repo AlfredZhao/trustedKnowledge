@@ -41,6 +41,7 @@ import {
   Menu,
   Moon,
   Pencil,
+  Pin,
   Plus,
   QrCode,
   Radio,
@@ -115,6 +116,7 @@ import {
   updateBlogFactoryStatus,
   updateBlogPublishConfig,
   updateKnowledge,
+  setTodoPinned,
   updateTodo,
   validateBlogPublishConfig,
   publishBlogFactoryArticle,
@@ -873,6 +875,7 @@ function App() {
   const [isTodoLoading, setIsTodoLoading] = useState(false);
   const [isTodoDetailLoading, setIsTodoDetailLoading] = useState(false);
   const [isTodoSaving, setIsTodoSaving] = useState(false);
+  const [isTodoPinning, setIsTodoPinning] = useState(false);
   const [isConvertingTodoToKnowledge, setIsConvertingTodoToKnowledge] = useState(false);
   const [todoError, setTodoError] = useState<string | null>(null);
   const [todoSaveError, setTodoSaveError] = useState<string | null>(null);
@@ -4182,6 +4185,7 @@ function App() {
   }
 
   async function handleSelectTodo(item: TodoItem) {
+    if (isTodoPinning) return;
     const requestId = ++todoDetailRequestRef.current;
     setSelectedTodoId(item.id);
     selectedTodoSavedDraftRef.current = todoItemToDraft(item);
@@ -4217,6 +4221,7 @@ function App() {
       selectedTodoId === null ||
       isTodoDetailLoading ||
       isTodoSaving ||
+      isTodoPinning ||
       isConvertingTodoToKnowledge
     ) {
       return;
@@ -4281,6 +4286,31 @@ function App() {
       setTodoSaveError(error instanceof Error ? error.message : "待办事项保存失败，请稍后重试。");
     } finally {
       setIsTodoSaving(false);
+    }
+  }
+
+  async function handleToggleTodoPin() {
+    if (selectedTodoId === null || isTodoPinning || isTodoSaving || isConvertingTodoToKnowledge) return;
+    const selectedItem = todoItems.find((item) => item.id === selectedTodoId);
+    if (!selectedItem) return;
+
+    const nextPinned = !selectedItem.pinned_at;
+    if (nextPinned && (selectedItem.todo_status !== "处理中" || todoDraft.todo_status !== "处理中")) {
+      setTodoSaveError("只有“处理中”的待办事项可以置顶。");
+      return;
+    }
+
+    setIsTodoPinning(true);
+    setTodoSaveError(null);
+    try {
+      const updated = await setTodoPinned(selectedTodoId, nextPinned);
+      setTodoItems((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+      setTodoPage(1);
+      setTodoRefreshToken((current) => current + 1);
+    } catch (error) {
+      setTodoSaveError(error instanceof Error ? error.message : "待办事项置顶状态更新失败，请稍后重试。");
+    } finally {
+      setIsTodoPinning(false);
     }
   }
 
@@ -6101,6 +6131,7 @@ function App() {
               total={todoTotal}
               page={todoPage}
               selectedId={selectedTodoId}
+              selectedItem={todoItems.find((item) => item.id === selectedTodoId) ?? null}
               username={todoUsername}
               isMobileEditorOpen={isMobileTodoEditorOpen}
               draft={todoDraft}
@@ -6108,6 +6139,7 @@ function App() {
               isLoading={isTodoLoading}
               isDetailLoading={isTodoDetailLoading}
               isSaving={isTodoSaving}
+              isPinning={isTodoPinning}
               isConvertingToKnowledge={isConvertingTodoToKnowledge}
               loadError={todoError}
               saveError={todoSaveError || todoCopyError}
@@ -6127,6 +6159,7 @@ function App() {
               onSelect={handleSelectTodo}
               onSelectAdjacent={handleSelectAdjacentTodo}
               onCopyContent={handleCopyTodoContent}
+              onTogglePin={handleToggleTodoPin}
               onConvertToKnowledge={handleConvertSelectedTodoToKnowledge}
               onStatusFilterChange={(nextStatus) => {
                 setTodoPage(1);
@@ -12891,6 +12924,7 @@ function TodoWorkspace({
   total,
   page,
   selectedId,
+  selectedItem,
   username,
   isMobileEditorOpen,
   draft,
@@ -12898,6 +12932,7 @@ function TodoWorkspace({
   isLoading,
   isDetailLoading,
   isSaving,
+  isPinning,
   isConvertingToKnowledge,
   loadError,
   saveError,
@@ -12911,6 +12946,7 @@ function TodoWorkspace({
   onSelect,
   onSelectAdjacent,
   onCopyContent,
+  onTogglePin,
   onConvertToKnowledge,
   onCloseMobileEditor,
   onStatusFilterChange,
@@ -12922,6 +12958,7 @@ function TodoWorkspace({
   total: number;
   page: number;
   selectedId: number | null;
+  selectedItem: TodoItem | null;
   username: string;
   isMobileEditorOpen: boolean;
   draft: TodoDraft;
@@ -12929,6 +12966,7 @@ function TodoWorkspace({
   isLoading: boolean;
   isDetailLoading: boolean;
   isSaving: boolean;
+  isPinning: boolean;
   isConvertingToKnowledge: boolean;
   loadError: string | null;
   saveError: string | null;
@@ -12942,6 +12980,7 @@ function TodoWorkspace({
   onSelect: (item: TodoItem) => void;
   onSelectAdjacent: (direction: "previous" | "next") => void;
   onCopyContent: () => void;
+  onTogglePin: () => void;
   onConvertToKnowledge: () => void;
   onCloseMobileEditor: () => void;
   onStatusFilterChange: (status: TodoStatus | "all") => void;
@@ -12976,8 +13015,16 @@ function TodoWorkspace({
     draft.title.trim().length > 0 &&
     draft.content.trim().length > 0 &&
     !isSaving &&
+    !isPinning &&
     !isConvertingToKnowledge;
   const canCopyContent = selectedId !== null && (draft.title.trim().length > 0 || draft.content.trim().length > 0);
+  const isSelectedPinned = selectedItem?.pinned_at !== null && selectedItem?.pinned_at !== undefined;
+  const canTogglePin =
+    selectedItem !== null &&
+    (isSelectedPinned || (selectedItem.todo_status === "处理中" && draft.todo_status === "处理中")) &&
+    !isPinning &&
+    !isSaving &&
+    !isConvertingToKnowledge;
   const isMobileDetailVisible = isMobileEditorOpen && selectedId !== null && isMobileViewport();
 
   useEffect(() => {
@@ -13023,6 +13070,26 @@ function TodoWorkspace({
           >
             下一条
             <ChevronRight size={16} />
+          </button>
+          <button
+            className={`flex h-10 flex-1 items-center justify-center gap-2 rounded-lg border px-3 text-sm font-medium transition disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-600 sm:flex-none ${
+              isSelectedPinned
+                ? "border-amberline/30 bg-amberline/10 text-amber-100 hover:bg-amberline/15"
+                : "border-white/10 bg-white/[0.035] text-slate-300 hover:border-amberline/30 hover:text-amber-100"
+            }`}
+            disabled={!canTogglePin}
+            title={
+              isSelectedPinned
+                ? "取消置顶后按创建时间回到原有排序位置"
+                : selectedItem?.todo_status === "处理中" && draft.todo_status === "处理中"
+                  ? "置顶当前待办事项"
+                  : "只有“处理中”的待办事项可以置顶"
+            }
+            type="button"
+            onClick={onTogglePin}
+          >
+            {isPinning ? <Loader2 className="animate-spin" size={16} /> : <Pin className={isSelectedPinned ? "fill-current" : ""} size={16} />}
+            {isPinning ? "处理中" : isSelectedPinned ? "取消置顶" : "置顶"}
           </button>
           {isDetailLoading ? <Loader2 className="shrink-0 animate-spin text-mint-300" size={17} /> : null}
         </div>
@@ -13148,7 +13215,7 @@ function TodoWorkspace({
             </button>
             <button
               className="flex h-12 items-center justify-center gap-2 rounded-lg border border-amberline/25 bg-amberline/10 px-4 font-medium text-amber-100 transition hover:bg-amberline/15 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
-              disabled={isSaving || isConvertingToKnowledge}
+              disabled={isSaving || isPinning || isConvertingToKnowledge}
               type="button"
               onClick={onConvertToKnowledge}
             >
@@ -13275,6 +13342,12 @@ function TodoWorkspace({
                       <span>#{item.id}</span>
                       <span>{formatHistoryDate(item.created_at)}</span>
                       {item.updated_at ? <span>更新 {formatHistoryDate(item.updated_at)}</span> : null}
+                      {item.pinned_at ? (
+                        <span className="inline-flex items-center gap-1 rounded border border-amberline/25 bg-amberline/10 px-1.5 py-0.5 text-amber-100">
+                          <Pin className="fill-current" size={11} />
+                          已置顶
+                        </span>
+                      ) : null}
                     </div>
                     <h3 className="line-clamp-2 text-sm font-semibold leading-6 text-slate-50">{item.title}</h3>
                   </div>
@@ -13340,7 +13413,7 @@ function TodoWorkspace({
 
       <MobileEditorSheet
         icon={<Pencil size={17} />}
-        isBusy={isDetailLoading || isSaving || isConvertingToKnowledge}
+        isBusy={isDetailLoading || isSaving || isPinning || isConvertingToKnowledge}
         isOpen={isMobileDetailVisible}
         label="Todo Detail"
         title="编辑待办事项"

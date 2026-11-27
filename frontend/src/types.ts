@@ -31,6 +31,7 @@ export interface TodoItem {
   todo_status: TodoStatus;
   created_at: string | null;
   updated_at: string | null;
+  pinned_at: string | null;
 }
 
 export interface TodoDraft {

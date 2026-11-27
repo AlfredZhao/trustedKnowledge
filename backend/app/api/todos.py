@@ -7,11 +7,19 @@ from app.api.errors import oracle_http_exception
 from app.core.security import require_current_user
 from app.repositories.conversions import convert_todo_to_knowledge
 from app.repositories.current_records import prepend_todo_to_current_content
-from app.repositories.todos import TodoUpdateLocked, create_todo, get_todo_by_id, list_todos, update_todo
+from app.repositories.todos import (
+    TodoPinStatusConflict,
+    TodoUpdateLocked,
+    create_todo,
+    get_todo_by_id,
+    list_todos,
+    set_todo_pinned,
+    update_todo,
+)
 from app.repositories.users import AuthContext
 from app.schemas.current_records import CurrentRecordItem
 from app.schemas.knowledge import KnowledgeItem
-from app.schemas.todos import TodoCreate, TodoCurrentAppendTarget, TodoItem, TodoListResponse, TodoUpdate
+from app.schemas.todos import TodoCreate, TodoCurrentAppendTarget, TodoItem, TodoListResponse, TodoPinUpdate, TodoUpdate
 
 
 router = APIRouter(prefix="/todos", tags=["todos"])
@@ -132,6 +140,27 @@ async def patch_todo(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except oracledb.Error as exc:
         raise oracle_http_exception(exc, "Oracle rejected the todo update") from exc
+
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Todo item not found")
+
+    return TodoItem.model_validate(item)
+
+
+@router.patch("/{todo_id}/pin", response_model=TodoItem)
+async def patch_todo_pin(
+    todo_id: Annotated[int, Path(ge=1)],
+    payload: TodoPinUpdate,
+    auth_context: AuthContext = Depends(require_current_user),
+) -> TodoItem:
+    try:
+        item = await set_todo_pinned(todo_id, payload.pinned, auth_context)
+    except TodoPinStatusConflict as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except TodoUpdateLocked as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except oracledb.Error as exc:
+        raise oracle_http_exception(exc, "Oracle rejected the todo pin update") from exc
 
     if item is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Todo item not found")
