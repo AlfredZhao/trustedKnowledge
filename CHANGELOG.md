@@ -13,6 +13,9 @@ The format follows the common GitHub changelog convention inspired by
 
 #### Added / 新增
 
+- Added `⌘ + Enter` Markdown save shortcuts on macOS and `Ctrl + Enter` on Windows/Linux for knowledge, blog factory, Todo, private notes, and Skill Markdown editors. Destructive knowledge merging remains an explicit button-only confirmation.
+- Markdown 编辑器新增快捷保存：macOS 使用 `⌘ + Enter`，Windows/Linux 使用 `Ctrl + Enter`，覆盖可信知识、博客工厂、待办、个人机密备注和 Skill Markdown 编辑；会移除原记录的知识合并仍须显式点击确认。
+
 - Added persistent pinning for Todo items in the `处理中` state. Recently pinned items sort first across pagination, unpinned items return to the normal creation-time order, and changing a pinned item to another state clears its pin automatically.
 - 待办事项新增“处理中”记录持久化置顶：最近置顶的事项会跨分页排在最前，取消置顶后恢复按创建时间排序，置顶事项离开“处理中”状态时会自动取消置顶。
 

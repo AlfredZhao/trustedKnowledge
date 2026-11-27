@@ -8493,6 +8493,12 @@ interface MarkdownImageTextareaHandle {
   restoreViewport: (viewport: MarkdownEditorViewport) => void;
 }
 
+interface MarkdownSaveShortcut {
+  disabled?: boolean;
+  label?: string;
+  onSave?: () => void | Promise<void>;
+}
+
 function getMarkdownSourceLine(markdown: string, selectionStart: number) {
   return markdown.slice(0, selectionStart).split("\n").length - 1;
 }
@@ -8537,12 +8543,14 @@ const MarkdownImageTextarea = forwardRef<MarkdownImageTextareaHandle, {
   className: string;
   placeholder?: string;
   disabled?: boolean;
+  saveShortcut?: MarkdownSaveShortcut;
 }>(function MarkdownImageTextarea({
   value,
   onChange,
   className,
   placeholder,
   disabled,
+  saveShortcut,
 }, ref) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -8847,7 +8855,17 @@ const MarkdownImageTextarea = forwardRef<MarkdownImageTextareaHandle, {
   }
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (event.nativeEvent.isComposing || event.altKey || event.shiftKey || (!event.metaKey && !event.ctrlKey) || event.key.toLowerCase() !== "i") return;
+    if (event.nativeEvent.isComposing || event.altKey || event.shiftKey) return;
+
+    if (isMarkdownSaveShortcut(event)) {
+      if (!saveShortcut || disabled || isUploadingImage || saveShortcut.disabled || event.repeat) return;
+      event.preventDefault();
+      if (saveShortcut.onSave) void saveShortcut.onSave();
+      else event.currentTarget.form?.requestSubmit();
+      return;
+    }
+
+    if ((!event.metaKey && !event.ctrlKey) || event.key.toLowerCase() !== "i") return;
     if (disabled || isUploadingImage) return;
 
     event.preventDefault();
@@ -8860,17 +8878,24 @@ const MarkdownImageTextarea = forwardRef<MarkdownImageTextareaHandle, {
         <div className="space-y-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="block text-[11px] font-medium uppercase tracking-[0.14em] text-slate-500">Markdown</span>
-            <MarkdownSlidesButton markdown={value} disabled={disabled || isUploadingImage}
-              getSourceLine={() => {
-                const textarea = textareaRef.current;
-                if (!textarea) return 0;
-                slideViewportRef.current = { selectionStart: textarea.selectionStart, selectionEnd: textarea.selectionEnd, scrollTop: textarea.scrollTop, scrollLeft: textarea.scrollLeft };
-                return getMarkdownSourceLine(value, textarea.selectionStart);
-              }}
-              onReturn={() => {
-                const viewport = slideViewportRef.current;
-                if (viewport) restoreEditorSelection(viewport.selectionStart, viewport.selectionEnd, viewport.scrollTop, viewport.scrollLeft);
-              }} />
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {saveShortcut ? (
+                <span className="hidden text-[11px] text-slate-500 sm:inline">
+                  {getMarkdownSaveShortcutLabel()} {saveShortcut.label ?? "保存"}
+                </span>
+              ) : null}
+              <MarkdownSlidesButton markdown={value} disabled={disabled || isUploadingImage}
+                getSourceLine={() => {
+                  const textarea = textareaRef.current;
+                  if (!textarea) return 0;
+                  slideViewportRef.current = { selectionStart: textarea.selectionStart, selectionEnd: textarea.selectionEnd, scrollTop: textarea.scrollTop, scrollLeft: textarea.scrollLeft };
+                  return getMarkdownSourceLine(value, textarea.selectionStart);
+                }}
+                onReturn={() => {
+                  const viewport = slideViewportRef.current;
+                  if (viewport) restoreEditorSelection(viewport.selectionStart, viewport.selectionEnd, viewport.scrollTop, viewport.scrollLeft);
+                }} />
+            </div>
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
             {[
@@ -8965,6 +8990,20 @@ const MarkdownImageTextarea = forwardRef<MarkdownImageTextareaHandle, {
     </div>
   );
 });
+
+function isMarkdownSaveShortcut(event: React.KeyboardEvent<HTMLTextAreaElement>) {
+  if (event.key !== "Enter" || event.altKey || event.shiftKey || event.nativeEvent.isComposing) return false;
+  const isMac = /Macintosh|Mac OS X/.test(navigator.userAgent);
+  return isMac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
+}
+
+function getMarkdownSaveShortcutLabel() {
+  return /Macintosh|Mac OS X/.test(navigator.userAgent) ? "⌘ + Enter" : "Ctrl + Enter";
+}
+
+function getMarkdownSaveAriaShortcut() {
+  return /Macintosh|Mac OS X/.test(navigator.userAgent) ? "Meta+Enter" : "Control+Enter";
+}
 
 function isMarkdownViewToggleShortcut(event: KeyboardEvent) {
   if (event.code !== "Backslash" || event.altKey || event.shiftKey || event.isComposing) return false;
@@ -9216,6 +9255,10 @@ function KnowledgeForm({
                 className="control min-h-[330px] resize-none leading-7"
                 onChange={(answer) => onDraftChange({ ...draft, answer })}
                 placeholder={contentPlaceholder}
+                saveShortcut={{
+                  disabled: !canSubmit || isDeleting || isConvertingToTodo,
+                  label: isEditing ? "保存" : "提交",
+                }}
               />
             ) : draft.answer.trim() ? (
               <MarkdownPreview markdown={draft.answer} sourceLine={answerPreviewSourceLine} showSlides />
@@ -9232,6 +9275,10 @@ function KnowledgeForm({
               className="control min-h-[330px] resize-none leading-7"
               onChange={(answer) => onDraftChange({ ...draft, answer })}
               placeholder={contentPlaceholder}
+              saveShortcut={{
+                disabled: !canSubmit || isDeleting || isConvertingToTodo,
+                label: isEditing ? "保存" : "提交",
+              }}
             />
           </EditorField>
         )}
@@ -9292,8 +9339,10 @@ function KnowledgeForm({
 
         <div className={`grid gap-3 ${isEditing ? "sm:grid-cols-[1fr_auto_auto]" : "sm:grid-cols-[1fr_auto]"}`}>
           <button
+            aria-keyshortcuts={getMarkdownSaveAriaShortcut()}
             disabled={!canSubmit || isDeleting || isConvertingToTodo}
             className="flex h-12 w-full items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
+            title={`${isEditing ? "保存修改" : "提交"}（${getMarkdownSaveShortcutLabel()}）`}
             type="submit"
           >
             {isSaving ? (
@@ -11162,6 +11211,10 @@ function BlogFactoryRecords({
                   className="control min-h-[420px] resize-y font-mono text-xs leading-6 text-slate-200"
                   value={editDraft.taskContent}
                   onChange={(taskContent) => onEditDraftChange({ ...editDraft, taskContent })}
+                  saveShortcut={{
+                    disabled: !canSaveItem,
+                    onSave: handleSaveTaskContent,
+                  }}
                 />
                 {maskNotice ? (
                   <div className="rounded-lg border border-mint-300/20 bg-mint-300/10 px-3 py-2 text-xs leading-6 text-mint-100">{maskNotice}</div>
@@ -11186,8 +11239,10 @@ function BlogFactoryRecords({
                     取消编辑
                   </button>
                   <button
+                    aria-keyshortcuts={getMarkdownSaveAriaShortcut()}
                     className="flex h-10 items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
                     disabled={!canSaveItem}
+                    title={`保存任务内容（${getMarkdownSaveShortcutLabel()}）`}
                     type="button"
                     onClick={() => void handleSaveTaskContent()}
                   >
@@ -12857,6 +12912,11 @@ function PersonalSecretEditorForm({
             maxLength={4000}
             value={draft.notes}
             onChange={(event) => onDraftChange({ ...draft, notes: event.target.value })}
+            onKeyDown={(event) => {
+              if (!isMarkdownSaveShortcut(event) || !canSave || event.repeat) return;
+              event.preventDefault();
+              onSave();
+            }}
           />
         </div>
         {notesView === "preview" && (
@@ -12875,7 +12935,7 @@ function PersonalSecretEditorForm({
           </div>
         )}
         <p id="personal-secret-notes-hint" className="mt-2 text-xs leading-5 text-slate-500">
-          支持 Markdown，最多 4000 字符。为保护机密，预览不加载图片，图表仅显示源码。
+          支持 Markdown，最多 4000 字符；{getMarkdownSaveShortcutLabel()} 保存。为保护机密，预览不加载图片，图表仅显示源码。
         </p>
       </div>
 
@@ -12883,8 +12943,10 @@ function PersonalSecretEditorForm({
 
       <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
         <button
+          aria-keyshortcuts={getMarkdownSaveAriaShortcut()}
           className="flex h-11 items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 text-sm font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
           disabled={!canSave}
+          title={`${selectedItem ? "保存修改" : "保存机密"}（${getMarkdownSaveShortcutLabel()}）`}
           type="button"
           onClick={onSave}
         >
@@ -13152,6 +13214,7 @@ function TodoWorkspace({
                 value={draft.content}
                 onChange={(content) => onDraftChange({ ...draft, content })}
                 placeholder="补充待办事项背景、验收标准或下一步动作。"
+                saveShortcut={{ disabled: !canSave }}
               />
             ) : draft.content.trim() ? (
               <MarkdownPreview markdown={draft.content} sourceLine={taskPreviewSourceLine} showSlides />
@@ -13196,8 +13259,10 @@ function TodoWorkspace({
 
           <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto]">
             <button
+              aria-keyshortcuts={getMarkdownSaveAriaShortcut()}
               className="flex h-12 w-full items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
               disabled={!canSave}
+              title={`保存待办事项（${getMarkdownSaveShortcutLabel()}）`}
               type="submit"
             >
               {isSaving ? <Loader2 className="animate-spin" size={18} /> : <Pencil size={18} />}
@@ -16837,8 +16902,10 @@ function SkillManager({
                     ) : null}
                   </div>
                   <button
+                    aria-keyshortcuts={isSelectedSkillMarkdown ? getMarkdownSaveAriaShortcut() : undefined}
                     className="flex h-9 items-center justify-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-3 text-xs font-medium text-mint-300 transition hover:bg-mint-300/20 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.035] disabled:text-slate-500"
                     disabled={!canSaveFile}
+                    title={isSelectedSkillMarkdown ? `保存文件（${getMarkdownSaveShortcutLabel()}）` : "保存文件"}
                     type="button"
                     onClick={onSaveFile}
                   >
@@ -16854,6 +16921,11 @@ function SkillManager({
                     readOnly={!selectedFile.editable || !detail.can_edit}
                     value={fileContent}
                     onChange={(event) => onFileChange(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (!isSelectedSkillMarkdown || !isMarkdownSaveShortcut(event) || !canSaveFile || event.repeat) return;
+                      event.preventDefault();
+                      onSaveFile();
+                    }}
                   />
                 ) : (
                   <div className="grid min-h-[420px] place-items-center rounded-lg border border-white/10 bg-black/10 text-center text-sm text-slate-500">
@@ -16891,10 +16963,10 @@ function SkillManager({
             <input className="control h-10" value={newDraft.name} onChange={(event) => onNewDraftChange({ ...newDraft, name: event.target.value })} placeholder="Skill 名称" />
             <textarea className="control min-h-20 resize-none" value={newDraft.description} onChange={(event) => onNewDraftChange({ ...newDraft, description: event.target.value })} placeholder="描述这个 skill 会如何影响输出结构、语气或排版。" />
             <SkillAiCreation draft={newDraft} disabled={isSaving} modelOptions={modelOptions} onApply={(content) => onNewDraftChange({ ...newDraft, content })} />
-            <textarea className="control min-h-52 resize-y font-mono text-xs leading-6" value={newDraft.content} onChange={(event) => onNewDraftChange({ ...newDraft, content: event.target.value })} placeholder={"# Skill 名称\n\n描述：...\n\n## 使用规则\n- ..."} />
+            <textarea className="control min-h-52 resize-y font-mono text-xs leading-6" value={newDraft.content} onChange={(event) => onNewDraftChange({ ...newDraft, content: event.target.value })} onKeyDown={(event) => { if (!isMarkdownSaveShortcut(event) || !canCreate || event.repeat) return; event.preventDefault(); event.currentTarget.form?.requestSubmit(); }} placeholder={"# Skill 名称\n\n描述：...\n\n## 使用规则\n- ..."} />
             <SkillPromptCharacterNotice characterCount={newSkillContentCharacterCount} limit={skillPromptCharacterLimit} />
             <label className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.028] px-3 py-2 text-sm text-slate-300"><span>与其他用户分享</span><input checked={newDraft.published} className="h-4 w-4 accent-mint-300" type="checkbox" onChange={(event) => onNewDraftChange({ ...newDraft, published: event.target.checked })} /></label>
-            <div className="flex shrink-0 justify-end gap-3 border-t border-white/10 pt-4"><button className="h-10 rounded-lg border border-white/10 bg-white/[0.035] px-4 text-sm text-slate-300" disabled={isSaving} type="button" onClick={() => setIsCreateSkillDialogOpen(false)}>取消</button><button className="flex h-10 items-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 text-sm font-medium text-mint-300 disabled:cursor-not-allowed disabled:opacity-50" disabled={!canCreate} type="submit">{isSaving ? <Loader2 className="animate-spin" size={16} /> : <Plus size={16} />}新建 Skill</button></div>
+            <div className="flex shrink-0 justify-end gap-3 border-t border-white/10 pt-4"><button className="h-10 rounded-lg border border-white/10 bg-white/[0.035] px-4 text-sm text-slate-300" disabled={isSaving} type="button" onClick={() => setIsCreateSkillDialogOpen(false)}>取消</button><button aria-keyshortcuts={getMarkdownSaveAriaShortcut()} className="flex h-10 items-center gap-2 rounded-lg border border-mint-300/30 bg-mint-300/14 px-4 text-sm font-medium text-mint-300 disabled:cursor-not-allowed disabled:opacity-50" disabled={!canCreate} title={`新建 Skill（${getMarkdownSaveShortcutLabel()}）`} type="submit">{isSaving ? <Loader2 className="animate-spin" size={16} /> : <Plus size={16} />}新建 Skill</button></div>
           </form>
         </section>
       </div> : null}

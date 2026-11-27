@@ -120,6 +120,18 @@ test("switching modes preserves draft, caret, scroll and height; closing or chan
   await expect(page.getByRole("button", { name: "保存机密" })).toBeEnabled();
 });
 
+test.describe("macOS Markdown save shortcut", () => {
+  test.use({ userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/130 Safari/537.36" });
+
+  test("Command+Enter saves private Markdown notes through the existing save action", async ({ page }) => {
+    const notes = page.getByRole("textbox", { name: "备注", exact: true });
+    await notes.fill("# 快捷保存\n\n保密备注");
+    await notes.press("Meta+Enter");
+    expect(await page.evaluate(() => (window as any).secretEditorTest.savedNotes)).toBe("# 快捷保存\n\n保密备注");
+    await expect(page.getByRole("button", { name: "保存中" })).toBeDisabled();
+  });
+});
+
 test("private preview never loads images or diagrams, executes HTML, persists notes or enables exports", async ({ page }) => {
   const image = "![保密图片](https://tracker.invalid/secret.png)";
   const markdown = `# ${image}\n\n${image}\n\n- ${image}\n\n> ${image}\n\n| ${image} | 标题 |\n| --- | --- |\n| ${image} | 内容 |\n\n![内部](/api/media/private/content)\n\n![协议相对](//tracker.invalid/a)\n\n<img src="https://tracker.invalid/raw" onerror="window.secretXss=1">\n<script>window.secretXss=1</script>\n\n[危险](javascript:alert) [数据](data:text/html,test) [安全](https://example.test/)\n\n\`\`\`mermaid\ngraph TD; A-->B\n\`\`\``;
